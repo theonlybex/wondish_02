@@ -1,0 +1,410 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth & Accounts ──────────────────────────────────────────────────────────
+
+model Account {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  firstName         String
+  lastName          String
+  password          String
+  phone             String?
+  photoUrl          String?
+  isEnabled         Boolean  @default(true)
+  agreedTerms       Boolean  @default(false)
+  emailVerified     Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  companyId  String?
+  company    Company?  @relation(fields: [companyId], references: [id])
+  countryId  String?
+  country    Country?  @relation(fields: [countryId], references: [id])
+
+  roles        AccountRole[]
+  patient      Patient?
+  subscription Subscription?
+}
+
+model Role {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  accounts    AccountRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id    String           @id @default(cuid())
+  name  String           @unique
+  roles RolePermission[]
+}
+
+model AccountRole {
+  accountId String
+  roleId    String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  role      Role    @relation(fields: [roleId], references: [id])
+
+  @@id([accountId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+}
+
+// ─── Subscriptions & Billing ──────────────────────────────────────────────────
+
+model Subscription {
+  id                     String             @id @default(cuid())
+  accountId              String             @unique
+  account                Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  stripeCustomerId       String?            @unique
+  stripeSubscriptionId   String?            @unique
+  stripePriceId          String?
+  stripeCurrentPeriodEnd DateTime?
+  plan                   SubscriptionPlan   @default(FREE)
+  status                 SubscriptionStatus @default(ACTIVE)
+  trialEndsAt            DateTime?
+  canceledAt             DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+}
+
+enum SubscriptionPlan {
+  FREE
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  TRIALING
+  INCOMPLETE
+}
+
+// ─── Patient Profile ─────────────────────────────────────────────────────────
+
+model Patient {
+  id                 String    @id @default(cuid())
+  accountId          String    @unique
+  account            Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  birthday           DateTime?
+  genderId           String?
+  gender             Gender?   @relation(fields: [genderId], references: [id])
+  weight             Float?
+  weightUnit         String?   @default("kg")
+  height             Float?
+  heightUnit         String?   @default("cm")
+  bmi                Float?
+  physicalActivityId String?
+  physicalActivity   PhysicalActivity? @relation(fields: [physicalActivityId], references: [id])
+  mealTypeId         String?
+  mealType           MealType? @relation(fields: [mealTypeId], references: [id])
+  goalWeight         Float?
+  weeklyGoal         Float?    // kg per week
+
+  foodPreferences  PatientFoodPreference[]
+  foodToAvoid      PatientFoodToAvoid[]
+  foodAllergies    PatientFoodAllergy[]
+  healthConditions PatientHealthCondition[]
+  motivations      PatientMotivation[]
+  menus            Menu[]
+  orders           Order[]
+  journalEntries   JournalEntry[]
+  customIngredients PatientCustomIngredient[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Gender {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  patients Patient[]
+}
+
+model PhysicalActivity {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  level    Int       @default(1)
+  patients Patient[]
+}
+
+model Motivation {
+  id       String              @id @default(cuid())
+  name     String              @unique
+  patients PatientMotivation[]
+}
+
+model PatientMotivation {
+  patientId    String
+  motivationId String
+  patient      Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  motivation   Motivation @relation(fields: [motivationId], references: [id])
+
+  @@id([patientId, motivationId])
+}
+
+// ─── Food Preferences ─────────────────────────────────────────────────────────
+
+model FoodPreference {
+  id       String                  @id @default(cuid())
+  name     String                  @unique
+  patients PatientFoodPreference[]
+}
+
+model PatientFoodPreference {
+  patientId String
+  foodId    String
+  patient   Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  food      FoodPreference @relation(fields: [foodId], references: [id])
+
+  @@id([patientId, foodId])
+}
+
+model FoodToAvoid {
+  id       String               @id @default(cuid())
+  name     String               @unique
+  patients PatientFoodToAvoid[]
+}
+
+model PatientFoodToAvoid {
+  patientId String
+  foodId    String
+  patient   Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  food      FoodToAvoid @relation(fields: [foodId], references: [id])
+
+  @@id([patientId, foodId])
+}
+
+model FoodAllergy {
+  id       String               @id @default(cuid())
+  name     String               @unique
+  patients PatientFoodAllergy[]
+}
+
+model PatientFoodAllergy {
+  patientId String
+  foodId    String
+  patient   Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  food      FoodAllergy @relation(fields: [foodId], references: [id])
+
+  @@id([patientId, foodId])
+}
+
+model HealthCondition {
+  id       String                   @id @default(cuid())
+  name     String                   @unique
+  patients PatientHealthCondition[]
+}
+
+model PatientHealthCondition {
+  patientId   String
+  conditionId String
+  patient     Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  condition   HealthCondition @relation(fields: [conditionId], references: [id])
+
+  @@id([patientId, conditionId])
+}
+
+// ─── Custom Ingredients (Premium) ────────────────────────────────────────────
+
+model PatientCustomIngredient {
+  id        String   @id @default(cuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name      String
+  calories  Float?
+  protein   Float?
+  carbs     Float?
+  fat       Float?
+  unit      String?
+  createdAt DateTime @default(now())
+}
+
+// ─── Recipes & Dishes ────────────────────────────────────────────────────────
+
+model Recipe {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  imageUrl    String?
+  emoji       String?
+  calories    Float?
+  protein     Float?
+  carbs       Float?
+  fat         Float?
+  fiber       Float?
+  prepTime    Int?
+  cookTime    Int?
+  servings    Int?     @default(1)
+  isPublic    Boolean  @default(true)
+  tags        String[]
+  dishTypeId  String?
+  dishType    DishType?  @relation(fields: [dishTypeId], references: [id])
+  mealTypeId  String?
+  mealType    MealType?  @relation(fields: [mealTypeId], references: [id])
+  ethnicId    String?
+  ethnic      Ethnic?    @relation(fields: [ethnicId], references: [id])
+  ingredients RecipeIngredient[]
+  menus       Menu[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Ingredient {
+  id       String             @id @default(cuid())
+  name     String             @unique
+  unit     String?
+  calories Float?
+  protein  Float?
+  carbs    Float?
+  fat      Float?
+  recipes  RecipeIngredient[]
+}
+
+model RecipeIngredient {
+  recipeId     String
+  ingredientId String
+  recipe       Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  quantity     Float?
+  unit         String?
+
+  @@id([recipeId, ingredientId])
+}
+
+model MealType {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  recipes  Recipe[]
+  patients Patient[]
+  menus    Menu[]
+}
+
+model DishType {
+  id      String   @id @default(cuid())
+  name    String   @unique
+  recipes Recipe[]
+}
+
+model Ethnic {
+  id      String   @id @default(cuid())
+  name    String   @unique
+  recipes Recipe[]
+}
+
+// ─── Meal Planning ────────────────────────────────────────────────────────────
+
+model Menu {
+  id         String   @id @default(cuid())
+  patientId  String
+  patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recipeId   String
+  recipe     Recipe   @relation(fields: [recipeId], references: [id])
+  mealTypeId String?
+  mealType   MealType? @relation(fields: [mealTypeId], references: [id])
+  date       DateTime
+  createdAt  DateTime @default(now())
+}
+
+// ─── Orders ───────────────────────────────────────────────────────────────────
+
+model Order {
+  id          String      @id @default(cuid())
+  patientId   String
+  patient     Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  status      OrderStatus @default(PENDING)
+  totalAmount Float?
+  items       OrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  DELIVERED
+  CANCELED
+}
+
+model OrderItem {
+  id       String  @id @default(cuid())
+  orderId  String
+  order    Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  name     String
+  quantity Int
+  price    Float?
+}
+
+// ─── Journal & Tracking ───────────────────────────────────────────────────────
+
+model JournalEntry {
+  id            String        @id @default(cuid())
+  patientId     String
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  date          DateTime
+  mood          String?
+  weight        Float?
+  energyLevel   String?
+  activityLevel String?
+  notes         String?
+  meals         JournalMeal[]
+  createdAt     DateTime      @default(now())
+}
+
+model JournalMeal {
+  id             String       @id @default(cuid())
+  journalEntryId String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  mealType       String
+  preparation    String?
+  recipeId       String?
+  skipped        Boolean      @default(false)
+}
+
+// ─── Reference Data ───────────────────────────────────────────────────────────
+
+model Company {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  accounts Account[]
+}
+
+model Country {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  code     String    @unique
+  accounts Account[]
+}
+
+model TermsAndConditions {
+  id        String   @id @default(cuid())
+  content   String
+  version   String   @unique
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model ZipCode {
+  id      String  @id @default(cuid())
+  code    String  @unique
+  city    String?
+  state   String?
+  country String?
+  active  Boolean @default(true)
+}
