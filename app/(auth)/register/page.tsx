@@ -80,12 +80,17 @@ function RegisterForm() {
       if (selectedPlan === "premium" && data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
       } else {
-        // Auto sign-in after registration — let NextAuth handle the redirect
-        await signIn("credentials", {
+        // Auto sign-in after registration
+        const result = await signIn("credentials", {
           email: form.email.trim().toLowerCase(),
           password: form.password,
-          callbackUrl: "/overview",
+          redirect: false,
         });
+        if (result?.ok) {
+          window.location.href = "/overview";
+        } else {
+          setErrors({ form: `Sign-in failed: ${result?.error ?? "unknown error"}` });
+        }
       }
     } catch {
       setErrors({ form: "Something went wrong. Please try again." });
