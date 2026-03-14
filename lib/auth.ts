@@ -44,12 +44,18 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.plan = (user as { plan?: string }).plan ?? "FREE";
         token.onboardingComplete = (user as { onboardingComplete?: boolean }).onboardingComplete ?? false;
         token.roles = (user as { roles?: string[] }).roles ?? [];
+      }
+      // Allow client-side session.update() to patch token fields
+      if (trigger === "update" && session) {
+        if (session.onboardingComplete !== undefined) {
+          token.onboardingComplete = session.onboardingComplete;
+        }
       }
       return token;
     },
