@@ -42,4 +42,31 @@
   .scrollbar-thin {
     scrollbar-width: thin;
   }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* react-day-picker reset */
+.rdp {
+  --rdp-accent-color: #7367F0;
+  --rdp-background-color: #f3f2ff;
+  margin: 0;
+}
+
+.rdp-day_selected,
+.rdp-day_selected:focus-visible,
+.rdp-day_selected:hover {
+  background-color: #7367F0;
+  color: white;
+}
+
+.rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: #f3f2ff;
 }

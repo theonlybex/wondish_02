@@ -20,8 +20,9 @@ model Account {
   photoUrl          String?
   isEnabled         Boolean  @default(true)
   agreedTerms       Boolean  @default(false)
-  emailVerified     Boolean  @default(false)
-  createdAt         DateTime @default(now())
+  emailVerified       Boolean  @default(false)
+  onboardingComplete  Boolean  @default(false)
+  createdAt           DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   companyId  String?
@@ -132,6 +133,7 @@ model Patient {
   mealType           MealType? @relation(fields: [mealTypeId], references: [id])
   goalWeight         Float?
   weeklyGoal         Float?    // kg per week
+  mealPlanStartDate  DateTime?
 
   foodPreferences  PatientFoodPreference[]
   foodToAvoid      PatientFoodToAvoid[]
@@ -392,6 +394,7 @@ model JournalMeal {
   preparation    String?
   recipeId       String?
   skipped        Boolean      @default(false)
+  rating         Float?
 }
 
 // ─── Reference Data ───────────────────────────────────────────────────────────

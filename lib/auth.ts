@@ -21,7 +21,7 @@ export const authOptions: NextAuthOptions = {
 
         const account = await prisma.account.findUnique({
           where: { email: credentials.email },
-          include: { subscription: true },
+          include: { subscription: true, roles: { include: { role: true } } },
         });
 
         if (!account || !account.isEnabled) return null;
@@ -37,6 +37,8 @@ export const authOptions: NextAuthOptions = {
           email: account.email,
           name: `${account.firstName} ${account.lastName}`,
           plan: account.subscription?.plan ?? "FREE",
+          onboardingComplete: account.onboardingComplete,
+          roles: account.roles.map((r) => r.role.name),
         };
       },
     }),
@@ -46,6 +48,8 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.plan = (user as { plan?: string }).plan ?? "FREE";
+        token.onboardingComplete = (user as { onboardingComplete?: boolean }).onboardingComplete ?? false;
+        token.roles = (user as { roles?: string[] }).roles ?? [];
       }
       return token;
     },
@@ -53,6 +57,8 @@ export const authOptions: NextAuthOptions = {
       if (token) {
         session.user.id = token.id as string;
         session.user.plan = token.plan as string;
+        session.user.onboardingComplete = token.onboardingComplete as boolean;
+        session.user.roles = token.roles as string[];
       }
       return session;
     },
@@ -67,6 +73,8 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
       plan: string;
+      onboardingComplete: boolean;
+      roles: string[];
     };
   }
 }

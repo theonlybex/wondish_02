@@ -8,6 +8,7 @@ import { Suspense } from "react";
 function LoginForm() {
   const searchParams = useSearchParams();
   const justRegistered = searchParams.get("registered") === "true";
+  const passwordReset = searchParams.get("reset") === "true";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -62,6 +63,12 @@ function LoginForm() {
         {justRegistered && (
           <div className="bg-success/10 border border-success/20 text-success text-sm rounded-xl px-4 py-3 mb-6">
             Account created! Sign in to continue.
+          </div>
+        )}
+
+        {passwordReset && (
+          <div className="bg-success/10 border border-success/20 text-success text-sm rounded-xl px-4 py-3 mb-6">
+            Password reset successfully. Sign in with your new password.
           </div>
         )}
 
