@@ -37,8 +37,10 @@ function LoginForm() {
 
       if (result?.error) {
         setError("Invalid email or password.");
-      } else {
+      } else if (result?.ok) {
         window.location.href = "/overview";
+      } else {
+        setError("Sign-in failed. Please try again.");
       }
     } catch {
       setError("Something went wrong. Please try again.");
