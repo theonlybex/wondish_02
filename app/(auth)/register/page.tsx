@@ -87,7 +87,7 @@ function RegisterForm() {
           redirect: false,
         });
         if (result?.ok) {
-          window.location.href = "/dashboard";
+          window.location.href = "/pricing";
         } else {
           // Sign-in failed but account was created — send to login
           window.location.href = "/login?registered=true";

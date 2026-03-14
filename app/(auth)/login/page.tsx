@@ -37,7 +37,9 @@ function LoginForm() {
       if (result?.error) {
         setError("Invalid email or password.");
       } else {
-        window.location.href = "/dashboard";
+        const { getSession } = await import("next-auth/react");
+        const session = await getSession();
+        window.location.href = session?.user?.plan === "PREMIUM" ? "/dashboard" : "/pricing";
       }
     } catch {
       setError("Something went wrong. Please try again.");

@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import PricingSection from "@/components/PricingSection";
 
 export const metadata: Metadata = {
@@ -31,10 +34,22 @@ const faqs = [
   },
 ];
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  let session;
+  try {
+    session = await getServerSession(authOptions);
+  } catch {
+    session = null;
+  }
+
+  // Premium users already chose — send them to their dashboard
+  if (session?.user?.plan === "PREMIUM") redirect("/dashboard");
+
+  const isLoggedIn = !!session;
+
   return (
     <div className="min-h-screen pt-16">
-      <PricingSection />
+      <PricingSection isLoggedIn={isLoggedIn} />
 
       {/* FAQ */}
       <section className="bg-white py-24 px-5 sm:px-8">

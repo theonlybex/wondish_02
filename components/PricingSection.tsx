@@ -31,7 +31,7 @@ function Check({ color = "text-success" }: { color?: string }) {
   );
 }
 
-export default function PricingSection() {
+export default function PricingSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   return (
     <section className="bg-[#F8F7FA] py-24 px-5 sm:px-8">
       <div className="max-w-6xl mx-auto">
@@ -70,12 +70,21 @@ export default function PricingSection() {
                 </li>
               ))}
             </ul>
-            <Link
-              href="/register"
-              className="w-full text-center py-3 rounded-xl font-semibold text-sm border border-[#E8E7EA] text-[#25293C] hover:bg-[#F8F7FA] transition-all duration-150"
-            >
-              Get started free
-            </Link>
+            {isLoggedIn ? (
+              <Link
+                href="/dashboard"
+                className="w-full text-center py-3 rounded-xl font-semibold text-sm border border-[#E8E7EA] text-[#25293C] hover:bg-[#F8F7FA] transition-all duration-150"
+              >
+                Continue with Free →
+              </Link>
+            ) : (
+              <Link
+                href="/register"
+                className="w-full text-center py-3 rounded-xl font-semibold text-sm border border-[#E8E7EA] text-[#25293C] hover:bg-[#F8F7FA] transition-all duration-150"
+              >
+                Get started free
+              </Link>
+            )}
           </div>
 
           {/* Premium */}

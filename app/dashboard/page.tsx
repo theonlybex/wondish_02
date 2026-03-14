@@ -8,7 +8,12 @@ export default async function DashboardPage({
 }: {
   searchParams: { session_id?: string; welcome?: string };
 }) {
-  const session = await getServerSession(authOptions);
+  let session;
+  try {
+    session = await getServerSession(authOptions);
+  } catch {
+    redirect("/login");
+  }
   if (!session) redirect("/login");
 
   const justUpgraded = !!searchParams.session_id;
