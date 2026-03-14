@@ -2,9 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { Metadata } from "next";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
-export default function LoginPage() {
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const justRegistered = searchParams.get("registered") === "true";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -52,6 +56,12 @@ export default function LoginPage() {
             Log in to your Wondish account to continue.
           </p>
         </div>
+
+        {justRegistered && (
+          <div className="bg-success/10 border border-success/20 text-success text-sm rounded-xl px-4 py-3 mb-6">
+            Account created! Sign in to continue.
+          </div>
+        )}
 
         {error && (
           <div className="bg-error/10 border border-error/20 text-error text-sm rounded-xl px-4 py-3 mb-6">
@@ -136,5 +146,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="text-white/50 text-sm">Loading…</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

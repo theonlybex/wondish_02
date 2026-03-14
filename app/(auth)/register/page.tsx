@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { signIn } from "next-auth/react";
 
 function RegisterForm() {
   const searchParams = useSearchParams();
@@ -79,7 +80,18 @@ function RegisterForm() {
       if (selectedPlan === "premium" && data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
       } else {
-        window.location.href = "/dashboard";
+        // Auto sign-in after registration
+        const result = await signIn("credentials", {
+          email: form.email.trim().toLowerCase(),
+          password: form.password,
+          redirect: false,
+        });
+        if (result?.ok) {
+          window.location.href = "/dashboard";
+        } else {
+          // Sign-in failed but account was created — send to login
+          window.location.href = "/login?registered=true";
+        }
       }
     } catch {
       setErrors({ form: "Something went wrong. Please try again." });
