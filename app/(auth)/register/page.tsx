@@ -65,6 +65,7 @@ function RegisterForm() {
           email: form.email.trim().toLowerCase(),
           password: form.password,
           plan: selectedPlan,
+          agreedTerms: form.agreedTerms,
         }),
       });
 

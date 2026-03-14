@@ -10,7 +10,7 @@ const LOOKUP_KEY = process.env.STRIPE_PRICE_LOOKUP_KEY ?? "premium_monthly";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { firstName, lastName, email, password, plan } = body;
+    const { firstName, lastName, email, password, plan, agreedTerms } = body;
 
     if (!firstName || !lastName || !email || !password) {
       return NextResponse.json({ error: "All fields are required." }, { status: 400 });
@@ -18,17 +18,16 @@ export async function POST(req: NextRequest) {
     if (password.length < 8) {
       return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
+    if (!agreedTerms) {
+      return NextResponse.json({ error: "You must accept the terms and conditions." }, { status: 400 });
+    }
 
     const existing = await prisma.account.findUnique({ where: { email } });
     if (existing) {
-      return NextResponse.json(
-        { error: "An account with this email already exists." },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 });
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
-    const verificationToken = crypto.randomBytes(32).toString("hex");
 
     const account = await prisma.account.create({
       data: {
@@ -36,7 +35,18 @@ export async function POST(req: NextRequest) {
         lastName,
         email,
         password: hashedPassword,
+        agreedTerms: true,
         subscription: { create: { plan: "FREE", status: "ACTIVE" } },
+      },
+    });
+
+    // Store verification token (expires in 24h)
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+    await prisma.verificationToken.create({
+      data: {
+        token: verificationToken,
+        email,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       },
     });
 

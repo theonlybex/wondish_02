@@ -13,16 +13,19 @@ export async function POST(req: NextRequest) {
     const account = await prisma.account.findUnique({ where: { email } });
 
     // Always return success to prevent email enumeration
-    if (!account) {
-      return NextResponse.json({ success: true });
-    }
+    if (!account) return NextResponse.json({ success: true });
+
+    // Delete any existing reset tokens for this email
+    await prisma.passwordResetToken.deleteMany({ where: { email } });
 
     const token = crypto.randomBytes(32).toString("hex");
-    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-    // Store token in a dedicated field (requires schema addition) — for now use a safe log
-    // In production: store in a PasswordResetToken table with expiry
-    console.info(`[forgot-password] token for ${email}: ${token} (expires ${expires.toISOString()})`);
+    await prisma.passwordResetToken.create({
+      data: {
+        token,
+        email,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+      },
+    });
 
     await sendPasswordResetEmail(email, token).catch((err) =>
       console.error("[forgot-password] email error:", err)
