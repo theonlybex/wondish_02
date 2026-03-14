@@ -80,7 +80,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (err) {
     console.error("[register]", err);
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: "An unexpected error occurred.", detail: message }, { status: 500 });
+    return NextResponse.json({ error: "An unexpected error occurred." }, { status: 500 });
   }
 }
