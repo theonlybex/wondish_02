@@ -1,127 +1,188 @@
+"use client";
+
 import Link from "next/link";
+import { useRef } from "react";
+import { useScroll, useTransform, motion } from "framer-motion";
+
+const INGREDIENTS = [
+  { emoji: "🍅", label: "Tomato",  x: -320, y: -200, delay: 0 },
+  { emoji: "🥕", label: "Carrot",  x:  320, y: -180, delay: 0.05 },
+  { emoji: "🌿", label: "Herbs",   x:    0, y: -280, delay: 0.1 },
+  { emoji: "🧄", label: "Garlic",  x: -280, y:  160, delay: 0.08 },
+  { emoji: "🫒", label: "Olive",   x:  280, y:  180, delay: 0.12 },
+  { emoji: "🧅", label: "Onion",   x: -380, y:   20, delay: 0.04 },
+  { emoji: "🍋", label: "Lemon",   x:  380, y:   10, delay: 0.06 },
+  { emoji: "🌶️", label: "Chilli", x:  160, y: -260, delay: 0.09 },
+];
 
 export default function Hero() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ["start start", "end end"],
+  });
+
+  // Headline fades out as we start scrolling into the animation
+  const headlineOpacity = useTransform(scrollYProgress, [0, 0.18], [1, 0]);
+  const headlineY = useTransform(scrollYProgress, [0, 0.18], [0, -40]);
+
+  // Plate scale + opacity
+  const plateOpacity = useTransform(scrollYProgress, [0.15, 0.35], [0, 1]);
+  const plateScale = useTransform(scrollYProgress, [0.15, 0.35], [0.4, 1]);
+
+  // Assembled glow
+  const glowOpacity = useTransform(scrollYProgress, [0.65, 0.8], [0, 1]);
+
+  // CTA fades in after assembly
+  const ctaOpacity = useTransform(scrollYProgress, [0.75, 0.9], [0, 1]);
+  const ctaY = useTransform(scrollYProgress, [0.75, 0.9], [30, 0]);
+
+  // Dish label
+  const dishLabelOpacity = useTransform(scrollYProgress, [0.65, 0.8], [0, 1]);
+
   return (
-    <section className="relative min-h-screen bg-hero-pattern flex items-center overflow-hidden">
-      {/* Ambient glow effects */}
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-primary/15 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-0 left-1/4 w-72 h-72 bg-primary/10 rounded-full blur-[80px] pointer-events-none" />
+    <>
+      {/* ─── Scroll container — 380vh gives room for the animation ─── */}
+      <div ref={containerRef} style={{ height: "380vh" }}>
+        <div className="sticky top-0 h-screen overflow-hidden bg-[#0d1a10] flex flex-col items-center justify-center">
 
-      {/* Subtle grid pattern */}
-      <div
-        className="absolute inset-0 opacity-[0.025]"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)",
-          backgroundSize: "60px 60px",
-        }}
-      />
-
-      <div className="relative max-w-6xl mx-auto px-5 sm:px-8 pt-24 pb-16 w-full">
-        <div className="max-w-3xl mx-auto text-center">
-
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 text-primary px-4 py-1.5 rounded-full text-sm font-medium mb-8">
-            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-            Personalized nutrition, built for you
-          </div>
-
-          {/* Headline */}
-          <h1 className="text-5xl sm:text-6xl lg:text-[72px] font-bold text-white leading-[1.1] tracking-tight mb-6">
-            Eat smarter.
-            <br />
-            <span className="text-primary">Feel better.</span>
-          </h1>
-
-          {/* Subheadline */}
-          <p className="text-lg sm:text-xl text-white/55 leading-relaxed max-w-2xl mx-auto mb-10">
-            Your AI-powered meal planning platform that adapts to your dietary
-            preferences, health goals, and lifestyle — and helps you build
-            lasting habits, one meal at a time.
-          </p>
-
-          {/* CTAs */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
-            <Link
-              href="/register"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-7 py-3.5 rounded-xl font-semibold text-base transition-all duration-150 shadow-xl shadow-primary/30"
-            >
-              Start free trial
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
-                fill="none"
-                className="mt-0.5"
-              >
-                <path
-                  d="M3 8h10M9 4l4 4-4 4"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+          {/* ── Headline (fades as scroll begins) ── */}
+          <motion.div
+            style={{ opacity: headlineOpacity, y: headlineY }}
+            className="absolute top-0 left-0 right-0 flex flex-col items-center justify-center h-full px-6 text-center pointer-events-none z-10"
+          >
+            <span className="text-[11px] uppercase tracking-[0.25em] text-white/30 mb-8 font-medium">
+              Meal planning, reimagined
+            </span>
+            <h1 className="text-[clamp(2.8rem,8vw,6rem)] font-bold text-white leading-[1.05] tracking-tight">
+              Every great meal
+              <br />
+              <span className="text-[#4ade80]">starts here.</span>
+            </h1>
+            <p className="mt-6 text-base sm:text-lg text-white/35 max-w-lg leading-relaxed">
+              AI-powered meal plans built around your body, goals, and taste —
+              scroll to see how it comes together.
+            </p>
+            <div className="mt-3 flex flex-col items-center gap-1 animate-bounce">
+              <span className="text-xs text-white/20 tracking-widest uppercase">scroll</span>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M8 3v10M4 9l4 4 4-4" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-            </Link>
-            <Link
-              href="/dishes"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-white/70 hover:text-white px-7 py-3.5 rounded-xl font-semibold text-base transition-all duration-150 border border-white/10 hover:border-white/20 hover:bg-white/[0.04]"
-            >
-              Browse dishes
-            </Link>
-          </div>
-
-          {/* Stats row */}
-          <div className="grid grid-cols-3 gap-6 max-w-sm mx-auto">
-            {[
-              { value: "500+", label: "Recipes" },
-              { value: "10k+", label: "Members" },
-              { value: "14 days", label: "Free trial" },
-            ].map(({ value, label }) => (
-              <div key={label} className="text-center">
-                <p className="text-2xl font-bold text-white">{value}</p>
-                <p className="text-sm text-white/40 mt-0.5">{label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Preview card */}
-        <div className="mt-20 max-w-3xl mx-auto">
-          <div className="bg-navy-surface/60 backdrop-blur border border-white/[0.08] rounded-2xl p-6 shadow-2xl">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="flex gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-white/10" />
-                <span className="w-3 h-3 rounded-full bg-white/10" />
-                <span className="w-3 h-3 rounded-full bg-white/10" />
-              </div>
-              <div className="h-5 bg-white/[0.06] rounded-md flex-1" />
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          </motion.div>
+
+          {/* ── Assembly stage ── */}
+          <div className="relative flex items-center justify-center w-full h-full">
+
+            {/* Glow behind plate when assembled */}
+            <motion.div
+              style={{ opacity: glowOpacity }}
+              className="absolute w-64 h-64 rounded-full bg-[#4ade80]/15 blur-[90px] pointer-events-none"
+            />
+
+            {/* Plate */}
+            <motion.div
+              style={{ opacity: plateOpacity, scale: plateScale }}
+              className="relative z-10 flex items-center justify-center w-28 h-28 rounded-full bg-[#111] border border-white/[0.06] shadow-2xl"
+            >
+              <span className="text-6xl select-none">🍽️</span>
+            </motion.div>
+
+            {/* Ingredients */}
+            {INGREDIENTS.map(({ emoji, label, x, y, delay }) => (
+              <Ingredient
+                key={label}
+                emoji={emoji}
+                startX={x}
+                startY={y}
+                scrollProgress={scrollYProgress}
+                delay={delay}
+              />
+            ))}
+
+            {/* Dish name after assembly */}
+            <motion.div
+              style={{ opacity: dishLabelOpacity }}
+              className="absolute bottom-[calc(50%-90px)] left-0 right-0 text-center pointer-events-none"
+            >
+              <span className="text-xs uppercase tracking-[0.3em] text-white/25 font-medium">
+                assembled
+              </span>
+            </motion.div>
+          </div>
+
+          {/* ── CTA after dish is built ── */}
+          <motion.div
+            style={{ opacity: ctaOpacity, y: ctaY }}
+            className="absolute bottom-16 left-0 right-0 flex flex-col items-center gap-5 px-6 z-20"
+          >
+            <div className="grid grid-cols-3 gap-8 mb-2">
               {[
-                { emoji: "🌅", label: "Breakfast", cal: "380 kcal", dish: "Avocado Toast" },
-                { emoji: "☀️", label: "Lunch", cal: "450 kcal", dish: "Quinoa Bowl" },
-                { emoji: "🌙", label: "Dinner", cal: "520 kcal", dish: "Baked Salmon" },
-                { emoji: "🍎", label: "Snack", cal: "200 kcal", dish: "Apple & Almond" },
-              ].map(({ emoji, label, cal, dish }) => (
-                <div
-                  key={label}
-                  className="bg-white/[0.04] border border-white/[0.06] rounded-xl p-4"
-                >
-                  <div className="text-2xl mb-2">{emoji}</div>
-                  <p className="text-[11px] text-white/40 font-medium uppercase tracking-wider mb-1">
-                    {label}
-                  </p>
-                  <p className="text-white text-sm font-medium leading-snug mb-1">
-                    {dish}
-                  </p>
-                  <p className="text-primary text-xs font-semibold">{cal}</p>
+                { value: "500+", label: "Recipes" },
+                { value: "10k+", label: "Members" },
+                { value: "14 days", label: "Free trial" },
+              ].map(({ value, label }) => (
+                <div key={label} className="text-center">
+                  <p className="text-xl font-bold text-white">{value}</p>
+                  <p className="text-xs text-white/30 mt-0.5 uppercase tracking-wider">{label}</p>
                 </div>
               ))}
             </div>
-          </div>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+              <Link
+                href="/register"
+                className="inline-flex items-center gap-2 bg-[#4ade80] hover:bg-[#22c55e] text-[#0d1a10] px-7 py-3.5 rounded-xl font-semibold text-sm transition-colors duration-150 shadow-lg shadow-[#4ade80]/20"
+              >
+                Start free trial
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </Link>
+              <Link
+                href="/dishes"
+                className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 px-7 py-3.5 rounded-xl font-semibold text-sm transition-colors duration-150 border border-white/[0.08] hover:border-white/15"
+              >
+                Browse dishes
+              </Link>
+            </div>
+          </motion.div>
+
         </div>
       </div>
-    </section>
+    </>
+  );
+}
+
+// ─── Individual ingredient that flies toward center ───────────────────────────
+
+function Ingredient({
+  emoji,
+  startX,
+  startY,
+  scrollProgress,
+  delay,
+}: {
+  emoji: string;
+  startX: number;
+  startY: number;
+  scrollProgress: ReturnType<typeof useScroll>["scrollYProgress"];
+  delay: number;
+}) {
+  const start = 0.2 + delay;
+  const end   = 0.65 + delay * 0.3;
+
+  const x       = useTransform(scrollProgress, [start, end], [startX, 0]);
+  const y       = useTransform(scrollProgress, [start, end], [startY, 0]);
+  const opacity = useTransform(scrollProgress, [start, end, end + 0.08], [0, 1, 0]);
+  const scale   = useTransform(scrollProgress, [start, end - 0.1, end], [0.6, 1.1, 0.85]);
+
+  return (
+    <motion.div
+      style={{ x, y, opacity, scale }}
+      className="absolute text-4xl select-none pointer-events-none"
+    >
+      {emoji}
+    </motion.div>
   );
 }

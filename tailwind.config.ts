@@ -10,17 +10,24 @@ const config: Config = {
     extend: {
       colors: {
         primary: {
-          DEFAULT: "#7367F0",
-          light: "#8479F2",
-          dark: "#655BD3",
+          DEFAULT: "#4ade80",
+          light: "#86efac",
+          dark: "#22c55e",
         },
+        forest: {
+          DEFAULT: "#1e3422",
+          dark: "#152718",
+          deeper: "#0d1a10",
+          surface: "#263b2a",
+        },
+        // keep navy alias pointing to forest so dashboard components don't break
         navy: {
-          DEFAULT: "#25293C",
-          dark: "#1a1d2e",
-          deeper: "#13151f",
-          surface: "#2F3349",
+          DEFAULT: "#1e3422",
+          dark: "#152718",
+          deeper: "#0d1a10",
+          surface: "#263b2a",
         },
-        surface: "#F8F7FA",
+        surface: "#f4faf5",
         success: "#28C76F",
         warning: "#FF9F43",
         error: "#EA5455",
@@ -54,7 +61,7 @@ const config: Config = {
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
         "hero-pattern":
-          "linear-gradient(135deg, #25293C 0%, #1a1d2e 50%, #25293C 100%)",
+          "linear-gradient(135deg, #1e3422 0%, #0d1a10 50%, #152718 100%)",
       },
     },
   },
