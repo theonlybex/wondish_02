@@ -1,18 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRef } from "react";
 import { useScroll, useTransform, motion } from "framer-motion";
 
 const INGREDIENTS = [
-  { emoji: "🍅", label: "Tomato",  x: -320, y: -200, delay: 0 },
-  { emoji: "🥕", label: "Carrot",  x:  320, y: -180, delay: 0.05 },
-  { emoji: "🌿", label: "Herbs",   x:    0, y: -280, delay: 0.1 },
-  { emoji: "🧄", label: "Garlic",  x: -280, y:  160, delay: 0.08 },
-  { emoji: "🫒", label: "Olive",   x:  280, y:  180, delay: 0.12 },
-  { emoji: "🧅", label: "Onion",   x: -380, y:   20, delay: 0.04 },
-  { emoji: "🍋", label: "Lemon",   x:  380, y:   10, delay: 0.06 },
-  { emoji: "🌶️", label: "Chilli", x:  160, y: -260, delay: 0.09 },
+  { src: "/dish/tomato.png",   label: "Tomato",   x: -320, y: -200, delay: 0 },
+  { src: "/dish/salmon.png",   label: "Salmon",   x:  320, y: -180, delay: 0.05 },
+  { src: "/dish/dill.png",     label: "Dill",     x:    0, y: -280, delay: 0.1 },
+  { src: "/dish/quinoa.png",   label: "Quinoa",   x: -280, y:  160, delay: 0.08 },
+  { src: "/dish/avocado.png",  label: "Avocado",  x:  280, y:  180, delay: 0.12 },
+  { src: "/dish/cucumber.png", label: "Cucumber", x: -380, y:   20, delay: 0.04 },
+  { src: "/dish/lemon.png",    label: "Lemon",    x:  380, y:   10, delay: 0.06 },
+  { src: "/dish/quinoa.png",   label: "Quinoa2",  x:  160, y: -260, delay: 0.09 },
 ];
 
 export default function Hero() {
@@ -81,19 +82,19 @@ export default function Hero() {
               className="absolute w-64 h-64 rounded-full bg-[#4ade80]/15 blur-[90px] pointer-events-none"
             />
 
-            {/* Plate */}
+            {/* Plate — shows dish image when assembled */}
             <motion.div
               style={{ opacity: plateOpacity, scale: plateScale }}
-              className="relative z-10 flex items-center justify-center w-28 h-28 rounded-full bg-[#111] border border-white/[0.06] shadow-2xl"
+              className="relative z-10 w-36 h-36 rounded-full overflow-hidden border border-white/[0.08] shadow-2xl shadow-black/60"
             >
-              <span className="text-6xl select-none">🍽️</span>
+              <Image src="/dish/dish.png" alt="Mediterranean Salmon Bowl" fill className="object-cover" />
             </motion.div>
 
             {/* Ingredients */}
-            {INGREDIENTS.map(({ emoji, label, x, y, delay }) => (
+            {INGREDIENTS.map(({ src, label, x, y, delay }) => (
               <Ingredient
                 key={label}
-                emoji={emoji}
+                src={src}
                 startX={x}
                 startY={y}
                 scrollProgress={scrollYProgress}
@@ -157,13 +158,13 @@ export default function Hero() {
 // ─── Individual ingredient that flies toward center ───────────────────────────
 
 function Ingredient({
-  emoji,
+  src,
   startX,
   startY,
   scrollProgress,
   delay,
 }: {
-  emoji: string;
+  src: string;
   startX: number;
   startY: number;
   scrollProgress: ReturnType<typeof useScroll>["scrollYProgress"];
@@ -180,9 +181,9 @@ function Ingredient({
   return (
     <motion.div
       style={{ x, y, opacity, scale }}
-      className="absolute text-4xl select-none pointer-events-none"
+      className="absolute w-16 h-16 rounded-full overflow-hidden pointer-events-none shadow-lg shadow-black/40"
     >
-      {emoji}
+      <Image src={src} alt="ingredient" fill className="object-cover" />
     </motion.div>
   );
 }
