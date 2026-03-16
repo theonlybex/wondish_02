@@ -17,6 +17,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["High Protein", "Healthy Fats"],
     emoji: "🥑",
+    imageUrl: "/dishes/dish-1.png",
     featured: true,
   },
   {
@@ -34,6 +35,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["Probiotic", "High Protein"],
     emoji: "🥣",
+    imageUrl: "/dishes/dish-2.png",
   },
   {
     id: 3,
@@ -50,6 +52,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["High Fiber", "Vegan"],
     emoji: "🫐",
+    imageUrl: "/dishes/dish-3.png",
     featured: true,
   },
   {
@@ -67,6 +70,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["High Protein", "Low Carb", "Vegetarian"],
     emoji: "🍳",
+    imageUrl: "/dishes/dish-4.png",
   },
   {
     id: 5,
@@ -83,6 +87,7 @@ export const dishes: Dish[] = [
     servings: 2,
     tags: ["High Protein", "Natural Sweetener"],
     emoji: "🥞",
+    imageUrl: "/dishes/dish-5.png",
   },
 
   // ─── Lunch ──────────────────────────────────────────────────────────────────
@@ -101,6 +106,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["High Protein", "Classic"],
     emoji: "🥗",
+    imageUrl: "/dishes/dish-6.png",
     featured: true,
   },
   {
@@ -118,6 +124,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["Vegetarian", "High Fiber", "Mediterranean"],
     emoji: "🫙",
+    imageUrl: "/dishes/dish-7.png",
   },
   {
     id: 8,
@@ -134,6 +141,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["High Protein", "Balanced"],
     emoji: "🌯",
+    imageUrl: "/dishes/dish-8.png",
   },
   {
     id: 9,
@@ -150,6 +158,7 @@ export const dishes: Dish[] = [
     servings: 2,
     tags: ["Vegan", "High Fiber", "Iron-Rich"],
     emoji: "🍲",
+    imageUrl: "/dishes/dish-9.png",
     featured: true,
   },
   {
@@ -167,6 +176,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["High Protein", "Omega-3", "French"],
     emoji: "🫚",
+    imageUrl: "/dishes/dish-10.png",
   },
 
   // ─── Dinner ─────────────────────────────────────────────────────────────────
@@ -185,6 +195,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["Omega-3", "High Protein", "Gluten-Free"],
     emoji: "🐟",
+    imageUrl: "/dishes/dish-11.png",
     featured: true,
   },
   {
@@ -202,6 +213,7 @@ export const dishes: Dish[] = [
     servings: 2,
     tags: ["High Protein", "Low Fat", "Asian"],
     emoji: "🍜",
+    imageUrl: "/dishes/dish-12.png",
   },
   {
     id: 13,
@@ -218,6 +230,7 @@ export const dishes: Dish[] = [
     servings: 2,
     tags: ["Vegetarian", "Italian", "High Fiber"],
     emoji: "🍝",
+    imageUrl: "/dishes/dish-13.png",
     featured: true,
   },
   {
@@ -235,6 +248,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["High Protein", "Iron-Rich"],
     emoji: "🥩",
+    imageUrl: "/dishes/dish-14.png",
   },
   {
     id: 15,
@@ -251,6 +265,7 @@ export const dishes: Dish[] = [
     servings: 2,
     tags: ["Vegan", "High Fiber", "Mexican"],
     emoji: "🌮",
+    imageUrl: "/dishes/dish-15.png",
   },
 
   // ─── Snacks ─────────────────────────────────────────────────────────────────
@@ -269,6 +284,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["Healthy Fats", "Natural", "Quick"],
     emoji: "🥜",
+    imageUrl: "/dishes/dish-16.png",
   },
   {
     id: 17,
@@ -285,6 +301,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["Vegan", "High Fiber", "Plant-Based"],
     emoji: "🥕",
+    imageUrl: "/dishes/dish-17.png",
     featured: true,
   },
   {
@@ -302,6 +319,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["High Protein", "Post-Workout", "Quick"],
     emoji: "🥤",
+    imageUrl: "/dishes/dish-18.png",
   },
   {
     id: 19,
@@ -318,6 +336,7 @@ export const dishes: Dish[] = [
     servings: 1,
     tags: ["Natural", "Balanced", "Quick"],
     emoji: "🍎",
+    imageUrl: "/dishes/dish-19.png",
   },
 ];
 

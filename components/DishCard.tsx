@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { Dish, MealTypeKey } from "@/types";
 import { clsx } from "clsx";
 
@@ -22,10 +23,24 @@ interface DishCardProps {
 
 export default function DishCard({ dish, compact = false }: DishCardProps) {
   return (
-    <div className="group bg-white border border-[#E8E7EA] hover:border-primary/20 rounded-2xl p-5 transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 flex flex-col">
+    <div className="group bg-white border border-[#E8E7EA] hover:border-primary/20 rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 flex flex-col">
+      {/* Image */}
+      {dish.imageUrl && (
+        <div className="relative w-full h-36 flex-shrink-0">
+          <Image
+            src={dish.imageUrl}
+            alt={dish.name}
+            fill
+            className="object-cover"
+            sizes="280px"
+          />
+        </div>
+      )}
+
+      <div className="p-5 flex flex-col flex-1">
       {/* Top row */}
       <div className="flex items-start justify-between gap-3 mb-4">
-        <div className="w-12 h-12 rounded-xl bg-[#F8F7FA] flex items-center justify-center text-2xl flex-shrink-0">
+        <div className="w-10 h-10 rounded-xl bg-[#F8F7FA] flex items-center justify-center text-xl flex-shrink-0">
           {dish.emoji}
         </div>
         <span
@@ -81,6 +96,7 @@ export default function DishCard({ dish, compact = false }: DishCardProps) {
             </span>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

@@ -14,6 +14,7 @@ export interface Dish {
   servings: number;
   tags: string[];
   emoji: string;
+  imageUrl?: string;
   featured?: boolean;
 }
 
