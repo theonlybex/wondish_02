@@ -139,14 +139,18 @@ export async function PATCH(req: NextRequest) {
       : []),
   ]);
 
-  // Auto-generate meal plan on first profile save
+  // Auto-generate meal plan on first profile save (non-blocking)
   if (!patient.mealPlanStartDate) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const endDate = addDays(today, 6);
-    endDate.setHours(23, 59, 59, 999);
-    await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
-    await generateMealPlan(patient.id, today, endDate);
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const endDate = addDays(today, 6);
+      endDate.setHours(23, 59, 59, 999);
+      await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
+      await generateMealPlan(patient.id, today, endDate);
+    } catch (e) {
+      console.error("[profile] meal plan generation failed:", e);
+    }
   }
 
   return NextResponse.json({ ok: true, patientId: patient.id });
