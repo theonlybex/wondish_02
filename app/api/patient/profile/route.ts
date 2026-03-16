@@ -79,8 +79,8 @@ export async function PATCH(req: NextRequest) {
   await prisma.account.update({
     where: { id: account.id },
     data: {
-      firstName: firstName ?? account.firstName,
-      lastName: lastName ?? account.lastName,
+      firstName: firstName || account.firstName,
+      lastName: lastName || account.lastName,
       onboardingComplete: true,
     },
   });
