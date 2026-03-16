@@ -1,23 +1,24 @@
-import { getServerSession } from "next-auth";
+import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { startOfWeek, addDays, format } from "date-fns";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import WeeklyMealPlanGrid from "@/components/meal-plan/WeeklyMealPlanGrid";
 
 export const metadata = { title: "Weekly Plan" };
 
 export default async function WeeklyPlanPage() {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect("/login");
-  if (!session.user.onboardingComplete) redirect("/profile?onboarding=true");
+  const { userId } = await auth();
+  if (!userId) redirect("/login");
+  const account = await prisma.account.findUnique({ where: { clerkId: userId } });
+  if (!account) redirect("/login");
+  if (!account.onboardingComplete) redirect("/profile?onboarding=true");
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = addDays(weekStart, 6);
   weekEnd.setHours(23, 59, 59, 999);
 
   const patient = await prisma.patient.findUnique({
-    where: { accountId: session.user.id },
+    where: { accountId: account.id },
   });
 
   const menus = patient

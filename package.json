@@ -16,6 +16,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1009.0",
     "@aws-sdk/s3-request-presigner": "^3.1009.0",
+    "@clerk/nextjs": "^7.0.4",
     "@prisma/client": "^5.14.0",
     "@stripe/stripe-js": "^3.5.0",
     "bcryptjs": "^2.4.3",

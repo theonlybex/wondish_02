@@ -1,6 +1,9 @@
-import NextAuth from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextResponse } from "next/server";
 
-const handler = NextAuth(authOptions);
-
-export { handler as GET, handler as POST };
+// NextAuth removed — authentication is now handled by Clerk
+export function GET() {
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
+}
+export function POST() {
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
+}

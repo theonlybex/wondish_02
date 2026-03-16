@@ -1,86 +1,33 @@
-import { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 
-export const authOptions: NextAuthOptions = {
-  session: { strategy: "jwt" },
-  pages: {
-    signIn: "/login",
-    error: "/login",
-  },
-  providers: [
-    CredentialsProvider({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+export async function getAccount() {
+  const { userId } = await auth();
+  if (!userId) return null;
+  return prisma.account.findUnique({
+    where: { clerkId: userId },
+    include: { subscription: true, roles: { include: { role: true } } },
+  });
+}
 
-        const account = await prisma.account.findUnique({
-          where: { email: credentials.email },
-          include: { subscription: true, roles: { include: { role: true } } },
-        });
+export async function getOrCreateAccount() {
+  const { userId } = await auth();
+  if (!userId) return null;
 
-        if (!account || !account.isEnabled) return null;
+  const existing = await prisma.account.findUnique({ where: { clerkId: userId } });
+  if (existing) return existing;
 
-        const passwordValid = await bcrypt.compare(
-          credentials.password,
-          account.password
-        );
-        if (!passwordValid) return null;
+  const clerkUser = await currentUser();
+  if (!clerkUser) return null;
 
-        return {
-          id: account.id,
-          email: account.email,
-          name: `${account.firstName} ${account.lastName}`,
-          plan: account.subscription?.plan ?? "FREE",
-          onboardingComplete: account.onboardingComplete,
-          roles: account.roles.map((r) => r.role.name),
-        };
-      },
-    }),
-  ],
-  callbacks: {
-    async jwt({ token, user, trigger, session }) {
-      if (user) {
-        token.id = user.id;
-        token.plan = (user as { plan?: string }).plan ?? "FREE";
-        token.onboardingComplete = (user as { onboardingComplete?: boolean }).onboardingComplete ?? false;
-        token.roles = (user as { roles?: string[] }).roles ?? [];
-      }
-      // Allow client-side session.update() to patch token fields
-      if (trigger === "update" && session) {
-        if (session.onboardingComplete !== undefined) {
-          token.onboardingComplete = session.onboardingComplete;
-        }
-      }
-      return token;
+  return prisma.account.create({
+    data: {
+      clerkId: userId,
+      email: clerkUser.emailAddresses[0]?.emailAddress ?? "",
+      firstName: clerkUser.firstName ?? "",
+      lastName: clerkUser.lastName ?? "",
+      agreedTerms: true,
+      subscription: { create: { plan: "FREE", status: "ACTIVE" } },
     },
-    async session({ session, token }) {
-      if (token) {
-        session.user.id = token.id as string;
-        session.user.plan = token.plan as string;
-        session.user.onboardingComplete = token.onboardingComplete as boolean;
-        session.user.roles = token.roles as string[];
-      }
-      return session;
-    },
-  },
-};
-
-declare module "next-auth" {
-  interface Session {
-    user: {
-      id: string;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
-      plan: string;
-      onboardingComplete: boolean;
-      roles: string[];
-    };
-  }
+  });
 }

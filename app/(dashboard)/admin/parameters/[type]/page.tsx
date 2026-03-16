@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
+import { auth } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import ParameterCrudTable from "@/components/admin/ParameterCrudTable";
 
@@ -46,9 +45,13 @@ export default async function ParametersPage({
 }: {
   params: { type: string };
 }) {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect("/login");
-  if (!session.user.roles?.includes("SUPER")) redirect("/overview");
+  const { userId } = await auth();
+  if (!userId) redirect("/login");
+  const account = await prisma.account.findUnique({
+    where: { clerkId: userId },
+    include: { roles: { include: { role: true } } },
+  });
+  if (!account?.roles.some((r) => r.role.name === "SUPER")) redirect("/overview");
 
   const label = TYPE_LABELS[params.type];
   if (!label) notFound();

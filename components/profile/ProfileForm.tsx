@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
@@ -32,7 +31,6 @@ export default function ProfileForm({
   accountData,
 }: ProfileFormProps) {
   const router = useRouter();
-  const { update } = useSession();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -93,7 +91,8 @@ export default function ProfileForm({
       if (!res.ok) throw new Error("Failed to save profile");
 
       if (isOnboarding) {
-        await update({ onboardingComplete: true });
+        // Mark onboarding complete in Clerk metadata
+        await fetch("/api/user/complete-onboarding", { method: "POST" });
         router.push("/overview");
       } else {
         setSaved(true);

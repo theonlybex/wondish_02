@@ -1,22 +1,26 @@
-import { getServerSession } from "next-auth";
+import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import Link from "next/link";
 
 export const metadata = { title: "Overview" };
 
 export default async function OverviewPage() {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect("/login");
+  const { userId } = await auth();
+  if (!userId) redirect("/login");
+  const account = await prisma.account.findUnique({
+    where: { clerkId: userId },
+    include: { subscription: true },
+  });
+  if (!account) redirect("/login");
 
   // Onboarding redirect
-  if (!session.user.onboardingComplete) {
+  if (!account.onboardingComplete) {
     redirect("/profile?onboarding=true");
   }
 
   const patient = await prisma.patient.findUnique({
-    where: { accountId: session.user.id },
+    where: { accountId: account.id },
     include: {
       journalEntries: {
         orderBy: { date: "desc" },
@@ -70,7 +74,7 @@ export default async function OverviewPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-navy">
-          Good to see you, {session.user.name?.split(" ")[0]} 👋
+          Good to see you, {account.firstName} 👋
         </h1>
         <p className="text-[#8A8D93] mt-1 text-sm">Here&apos;s your health snapshot for today.</p>
       </div>
@@ -134,7 +138,7 @@ export default async function OverviewPage() {
       )}
 
       {/* Upgrade CTA */}
-      {session.user.plan !== "PREMIUM" && (
+      {account.subscription?.plan !== "PREMIUM" && (
         <div className="relative bg-navy rounded-2xl p-8 overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-primary/15 rounded-full blur-3xl pointer-events-none" />
           <div className="relative">

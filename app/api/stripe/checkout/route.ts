@@ -1,42 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
-import {
-  createStripeCustomer,
-  createCheckoutSession,
-  createCustomerPortalSession,
-} from "@/lib/stripe";
+import { createStripeCustomer, createCheckoutSession, createCustomerPortalSession } from "@/lib/stripe";
 
 const LOOKUP_KEY = process.env.STRIPE_PRICE_LOOKUP_KEY ?? "premium_monthly";
 
-// POST — create a checkout session (upgrade existing account to Premium)
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   try {
     const account = await prisma.account.findUnique({
-      where: { id: session.user.id },
+      where: { clerkId: userId },
       include: { subscription: true },
     });
     if (!account) return NextResponse.json({ error: "Account not found." }, { status: 404 });
 
     let customerId = account.subscription?.stripeCustomerId;
     if (!customerId) {
-      const customer = await createStripeCustomer(
-        account.email,
-        `${account.firstName} ${account.lastName}`
-      );
+      const customer = await createStripeCustomer(account.email, `${account.firstName} ${account.lastName}`);
       customerId = customer.id;
-      await prisma.subscription.update({
-        where: { accountId: account.id },
-        data: { stripeCustomerId: customerId },
-      });
+      await prisma.subscription.update({ where: { accountId: account.id }, data: { stripeCustomerId: customerId } });
     }
 
     const checkoutSession = await createCheckoutSession({
@@ -54,28 +40,17 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET — open customer billing portal
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   try {
-    const subscription = await prisma.subscription.findUnique({
-      where: { accountId: session.user.id },
-    });
-    if (!subscription?.stripeCustomerId) {
-      return NextResponse.json({ error: "No billing account found." }, { status: 404 });
-    }
+    const account = await prisma.account.findUnique({ where: { clerkId: userId }, include: { subscription: true } });
+    if (!account?.subscription?.stripeCustomerId) return NextResponse.json({ error: "No billing account found." }, { status: 404 });
 
-    const portalSession = await createCustomerPortalSession(
-      subscription.stripeCustomerId,
-      `${appUrl}/dashboard`
-    );
-
+    const portalSession = await createCustomerPortalSession(account.subscription.stripeCustomerId, `${appUrl}/dashboard`);
     return NextResponse.json({ url: portalSession.url });
   } catch (err) {
     console.error("[stripe/portal]", err);

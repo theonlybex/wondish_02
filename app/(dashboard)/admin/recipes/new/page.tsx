@@ -1,15 +1,18 @@
-import { getServerSession } from "next-auth";
+import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import RecipeForm from "@/components/admin/RecipeForm";
 
 export const metadata = { title: "New Recipe" };
 
 export default async function NewRecipePage() {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect("/login");
-  if (!session.user.roles?.includes("SUPER")) redirect("/overview");
+  const { userId } = await auth();
+  if (!userId) redirect("/login");
+  const account = await prisma.account.findUnique({
+    where: { clerkId: userId },
+    include: { roles: { include: { role: true } } },
+  });
+  if (!account?.roles.some((r) => r.role.name === "SUPER")) redirect("/overview");
 
   const [mealTypes, dishTypes, ethnics, ingredients] = await Promise.all([
     prisma.mealType.findMany({ orderBy: { name: "asc" } }),

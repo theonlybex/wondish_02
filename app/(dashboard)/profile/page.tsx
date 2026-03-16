@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
+import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import ProfileForm from "@/components/profile/ProfileForm";
 
@@ -11,18 +10,18 @@ export default async function ProfilePage({
 }: {
   searchParams: { onboarding?: string };
 }) {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect("/login");
+  const { userId } = await auth();
+  if (!userId) redirect("/login");
 
   const isOnboarding = searchParams.onboarding === "true";
 
-  const [accountData, patient, refData] = await Promise.all([
+  const [account, patient, refData] = await Promise.all([
     prisma.account.findUnique({
-      where: { id: session.user.id },
+      where: { clerkId: userId },
       select: { firstName: true, lastName: true, email: true },
     }),
-    prisma.patient.findUnique({
-      where: { accountId: session.user.id },
+    prisma.patient.findFirst({
+      where: { account: { clerkId: userId } },
       include: {
         motivations: true,
         healthConditions: true,
@@ -69,7 +68,7 @@ export default async function ProfilePage({
         initialData={patient as unknown as Record<string, unknown>}
         refData={refData}
         isOnboarding={isOnboarding}
-        accountData={accountData ?? { firstName: "", lastName: "", email: "" }}
+        accountData={account ?? { firstName: "", lastName: "", email: "" }}
       />
     </div>
   );

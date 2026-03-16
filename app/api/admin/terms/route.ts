@@ -1,6 +1,4 @@
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin";
 
@@ -14,8 +12,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    requireAdmin(session);
+    await requireAdmin();
     const { version, content } = await req.json();
     const terms = await prisma.termsAndConditions.create({
       data: { version, content, isActive: false },
@@ -28,8 +25,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    requireAdmin(session);
+    await requireAdmin();
     const { id } = await req.json();
 
     // Deactivate all, activate selected

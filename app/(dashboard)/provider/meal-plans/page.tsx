@@ -1,14 +1,13 @@
-import { getServerSession } from "next-auth";
+import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 export const metadata = { title: "User Meal Plans" };
 
 export default async function ProviderMealPlansPage() {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect("/login");
+  const { userId } = await auth();
+  if (!userId) redirect("/login");
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

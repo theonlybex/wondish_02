@@ -1,18 +1,19 @@
-import { getServerSession } from "next-auth";
+import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import OrdersTable from "@/components/orders/OrdersTable";
 
 export const metadata = { title: "My Orders" };
 
 export default async function OrdersPage() {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect("/login");
-  if (!session.user.onboardingComplete) redirect("/profile?onboarding=true");
+  const { userId } = await auth();
+  if (!userId) redirect("/login");
+  const account = await prisma.account.findUnique({ where: { clerkId: userId } });
+  if (!account) redirect("/login");
+  if (!account.onboardingComplete) redirect("/profile?onboarding=true");
 
   const patient = await prisma.patient.findUnique({
-    where: { accountId: session.user.id },
+    where: { accountId: account.id },
   });
 
   const [orders, total] = await (patient

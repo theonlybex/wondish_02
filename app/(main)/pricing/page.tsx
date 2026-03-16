@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/db";
 import PricingSection from "@/components/PricingSection";
 
 export const metadata: Metadata = {
@@ -35,17 +35,19 @@ const faqs = [
 ];
 
 export default async function PricingPage() {
-  let session;
-  try {
-    session = await getServerSession(authOptions);
-  } catch {
-    session = null;
+  const { userId } = await auth();
+
+  let isLoggedIn = !!userId;
+
+  if (userId) {
+    const account = await prisma.account.findUnique({
+      where: { clerkId: userId },
+      include: { subscription: true },
+    });
+    // Premium users already chose — send them to their dashboard
+    if (account?.subscription?.plan === "PREMIUM") redirect("/dashboard");
+    isLoggedIn = !!account;
   }
-
-  // Premium users already chose — send them to their dashboard
-  if (session?.user?.plan === "PREMIUM") redirect("/dashboard");
-
-  const isLoggedIn = !!session;
 
   return (
     <div className="min-h-screen pt-16">

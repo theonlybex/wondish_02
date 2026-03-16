@@ -1,13 +1,10 @@
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    requireAdmin(session);
+    await requireAdmin();
 
     const companies = await prisma.company.findMany({
       orderBy: { name: "asc" },
@@ -22,8 +19,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    requireAdmin(session);
+    await requireAdmin();
 
     const { name } = await req.json();
     const company = await prisma.company.create({ data: { name } });
@@ -35,8 +31,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    requireAdmin(session);
+    await requireAdmin();
 
     const { id, name } = await req.json();
     const company = await prisma.company.update({ where: { id }, data: { name } });
@@ -48,8 +43,7 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    requireAdmin(session);
+    await requireAdmin();
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");

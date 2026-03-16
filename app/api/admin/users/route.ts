@@ -1,13 +1,10 @@
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin";
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    requireAdmin(session);
+    await requireAdmin();
 
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get("page") ?? "1");
@@ -47,8 +44,7 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    requireAdmin(session);
+    await requireAdmin();
 
     const { id, isEnabled } = await req.json();
 

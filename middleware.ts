@@ -1,35 +1,42 @@
-import { withAuth } from "next-auth/middleware";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-export default withAuth(
-  function middleware(req) {
-    const token = req.nextauth.token;
-    const { pathname } = req.nextUrl;
+const isPublicRoute = createRouteMatcher([
+  "/",
+  "/login(.*)",
+  "/register(.*)",
+  "/pricing(.*)",
+  "/dishes(.*)",
+  "/terms(.*)",
+  "/privacy(.*)",
+  "/api/auth/register",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/auth/verify-email(.*)",
+  "/api/stripe/webhook",
+]);
 
-    // Onboarding gate: if authenticated but onboarding not complete,
-    // redirect to profile (unless already on /profile)
-    if (token && !token.onboardingComplete && !pathname.startsWith("/profile")) {
+export default clerkMiddleware(async (auth, req) => {
+  const { userId, sessionClaims } = await auth();
+  const { pathname } = req.nextUrl;
+
+  if (!isPublicRoute(req) && !userId) {
+    const loginUrl = new URL("/login", req.url);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  if (userId && !isPublicRoute(req)) {
+    const meta = sessionClaims?.metadata as { onboardingComplete?: boolean } | undefined;
+    const onboardingComplete = meta?.onboardingComplete ?? false;
+    if (!onboardingComplete && !pathname.startsWith("/profile")) {
       return NextResponse.redirect(new URL("/profile?onboarding=true", req.url));
     }
-  },
-  {
-    callbacks: {
-      authorized: ({ token }) => !!token,
-    },
   }
-);
+});
 
-// Protect all dashboard routes
 export const config = {
   matcher: [
-    "/overview/:path*",
-    "/meal-plan/:path*",
-    "/journal/:path*",
-    "/journey/:path*",
-    "/grocery-list/:path*",
-    "/orders/:path*",
-    "/admin/:path*",
-    "/provider/:path*",
-    "/profile/:path*",
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api|trpc)(.*)",
   ],
 };

@@ -1,6 +1,4 @@
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin";
 
@@ -9,8 +7,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    requireAdmin(session);
+    await requireAdmin();
 
     const body = await req.json();
     const { ingredients, ...recipeData } = body;
@@ -55,8 +52,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    requireAdmin(session);
+    await requireAdmin();
 
     await prisma.recipe.delete({ where: { id: params.id } });
     return NextResponse.json({ ok: true });

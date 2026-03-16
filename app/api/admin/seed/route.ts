@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireAdmin } from "@/lib/admin";
 
 export async function POST() {
   try {
+    await requireAdmin();
     // ── Reference data ──────────────────────────────────────────────────────
 
     await prisma.gender.createMany({

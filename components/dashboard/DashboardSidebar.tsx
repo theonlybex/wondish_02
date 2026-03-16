@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { useClerk } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 
 const navItems = [
   { href: "/overview", label: "Overview", icon: "▦" },
@@ -28,6 +29,8 @@ export default function DashboardSidebar({
   isAdmin: boolean;
 }) {
   const pathname = usePathname();
+  const { signOut } = useClerk();
+  const router = useRouter();
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 w-64 bg-navy-dark flex flex-col border-r border-white/[0.06]">
@@ -99,7 +102,7 @@ export default function DashboardSidebar({
       {/* Sign out */}
       <div className="p-3 border-t border-white/[0.06]">
         <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={() => signOut(() => router.push("/login"))}
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-white/50 hover:text-white hover:bg-white/[0.06] w-full transition-all"
         >
           <span className="text-base w-5 text-center">↩</span>
