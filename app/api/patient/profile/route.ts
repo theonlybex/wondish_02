@@ -1,6 +1,8 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { generateMealPlan } from "@/lib/meal-plan";
+import { addDays } from "date-fns";
 
 async function getOrCreateAccount(userId: string) {
   let account = await prisma.account.findUnique({ where: { clerkId: userId } });
@@ -136,6 +138,16 @@ export async function PATCH(req: NextRequest) {
       ? [prisma.patientFoodAllergy.createMany({ data: foodAllergyIds.map((id: string) => ({ patientId: patient.id, foodId: id })) })]
       : []),
   ]);
+
+  // Auto-generate meal plan on first profile save
+  if (!patient.mealPlanStartDate) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endDate = addDays(today, 6);
+    endDate.setHours(23, 59, 59, 999);
+    await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
+    await generateMealPlan(patient.id, today, endDate);
+  }
 
   return NextResponse.json({ ok: true, patientId: patient.id });
 }

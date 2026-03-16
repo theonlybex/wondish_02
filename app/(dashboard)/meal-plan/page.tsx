@@ -41,6 +41,11 @@ export default async function MealPlanPage() {
       })
     : [];
 
+  const totalCalories = menus.reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
+  const totalProtein = menus.reduce((sum, m) => sum + (m.recipe.protein ?? 0), 0);
+  const totalCarbs = menus.reduce((sum, m) => sum + (m.recipe.carbs ?? 0), 0);
+  const totalFat = menus.reduce((sum, m) => sum + (m.recipe.fat ?? 0), 0);
+
   return (
     <div className="max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-8">
@@ -55,6 +60,27 @@ export default async function MealPlanPage() {
           Weekly view →
         </a>
       </div>
+
+      {menus.length > 0 && (
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          <div className="bg-white border border-[#E8E7EA] rounded-2xl p-4 text-center">
+            <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-1">Calories</p>
+            <p className="text-xl font-bold text-navy">{Math.round(totalCalories)}</p>
+          </div>
+          <div className="bg-white border border-[#E8E7EA] rounded-2xl p-4 text-center">
+            <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-1">Protein</p>
+            <p className="text-xl font-bold text-navy">{Math.round(totalProtein)}g</p>
+          </div>
+          <div className="bg-white border border-[#E8E7EA] rounded-2xl p-4 text-center">
+            <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-1">Carbs</p>
+            <p className="text-xl font-bold text-navy">{Math.round(totalCarbs)}g</p>
+          </div>
+          <div className="bg-white border border-[#E8E7EA] rounded-2xl p-4 text-center">
+            <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-1">Fat</p>
+            <p className="text-xl font-bold text-navy">{Math.round(totalFat)}g</p>
+          </div>
+        </div>
+      )}
 
       <DailyMealPlanView
         initialMenus={menus as never}

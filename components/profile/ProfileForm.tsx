@@ -94,7 +94,7 @@ export default function ProfileForm({
         // Mark onboarding complete in Clerk metadata
         const onboardingRes = await fetch("/api/user/complete-onboarding", { method: "POST" });
         if (!onboardingRes.ok) throw new Error("Failed to complete onboarding");
-        router.push("/overview");
+        router.push("/meal-plan");
       } else {
         setSaved(true);
         router.refresh();
