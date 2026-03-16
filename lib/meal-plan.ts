@@ -98,7 +98,7 @@ export async function generateMealPlan(
   while (current <= endDate) {
     for (const mealType of mealTypes) {
       const target = caloriePlan ? (caloriePlan[mealType.name.toLowerCase()] ?? null) : null;
-      const usedFilter = usedIds.size > 0 ? { id: { notIn: [...usedIds] } } : {};
+      const usedFilter = usedIds.size > 0 ? { id: { notIn: Array.from(usedIds) } } : {};
 
       let chosen: { id: string } | undefined;
 
