@@ -28,7 +28,7 @@ export default clerkMiddleware(async (auth, req) => {
   if (userId && !isPublicRoute(req)) {
     const meta = sessionClaims?.metadata as { onboardingComplete?: boolean } | undefined;
     const onboardingComplete = meta?.onboardingComplete ?? false;
-    if (!onboardingComplete && !pathname.startsWith("/profile")) {
+    if (!onboardingComplete && !pathname.startsWith("/profile") && !pathname.startsWith("/api/")) {
       return NextResponse.redirect(new URL("/profile?onboarding=true", req.url));
     }
   }
