@@ -1,14 +1,38 @@
 import Link from "next/link";
 import DishCard from "./DishCard";
-import { featuredDishes } from "@/data/dishes";
+import { dishes } from "@/data/dishes";
 
 export default function DishesPreview() {
-  return (
-    <section className="bg-white py-24 px-5 sm:px-8">
-      <div className="max-w-6xl mx-auto">
+  // Duplicate for seamless infinite loop
+  const row1 = [...dishes, ...dishes];
+  const row2 = [...dishes.slice(Math.floor(dishes.length / 2)), ...dishes, ...dishes.slice(0, Math.floor(dishes.length / 2)), ...dishes];
 
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-12">
+  return (
+    <section className="bg-white py-24 overflow-hidden">
+      <style>{`
+        @keyframes marquee {
+          0%   { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .marquee-row {
+          display: flex;
+          width: max-content;
+          gap: 16px;
+        }
+        .marquee-row-1 {
+          animation: marquee 40s linear infinite;
+        }
+        .marquee-row-2 {
+          animation: marquee 28s linear infinite;
+        }
+        .marquee-wrap:hover .marquee-row {
+          animation-play-state: paused;
+        }
+      `}</style>
+
+      {/* Header */}
+      <div className="px-5 sm:px-8 max-w-6xl mx-auto mb-12">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
           <div className="max-w-xl">
             <p className="text-primary text-sm font-semibold uppercase tracking-widest mb-4">
               The menu
@@ -33,12 +57,30 @@ export default function DishesPreview() {
             </svg>
           </Link>
         </div>
+      </div>
 
-        {/* Dishes grid */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {featuredDishes.slice(0, 6).map((dish) => (
-            <DishCard key={dish.id} dish={dish} />
-          ))}
+      {/* Scrolling tray */}
+      <div className="marquee-wrap flex flex-col gap-4">
+        {/* Row 1 */}
+        <div className="overflow-hidden">
+          <div className="marquee-row marquee-row-1">
+            {row1.map((dish, i) => (
+              <div key={`r1-${dish.id}-${i}`} className="w-64 flex-shrink-0">
+                <DishCard dish={dish} compact />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Row 2 — offset start, faster */}
+        <div className="overflow-hidden">
+          <div className="marquee-row marquee-row-2">
+            {row2.map((dish, i) => (
+              <div key={`r2-${dish.id}-${i}`} className="w-64 flex-shrink-0">
+                <DishCard dish={dish} compact />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>
