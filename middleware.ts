@@ -16,9 +16,16 @@ const isPublicRoute = createRouteMatcher([
   "/api/stripe/webhook",
 ]);
 
+const isAuthRoute = createRouteMatcher(["/login(.*)", "/register(.*)", "/"]);
+
 export default clerkMiddleware(async (auth, req) => {
   const { userId, sessionClaims } = await auth();
   const { pathname } = req.nextUrl;
+
+  // Redirect authenticated users away from landing/auth pages to their dashboard
+  if (userId && isAuthRoute(req)) {
+    return NextResponse.redirect(new URL("/overview", req.url));
+  }
 
   if (!isPublicRoute(req) && !userId) {
     const loginUrl = new URL("/login", req.url);
@@ -27,7 +34,8 @@ export default clerkMiddleware(async (auth, req) => {
 
   if (userId && !isPublicRoute(req)) {
     const meta = sessionClaims?.metadata as { onboardingComplete?: boolean } | undefined;
-    const onboardingComplete = meta?.onboardingComplete ?? false;
+    const cookieDone = req.cookies.get("onboarding_complete")?.value === "1";
+    const onboardingComplete = cookieDone || (meta?.onboardingComplete ?? false);
     if (!onboardingComplete && !pathname.startsWith("/profile") && !pathname.startsWith("/api/")) {
       return NextResponse.redirect(new URL("/profile?onboarding=true", req.url));
     }

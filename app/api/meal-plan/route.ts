@@ -21,19 +21,25 @@ export async function GET(req: NextRequest) {
   let startDate: Date;
   let endDate: Date;
 
+  // Parse "yyyy-MM-dd" as local midnight — new Date("yyyy-MM-dd") parses as UTC
+  // which causes a day shift in UTC- timezones. Use explicit local construction instead.
+  function localMidnight(str: string): Date {
+    const [y, m, d] = str.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+
   if (weekStartParam) {
-    startDate = new Date(weekStartParam);
-    startDate.setHours(0, 0, 0, 0);
+    startDate = localMidnight(weekStartParam);
     endDate = addDays(startDate, 6);
     endDate.setHours(23, 59, 59, 999);
   } else {
-    const d = dateParam ? new Date(dateParam) : new Date();
-    d.setHours(0, 0, 0, 0);
+    const d = dateParam ? localMidnight(dateParam) : new Date(new Date().setHours(0, 0, 0, 0));
     startDate = d;
     endDate = new Date(d);
     endDate.setHours(23, 59, 59, 999);
   }
 
+  console.log("[meal-plan GET] querying date range:", startDate.toISOString(), "→", endDate.toISOString());
   const menus = await prisma.menu.findMany({
     where: { patientId: patient.id, date: { gte: startDate, lte: endDate } },
     include: {
@@ -43,6 +49,7 @@ export async function GET(req: NextRequest) {
     orderBy: [{ date: "asc" }, { mealType: { name: "asc" } }],
   });
 
+  console.log("[meal-plan GET] found", menus.length, "menus. mealPlanStartDate:", patient.mealPlanStartDate?.toISOString());
   return NextResponse.json({ menus, mealPlanStartDate: patient.mealPlanStartDate });
 }
 

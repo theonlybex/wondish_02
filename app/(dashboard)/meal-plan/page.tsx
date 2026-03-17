@@ -84,7 +84,7 @@ export default async function MealPlanPage() {
 
       <DailyMealPlanView
         initialMenus={menus as never}
-        initialDate={today}
+        initialDate={format(today, "yyyy-MM-dd")}
         mealPlanStartDate={patient?.mealPlanStartDate?.toISOString() ?? null}
       />
     </div>

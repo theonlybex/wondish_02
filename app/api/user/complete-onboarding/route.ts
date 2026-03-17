@@ -10,5 +10,13 @@ export async function POST() {
     publicMetadata: { onboardingComplete: true },
   });
 
-  return NextResponse.json({ ok: true });
+  const res = NextResponse.json({ ok: true });
+  // Set a long-lived cookie so middleware can bypass the Clerk JWT cache
+  res.cookies.set("onboarding_complete", "1", {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+  return res;
 }

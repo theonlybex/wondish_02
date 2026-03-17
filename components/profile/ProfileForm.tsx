@@ -41,7 +41,7 @@ export default function ProfileForm({
     firstName: accountData.firstName ?? "",
     lastName: accountData.lastName ?? "",
     birthday: patient?.birthday
-      ? (patient.birthday as string).slice(0, 10)
+      ? new Date(patient.birthday as string).toISOString().slice(0, 10)
       : "",
     genderId: (patient?.genderId as string) ?? "",
     height: String(patient?.height ?? ""),
@@ -94,7 +94,8 @@ export default function ProfileForm({
         // Mark onboarding complete in Clerk metadata
         const onboardingRes = await fetch("/api/user/complete-onboarding", { method: "POST" });
         if (!onboardingRes.ok) throw new Error("Failed to complete onboarding");
-        router.push("/meal-plan");
+        // Hard redirect so the browser fetches a fresh Clerk JWT with updated metadata
+        window.location.href = "/meal-plan";
       } else {
         setSaved(true);
         router.refresh();
