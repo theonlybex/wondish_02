@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useClerk } from "@clerk/nextjs";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const { isSignedIn } = useAuth();
+  const { signOut } = useClerk();
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-forest-deeper/95 backdrop-blur-md border-b border-white/[0.07]">
@@ -47,12 +48,20 @@ export default function Navbar() {
           {/* Right actions */}
           <div className="hidden md:flex items-center gap-2">
             {isSignedIn ? (
-              <Link
-                href="/overview"
-                className="bg-primary hover:bg-primary-dark text-forest-deeper px-4 py-2 rounded-lg transition-all duration-150 text-sm font-semibold shadow-lg shadow-primary/20"
-              >
-                Dashboard
-              </Link>
+              <>
+                <Link
+                  href="/overview"
+                  className="bg-primary hover:bg-primary-dark text-forest-deeper px-4 py-2 rounded-lg transition-all duration-150 text-sm font-semibold shadow-lg shadow-primary/20"
+                >
+                  Dashboard
+                </Link>
+                <button
+                  onClick={() => signOut({ redirectUrl: "/" })}
+                  className="text-white/60 hover:text-white px-4 py-2 rounded-lg hover:bg-white/[0.06] transition-all duration-150 text-sm font-medium"
+                >
+                  Sign out
+                </button>
+              </>
             ) : (
               <>
                 <Link
@@ -118,13 +127,21 @@ export default function Navbar() {
             </Link>
             <div className="border-t border-white/[0.06] mt-2 pt-2 flex flex-col gap-2">
               {isSignedIn ? (
-                <Link
-                  href="/overview"
-                  onClick={() => setOpen(false)}
-                  className="bg-primary text-forest-deeper px-3 py-2.5 rounded-lg text-sm font-semibold text-center"
-                >
-                  Dashboard
-                </Link>
+                <>
+                  <Link
+                    href="/overview"
+                    onClick={() => setOpen(false)}
+                    className="bg-primary text-forest-deeper px-3 py-2.5 rounded-lg text-sm font-semibold text-center"
+                  >
+                    Dashboard
+                  </Link>
+                  <button
+                    onClick={() => signOut({ redirectUrl: "/" })}
+                    className="text-white/60 hover:text-white px-3 py-2.5 rounded-lg hover:bg-white/[0.06] text-sm font-medium text-left"
+                  >
+                    Sign out
+                  </button>
+                </>
               ) : (
                 <>
                   <Link
