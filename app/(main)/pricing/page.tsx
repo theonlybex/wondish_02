@@ -34,8 +34,14 @@ const faqs = [
   },
 ];
 
-export default async function PricingPage() {
+export default async function PricingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ upgrade?: string }>;
+}) {
   const { userId } = await auth();
+  const { upgrade } = await searchParams;
+  const showUpgradeBanner = upgrade === "1";
 
   let isLoggedIn = !!userId;
 
@@ -44,13 +50,21 @@ export default async function PricingPage() {
       where: { clerkId: userId },
       include: { subscription: true },
     });
-    // Premium users already chose — send them to their dashboard
-    if (account?.subscription?.plan === "PREMIUM") redirect("/dashboard");
+    // Active premium users go straight to their dashboard
+    const sub = account?.subscription;
+    if (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING"].includes(sub.status ?? "")) {
+      redirect("/overview");
+    }
     isLoggedIn = !!account;
   }
 
   return (
     <div className="min-h-screen pt-16">
+      {showUpgradeBanner && (
+        <div className="bg-primary text-white text-center py-3 px-5 text-sm font-medium">
+          A Premium subscription is required to access the dashboard. Start your 14-day free trial below.
+        </div>
+      )}
       <PricingSection isLoggedIn={isLoggedIn} />
 
       {/* FAQ */}

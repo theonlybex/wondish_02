@@ -4,6 +4,12 @@ import { prisma } from "@/lib/db";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 
+function hasActivePremium(subscription: { plan: string; status: string } | null | undefined): boolean {
+  if (!subscription) return false;
+  if (subscription.plan !== "PREMIUM") return false;
+  return ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(subscription.status);
+}
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -18,6 +24,11 @@ export default async function DashboardLayout({
   });
 
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
+
+  // Gate all dashboard routes — free users see pricing page
+  if (!isAdmin && !hasActivePremium(account?.subscription)) {
+    redirect("/pricing?upgrade=1");
+  }
 
   return (
     <div className="flex h-screen bg-surface overflow-hidden">
