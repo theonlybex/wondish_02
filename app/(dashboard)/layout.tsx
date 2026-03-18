@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
@@ -25,8 +26,12 @@ export default async function DashboardLayout({
 
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
 
-  // Gate all dashboard routes — free users see pricing page
-  if (!isAdmin && !hasActivePremium(account?.subscription)) {
+  // Gate all dashboard routes except /profile — free users see pricing page
+  const headersList = await headers();
+  const pathname = headersList.get("x-pathname") ?? "";
+  const isProfileRoute = pathname.startsWith("/profile");
+
+  if (!isAdmin && !isProfileRoute && !hasActivePremium(account?.subscription)) {
     redirect("/pricing?upgrade=1");
   }
 

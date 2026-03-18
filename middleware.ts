@@ -40,6 +40,11 @@ export default clerkMiddleware(async (auth, req) => {
       return NextResponse.redirect(new URL("/profile?onboarding=true", req.url));
     }
   }
+
+  // Inject pathname so server layouts can read it
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-pathname", req.nextUrl.pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 });
 
 export const config = {
