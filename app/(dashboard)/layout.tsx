@@ -4,12 +4,16 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
+import PremiumGate from "@/components/PremiumGate";
 
 function hasActivePremium(subscription: { plan: string; status: string } | null | undefined): boolean {
   if (!subscription) return false;
   if (subscription.plan !== "PREMIUM") return false;
   return ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(subscription.status);
 }
+
+// Routes free users can access normally (no gate)
+const FREE_ROUTES = ["/profile"];
 
 export default async function DashboardLayout({
   children,
@@ -25,15 +29,14 @@ export default async function DashboardLayout({
   });
 
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
+  const isPremium = hasActivePremium(account?.subscription);
 
-  // Gate all dashboard routes except /profile — free users see pricing page
   const headersList = await headers();
   const pathname = headersList.get("x-pathname") ?? "";
-  const isProfileRoute = pathname.startsWith("/profile");
+  const isFreeRoute = FREE_ROUTES.some((r) => pathname.startsWith(r));
 
-  if (!isAdmin && !isProfileRoute && !hasActivePremium(account?.subscription)) {
-    redirect("/pricing?upgrade=1");
-  }
+  // Show premium gate instead of content on locked pages
+  const showGate = !isAdmin && !isPremium && !isFreeRoute;
 
   return (
     <div className="flex h-screen bg-surface overflow-hidden">
@@ -47,7 +50,9 @@ export default async function DashboardLayout({
           name={account ? `${account.firstName} ${account.lastName}` : ""}
           plan={account?.subscription?.plan ?? "FREE"}
         />
-        <main className="flex-1 overflow-y-auto p-5 sm:p-8">{children}</main>
+        <main className="flex-1 overflow-y-auto p-5 sm:p-8">
+          {showGate ? <PremiumGate /> : children}
+        </main>
       </div>
     </div>
   );

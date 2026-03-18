@@ -52,7 +52,7 @@ export default async function PricingPage({
     });
     // Active premium users go straight to their dashboard
     const sub = account?.subscription;
-    if (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING"].includes(sub.status ?? "")) {
+    if (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING"].includes(sub?.status ?? "")) {
       redirect("/overview");
     }
     isLoggedIn = !!account;
