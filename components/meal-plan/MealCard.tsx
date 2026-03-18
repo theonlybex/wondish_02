@@ -15,7 +15,6 @@ export default function MealCard({ recipe, mealTypeName, onSelect, compact = fal
   if (compact) {
     return (
       <motion.div
-        layoutId={`card-${recipe.id}`}
         onClick={onSelect}
         className="bg-white border border-[#E8E7EA] rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all"
         whileHover={{ scale: 1.02 }}
@@ -35,7 +34,6 @@ export default function MealCard({ recipe, mealTypeName, onSelect, compact = fal
 
   return (
     <motion.div
-      layoutId={`card-${recipe.id}`}
       onClick={onSelect}
       className="bg-white border border-[#E8E7EA] rounded-2xl p-5 flex flex-col gap-3 cursor-pointer hover:border-primary/40 hover:shadow-md transition-all"
       whileHover={{ y: -2 }}

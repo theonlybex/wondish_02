@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { format, addDays, subDays } from "date-fns";
-import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import MealCard from "@/components/meal-plan/MealCard";
 import SwapMealModal from "@/components/meal-plan/SwapMealModal";
 import Button from "@/components/ui/Button";
@@ -31,12 +31,16 @@ function ExpandedRecipe({
 }) {
   const r = menu.recipe;
 
-  // Placeholder cooking steps (seed data has none — shown as example)
-  const steps: string[] = [];
+  // Parse cooking steps from description (stored as numbered instructions)
+  const steps: string[] = r.description
+    ? r.description
+        .split(/\n/)
+        .map((s) => s.replace(/^\d+\.\s*/, "").trim())
+        .filter(Boolean)
+    : [];
 
   return (
     <motion.div
-      layoutId={`card-${r.id}`}
       className="bg-white border border-[#E8E7EA] rounded-3xl overflow-hidden flex flex-col"
       style={{ minHeight: 480 }}
     >
@@ -57,7 +61,7 @@ function ExpandedRecipe({
           <span className="text-6xl">{r.emoji ?? "🍽"}</span>
           <div>
             <h2 className="text-2xl font-bold text-navy leading-tight">{r.name}</h2>
-            {r.description && (
+            {steps.length === 0 && r.description && (
               <p className="text-[#8A8D93] text-sm mt-1 leading-relaxed max-w-sm">{r.description}</p>
             )}
           </div>
@@ -192,6 +196,26 @@ export default function DailyMealPlanView({
   const [settingStart, setSettingStart] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  const [regenerating, setRegenerating] = useState(false);
+
+  const handleRegenerate = async () => {
+    setRegenerating(true);
+    setSelectedId(null);
+    try {
+      const dateStr = format(date, "yyyy-MM-dd");
+      const endDate = format(addDays(date, 6), "yyyy-MM-dd");
+      await fetch("/api/meal-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startDate: dateStr, endDate }),
+      });
+      const res = await fetch(`/api/meal-plan?date=${dateStr}`);
+      setMenus((await res.json()).menus ?? []);
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   const [swapModal, setSwapModal] = useState<{
     menuId: string;
     mealTypeId: string;
@@ -286,7 +310,6 @@ export default function DailyMealPlanView({
           )}
         </div>
       ) : (
-        <LayoutGroup>
         <AnimatePresence initial={false}>
           {selectedMenu ? (
             /* ── Expanded layout ── */
@@ -344,7 +367,6 @@ export default function DailyMealPlanView({
             </motion.div>
           )}
         </AnimatePresence>
-        </LayoutGroup>
       )}
 
       {swapModal && (

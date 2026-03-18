@@ -11,7 +11,9 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:import-recipes": "node scripts/import-recipes.mjs",
+    "db:fetch-nutrition": "node scripts/fetch-nutrition.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1009.0",

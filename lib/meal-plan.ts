@@ -79,6 +79,12 @@ export async function generateMealPlan(
   const menus: { patientId: string; recipeId: string; mealTypeId: string; date: Date }[] = [];
   const usedIds = new Set<string>();
 
+  // Only pick recipes that have ingredients and cooking instructions
+  const hasContentFilter = {
+    ingredients: { some: {} },
+    description: { not: null },
+  };
+
   const allergyFilter =
     allergyNames.length > 0
       ? {
@@ -109,6 +115,7 @@ export async function generateMealPlan(
             mealTypeId: mealType.id,
             isPublic: true,
             calories: { gte: target - 250, lte: target + 250 },
+            ...hasContentFilter,
             ...usedFilter,
             ...allergyFilter,
           },
@@ -122,6 +129,7 @@ export async function generateMealPlan(
             where: {
               mealTypeId: mealType.id,
               isPublic: true,
+              ...hasContentFilter,
               ...usedFilter,
               ...allergyFilter,
             },
@@ -135,6 +143,7 @@ export async function generateMealPlan(
           where: {
             mealTypeId: mealType.id,
             isPublic: true,
+            ...hasContentFilter,
             ...usedFilter,
             ...allergyFilter,
           },
@@ -143,10 +152,10 @@ export async function generateMealPlan(
         if (recipes.length > 0) chosen = shuffleArray(recipes)[0];
       }
 
-      // Fallback 2: any recipe for this meal type
+      // Fallback 2: any recipe with content for this meal type
       if (!chosen) {
         const fallback2 = await prisma.recipe.findFirst({
-          where: { mealTypeId: mealType.id, isPublic: true },
+          where: { mealTypeId: mealType.id, isPublic: true, ...hasContentFilter },
           select: { id: true },
         });
         if (fallback2) chosen = fallback2;
