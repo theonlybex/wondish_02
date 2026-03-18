@@ -36,7 +36,7 @@ export default function DashboardSidebar({
     <aside className="fixed inset-y-0 left-0 z-30 w-64 bg-navy-dark flex flex-col border-r border-white/[0.06]">
       {/* Logo */}
       <div className="h-16 flex items-center px-6 border-b border-white/[0.06]">
-        <Link href="/overview" className="flex items-center gap-2.5">
+        <Link href="/" className="flex items-center gap-2.5">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/30 flex-shrink-0">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path
