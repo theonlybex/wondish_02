@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { headers, cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
@@ -27,6 +28,24 @@ export default async function DashboardLayout({
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const isPremium = hasActivePremium(account?.subscription);
 
+  // New-premium onboarding: redirect to Dish Tinder if premium user hasn't set up taste yet
+  if (isPremium && !isAdmin && account) {
+    const pathname = (await headers()).get("x-pathname") ?? "";
+    const tasteSeen = (await cookies()).get("wondish_taste_seen")?.value === "1";
+    if (pathname && pathname !== "/taste" && !tasteSeen) {
+      const patient = await prisma.patient.findUnique({
+        where: { accountId: account.id },
+        select: { id: true },
+      });
+      if (patient) {
+        const prefCount = await prisma.patientDishPreference.count({
+          where: { patientId: patient.id },
+        });
+        if (prefCount === 0) redirect("/taste");
+      }
+    }
+  }
+
   return (
     <div className="flex h-screen bg-surface overflow-hidden">
       <div className="hidden lg:block">
@@ -37,7 +56,7 @@ export default async function DashboardLayout({
         <DashboardHeader
           email={account?.email ?? ""}
           name={account ? `${account.firstName} ${account.lastName}` : ""}
-          plan={account?.subscription?.plan ?? "FREE"}
+          plan={isAdmin || isPremium ? "PREMIUM" : "FREE"}
         />
         <main className="flex-1 overflow-y-auto p-5 sm:p-8">
           <PremiumGuard isPremium={isPremium} isAdmin={isAdmin}>

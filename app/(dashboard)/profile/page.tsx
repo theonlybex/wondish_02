@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import ProfileForm from "@/components/profile/ProfileForm";
+import CouponRedeem from "@/components/CouponRedeem";
 
 export const metadata = { title: "My Profile" };
 
@@ -18,7 +19,7 @@ export default async function ProfilePage({
   const [account, patient, refData] = await Promise.all([
     prisma.account.findUnique({
       where: { clerkId: userId },
-      select: { firstName: true, lastName: true, email: true },
+      select: { firstName: true, lastName: true, email: true, subscription: true, roles: { include: { role: true } } },
     }),
     prisma.patient.findFirst({
       where: { account: { clerkId: userId } },
@@ -68,8 +69,15 @@ export default async function ProfilePage({
         initialData={patient as unknown as Record<string, unknown>}
         refData={refData}
         isOnboarding={isOnboarding}
-        accountData={account ?? { firstName: "", lastName: "", email: "" }}
+        accountData={account ? { firstName: account.firstName, lastName: account.lastName, email: account.email } : { firstName: "", lastName: "", email: "" }}
       />
+
+      {!isOnboarding && (() => {
+        const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
+        const sub = account?.subscription as { plan?: string; status?: string } | null | undefined;
+        const isPremium = isAdmin || (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(sub?.status ?? ""));
+        return !isPremium ? <div className="mt-8"><CouponRedeem /></div> : null;
+      })()}
     </div>
   );
 }

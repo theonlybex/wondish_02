@@ -95,7 +95,7 @@ export default function ProfileForm({
         const onboardingRes = await fetch("/api/user/complete-onboarding", { method: "POST" });
         if (!onboardingRes.ok) throw new Error("Failed to complete onboarding");
         // Hard redirect so the browser fetches a fresh Clerk JWT with updated metadata
-        window.location.href = "/meal-plan";
+        window.location.href = "/prediction";
       } else {
         setSaved(true);
         router.refresh();
@@ -266,7 +266,7 @@ export default function ProfileForm({
         <h2 className="text-base font-semibold text-navy mb-4">Dietary Preferences</h2>
         <div className="space-y-6">
           <MultiSelectChips
-            label="Food Preferences"
+            label="Diets"
             options={refData.foodPreferences}
             selected={foodPreferenceIds}
             onChange={setFoodPreferenceIds}

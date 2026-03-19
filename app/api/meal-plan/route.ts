@@ -39,7 +39,6 @@ export async function GET(req: NextRequest) {
     endDate.setHours(23, 59, 59, 999);
   }
 
-  console.log("[meal-plan GET] querying date range:", startDate.toISOString(), "→", endDate.toISOString());
   const menus = await prisma.menu.findMany({
     where: { patientId: patient.id, date: { gte: startDate, lte: endDate } },
     include: {
@@ -49,22 +48,55 @@ export async function GET(req: NextRequest) {
     orderBy: [{ date: "asc" }, { mealType: { name: "asc" } }],
   });
 
-  console.log("[meal-plan GET] found", menus.length, "menus. mealPlanStartDate:", patient.mealPlanStartDate?.toISOString());
-  return NextResponse.json({ menus, mealPlanStartDate: patient.mealPlanStartDate });
+  // For single-day requests, also return which recipes are logged in journal
+  let loggedRecipeIds: string[] = [];
+  let mealRatings: Record<string, number> = {};
+  if (!weekStartParam) {
+    const journalEntry = await prisma.journalEntry.findFirst({
+      where: { patientId: patient.id, date: { gte: startDate, lte: endDate } },
+      include: { meals: { select: { recipeId: true, skipped: true, rating: true } } },
+    });
+    const activeMeals = (journalEntry?.meals ?? []).filter((m) => !m.skipped && m.recipeId);
+    loggedRecipeIds = activeMeals.map((m) => m.recipeId as string);
+    for (const m of activeMeals) {
+      if (m.recipeId && m.rating != null) mealRatings[m.recipeId] = m.rating;
+    }
+  }
+
+  return NextResponse.json({ menus, mealPlanStartDate: patient.mealPlanStartDate, loggedRecipeIds, mealRatings });
 }
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const account = await prisma.account.findUnique({ where: { clerkId: userId } });
+  const account = await prisma.account.findUnique({
+    where: { clerkId: userId },
+    include: { subscription: true, roles: { include: { role: true } } },
+  });
   if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
+
+  const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
+  const sub = account.subscription;
+  const isPremium = isAdmin || (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(sub?.status ?? ""));
+  if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
   const patient = await prisma.patient.findUnique({ where: { accountId: account.id } });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
   const { startDate, endDate } = await req.json();
-  const count = await generateMealPlan(patient.id, new Date(startDate), new Date(endDate));
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    return NextResponse.json({ error: "Invalid date range" }, { status: 400 });
+  }
+  const daysDiff = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysDiff < 0 || daysDiff > 14) {
+    return NextResponse.json({ error: "Date range must be between 1 and 14 days" }, { status: 400 });
+  }
+
+  const count = await generateMealPlan(patient.id, start, end);
 
   return NextResponse.json({ ok: true, count });
 }
