@@ -160,15 +160,13 @@ export async function generateMealPlan(
     pm.motivation.bannedIngredients.map((b) => b.name)
   ) ?? [];
 
-  const allBannedNames = [
-    ...new Set([
-      ...allergyNames,
-      ...foodsToAvoidNames,
-      ...conditionBanned,
-      ...preferenceBanned,
-      ...motivationBanned,
-    ]),
-  ];
+  const allBannedNames = Array.from(new Set([
+    ...allergyNames,
+    ...foodsToAvoidNames,
+    ...conditionBanned,
+    ...preferenceBanned,
+    ...motivationBanned,
+  ]));
 
   // Motivation names for scoring
   const motivationNames = patient?.motivations.map((pm) => pm.motivation.name) ?? [];

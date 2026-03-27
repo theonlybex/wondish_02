@@ -29,14 +29,12 @@ export async function GET() {
   if (!patient) return NextResponse.json({ dishes: [] });
 
   // Build banned ingredient list (same logic as meal planner)
-  const bannedNames = [
-    ...new Set([
-      ...patient.foodAllergies.flatMap((a) => [a.food.name, ...a.food.bannedIngredients.map((b) => b.name)]),
-      ...patient.foodToAvoid.map((f) => f.food.name),
-      ...patient.healthConditions.flatMap((hc) => hc.condition.bannedIngredients.map((b) => b.name)),
-      ...patient.foodPreferences.flatMap((fp) => fp.food.bannedIngredients.map((b) => b.name)),
-    ]),
-  ];
+  const bannedNames = Array.from(new Set([
+    ...patient.foodAllergies.flatMap((a) => [a.food.name, ...a.food.bannedIngredients.map((b) => b.name)]),
+    ...patient.foodToAvoid.map((f) => f.food.name),
+    ...patient.healthConditions.flatMap((hc) => hc.condition.bannedIngredients.map((b) => b.name)),
+    ...patient.foodPreferences.flatMap((fp) => fp.food.bannedIngredients.map((b) => b.name)),
+  ]));
 
   const bannedFilter = bannedNames.length > 0
     ? {

@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import DishesGrid from "@/components/DishesGrid";
 import type { Dish, MealTypeKey } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Our Menu",
   description: "Nutritionist-approved recipes designed for every meal and every goal.",

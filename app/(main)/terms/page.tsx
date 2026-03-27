@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = { title: "Terms of Service" };
 
 export default async function TermsPage() {
