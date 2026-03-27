@@ -48,12 +48,13 @@ export default async function PricingPage({
   if (userId) {
     const account = await prisma.account.findUnique({
       where: { clerkId: userId },
-      include: { subscription: true },
+      include: { subscription: true, roles: { include: { role: true } } },
     });
-    // Active premium users go straight to their dashboard
+    // Active premium users see their membership page instead
     const sub = account?.subscription;
-    if (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING"].includes(sub?.status ?? "")) {
-      redirect("/overview");
+    const isAdmin = account?.roles?.some((r: { role: { name: string } }) => r.role.name === "SUPER") ?? false;
+    if (isAdmin || (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(sub?.status ?? ""))) {
+      redirect("/membership");
     }
     isLoggedIn = !!account;
   }

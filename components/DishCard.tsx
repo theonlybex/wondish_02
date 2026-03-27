@@ -1,6 +1,7 @@
 import Image from "next/image";
 import type { Dish, MealTypeKey } from "@/types";
 import { clsx } from "clsx";
+import { getRecipeEmoji } from "@/lib/recipeEmoji";
 
 const mealTypeColors: Record<MealTypeKey, string> = {
   breakfast: "bg-warning/10 text-warning",
@@ -41,7 +42,7 @@ export default function DishCard({ dish, compact = false }: DishCardProps) {
       {/* Top row */}
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="w-10 h-10 rounded-xl bg-[#F8F7FA] flex items-center justify-center text-xl flex-shrink-0">
-          {dish.emoji}
+          {dish.emoji || getRecipeEmoji(dish.name, dish.tags, dish.mealType)}
         </div>
         <span
           className={clsx(

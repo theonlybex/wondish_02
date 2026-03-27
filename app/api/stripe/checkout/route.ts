@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const checkoutSession = await createCheckoutSession({
       customerId,
       lookupKey: LOOKUP_KEY,
-      successUrl: `${appUrl}/dashboard`,
+      successUrl: `${appUrl}/taste`,
       cancelUrl: `${appUrl}/pricing`,
       accountId: account.id,
     });

@@ -31,9 +31,10 @@ model Account {
   countryId  String?
   country    Country?  @relation(fields: [countryId], references: [id])
 
-  roles        AccountRole[]
-  patient      Patient?
-  subscription Subscription?
+  roles             AccountRole[]
+  patient           Patient?
+  subscription      Subscription?
+  couponRedemptions CouponRedemption[]
 }
 
 model Role {
@@ -141,6 +142,7 @@ model Patient {
   foodAllergies    PatientFoodAllergy[]
   healthConditions PatientHealthCondition[]
   motivations      PatientMotivation[]
+  dishPreferences  PatientDishPreference[]
   menus            Menu[]
   orders           Order[]
   journalEntries   JournalEntry[]
@@ -164,9 +166,19 @@ model PhysicalActivity {
 }
 
 model Motivation {
-  id       String              @id @default(cuid())
-  name     String              @unique
-  patients PatientMotivation[]
+  id                String                       @id @default(cuid())
+  name              String                       @unique
+  patients          PatientMotivation[]
+  bannedIngredients MotivationBannedIngredient[]
+}
+
+model MotivationBannedIngredient {
+  id           String     @id @default(cuid())
+  motivationId String
+  motivation   Motivation @relation(fields: [motivationId], references: [id], onDelete: Cascade)
+  name         String
+
+  @@unique([motivationId, name])
 }
 
 model PatientMotivation {
@@ -181,9 +193,19 @@ model PatientMotivation {
 // ─── Food Preferences ─────────────────────────────────────────────────────────
 
 model FoodPreference {
-  id       String                  @id @default(cuid())
-  name     String                  @unique
-  patients PatientFoodPreference[]
+  id                String                         @id @default(cuid())
+  name              String                         @unique
+  patients          PatientFoodPreference[]
+  bannedIngredients FoodPreferenceBannedIngredient[]
+}
+
+model FoodPreferenceBannedIngredient {
+  id           String         @id @default(cuid())
+  preferenceId String
+  preference   FoodPreference @relation(fields: [preferenceId], references: [id], onDelete: Cascade)
+  name         String
+
+  @@unique([preferenceId, name])
 }
 
 model PatientFoodPreference {
@@ -211,9 +233,19 @@ model PatientFoodToAvoid {
 }
 
 model FoodAllergy {
-  id       String               @id @default(cuid())
-  name     String               @unique
-  patients PatientFoodAllergy[]
+  id                String                      @id @default(cuid())
+  name              String                      @unique
+  patients          PatientFoodAllergy[]
+  bannedIngredients FoodAllergyBannedIngredient[]
+}
+
+model FoodAllergyBannedIngredient {
+  id       String      @id @default(cuid())
+  allergyId String
+  allergy  FoodAllergy @relation(fields: [allergyId], references: [id], onDelete: Cascade)
+  name     String
+
+  @@unique([allergyId, name])
 }
 
 model PatientFoodAllergy {
@@ -226,9 +258,19 @@ model PatientFoodAllergy {
 }
 
 model HealthCondition {
-  id       String                   @id @default(cuid())
-  name     String                   @unique
-  patients PatientHealthCondition[]
+  id                String                            @id @default(cuid())
+  name              String                            @unique
+  patients          PatientHealthCondition[]
+  bannedIngredients HealthConditionBannedIngredient[]
+}
+
+model HealthConditionBannedIngredient {
+  id          String          @id @default(cuid())
+  conditionId String
+  condition   HealthCondition @relation(fields: [conditionId], references: [id], onDelete: Cascade)
+  name        String
+
+  @@unique([conditionId, name])
 }
 
 model PatientHealthCondition {
@@ -238,6 +280,20 @@ model PatientHealthCondition {
   condition   HealthCondition @relation(fields: [conditionId], references: [id])
 
   @@id([patientId, conditionId])
+}
+
+// ─── Dish Tinder Preferences ─────────────────────────────────────────────────
+
+model PatientDishPreference {
+  id        String   @id @default(cuid())
+  patientId String
+  recipeId  String
+  liked     Boolean  // true = would try, false = not gonna try
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([patientId, recipeId])
 }
 
 // ─── Custom Ingredients (Premium) ────────────────────────────────────────────
@@ -279,8 +335,9 @@ model Recipe {
   mealType    MealType?  @relation(fields: [mealTypeId], references: [id])
   ethnicId    String?
   ethnic      Ethnic?    @relation(fields: [ethnicId], references: [id])
-  ingredients RecipeIngredient[]
-  menus       Menu[]
+  ingredients      RecipeIngredient[]
+  menus            Menu[]
+  dishPreferences  PatientDishPreference[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -411,6 +468,37 @@ model Country {
   name     String    @unique
   code     String    @unique
   accounts Account[]
+}
+
+// ─── Coupon System ────────────────────────────────────────────────────────────
+
+enum CouponType {
+  ADMIN    // grants SUPER role — full unlimited access, no payment
+  PREMIUM  // upgrades subscription to PREMIUM without payment
+}
+
+model Coupon {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  type        CouponType   @default(PREMIUM)
+  maxUses     Int          @default(1)
+  usedCount   Int          @default(0)
+  expiresAt   DateTime?
+  isActive    Boolean      @default(true)
+  note        String?
+  createdAt   DateTime     @default(now())
+  redemptions CouponRedemption[]
+}
+
+model CouponRedemption {
+  id         String   @id @default(cuid())
+  couponId   String
+  coupon     Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  redeemedAt DateTime @default(now())
+
+  @@unique([couponId, accountId])
 }
 
 model TermsAndConditions {

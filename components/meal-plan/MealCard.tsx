@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { RecipeDTO } from "@/types";
+import { getRecipeEmoji } from "@/lib/recipeEmoji";
 
 interface MealCardProps {
   menuId: string;
@@ -9,25 +10,31 @@ interface MealCardProps {
   mealTypeName?: string;
   onSelect?: () => void;
   compact?: boolean;
+  isCompleted?: boolean;
 }
 
-export default function MealCard({ recipe, mealTypeName, onSelect, compact = false }: MealCardProps) {
+export default function MealCard({ recipe, mealTypeName, onSelect, compact = false, isCompleted = false }: MealCardProps) {
   if (compact) {
     return (
       <motion.div
         onClick={onSelect}
-        className="bg-white border border-[#E8E7EA] rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all"
+        className={`rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:shadow-sm transition-all ${
+          isCompleted
+            ? "bg-emerald-50 border border-emerald-200 hover:border-emerald-300"
+            : "bg-white border border-[#E8E7EA] hover:border-primary/40"
+        }`}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
       >
-        <span className="text-2xl shrink-0">{recipe.emoji ?? "🍽"}</span>
-        <div className="min-w-0">
+        <span className="text-2xl shrink-0">{recipe.emoji ?? getRecipeEmoji(recipe.name, recipe.tags, mealTypeName)}</span>
+        <div className="min-w-0 flex-1">
           <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-wide">{mealTypeName}</p>
           <p className="font-semibold text-navy text-sm truncate">{recipe.name}</p>
           {recipe.calories && (
             <p className="text-[10px] text-[#8A8D93] mt-0.5">{recipe.calories} kcal</p>
           )}
         </div>
+        {isCompleted && <span className="text-emerald-500 text-sm flex-shrink-0">✓</span>}
       </motion.div>
     );
   }
@@ -35,17 +42,24 @@ export default function MealCard({ recipe, mealTypeName, onSelect, compact = fal
   return (
     <motion.div
       onClick={onSelect}
-      className="bg-white border border-[#E8E7EA] rounded-2xl p-5 flex flex-col gap-3 cursor-pointer hover:border-primary/40 hover:shadow-md transition-all"
+      className={`rounded-2xl p-5 flex flex-col gap-3 cursor-pointer hover:shadow-md transition-all ${
+        isCompleted
+          ? "bg-emerald-50 border border-emerald-200 hover:border-emerald-300"
+          : "bg-white border border-[#E8E7EA] hover:border-primary/40"
+      }`}
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.99 }}
     >
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-[#8A8D93] uppercase tracking-wide">{mealTypeName}</span>
-        <span className="text-[10px] text-[#8A8D93] opacity-60">tap to expand</span>
+        {isCompleted
+          ? <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">✓ Done</span>
+          : <span className="text-[10px] text-[#8A8D93] opacity-60">tap to expand</span>
+        }
       </div>
 
       <div className="flex items-center gap-3">
-        <span className="text-4xl">{recipe.emoji ?? "🍽"}</span>
+        <span className="text-4xl">{recipe.emoji ?? getRecipeEmoji(recipe.name, recipe.tags, mealTypeName)}</span>
         <div>
           <p className="font-semibold text-navy">{recipe.name}</p>
           {recipe.description && (
@@ -55,6 +69,11 @@ export default function MealCard({ recipe, mealTypeName, onSelect, compact = fal
       </div>
 
       <div className="flex flex-wrap gap-2">
+        {recipe.ethnic?.name && (
+          <span className="bg-[#F3F2FF] text-primary text-xs font-semibold px-2.5 py-1 rounded-full">
+            {recipe.ethnic.name}
+          </span>
+        )}
         {recipe.calories && (
           <span className="bg-[#FFF3E0] text-warning text-xs font-semibold px-2.5 py-1 rounded-full">
             {recipe.calories} kcal

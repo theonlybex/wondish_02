@@ -24,6 +24,9 @@ try {
     if (!process.env[key]) process.env[key] = val;
   }
 } catch { /* no .env */ }
+if (process.env.DATABASE_URL_UNPOOLED) {
+  process.env.DATABASE_URL = process.env.DATABASE_URL_UNPOOLED;
+}
 
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();

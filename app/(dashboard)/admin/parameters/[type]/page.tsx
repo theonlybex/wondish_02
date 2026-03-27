@@ -10,7 +10,7 @@ const TYPE_LABELS: Record<string, string> = {
   "dish-type": "Dish Types",
   ethnic: "Ethnic Cuisines",
   motivation: "Motivations",
-  "food-preference": "Food Preferences",
+  "food-preference": "Diets",
   "food-to-avoid": "Foods to Avoid",
   "food-allergy": "Food Allergies",
   "health-condition": "Health Conditions",

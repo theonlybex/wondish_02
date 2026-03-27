@@ -53,9 +53,10 @@ export default function Hero() {
             style={{ opacity: headlineOpacity, y: headlineY }}
             className="absolute top-0 left-0 right-0 flex flex-col items-center justify-center h-full px-6 text-center pointer-events-none z-10"
           >
-            <span className="text-[11px] uppercase tracking-[0.25em] text-white/30 mb-8 font-medium">
-              Meal planning, reimagined
-            </span>
+            <div className="flex items-center gap-2 mb-8 bg-white/5 border border-white/10 rounded-full px-4 py-2">
+              <span className="text-yellow-400 text-sm">★★★★★</span>
+              <span className="text-white/60 text-xs font-medium">Rated 4.9/5 by 10,000+ members</span>
+            </div>
             <h1 className="text-[clamp(2.8rem,8vw,6rem)] font-bold text-white leading-[1.05] tracking-tight">
               Every great meal
               <br />

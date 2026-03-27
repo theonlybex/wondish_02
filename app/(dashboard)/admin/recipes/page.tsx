@@ -41,7 +41,7 @@ export default async function AdminRecipesPage() {
       </div>
 
       <div className="bg-white border border-[#E8E7EA] rounded-2xl">
-        <RecipeListTable recipes={recipes as never} onDelete={() => {}} />
+        <RecipeListTable recipes={recipes as never} />
       </div>
     </div>
   );

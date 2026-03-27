@@ -29,6 +29,11 @@ try {
   console.warn("No .env file found — using process environment");
 }
 
+// Use direct connection for scripts (bypasses pgbouncer pooler)
+if (process.env.DATABASE_URL_UNPOOLED) {
+  process.env.DATABASE_URL = process.env.DATABASE_URL_UNPOOLED;
+}
+
 const { PrismaClient } = require("@prisma/client");
 const xlsx = require("xlsx");
 

@@ -14,6 +14,9 @@ const navItems = [
   { href: "/journey", label: "My Journey", icon: "📈" },
   { href: "/orders", label: "My Orders", icon: "📦" },
   { href: "/profile", label: "My Profile", icon: "👤" },
+  { href: "/prediction", label: "My Prediction", icon: "🎯" },
+  { href: "/taste", label: "My Taste", icon: "❤️" },
+  { href: "/membership", label: "My Membership", icon: "⭐" },
 ];
 
 const adminItems = [
@@ -21,6 +24,7 @@ const adminItems = [
   { href: "/admin/users", label: "Users", icon: "👥" },
   { href: "/admin/companies", label: "Companies", icon: "🏢" },
   { href: "/admin/parameters/gender", label: "Parameters", icon: "⚙️" },
+  { href: "/admin/coupons", label: "Coupons", icon: "🎟️" },
 ];
 
 export default function DashboardSidebar({

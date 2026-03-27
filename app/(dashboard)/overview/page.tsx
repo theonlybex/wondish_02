@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import Link from "next/link";
+import MealStreakGrid, { GridDay } from "@/components/MealStreakGrid";
 
 export const metadata = { title: "Overview" };
 
@@ -70,6 +71,91 @@ export default async function OverviewPage() {
     );
   }).length;
 
+  // ── Streak grid: registration date → Dec 31 ────────────────────────────────
+  const gridDays: GridDay[] = [];
+  let totalCompleted = 0;
+  let gridFirstDay = "";
+
+  if (patient) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yearEnd = new Date(today.getFullYear(), 11, 31); // Dec 31
+
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    // User's registration date — used to hide pre-join cells in the first column
+    const rawRegistered = new Date((account as { createdAt?: Date }).createdAt ?? today);
+    rawRegistered.setHours(0, 0, 0, 0);
+    gridFirstDay = fmt(rawRegistered);
+
+    // Cap grid display to Jan 1 of current year so old users don't get huge grids
+    const yearStart = new Date(today.getFullYear(), 0, 1);
+    const registeredAt = rawRegistered > yearStart ? rawRegistered : yearStart;
+
+    // Grid starts on the Sunday of the (capped) registration week
+    const gridStart = new Date(registeredAt);
+    gridStart.setDate(registeredAt.getDate() - registeredAt.getDay());
+
+    const [allMenusGrid, allJournalsGrid] = await Promise.all([
+      prisma.menu.findMany({
+        where: { patientId: patient.id, date: { gte: gridStart, lte: yearEnd } },
+        select: { date: true, recipeId: true },
+      }),
+      prisma.journalEntry.findMany({
+        where: { patientId: patient.id, date: { gte: gridStart, lte: yearEnd } },
+        include: { meals: { select: { recipeId: true, skipped: true } } },
+      }),
+    ]);
+
+    const menusByDate = new Map<string, Set<string>>();
+    for (const m of allMenusGrid) {
+      const key = fmt(new Date(m.date));
+      if (!menusByDate.has(key)) menusByDate.set(key, new Set());
+      menusByDate.get(key)!.add(m.recipeId);
+    }
+
+    const loggedByDate = new Map<string, Set<string>>();
+    for (const j of allJournalsGrid) {
+      const key = fmt(new Date(j.date));
+      if (!loggedByDate.has(key)) loggedByDate.set(key, new Set());
+      for (const m of j.meals) {
+        if (!m.skipped && m.recipeId) loggedByDate.get(key)!.add(m.recipeId);
+      }
+    }
+
+    // Build grid from gridStart to Dec 31
+    const totalDays = Math.ceil((yearEnd.getTime() - gridStart.getTime()) / 86400000) + 1;
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(gridStart);
+      d.setDate(gridStart.getDate() + i);
+      const key = fmt(d);
+
+      if (d > today) {
+        gridDays.push({ date: key, status: "future" });
+        continue;
+      }
+
+      const planned = menusByDate.get(key);
+      if (!planned || planned.size === 0) {
+        gridDays.push({ date: key, status: "empty" });
+        continue;
+      }
+
+      const logged = loggedByDate.get(key);
+      const loggedCount = logged ? Array.from(planned).filter((id) => logged.has(id)).length : 0;
+
+      if (loggedCount === planned.size) {
+        gridDays.push({ date: key, status: "full" });
+        totalCompleted++;
+      } else if (loggedCount > 0) {
+        gridDays.push({ date: key, status: "partial" });
+      } else {
+        gridDays.push({ date: key, status: "none" });
+      }
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
@@ -103,6 +189,13 @@ export default async function OverviewPage() {
           <p className="text-[#8A8D93] text-xs">consecutive journal entries</p>
         </div>
       </div>
+
+      {/* Streak grid */}
+      {gridDays.length > 0 && (
+        <div className="mb-8">
+          <MealStreakGrid days={gridDays} totalCompleted={totalCompleted} firstDay={gridFirstDay} />
+        </div>
+      )}
 
       {/* Today's meal plan preview */}
       {todayMenus.length > 0 ? (

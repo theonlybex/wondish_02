@@ -22,24 +22,34 @@ export default async function MealPlanPage() {
   const todayEnd = new Date(today);
   todayEnd.setHours(23, 59, 59, 999);
 
-  const menus = patient
-    ? await prisma.menu.findMany({
-        where: {
-          patientId: patient.id,
-          date: { gte: today, lte: todayEnd },
-        },
-        include: {
-          recipe: {
-            include: {
-              mealType: true,
-              ingredients: { include: { ingredient: true } },
+  const [menus, todayJournal] = patient
+    ? await Promise.all([
+        prisma.menu.findMany({
+          where: { patientId: patient.id, date: { gte: today, lte: todayEnd } },
+          include: {
+            recipe: {
+              include: {
+                mealType: true,
+                ingredients: { include: { ingredient: true } },
+              },
             },
+            mealType: true,
           },
-          mealType: true,
-        },
-        orderBy: { mealType: { name: "asc" } },
-      })
-    : [];
+          orderBy: { mealType: { name: "asc" } },
+        }),
+        prisma.journalEntry.findFirst({
+          where: { patientId: patient.id, date: { gte: today, lte: todayEnd } },
+          include: { meals: { select: { recipeId: true, skipped: true, rating: true } } },
+        }),
+      ])
+    : [[], null];
+
+  const activeMeals = (todayJournal?.meals ?? []).filter((m) => !m.skipped && m.recipeId);
+  const loggedRecipeIds = activeMeals.map((m) => m.recipeId as string);
+  const initialMealRatings: Record<string, number> = {};
+  for (const m of activeMeals) {
+    if (m.recipeId && m.rating != null) initialMealRatings[m.recipeId] = m.rating;
+  }
 
   const totalCalories = menus.reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
   const totalProtein = menus.reduce((sum, m) => sum + (m.recipe.protein ?? 0), 0);
@@ -86,6 +96,8 @@ export default async function MealPlanPage() {
         initialMenus={menus as never}
         initialDate={format(today, "yyyy-MM-dd")}
         mealPlanStartDate={patient?.mealPlanStartDate?.toISOString() ?? null}
+        initialLoggedRecipeIds={loggedRecipeIds}
+        initialMealRatings={initialMealRatings}
       />
     </div>
   );

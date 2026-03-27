@@ -107,6 +107,11 @@ export default function WeeklyMealPlanGrid({
                             <p className="text-navy text-xs font-medium mt-1 line-clamp-2">
                               {menu.recipe.name}
                             </p>
+                            {menu.recipe.ethnic?.name && (
+                              <span className="mt-1 px-1.5 py-0.5 rounded-full bg-[#F3F2FF] text-primary text-[10px] font-medium">
+                                {menu.recipe.ethnic.name}
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <div className="text-center text-[#D0CDD7] text-lg">—</div>

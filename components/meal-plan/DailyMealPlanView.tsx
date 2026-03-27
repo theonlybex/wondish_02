@@ -7,11 +7,14 @@ import MealCard from "@/components/meal-plan/MealCard";
 import SwapMealModal from "@/components/meal-plan/SwapMealModal";
 import Button from "@/components/ui/Button";
 import { MenuEntry, RecipeDTO } from "@/types";
+import { getRecipeEmoji } from "@/lib/recipeEmoji";
 
 interface DailyMealPlanViewProps {
   initialMenus: MenuEntry[];
   initialDate: string;
   mealPlanStartDate?: string | null;
+  initialLoggedRecipeIds?: string[];
+  initialMealRatings?: Record<string, number>;
 }
 
 function parseLocalDate(dateStr: string): Date {
@@ -24,10 +27,16 @@ function ExpandedRecipe({
   menu,
   onClose,
   onSwap,
+  isCompleted,
+  rating,
+  onRate,
 }: {
   menu: MenuEntry;
   onClose: () => void;
   onSwap: (menuId: string, mealTypeId: string, recipeId: string) => void;
+  isCompleted: boolean;
+  rating: number | null;
+  onRate: (recipeId: string, mealTypeName: string, rating: number) => void;
 }) {
   const r = menu.recipe;
 
@@ -53,12 +62,19 @@ function ExpandedRecipe({
           ✕
         </button>
 
-        <span className="text-[10px] font-bold text-primary uppercase tracking-widest">
-          {menu.mealType?.name}
-        </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-bold text-primary uppercase tracking-widest">
+            {menu.mealType?.name}
+          </span>
+          {r.ethnic?.name && (
+            <span className="text-[10px] font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+              {r.ethnic.name}
+            </span>
+          )}
+        </div>
 
         <div className="flex items-center gap-4 mt-2">
-          <span className="text-6xl">{r.emoji ?? "🍽"}</span>
+          <span className="text-6xl">{r.emoji ?? getRecipeEmoji(r.name, r.tags, menu.mealType?.name)}</span>
           <div>
             <h2 className="text-2xl font-bold text-navy leading-tight">{r.name}</h2>
             {steps.length === 0 && r.description && (
@@ -170,7 +186,7 @@ function ExpandedRecipe({
 
         {/* Tags */}
         {r.tags?.length > 0 && (
-          <div className="flex flex-wrap gap-2 pb-2">
+          <div className="flex flex-wrap gap-2">
             {r.tags.map((tag) => (
               <span key={tag} className="text-xs font-medium text-[#8A8D93] bg-[#F7F6FB] px-3 py-1 rounded-full">
                 #{tag}
@@ -178,6 +194,42 @@ function ExpandedRecipe({
             ))}
           </div>
         )}
+
+        {/* Rate buttons */}
+        <div className="pt-2 pb-1">
+          <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-widest mb-2 text-center">
+            {isCompleted ? "You rated this meal" : "How was this meal?"}
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => onRate(r.id, menu.mealType?.name ?? "Meal", -1)}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-sm transition-all ${
+                rating === -1
+                  ? "bg-red-500 text-white shadow-lg"
+                  : "bg-red-50 border border-red-200 text-red-600 hover:bg-red-100"
+              }`}
+              style={rating === -1 ? { boxShadow: "0 4px 14px rgba(239,68,68,0.4)" } : {}}
+            >
+              <span className="text-lg">👎</span>
+              {rating === -1 ? "Not for me!" : "Not for me"}
+            </button>
+            <button
+              onClick={() => onRate(r.id, menu.mealType?.name ?? "Meal", 1)}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-sm transition-all ${
+                rating === 1
+                  ? "bg-emerald-500 text-white shadow-lg"
+                  : "bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+              }`}
+              style={rating === 1 ? { boxShadow: "0 4px 14px rgba(34,197,94,0.4)" } : {}}
+            >
+              <span className="text-lg">👍</span>
+              {rating === 1 ? "Loved it!" : "Loved it"}
+            </button>
+          </div>
+          {isCompleted && (
+            <p className="text-[10px] text-[#8A8D93] text-center mt-2">Tap again to undo</p>
+          )}
+        </div>
       </div>
     </motion.div>
   );
@@ -188,9 +240,13 @@ export default function DailyMealPlanView({
   initialMenus,
   initialDate,
   mealPlanStartDate,
+  initialLoggedRecipeIds = [],
+  initialMealRatings = {},
 }: DailyMealPlanViewProps) {
   const [date, setDate] = useState(() => parseLocalDate(initialDate));
   const [menus, setMenus] = useState(initialMenus);
+  const [loggedRecipeIds, setLoggedRecipeIds] = useState<string[]>(initialLoggedRecipeIds);
+  const [mealRatings, setMealRatings] = useState<Record<string, number>>(initialMealRatings);
   const [loading, setLoading] = useState(false);
   const [startDate, setStartDate] = useState(mealPlanStartDate ? new Date(mealPlanStartDate) : null);
   const [settingStart, setSettingStart] = useState(false);
@@ -241,7 +297,13 @@ export default function DailyMealPlanView({
           body: JSON.stringify({ startDate: dateStr, endDate }),
         });
         const retry = await fetch(`/api/meal-plan?date=${dateStr}`);
-        fetched = (await retry.json()).menus ?? [];
+        const retryData = await retry.json();
+        fetched = retryData.menus ?? [];
+        setLoggedRecipeIds(retryData.loggedRecipeIds ?? []);
+        setMealRatings(retryData.mealRatings ?? {});
+      } else {
+        setLoggedRecipeIds(data.loggedRecipeIds ?? []);
+        setMealRatings(data.mealRatings ?? {});
       }
 
       setMenus(fetched);
@@ -267,6 +329,18 @@ export default function DailyMealPlanView({
     }
   };
 
+  const handleRate = async (recipeId: string, mealTypeName: string, rating: number) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    const res = await fetch("/api/journal/log-meal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipeId, mealTypeName, date: dateStr, rating }),
+    });
+    const data = await res.json();
+    if (data.loggedRecipeIds) setLoggedRecipeIds(data.loggedRecipeIds);
+    if (data.mealRatings) setMealRatings(data.mealRatings);
+  };
+
   const handleSwapped = (menuId: string, newRecipe: RecipeDTO) => {
     setMenus((prev) => prev.map((m) => m.id === menuId ? { ...m, recipe: newRecipe } : m));
     setSelectedId(null);
@@ -274,6 +348,10 @@ export default function DailyMealPlanView({
 
   const selectedMenu = selectedId ? menus.find((m) => m.id === selectedId) ?? null : null;
   const sideMenus = selectedMenu ? menus.filter((m) => m.id !== selectedId) : [];
+
+  const loggedSet = new Set(loggedRecipeIds);
+  const isAllDone = menus.length > 0 && menus.every((m) => loggedSet.has(m.recipe.id));
+  const completedCount = menus.filter((m) => loggedSet.has(m.recipe.id)).length;
 
   return (
     <div>
@@ -289,6 +367,39 @@ export default function DailyMealPlanView({
           className="w-9 h-9 rounded-xl border border-[#E8E7EA] flex items-center justify-center hover:bg-[#F3F2FF] transition-colors text-navy"
         >›</button>
       </div>
+
+      {/* Completion banner */}
+      {menus.length > 0 && (
+        <div
+          className={`flex items-center gap-3 rounded-2xl px-4 py-3 mb-5 text-sm font-medium transition-all ${
+            isAllDone
+              ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
+              : "bg-[#F8F7FA] border border-[#E8E7EA] text-[#8A8D93]"
+          }`}
+        >
+          <span className="text-xl">{isAllDone ? "🎉" : "🍽"}</span>
+          <div className="flex-1">
+            {isAllDone ? (
+              <span className="font-semibold">All meals done for today — this day is now on your streak!</span>
+            ) : (
+              <span>
+                {completedCount}/{menus.length} meals logged
+                {completedCount === 0 ? " — log your meals to mark this day complete" : " — almost there!"}
+              </span>
+            )}
+          </div>
+          {!isAllDone && menus.length > 0 && (
+            <div className="flex gap-1">
+              {menus.map((m) => (
+                <div
+                  key={m.id}
+                  className={`w-2 h-2 rounded-full ${loggedSet.has(m.recipe.id) ? "bg-emerald-400" : "bg-[#E8E7EA]"}`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* No start date */}
       {!startDate && (
@@ -327,6 +438,9 @@ export default function DailyMealPlanView({
                   menu={selectedMenu}
                   onClose={() => setSelectedId(null)}
                   onSwap={(menuId, mealTypeId, recipeId) => setSwapModal({ menuId, mealTypeId, recipeId })}
+                  isCompleted={loggedSet.has(selectedMenu.recipe.id)}
+                  rating={mealRatings[selectedMenu.recipe.id] ?? null}
+                  onRate={handleRate}
                 />
               </div>
 
@@ -340,6 +454,7 @@ export default function DailyMealPlanView({
                     recipe={m.recipe}
                     mealTypeName={m.mealType?.name}
                     compact
+                    isCompleted={loggedSet.has(m.recipe.id)}
                     onSelect={() => setSelectedId(m.id)}
                   />
                 ))}
@@ -361,6 +476,7 @@ export default function DailyMealPlanView({
                   menuId={menu.id}
                   recipe={menu.recipe}
                   mealTypeName={menu.mealType?.name}
+                  isCompleted={loggedSet.has(menu.recipe.id)}
                   onSelect={() => setSelectedId(menu.id)}
                 />
               ))}

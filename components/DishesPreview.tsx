@@ -25,9 +25,6 @@ export default function DishesPreview() {
         .marquee-row-2 {
           animation: marquee 28s linear infinite;
         }
-        .marquee-wrap:hover .marquee-row {
-          animation-play-state: paused;
-        }
       `}</style>
 
       {/* Header */}

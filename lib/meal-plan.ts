@@ -25,7 +25,6 @@ function calcEER(bmr: number, activityLevel: number): number {
 }
 
 function adjustForGoal(eer: number, weeklyGoal: number): number {
-  // weeklyGoal > 0 = lose weight (deficit), < 0 = gain weight (surplus)
   return eer - (weeklyGoal * 1000) / 7;
 }
 
@@ -38,6 +37,78 @@ function mealCaloriesMap(daily: number): Record<string, number> {
   };
 }
 
+type RecipeCandidate = {
+  id: string;
+  protein: number | null;
+  calories: number | null;
+  fiber: number | null;
+  fat: number | null;
+  ingredients: { ingredient: { name: string } }[];
+};
+
+// Score candidates by:
+//   1. Nutritional fit to motivations (existing logic)
+//   2. Ingredient affinity (70% of taste preference) — boosts recipes with liked ingredients
+//   3. Novelty bonus (30% of taste preference) — rewards recipes with unseen ingredients
+// Picks randomly from top 3 to keep variety.
+function pickByMotivation(
+  candidates: RecipeCandidate[],
+  motivationNames: string[],
+  affinityMap: Record<string, number> = {},   // ingredient name → 0.0–1.0
+  seenIngredientNames: Set<string> = new Set() // all ingredients from liked + disliked dishes
+): RecipeCandidate {
+  if (candidates.length <= 1) return candidates[0] ?? shuffleArray(candidates)[0];
+
+  const hasAffinity = Object.keys(affinityMap).length > 0;
+
+  const scored = candidates.map((r) => {
+    let score = 0;
+
+    // 1. Motivation scoring
+    for (const m of motivationNames) {
+      if (m === "Build muscle") {
+        score += (r.protein ?? 0) * 2;
+      }
+      if (m === "Lose weight") {
+        score -= (r.fat ?? 0) * 0.8;
+        score -= (r.calories ?? 0) * 0.03;
+        score += (r.fiber ?? 0) * 2;
+      }
+      if (m === "Improve energy") {
+        score += (r.fiber ?? 0) * 3;
+        score += (r.protein ?? 0) * 0.5;
+      }
+      if (m === "Eat healthier") {
+        score += (r.fiber ?? 0) * 2;
+        score -= (r.fat ?? 0) * 0.5;
+        score += (r.protein ?? 0) * 0.5;
+      }
+    }
+
+    // 2. Affinity boost (70% of taste preference)
+    if (hasAffinity) {
+      for (const ri of r.ingredients) {
+        const affinity = affinityMap[ri.ingredient.name.toLowerCase()] ?? 0;
+        score += affinity * 14;
+      }
+    }
+
+    // 3. Novelty bonus (30% of taste preference) — rewards unseen ingredients
+    if (seenIngredientNames.size > 0 && r.ingredients.length > 0) {
+      const unseen = r.ingredients.filter(
+        (ri) => !seenIngredientNames.has(ri.ingredient.name.toLowerCase())
+      ).length;
+      score += (unseen / r.ingredients.length) * 6;
+    }
+
+    return { ...r, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  const topN = scored.slice(0, Math.min(3, scored.length));
+  return shuffleArray(topN)[0];
+}
+
 export async function generateMealPlan(
   patientId: string,
   startDate: Date,
@@ -48,11 +119,86 @@ export async function generateMealPlan(
     include: {
       gender: true,
       physicalActivity: true,
-      foodAllergies: { include: { food: true } },
+      foodAllergies: { include: { food: { include: { bannedIngredients: true } } } },
+      foodToAvoid: { include: { food: true } },
+      healthConditions: {
+        include: { condition: { include: { bannedIngredients: true } } },
+      },
+      foodPreferences: {
+        include: { food: { include: { bannedIngredients: true } } },
+      },
+      motivations: {
+        include: { motivation: { include: { bannedIngredients: true } } },
+      },
+      dishPreferences: {
+        include: {
+          recipe: {
+            include: { ingredients: { include: { ingredient: { select: { name: true } } } } },
+          },
+        },
+      },
     },
   });
 
-  const allergyNames = patient?.foodAllergies.map((a) => a.food.name) ?? [];
+  // Collect all banned ingredient names from every source
+  const allergyNames = patient?.foodAllergies.flatMap((a) => [
+    a.food.name,
+    ...a.food.bannedIngredients.map((b) => b.name),
+  ]) ?? [];
+
+  const foodsToAvoidNames = patient?.foodToAvoid.map((f) => f.food.name) ?? [];
+
+  const conditionBanned = patient?.healthConditions.flatMap((hc) =>
+    hc.condition.bannedIngredients.map((b) => b.name)
+  ) ?? [];
+
+  const preferenceBanned = patient?.foodPreferences.flatMap((fp) =>
+    fp.food.bannedIngredients.map((b) => b.name)
+  ) ?? [];
+
+  const motivationBanned = patient?.motivations.flatMap((pm) =>
+    pm.motivation.bannedIngredients.map((b) => b.name)
+  ) ?? [];
+
+  const allBannedNames = [
+    ...new Set([
+      ...allergyNames,
+      ...foodsToAvoidNames,
+      ...conditionBanned,
+      ...preferenceBanned,
+      ...motivationBanned,
+    ]),
+  ];
+
+  // Motivation names for scoring
+  const motivationNames = patient?.motivations.map((pm) => pm.motivation.name) ?? [];
+
+  // Dish Tinder affinity: ingredient frequency from liked dishes → 0.0–1.0
+  const allDishPrefs = patient?.dishPreferences ?? [];
+  const likedDishPrefs = allDishPrefs.filter((dp) => dp.liked);
+  const totalLikedDishes = likedDishPrefs.length;
+
+  const ingredientCount: Record<string, number> = {};
+  for (const dp of likedDishPrefs) {
+    for (const ri of dp.recipe.ingredients) {
+      const name = ri.ingredient.name.toLowerCase();
+      ingredientCount[name] = (ingredientCount[name] ?? 0) + 1;
+    }
+  }
+  const affinityMap: Record<string, number> = {};
+  if (totalLikedDishes > 0) {
+    for (const [name, count] of Object.entries(ingredientCount)) {
+      affinityMap[name] = count / totalLikedDishes;
+    }
+  }
+
+  // Novelty: all ingredients seen in any dish preference (liked or disliked)
+  const seenIngredientNames = new Set<string>();
+  for (const dp of allDishPrefs) {
+    for (const ri of dp.recipe.ingredients) {
+      seenIngredientNames.add(ri.ingredient.name.toLowerCase());
+    }
+  }
 
   // Calculate daily calorie targets if we have enough data
   let caloriePlan: Record<string, number> | null = null;
@@ -65,8 +211,7 @@ export async function generateMealPlan(
     const isMale = genderName.includes("male") && !genderName.includes("female");
     const bmr = calcBMR(weightKg, heightCm, Math.floor(ageYears), isMale);
     const eer = calcEER(bmr, patient.physicalActivity.level);
-    const daily =
-      patient.weeklyGoal != null ? adjustForGoal(eer, patient.weeklyGoal) : eer;
+    const daily = patient.weeklyGoal != null ? adjustForGoal(eer, patient.weeklyGoal) : eer;
     caloriePlan = mealCaloriesMap(Math.max(daily, 1200));
   }
 
@@ -79,20 +224,19 @@ export async function generateMealPlan(
   const menus: { patientId: string; recipeId: string; mealTypeId: string; date: Date }[] = [];
   const usedIds = new Set<string>();
 
-  // Only pick recipes that have ingredients and cooking instructions
   const hasContentFilter = {
     ingredients: { some: {} },
     description: { not: null },
   };
 
-  const allergyFilter =
-    allergyNames.length > 0
+  const bannedFilter =
+    allBannedNames.length > 0
       ? {
           NOT: {
             ingredients: {
               some: {
                 ingredient: {
-                  name: { in: allergyNames, mode: "insensitive" as const },
+                  name: { in: allBannedNames, mode: "insensitive" as const },
                 },
               },
             },
@@ -100,16 +244,22 @@ export async function generateMealPlan(
         }
       : {};
 
+  // Fields for scoring — includes ingredients for affinity + novelty scoring
+  const recipeSelect = {
+    id: true, protein: true, calories: true, fiber: true, fat: true,
+    ingredients: { select: { ingredient: { select: { name: true } } } },
+  };
+
   const current = new Date(startDate);
   while (current <= endDate) {
     for (const mealType of mealTypes) {
       const target = caloriePlan ? (caloriePlan[mealType.name.toLowerCase()] ?? null) : null;
       const usedFilter = usedIds.size > 0 ? { id: { notIn: Array.from(usedIds) } } : {};
 
-      let chosen: { id: string } | undefined;
+      let chosen: RecipeCandidate | undefined;
 
       if (target !== null) {
-        // Primary: calorie-targeted, exclude used, allergy-safe
+        // Primary: calorie-targeted, banned-safe, motivation-scored
         const candidates = await prisma.recipe.findMany({
           where: {
             mealTypeId: mealType.id,
@@ -117,46 +267,46 @@ export async function generateMealPlan(
             calories: { gte: target - 250, lte: target + 250 },
             ...hasContentFilter,
             ...usedFilter,
-            ...allergyFilter,
+            ...bannedFilter,
           },
-          select: { id: true },
+          select: recipeSelect,
         });
         if (candidates.length > 0) {
-          chosen = shuffleArray(candidates)[0];
+          chosen = pickByMotivation(candidates, motivationNames, affinityMap, seenIngredientNames);
         } else {
-          // Fallback 1: no calorie restriction, exclude used, allergy-safe
+          // Fallback 1: no calorie restriction, banned-safe, motivation-scored
           const fallback1 = await prisma.recipe.findMany({
             where: {
               mealTypeId: mealType.id,
               isPublic: true,
               ...hasContentFilter,
               ...usedFilter,
-              ...allergyFilter,
+              ...bannedFilter,
             },
-            select: { id: true },
+            select: recipeSelect,
           });
-          if (fallback1.length > 0) chosen = shuffleArray(fallback1)[0];
+          if (fallback1.length > 0) chosen = pickByMotivation(fallback1, motivationNames, affinityMap, seenIngredientNames);
         }
       } else {
-        // No calorie data: shuffle allergy-safe recipes, exclude used
+        // No calorie data: banned-safe, motivation-scored
         const recipes = await prisma.recipe.findMany({
           where: {
             mealTypeId: mealType.id,
             isPublic: true,
             ...hasContentFilter,
             ...usedFilter,
-            ...allergyFilter,
+            ...bannedFilter,
           },
-          select: { id: true },
+          select: recipeSelect,
         });
-        if (recipes.length > 0) chosen = shuffleArray(recipes)[0];
+        if (recipes.length > 0) chosen = pickByMotivation(recipes, motivationNames, affinityMap, seenIngredientNames);
       }
 
-      // Fallback 2: any recipe with content for this meal type
+      // Fallback 2: last resort — any recipe with content for this meal type
       if (!chosen) {
         const fallback2 = await prisma.recipe.findFirst({
           where: { mealTypeId: mealType.id, isPublic: true, ...hasContentFilter },
-          select: { id: true },
+          select: recipeSelect,
         });
         if (fallback2) chosen = fallback2;
       }

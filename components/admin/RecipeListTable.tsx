@@ -5,16 +5,14 @@ import Link from "next/link";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import { RecipeDTO } from "@/types";
+import { getRecipeEmoji } from "@/lib/recipeEmoji";
 
 interface RecipeListTableProps {
   recipes: RecipeDTO[];
-  onDelete: (id: string) => void;
 }
 
-export default function RecipeListTable({
-  recipes,
-  onDelete,
-}: RecipeListTableProps) {
+export default function RecipeListTable({ recipes }: RecipeListTableProps) {
+  const [items, setItems] = useState<RecipeDTO[]>(recipes);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleDelete = async (id: string) => {
@@ -22,7 +20,7 @@ export default function RecipeListTable({
     setDeletingId(id);
     try {
       await fetch(`/api/admin/recipes/${id}`, { method: "DELETE" });
-      onDelete(id);
+      setItems((prev) => prev.filter((r) => r.id !== id));
     } finally {
       setDeletingId(null);
     }
@@ -41,11 +39,11 @@ export default function RecipeListTable({
           </tr>
         </thead>
         <tbody>
-          {recipes.map((recipe) => (
+          {items.map((recipe) => (
             <tr key={recipe.id} className="border-b border-[#E8E7EA] hover:bg-[#FAFAFA]">
               <td className="py-3 px-4">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">{recipe.emoji ?? "🍽"}</span>
+                  <span className="text-2xl">{recipe.emoji ?? getRecipeEmoji(recipe.name, recipe.tags)}</span>
                   <div>
                     <p className="font-medium text-navy">{recipe.name}</p>
                     {recipe.description && (
@@ -87,7 +85,7 @@ export default function RecipeListTable({
         </tbody>
       </table>
 
-      {recipes.length === 0 && (
+      {items.length === 0 && (
         <div className="text-center py-12 text-[#8A8D93]">No recipes found.</div>
       )}
     </div>

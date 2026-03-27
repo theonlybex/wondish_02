@@ -75,6 +75,8 @@ const features = [
   },
 ];
 
+const [featured, ...rest] = features;
+
 export default function Features() {
   return (
     <section className="bg-white py-24 px-5 sm:px-8">
@@ -89,14 +91,37 @@ export default function Features() {
             Nutrition that works for your life
           </h2>
           <p className="text-[#8A8D93] text-lg leading-relaxed">
-            Whether you're looking to lose weight, build muscle, or simply eat
+            Whether you&apos;re looking to lose weight, build muscle, or simply eat
             more mindfully — Wondish gives you the tools to succeed.
           </p>
         </div>
 
-        {/* Grid */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((f) => (
+        {/* Featured card */}
+        <div className="relative bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 rounded-2xl p-8 sm:p-10 mb-6 overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-64 h-64 rounded-full bg-primary/8 pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 rounded-full bg-primary/5 blur-[60px] pointer-events-none" />
+
+          <div className="relative max-w-2xl">
+            {featured.premium && (
+              <span className="inline-block text-[10px] font-semibold text-primary bg-primary/10 px-2.5 py-1 rounded-full mb-4">
+                Premium
+              </span>
+            )}
+            <div className="w-12 h-12 rounded-xl bg-primary/15 text-primary flex items-center justify-center mb-5">
+              {featured.icon}
+            </div>
+            <h3 className="text-[#25293C] font-bold text-2xl sm:text-3xl mb-3">
+              {featured.title}
+            </h3>
+            <p className="text-[#5A5E6C] text-base leading-relaxed max-w-lg">
+              {featured.description}
+            </p>
+          </div>
+        </div>
+
+        {/* Rest of features grid */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {rest.map((f) => (
             <div
               key={f.title}
               className="group relative bg-[#F8F7FA] hover:bg-white border border-[#E8E7EA] hover:border-primary/20 rounded-2xl p-6 transition-all duration-200 hover:shadow-lg hover:shadow-primary/5"
@@ -118,6 +143,7 @@ export default function Features() {
             </div>
           ))}
         </div>
+
       </div>
     </section>
   );

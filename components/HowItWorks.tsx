@@ -1,18 +1,21 @@
 const steps = [
   {
     number: "01",
+    emoji: "👤",
     title: "Create your profile",
     description:
       "Tell us about your health goals, dietary restrictions, allergies, and food preferences. Takes less than 3 minutes.",
   },
   {
     number: "02",
+    emoji: "🥗",
     title: "Get your meal plan",
     description:
       "Receive a personalized weekly plan with recipes tailored to your caloric needs and tastes — curated by nutritionists.",
   },
   {
     number: "03",
+    emoji: "📈",
     title: "Track your journey",
     description:
       "Log meals, mood, weight, and energy. Watch your health improve week over week with our analytics dashboard.",
@@ -40,17 +43,17 @@ export default function HowItWorks() {
             <div key={step.number} className="relative">
               {/* Connector line */}
               {i < steps.length - 1 && (
-                <div className="hidden sm:block absolute top-8 left-[calc(100%+1rem)] right-[-1rem] h-px bg-gradient-to-r from-primary/30 to-transparent" />
+                <div className="hidden sm:block absolute top-7 left-[calc(100%+1rem)] right-[-1rem] h-px bg-primary/25" />
               )}
 
-              <div className="mb-5">
-                <span className="text-5xl font-bold text-primary/15 font-mono">
-                  {step.number}
-                </span>
+              {/* Step number ring */}
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-12 h-12 rounded-full border-2 border-primary/30 bg-primary/10 flex items-center justify-center">
+                  <span className="text-primary font-bold text-sm">{step.number}</span>
+                </div>
+                <span className="text-2xl">{step.emoji}</span>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
-                <div className="w-3 h-3 rounded-full bg-primary" />
-              </div>
+
               <h3 className="text-[#25293C] font-semibold text-xl mb-3">
                 {step.title}
               </h3>
@@ -60,6 +63,7 @@ export default function HowItWorks() {
             </div>
           ))}
         </div>
+
       </div>
     </section>
   );
