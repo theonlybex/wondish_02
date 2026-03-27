@@ -17,6 +17,7 @@ prisma/migrations/
 # Build artifacts
 dist/
 build/
+tsconfig.tsbuildinfo
 
 # OS
 .DS_Store

@@ -21,7 +21,7 @@ export async function GET() {
     where: { accountId: account.id },
     include: {
       foodAllergies: { include: { food: { include: { bannedIngredients: true } } } },
-      foodToAvoid: { include: { food: { include: { bannedIngredients: true } } } },
+      foodToAvoid: { include: { food: true } },
       healthConditions: { include: { condition: { include: { bannedIngredients: true } } } },
       foodPreferences: { include: { food: { include: { bannedIngredients: true } } } },
     },
@@ -32,7 +32,7 @@ export async function GET() {
   const bannedNames = [
     ...new Set([
       ...patient.foodAllergies.flatMap((a) => [a.food.name, ...a.food.bannedIngredients.map((b) => b.name)]),
-      ...patient.foodToAvoid.flatMap((f) => [f.food.name, ...f.food.bannedIngredients.map((b) => b.name)]),
+      ...patient.foodToAvoid.map((f) => f.food.name),
       ...patient.healthConditions.flatMap((hc) => hc.condition.bannedIngredients.map((b) => b.name)),
       ...patient.foodPreferences.flatMap((fp) => fp.food.bannedIngredients.map((b) => b.name)),
     ]),
