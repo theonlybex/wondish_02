@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wondish – From Ingredients to Dish</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #f9f8f6;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 2rem;
+    }
+
+    .title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #4a3728;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      opacity: 0;
+      animation: fadeInDown 0.6s ease 0.2s forwards;
+    }
+
+    /* ── Stage ── */
+    .stage {
+      position: relative;
+      width: 420px;
+      height: 420px;
+    }
+
+    /* ── Plate ── */
+    .plate {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 260px;
+      height: 260px;
+    }
+
+    .plate-shadow {
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 240px;
+      height: 30px;
+      background: radial-gradient(ellipse, rgba(0,0,0,0.15) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+
+    .plate-outer {
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 32%, #ffffff 0%, #f0ede8 60%, #e0dbd3 100%);
+      box-shadow:
+        inset 0 2px 8px rgba(255,255,255,0.9),
+        inset 0 -4px 12px rgba(0,0,0,0.08),
+        0 8px 32px rgba(0,0,0,0.14);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .plate-rim {
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      border: 2px solid rgba(0,0,0,0.04);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .plate-well {
+      width: 170px;
+      height: 170px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 35%, #fefefe 0%, #f5f2ee 100%);
+      box-shadow: inset 0 3px 10px rgba(0,0,0,0.07);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ── Cooked dish fill (fades in) ── */
+    .dish-fill {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 55% 40%, #e8c06a 0%, #c47a2b 35%, #8b4513 65%, #5c2d0e 100%);
+      opacity: 0;
+      transform: scale(0.7);
+      transition: opacity 1.2s ease, transform 1.2s ease;
+    }
+
+    .dish-fill.visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* garnish spots */
+    .dish-fill::before {
+      content: '';
+      position: absolute;
+      top: 18%; left: 22%;
+      width: 28px; height: 22px;
+      background: #4a7c3f;
+      border-radius: 50% 60% 50% 60%;
+      box-shadow: 55px 10px 0 #4a7c3f, 28px 55px 0 #e84040, 70px 50px 0 #f5c842;
+      opacity: 0.9;
+    }
+
+    /* steam */
+    .steam {
+      position: absolute;
+      bottom: calc(30px + 260px - 10px);
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 14px;
+      opacity: 0;
+      transition: opacity 0.8s ease 0.5s;
+    }
+
+    .steam.visible { opacity: 1; }
+
+    .steam-line {
+      width: 6px;
+      height: 40px;
+      background: linear-gradient(to top, rgba(255,255,255,0.7), transparent);
+      border-radius: 3px;
+      animation: steamRise 2s ease-in-out infinite;
+    }
+    .steam-line:nth-child(2) { animation-delay: 0.4s; height: 54px; }
+    .steam-line:nth-child(3) { animation-delay: 0.8s; height: 34px; }
+
+    @keyframes steamRise {
+      0%   { transform: translateY(0) scaleX(1);   opacity: 0.7; }
+      50%  { transform: translateY(-14px) scaleX(1.3); opacity: 0.4; }
+      100% { transform: translateY(-28px) scaleX(0.8); opacity: 0; }
+    }
+
+    /* ── Ingredients ── */
+    .ingredients {
+      position: absolute;
+      inset: 0;
+    }
+
+    .ingredient {
+      position: absolute;
+      font-size: 2rem;
+      line-height: 1;
+      transition: transform 1.4s cubic-bezier(0.4, 0, 0.2, 1),
+                  opacity 1s ease;
+      will-change: transform, opacity;
+    }
+
+    /* starting positions — scattered above */
+    .i1  { top: 2%;   left: 10%; transform: rotate(-15deg); }
+    .i2  { top: 0%;   left: 40%; transform: rotate(8deg); }
+    .i3  { top: 5%;   left: 72%; transform: rotate(-22deg); }
+    .i4  { top: 18%;  left: 0%;  transform: rotate(30deg); }
+    .i5  { top: 18%;  left: 83%; transform: rotate(-10deg); }
+    .i6  { top: 35%;  left: 4%;  transform: rotate(18deg); }
+    .i7  { top: 32%;  left: 76%; transform: rotate(-30deg); }
+    .i8  { top: 50%;  left: 0%;  transform: rotate(12deg); }
+    .i9  { top: 50%;  left: 82%; transform: rotate(-8deg); }
+    .i10 { top: 64%;  left: 6%;  transform: rotate(-25deg); }
+    .i11 { top: 64%;  left: 78%; transform: rotate(20deg); }
+
+    /* converge to plate center */
+    .ingredients.cooking .ingredient {
+      transform: translate(0, 0) rotate(0deg) scale(0);
+      opacity: 0;
+    }
+
+    /* ── CTA button ── */
+    .btn-wrap {
+      opacity: 0;
+      animation: fadeInUp 0.6s ease 0.6s forwards;
+    }
+
+    button {
+      padding: 0.75rem 2.5rem;
+      border-radius: 999px;
+      border: none;
+      background: #7c5cbf;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      box-shadow: 0 4px 18px rgba(124, 92, 191, 0.4);
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    }
+
+    button:hover {
+      background: #6b4db0;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 22px rgba(124, 92, 191, 0.5);
+    }
+
+    button:active { transform: translateY(0); }
+
+    /* ingredient entry animation */
+    @keyframes popIn {
+      0%   { transform: scale(0) rotate(-20deg); opacity: 0; }
+      60%  { transform: scale(1.2) rotate(5deg);  opacity: 1; }
+      100% { transform: scale(1) rotate(var(--r, 0deg)); opacity: 1; }
+    }
+
+    .ingredient { animation: popIn 0.5s ease both; }
+    .i1  { animation-delay: 0.1s; --r: -15deg; }
+    .i2  { animation-delay: 0.15s; --r: 8deg; }
+    .i3  { animation-delay: 0.2s;  --r: -22deg; }
+    .i4  { animation-delay: 0.25s; --r: 30deg; }
+    .i5  { animation-delay: 0.3s;  --r: -10deg; }
+    .i6  { animation-delay: 0.35s; --r: 18deg; }
+    .i7  { animation-delay: 0.4s;  --r: -30deg; }
+    .i8  { animation-delay: 0.45s; --r: 12deg; }
+    .i9  { animation-delay: 0.5s;  --r: -8deg; }
+    .i10 { animation-delay: 0.55s; --r: -25deg; }
+    .i11 { animation-delay: 0.6s;  --r: 20deg; }
+
+    /* label */
+    .label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #9b8ea4;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      min-height: 1.2em;
+      transition: opacity 0.4s;
+      opacity: 0;
+      animation: fadeInUp 0.5s ease 1s forwards;
+    }
+
+    @keyframes fadeInDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+  <p class="title">Wondish — Your Meal, Crafted</p>
+
+  <div class="stage">
+    <!-- Ingredients -->
+    <div class="ingredients" id="ingredients">
+      <span class="ingredient i1">🥕</span>
+      <span class="ingredient i2">🧄</span>
+      <span class="ingredient i3">🫑</span>
+      <span class="ingredient i4">🍅</span>
+      <span class="ingredient i5">🧅</span>
+      <span class="ingredient i6">🌿</span>
+      <span class="ingredient i7">🫒</span>
+      <span class="ingredient i8">🫚</span>
+      <span class="ingredient i9">🧂</span>
+      <span class="ingredient i10">🥦</span>
+      <span class="ingredient i11">🌶️</span>
+    </div>
+
+    <!-- Steam -->
+    <div class="steam" id="steam">
+      <div class="steam-line"></div>
+      <div class="steam-line"></div>
+      <div class="steam-line"></div>
+    </div>
+
+    <!-- Plate -->
+    <div class="plate">
+      <div class="plate-shadow"></div>
+      <div class="plate-outer">
+        <div class="plate-rim">
+          <div class="plate-well">
+            <div class="dish-fill" id="dishFill"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="label" id="label">Fresh ingredients, ready to cook</p>
+
+  <div class="btn-wrap">
+    <button id="cookBtn" onclick="cook()">Cook It ✦</button>
+  </div>
+
+  <script>
+    let cooked = false;
+
+    function cook() {
+      if (cooked) return reset();
+      cooked = true;
+
+      const btn = document.getElementById('cookBtn');
+      const ingredients = document.getElementById('ingredients');
+      const dishFill = document.getElementById('dishFill');
+      const steam = document.getElementById('steam');
+      const label = document.getElementById('label');
+
+      btn.textContent = '⏳ Cooking…';
+      btn.disabled = true;
+
+      // Calculate center of plate relative to stage
+      // Plate: bottom 30px, left 50%, 260x260 → center ≈ (210, 340) in 420px stage
+      const stageRect = ingredients.getBoundingClientRect();
+      const plateCX = stageRect.width / 2;
+      const plateCY = stageRect.height - 30 - 130; // stage height - bottom offset - radius
+
+      // Move each ingredient toward plate center
+      const items = ingredients.querySelectorAll('.ingredient');
+      items.forEach((el) => {
+        const elRect = el.getBoundingClientRect();
+        const stageR = stageRect;
+        const elCX = elRect.left - stageR.left + elRect.width / 2;
+        const elCY = elRect.top  - stageR.top  + elRect.height / 2;
+        const dx = plateCX - elCX;
+        const dy = plateCY - elCY;
+
+        el.style.transition = 'transform 1.3s cubic-bezier(0.4,0,0.2,1), opacity 1s ease 0.6s';
+        el.style.transform = `translate(${dx}px, ${dy}px) scale(0) rotate(360deg)`;
+        el.style.opacity = '0';
+      });
+
+      // After ingredients converge — show dish
+      setTimeout(() => {
+        dishFill.classList.add('visible');
+        steam.classList.add('visible');
+        label.style.opacity = '0';
+        setTimeout(() => {
+          label.textContent = 'Your dish is ready 🍽️';
+          label.style.opacity = '1';
+          btn.textContent = 'Start Over ↺';
+          btn.disabled = false;
+        }, 600);
+      }, 1100);
+    }
+
+    function reset() {
+      cooked = false;
+      const btn = document.getElementById('cookBtn');
+      const ingredients = document.getElementById('ingredients');
+      const dishFill = document.getElementById('dishFill');
+      const steam = document.getElementById('steam');
+      const label = document.getElementById('label');
+
+      btn.disabled = true;
+      label.style.opacity = '0';
+      dishFill.classList.remove('visible');
+      steam.classList.remove('visible');
+
+      // Re-inject ingredients to replay animation
+      const wrap = ingredients.cloneNode(true);
+      ingredients.replaceWith(wrap);
+
+      setTimeout(() => {
+        label.textContent = 'Fresh ingredients, ready to cook';
+        label.style.opacity = '1';
+        btn.textContent = 'Cook It ✦';
+        btn.disabled = false;
+      }, 500);
+    }
+  </script>
+
+</body>
+</html>

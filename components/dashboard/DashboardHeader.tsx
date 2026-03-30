@@ -116,7 +116,14 @@ export default function DashboardHeader({
       {/* Right side */}
       <div className="flex items-center gap-3">
         <span className="text-[#8A8D93] text-sm hidden sm:block">{email}</span>
-        {plan === "PREMIUM" ? (
+        {plan === "ADMIN" ? (
+          <Link
+            href="/membership"
+            className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+          >
+            Admin ✦
+          </Link>
+        ) : plan === "PREMIUM" ? (
           <Link
             href="/membership"
             className="text-xs font-bold px-2.5 py-1 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"

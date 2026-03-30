@@ -31,10 +31,12 @@ export default function DishTinder() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Mark taste setup as seen so layout doesn't redirect back after completion
+  // Mark taste setup as seen in DB so layout doesn't redirect back after completion
   useEffect(() => {
     if (done || (!loading && dishes.length === 0)) {
-      document.cookie = "wondish_taste_seen=1; path=/; max-age=31536000; SameSite=Lax; Secure";
+      fetch("/api/taste/seen", { method: "POST" }).catch(() => {
+        fetch("/api/taste/seen", { method: "POST" });
+      });
     }
   }, [done, loading, dishes.length]);
 
