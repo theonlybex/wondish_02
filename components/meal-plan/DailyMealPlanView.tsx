@@ -22,6 +22,60 @@ function parseLocalDate(dateStr: string): Date {
   return new Date(y, m - 1, d);
 }
 
+// ── Calories meter ────────────────────────────────────────────────────────────
+function CaloriesMeter({
+  totalCalories,
+  completedCalories,
+  completedCount,
+  totalCount,
+}: {
+  totalCalories: number;
+  completedCalories: number;
+  completedCount: number;
+  totalCount: number;
+}) {
+  const pct = totalCalories > 0 ? Math.min(100, Math.round((completedCalories / totalCalories) * 100)) : 0;
+  const isComplete = completedCount === totalCount && totalCount > 0;
+  const fillColor = isComplete ? "#34d399" : "#7367F0";
+
+  return (
+    <div className="w-16 shrink-0 flex flex-col items-center gap-2 sticky top-6 pt-1">
+      <p className="text-[9px] font-bold text-[#8A8D93] uppercase tracking-widest text-center leading-tight">
+        Daily<br />Calories
+      </p>
+
+      {/* Vertical bar */}
+      <div className="relative w-7 h-56 bg-[#F0EFF4] rounded-full overflow-hidden">
+        <div
+          className="absolute bottom-0 left-0 right-0 rounded-full transition-all duration-700"
+          style={{
+            height: `${pct}%`,
+            background: `linear-gradient(to top, ${fillColor}, ${fillColor}99)`,
+          }}
+        />
+        {[25, 50, 75].map((tick) => (
+          <div
+            key={tick}
+            className="absolute left-0 right-0 h-px bg-white/60"
+            style={{ bottom: `${tick}%` }}
+          />
+        ))}
+      </div>
+
+      <div className="text-center">
+        <p className={`font-bold text-sm ${isComplete ? "text-emerald-500" : "text-navy"}`}>
+          {pct}%
+        </p>
+        <p className="text-[10px] text-[#8A8D93] mt-0.5">{Math.round(completedCalories)}</p>
+        <p className="text-[10px] text-[#8A8D93]">/ {Math.round(totalCalories)}</p>
+        <p className="text-[10px] text-[#8A8D93]">kcal</p>
+      </div>
+
+      {isComplete && <span className="text-xl">🎯</span>}
+    </div>
+  );
+}
+
 // ── Expanded recipe panel ────────────────────────────────────────────────────
 function ExpandedRecipe({
   menu,
@@ -40,7 +94,6 @@ function ExpandedRecipe({
 }) {
   const r = menu.recipe;
 
-  // Parse cooking steps from description (stored as numbered instructions)
   const steps: string[] = r.description
     ? r.description
         .split(/\n/)
@@ -71,6 +124,11 @@ function ExpandedRecipe({
               {r.ethnic.name}
             </span>
           )}
+          {r.dishType?.name && (
+            <span className="text-[10px] font-semibold bg-[#F0EFF4] text-[#8A8D93] px-2 py-0.5 rounded-full">
+              {r.dishType.name}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-4 mt-2">
@@ -83,7 +141,6 @@ function ExpandedRecipe({
           </div>
         </div>
 
-        {/* time row */}
         <div className="flex gap-3 mt-5">
           {[
             { label: "Prep", value: (r.prepTime ?? 0) > 0 ? `${r.prepTime} min` : "—" },
@@ -110,8 +167,6 @@ function ExpandedRecipe({
 
       {/* ── Body ── */}
       <div className="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-6">
-
-        {/* Nutrition */}
         <section>
           <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-widest mb-3">Nutrition</p>
           <div className="grid grid-cols-4 gap-3">
@@ -136,7 +191,6 @@ function ExpandedRecipe({
 
         <div className="h-px bg-[#E8E7EA]" />
 
-        {/* Ingredients */}
         <section>
           <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-widest mb-3">Ingredients</p>
           {r.ingredients?.length > 0 ? (
@@ -162,7 +216,6 @@ function ExpandedRecipe({
 
         <div className="h-px bg-[#E8E7EA]" />
 
-        {/* Cooking steps */}
         <section>
           <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-widest mb-3">Cooking Steps</p>
           {steps.length > 0 ? (
@@ -184,7 +237,6 @@ function ExpandedRecipe({
           )}
         </section>
 
-        {/* Tags */}
         {r.tags?.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {r.tags.map((tag) => (
@@ -195,7 +247,6 @@ function ExpandedRecipe({
           </div>
         )}
 
-        {/* Rate buttons */}
         <div className="pt-2 pb-1">
           <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-widest mb-2 text-center">
             {isCompleted ? "You rated this meal" : "How was this meal?"}
@@ -251,7 +302,6 @@ export default function DailyMealPlanView({
   const [startDate, setStartDate] = useState(mealPlanStartDate ? new Date(mealPlanStartDate) : null);
   const [settingStart, setSettingStart] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
   const [regenerating, setRegenerating] = useState(false);
 
   const handleRegenerate = async () => {
@@ -347,11 +397,27 @@ export default function DailyMealPlanView({
   };
 
   const selectedMenu = selectedId ? menus.find((m) => m.id === selectedId) ?? null : null;
-  const sideMenus = selectedMenu ? menus.filter((m) => m.id !== selectedId) : [];
+  const otherMenus = selectedMenu ? menus.filter((m) => m.id !== selectedId) : [];
 
   const loggedSet = new Set(loggedRecipeIds);
   const isAllDone = menus.length > 0 && menus.every((m) => loggedSet.has(m.recipe.id));
   const completedCount = menus.filter((m) => loggedSet.has(m.recipe.id)).length;
+
+  // Split menus into main dishes and side dishes
+  const mainDishMenus = menus.filter((m) => {
+    const dt = m.recipe.dishType?.name?.toLowerCase() ?? "";
+    return dt !== "side";
+  });
+  const sideDishMenus = menus.filter((m) => {
+    const dt = m.recipe.dishType?.name?.toLowerCase() ?? "";
+    return dt === "side";
+  });
+
+  // Calories tracking
+  const totalCalories = menus.reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
+  const completedCalories = menus
+    .filter((m) => loggedSet.has(m.recipe.id))
+    .reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
 
   return (
     <div>
@@ -410,7 +476,7 @@ export default function DailyMealPlanView({
         </div>
       )}
 
-      {/* Cards */}
+      {/* Cards + Calories Meter */}
       {loading ? (
         <div className="text-center py-12 text-[#8A8D93]">Loading…</div>
       ) : menus.length === 0 ? (
@@ -421,68 +487,106 @@ export default function DailyMealPlanView({
           )}
         </div>
       ) : (
-        <AnimatePresence initial={false}>
-          {selectedMenu ? (
-            /* ── Expanded layout ── */
-            <motion.div
-              key="expanded"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="flex gap-4 items-start"
-            >
-              {/* Big card - centre */}
-              <div className="flex-1 min-w-0">
-                <ExpandedRecipe
-                  menu={selectedMenu}
-                  onClose={() => setSelectedId(null)}
-                  onSwap={(menuId, mealTypeId, recipeId) => setSwapModal({ menuId, mealTypeId, recipeId })}
-                  isCompleted={loggedSet.has(selectedMenu.recipe.id)}
-                  rating={mealRatings[selectedMenu.recipe.id] ?? null}
-                  onRate={handleRate}
-                />
-              </div>
+        <div className="flex gap-5 items-start">
+          {/* Dishes area */}
+          <div className="flex-1 min-w-0">
+            <AnimatePresence initial={false}>
+              {selectedMenu ? (
+                /* ── Expanded layout ── */
+                <motion.div
+                  key="expanded"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex gap-4 items-start"
+                >
+                  {/* Big card */}
+                  <div className="flex-1 min-w-0">
+                    <ExpandedRecipe
+                      menu={selectedMenu}
+                      onClose={() => setSelectedId(null)}
+                      onSwap={(menuId, mealTypeId, recipeId) => setSwapModal({ menuId, mealTypeId, recipeId })}
+                      isCompleted={loggedSet.has(selectedMenu.recipe.id)}
+                      rating={mealRatings[selectedMenu.recipe.id] ?? null}
+                      onRate={handleRate}
+                    />
+                  </div>
 
-              {/* Sidebar - other meals */}
-              <div className="w-52 shrink-0 flex flex-col gap-2.5">
-                <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-widest px-1 mb-1">Other meals</p>
-                {sideMenus.map((m) => (
-                  <MealCard
-                    key={m.id}
-                    menuId={m.id}
-                    recipe={m.recipe}
-                    mealTypeName={m.mealType?.name}
-                    compact
-                    isCompleted={loggedSet.has(m.recipe.id)}
-                    onSelect={() => setSelectedId(m.id)}
-                  />
-                ))}
-              </div>
-            </motion.div>
-          ) : (
-            /* ── Grid layout ── */
-            <motion.div
-              key="grid"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="grid sm:grid-cols-2 gap-4"
-            >
-              {menus.map((menu) => (
-                <MealCard
-                  key={menu.id}
-                  menuId={menu.id}
-                  recipe={menu.recipe}
-                  mealTypeName={menu.mealType?.name}
-                  isCompleted={loggedSet.has(menu.recipe.id)}
-                  onSelect={() => setSelectedId(menu.id)}
-                />
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
+                  {/* Other meals sidebar */}
+                  <div className="w-48 shrink-0 flex flex-col gap-2.5">
+                    <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-widest px-1 mb-1">Other meals</p>
+                    {otherMenus.map((m) => (
+                      <MealCard
+                        key={m.id}
+                        menuId={m.id}
+                        recipe={m.recipe}
+                        mealTypeName={m.mealType?.name}
+                        compact
+                        isCompleted={loggedSet.has(m.recipe.id)}
+                        onSelect={() => setSelectedId(m.id)}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              ) : (
+                /* ── Grid layout ── */
+                <motion.div
+                  key="grid"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {/* Main dishes */}
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    {mainDishMenus.map((menu) => (
+                      <MealCard
+                        key={menu.id}
+                        menuId={menu.id}
+                        recipe={menu.recipe}
+                        mealTypeName={menu.mealType?.name}
+                        isCompleted={loggedSet.has(menu.recipe.id)}
+                        onSelect={() => setSelectedId(menu.id)}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Side dishes section */}
+                  {sideDishMenus.length > 0 && (
+                    <div className="mt-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="h-px flex-1 bg-[#E8E7EA]" />
+                        <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-widest">Side Dishes</p>
+                        <div className="h-px flex-1 bg-[#E8E7EA]" />
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        {sideDishMenus.map((menu) => (
+                          <MealCard
+                            key={menu.id}
+                            menuId={menu.id}
+                            recipe={menu.recipe}
+                            mealTypeName={menu.mealType?.name}
+                            isCompleted={loggedSet.has(menu.recipe.id)}
+                            onSelect={() => setSelectedId(menu.id)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Calories meter */}
+          <CaloriesMeter
+            totalCalories={totalCalories}
+            completedCalories={completedCalories}
+            completedCount={completedCount}
+            totalCount={menus.length}
+          />
+        </div>
       )}
 
       {swapModal && (

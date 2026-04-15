@@ -84,6 +84,18 @@ export async function PATCH(req: NextRequest) {
     motivationIds, healthConditionIds, foodPreferenceIds, foodToAvoidIds, foodAllergyIds,
   } = body;
 
+  // Snapshot existing patient state before update — used to detect meal-plan-affecting changes
+  const existing = await prisma.patient.findUnique({
+    where: { accountId: account.id },
+    include: {
+      motivations:      { select: { motivationId: true } },
+      foodAllergies:    { select: { foodId: true } },
+      foodToAvoid:      { select: { foodId: true } },
+      foodPreferences:  { select: { foodId: true } },
+      healthConditions: { select: { conditionId: true } },
+    },
+  });
+
   let bmi: number | null = null;
   if (height && weight) {
     const heightInM = heightUnit === "in" ? height * 0.0254 : height / 100;
@@ -151,17 +163,39 @@ export async function PATCH(req: NextRequest) {
       : []),
   ]);
 
-  // Auto-generate meal plan on first profile save (non-blocking)
+  // Detect whether any meal-plan-affecting fields changed
+  const sorted = (arr: string[]) => JSON.stringify([...arr].sort());
+  const mealPlanFieldsChanged = existing != null && (
+    existing.weeklyGoal        !== (weeklyGoal        ? parseFloat(weeklyGoal)        : null) ||
+    existing.physicalActivityId !== (physicalActivityId || null) ||
+    existing.weight             !== (weight            ? parseFloat(weight)            : null) ||
+    existing.genderId           !== (genderId          || null) ||
+    sorted(existing.motivations.map((m) => m.motivationId))      !== sorted(motivationIds      ?? []) ||
+    sorted(existing.foodAllergies.map((f) => f.foodId))           !== sorted(foodAllergyIds     ?? []) ||
+    sorted(existing.foodToAvoid.map((f) => f.foodId))             !== sorted(foodToAvoidIds     ?? []) ||
+    sorted(existing.foodPreferences.map((f) => f.foodId))         !== sorted(foodPreferenceIds  ?? []) ||
+    sorted(existing.healthConditions.map((c) => c.conditionId))   !== sorted(healthConditionIds ?? [])
+  );
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const weekEnd = addDays(today, 6);
+  weekEnd.setHours(23, 59, 59, 999);
+
   if (!patient.mealPlanStartDate) {
+    // First save: generate initial meal plan
     try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const endDate = addDays(today, 6);
-      endDate.setHours(23, 59, 59, 999);
       await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
-      await generateMealPlan(patient.id, today, endDate);
+      await generateMealPlan(patient.id, today, weekEnd);
     } catch (e) {
       console.error("[profile] meal plan generation failed:", e);
+    }
+  } else if (mealPlanFieldsChanged) {
+    // Profile changed: regenerate current week to reflect new goals/motivations
+    try {
+      await generateMealPlan(patient.id, today, weekEnd);
+    } catch (e) {
+      console.error("[profile] meal plan regeneration failed:", e);
     }
   }
 

@@ -30,6 +30,7 @@ export default async function MealPlanPage() {
             recipe: {
               include: {
                 mealType: true,
+                dishType: true,
                 ingredients: { include: { ingredient: true } },
               },
             },
@@ -57,7 +58,7 @@ export default async function MealPlanPage() {
   const totalFat = menus.reduce((sum, m) => sum + (m.recipe.fat ?? 0), 0);
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-navy">Meal Plan</h1>
