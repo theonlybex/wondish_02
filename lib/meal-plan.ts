@@ -9,6 +9,12 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
+// Gradual weekly deficits (kcal/day) — ported from legacy system
+// Gentle ramp: weeklyGoal ≤ 0.5 kg/week (300 cal deficit weeks 1-3, 400 weeks 4-5)
+const DEFICIT_GENTLE = [300, 300, 300, 400, 400] as const;
+// Steady:      weeklyGoal > 0.5 kg/week (500 cal deficit throughout)
+const DEFICIT_STRICT = [500, 500, 500, 500, 500] as const;
+
 function calcBMR(weightKg: number, heightCm: number, ageYears: number, isMale: boolean): number {
   return 10 * weightKg + 6.25 * heightCm - 5 * ageYears + (isMale ? 5 : -161);
 }
@@ -24,6 +30,12 @@ function calcEER(bmr: number, activityLevel: number): number {
   return bmr * (multipliers[activityLevel] ?? 1.2);
 }
 
+// For weight loss: returns the kcal/day deficit for the current week of the plan
+function calcGradualDeficit(weeklyGoal: number, weekIndex: number): number {
+  const idx = Math.min(weekIndex, 4);
+  return (weeklyGoal <= 0.5 ? DEFICIT_GENTLE : DEFICIT_STRICT)[idx];
+}
+
 function adjustForGoal(eer: number, weeklyGoal: number): number {
   return eer - (weeklyGoal * 1000) / 7;
 }
@@ -37,10 +49,34 @@ function mealCaloriesMap(daily: number): Record<string, number> {
   };
 }
 
+// Standard macro ratios per motivation (protein%, carbs%, fat%)
+const MACRO_RATIOS: Record<string, { protein: number; carbs: number; fat: number }> = {
+  "Lose weight":    { protein: 0.30, carbs: 0.40, fat: 0.30 },
+  "Build muscle":   { protein: 0.40, carbs: 0.40, fat: 0.20 },
+  "Improve energy": { protein: 0.20, carbs: 0.55, fat: 0.25 },
+  "Eat healthier":  { protein: 0.25, carbs: 0.50, fat: 0.25 },
+};
+const DEFAULT_MACRO_RATIO = { protein: 0.25, carbs: 0.50, fat: 0.25 };
+
+// Blend ratios when user has multiple motivations
+function calcMacroRatio(motivationNames: string[]): { protein: number; carbs: number; fat: number } {
+  const active = motivationNames.filter((m) => MACRO_RATIOS[m]);
+  if (active.length === 0) return DEFAULT_MACRO_RATIO;
+  const sum = active.reduce(
+    (acc, m) => {
+      const r = MACRO_RATIOS[m];
+      return { protein: acc.protein + r.protein, carbs: acc.carbs + r.carbs, fat: acc.fat + r.fat };
+    },
+    { protein: 0, carbs: 0, fat: 0 }
+  );
+  return { protein: sum.protein / active.length, carbs: sum.carbs / active.length, fat: sum.fat / active.length };
+}
+
 type RecipeCandidate = {
   id: string;
   protein: number | null;
   calories: number | null;
+  carbs: number | null;
   fiber: number | null;
   fat: number | null;
   ingredients: { ingredient: { name: string } }[];
@@ -200,6 +236,7 @@ export async function generateMealPlan(
 
   // Calculate daily calorie targets if we have enough data
   let caloriePlan: Record<string, number> | null = null;
+  let dailyCals = 0;
   if (patient?.weight && patient?.height && patient?.birthday && patient?.physicalActivity?.level) {
     const weightKg = patient.weightUnit === "lbs" ? patient.weight * 0.453592 : patient.weight;
     const heightCm = patient.heightUnit === "in" ? patient.height * 2.54 : patient.height;
@@ -209,8 +246,35 @@ export async function generateMealPlan(
     const isMale = genderName.includes("male") && !genderName.includes("female");
     const bmr = calcBMR(weightKg, heightCm, Math.floor(ageYears), isMale);
     const eer = calcEER(bmr, patient.physicalActivity.level);
-    const daily = patient.weeklyGoal != null ? adjustForGoal(eer, patient.weeklyGoal) : eer;
-    caloriePlan = mealCaloriesMap(Math.max(daily, 1200));
+
+    let daily: number;
+    const weeklyGoal = patient.weeklyGoal ?? 0;
+    if (weeklyGoal > 0) {
+      // Weight loss: apply gradual deficit that ramps up week by week
+      const planStart = patient.mealPlanStartDate ?? startDate;
+      const weekIndex = Math.floor(
+        (startDate.getTime() - planStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
+      );
+      daily = eer - calcGradualDeficit(weeklyGoal, weekIndex);
+    } else {
+      // Maintain or gain: use flat adjustment
+      daily = weeklyGoal !== 0 ? adjustForGoal(eer, weeklyGoal) : eer;
+    }
+
+    const dailyFloor = Math.max(daily, 1200);
+    dailyCals = dailyFloor;
+    caloriePlan = mealCaloriesMap(dailyFloor);
+  }
+
+  // Daily macro targets in grams based on motivations (protein: 4cal/g, carbs: 4cal/g, fat: 9cal/g)
+  let dailyMacros: { proteinG: number; carbsG: number; fatG: number } | null = null;
+  if (dailyCals > 0 && motivationNames.length > 0) {
+    const ratio = calcMacroRatio(motivationNames);
+    dailyMacros = {
+      proteinG: (ratio.protein * dailyCals) / 4,
+      carbsG:   (ratio.carbs   * dailyCals) / 4,
+      fatG:     (ratio.fat     * dailyCals) / 9,
+    };
   }
 
   const mealTypes = await prisma.mealType.findMany();
@@ -244,25 +308,37 @@ export async function generateMealPlan(
 
   // Fields for scoring — includes ingredients for affinity + novelty scoring
   const recipeSelect = {
-    id: true, protein: true, calories: true, fiber: true, fat: true,
+    id: true, protein: true, calories: true, carbs: true, fiber: true, fat: true,
     ingredients: { select: { ingredient: { select: { name: true } } } },
   };
 
+  // Find snack meal type for calorie top-up dishes
+  const snackMealType = mealTypes.find((mt) => mt.name.toLowerCase() === "snack") ?? mealTypes[mealTypes.length - 1];
+
   const current = new Date(startDate);
   while (current <= endDate) {
+    let dayCalories = 0;
+
     for (const mealType of mealTypes) {
-      const target = caloriePlan ? (caloriePlan[mealType.name.toLowerCase()] ?? null) : null;
+      const mealNameLower = mealType.name.toLowerCase();
+      const target = caloriePlan ? (caloriePlan[mealNameLower] ?? null) : null;
+
+      // Reserve 25% of meal calories for a side dish on lunch and dinner
+      const needsSide = dailyMacros !== null && target !== null &&
+        (mealNameLower === "lunch" || mealNameLower === "dinner");
+      const mainTarget = needsSide ? target * 0.75 : target;
+
       const usedFilter = usedIds.size > 0 ? { id: { notIn: Array.from(usedIds) } } : {};
 
       let chosen: RecipeCandidate | undefined;
 
-      if (target !== null) {
+      if (mainTarget !== null) {
         // Primary: calorie-targeted, banned-safe, motivation-scored
         const candidates = await prisma.recipe.findMany({
           where: {
             mealTypeId: mealType.id,
             isPublic: true,
-            calories: { gte: target - 250, lte: target + 250 },
+            calories: { gte: mainTarget - 250, lte: mainTarget + 250 },
             ...hasContentFilter,
             ...usedFilter,
             ...bannedFilter,
@@ -311,6 +387,7 @@ export async function generateMealPlan(
 
       if (!chosen) continue;
 
+      dayCalories += chosen.calories ?? 0;
       usedIds.add(chosen.id);
       menus.push({
         patientId,
@@ -318,6 +395,87 @@ export async function generateMealPlan(
         mealTypeId: mealType.id,
         date: new Date(current),
       });
+
+      // Side dish for lunch/dinner: pick a "Side Dish" recipe that fills the macro gap
+      if (needsSide && dailyMacros) {
+        const mealShare = target! / dailyCals;
+        const mealProteinTarget = dailyMacros.proteinG * mealShare;
+        const mealCarbsTarget   = dailyMacros.carbsG   * mealShare;
+        const mealFatTarget     = dailyMacros.fatG      * mealShare;
+
+        const proteinGap = Math.max(0, mealProteinTarget - (chosen.protein ?? 0));
+        const carbsGap   = Math.max(0, mealCarbsTarget   - (chosen.carbs   ?? 0));
+        const fatGap     = Math.max(0, mealFatTarget     - (chosen.fat     ?? 0));
+
+        const sideCalBudget = target! * 0.25;
+        const sideUsedFilter = usedIds.size > 0 ? { id: { notIn: Array.from(usedIds) } } : {};
+
+        const sideCandidates = await prisma.recipe.findMany({
+          where: {
+            isPublic: true,
+            dishType: { name: "Side Dish" },
+            calories: { gte: sideCalBudget * 0.5, lte: sideCalBudget * 1.5 },
+            ...hasContentFilter,
+            ...sideUsedFilter,
+            ...bannedFilter,
+          },
+          select: recipeSelect,
+        });
+
+        if (sideCandidates.length > 0) {
+          // Score side dishes by how well they fill the macro gap
+          const scoredSides = sideCandidates.map((r) => ({
+            ...r,
+            score: -(
+              Math.abs((r.protein ?? 0) - proteinGap) +
+              Math.abs((r.carbs   ?? 0) - carbsGap)   +
+              Math.abs((r.fat     ?? 0) - fatGap)
+            ),
+          }));
+          scoredSides.sort((a, b) => b.score - a.score);
+          const side = shuffleArray(scoredSides.slice(0, 3))[0];
+          dayCalories += side.calories ?? 0;
+          usedIds.add(side.id);
+          menus.push({ patientId, recipeId: side.id, mealTypeId: mealType.id, date: new Date(current) });
+        }
+      }
+    }
+
+    // Top-up: if daily calorie target is set and current total is below 90% of it,
+    // keep adding extra snack-type dishes until the target is satisfied (max 4 extras).
+    if (snackMealType && dailyCals > 0 && dayCalories < dailyCals * 0.9) {
+      let extraCount = 0;
+      const MAX_EXTRA = 4;
+
+      while (dayCalories < dailyCals * 0.9 && extraCount < MAX_EXTRA) {
+        const calGap = dailyCals - dayCalories;
+        const extraUsedFilter = usedIds.size > 0 ? { id: { notIn: Array.from(usedIds) } } : {};
+
+        // Look for any public recipe whose calories fit within the remaining gap
+        const extraCandidates = await prisma.recipe.findMany({
+          where: {
+            isPublic: true,
+            calories: { gte: Math.round(calGap * 0.25), lte: Math.round(calGap) },
+            ...hasContentFilter,
+            ...extraUsedFilter,
+            ...bannedFilter,
+          },
+          select: recipeSelect,
+        });
+
+        if (extraCandidates.length === 0) break;
+
+        const extra = pickByMotivation(extraCandidates, motivationNames, affinityMap, seenIngredientNames);
+        dayCalories += extra.calories ?? 0;
+        extraCount++;
+        usedIds.add(extra.id);
+        menus.push({
+          patientId,
+          recipeId: extra.id,
+          mealTypeId: snackMealType.id,
+          date: new Date(current),
+        });
+      }
     }
 
     current.setDate(current.getDate() + 1);
