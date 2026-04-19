@@ -87,7 +87,7 @@ export default function PredictionView({ data, isPremium }: { data: PredictionDa
             </div>
             <div className="flex-1 text-center sm:text-left">
               <p className="text-navy font-bold text-base mb-0.5">
-                Start your <span className="text-primary">14-day free trial</span>
+                Upgrade to <span className="text-primary">Premium</span>
               </p>
               <p className="text-[#8A8D93] text-sm">
                 Unlock your full meal plan, grocery list, weekly schedule, and more. Cancel anytime.
@@ -97,7 +97,7 @@ export default function PredictionView({ data, isPremium }: { data: PredictionDa
               href="/pricing"
               className="flex-shrink-0 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-sm font-semibold shadow-lg shadow-primary/25 transition-colors whitespace-nowrap"
             >
-              Start Free Trial
+              Get Premium
             </Link>
           </div>
         )}
@@ -169,7 +169,7 @@ export default function PredictionView({ data, isPremium }: { data: PredictionDa
         Estimate only. Results vary with adherence, metabolism, and other individual factors.
       </p>
 
-      {/* 14-day free trial banner */}
+      {/* Premium upsell banner */}
       {!isPremium && (
         <div className="mb-6 rounded-2xl overflow-hidden border border-primary/30 bg-gradient-to-br from-primary/10 to-primary/5">
           <div className="px-6 py-5 sm:px-8 flex flex-col sm:flex-row items-center gap-5">
@@ -180,7 +180,7 @@ export default function PredictionView({ data, isPremium }: { data: PredictionDa
             </div>
             <div className="flex-1 text-center sm:text-left">
               <p className="text-navy font-bold text-base mb-0.5">
-                Start your <span className="text-primary">14-day free trial</span>
+                Upgrade to <span className="text-primary">Premium</span>
               </p>
               <p className="text-[#8A8D93] text-sm">
                 Unlock your full meal plan, grocery list, and weekly schedule — everything you need to hit that {days}-day goal.
@@ -190,14 +190,14 @@ export default function PredictionView({ data, isPremium }: { data: PredictionDa
               href="/pricing"
               className="flex-shrink-0 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-sm font-semibold shadow-lg shadow-primary/25 transition-colors whitespace-nowrap"
             >
-              Start Free Trial
+              Get Premium
             </Link>
           </div>
           <div className="bg-primary/10 px-6 sm:px-8 py-2.5 flex items-center gap-2 border-t border-primary/20">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary flex-shrink-0">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
-            <p className="text-[#8A8D93] text-xs">Cancel anytime · Full access for 14 days</p>
+            <p className="text-[#8A8D93] text-xs">Cancel anytime · Secure billing via Stripe</p>
           </div>
         </div>
       )}

@@ -57,7 +57,7 @@ export default function CTASection() {
             href="/register"
             className="inline-flex items-center justify-center gap-2 bg-[#4ade80] hover:bg-[#22c55e] text-[#0d1a10] px-8 py-4 rounded-xl font-semibold text-base transition-colors shadow-xl shadow-[#4ade80]/25"
           >
-            Start free trial
+            Get started free
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>

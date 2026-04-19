@@ -91,12 +91,6 @@ export default function PricingSection({ isLoggedIn = false }: { isLoggedIn?: bo
           <div className="relative bg-navy rounded-2xl p-8 flex flex-col overflow-hidden">
             <div className="absolute top-0 right-0 w-48 h-48 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
 
-            <div className="absolute top-5 right-5">
-              <span className="bg-primary/20 text-primary text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide">
-                14-day free trial
-              </span>
-            </div>
-
             <div className="mb-6 relative">
               <h3 className="text-white font-bold text-xl mb-1">Premium</h3>
               <p className="text-white/50 text-sm">The full Wondish experience.</p>
@@ -106,7 +100,7 @@ export default function PricingSection({ isLoggedIn = false }: { isLoggedIn?: bo
               <span className="text-4xl font-bold text-white">$15</span>
               <span className="text-white/40 text-sm ml-2">/ month</span>
               <p className="text-white/40 text-xs mt-1">
-                Free for the first 14 days. Cancel anytime.
+                Cancel anytime.
               </p>
             </div>
 
@@ -120,7 +114,7 @@ export default function PricingSection({ isLoggedIn = false }: { isLoggedIn?: bo
             </ul>
 
             <CheckoutButton className="relative w-full text-center py-3 rounded-xl font-semibold text-sm bg-primary hover:bg-primary-dark disabled:opacity-60 disabled:cursor-not-allowed text-white transition-all duration-150 shadow-xl shadow-primary/30">
-              Start free trial
+              Get Premium
             </CheckoutButton>
           </div>
         </div>

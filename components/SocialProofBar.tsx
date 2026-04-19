@@ -49,7 +49,7 @@ export default function SocialProofBar() {
         <div className="flex items-center gap-5 text-sm text-white/40">
           <span><span className="text-white/70 font-medium">500+</span> recipes</span>
           <span>·</span>
-          <span><span className="text-white/70 font-medium">14-day</span> free trial</span>
+          <span><span className="text-white/70 font-medium">Free</span> tier available</span>
         </div>
 
       </div>

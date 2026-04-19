@@ -8,17 +8,13 @@ import PricingSection from "@/components/PricingSection";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Simple, transparent pricing. Start free, upgrade to Premium for $15/month with a 14-day free trial.",
+    "Simple, transparent pricing. Start free, upgrade to Premium for $15/month.",
 };
 
 const faqs = [
   {
     q: "Do I need a credit card to start?",
     a: "No. The Free plan requires no payment information. You only need a card when upgrading to Premium.",
-  },
-  {
-    q: "How does the 14-day free trial work?",
-    a: "When you choose the Premium plan, you get full access for 14 days at no charge. Your card is only charged after the trial ends. Cancel anytime before then.",
   },
   {
     q: "Can I cancel my Premium subscription?",
@@ -63,7 +59,7 @@ export default async function PricingPage({
     <div className="min-h-screen pt-16">
       {showUpgradeBanner && (
         <div className="bg-primary text-white text-center py-3 px-5 text-sm font-medium">
-          A Premium subscription is required to access the dashboard. Start your 14-day free trial below.
+          A Premium subscription is required to access the dashboard. Upgrade below to get full access.
         </div>
       )}
       <PricingSection isLoggedIn={isLoggedIn} />

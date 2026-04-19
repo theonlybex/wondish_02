@@ -1,10 +1,13 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireAdmin, adminErrorResponse } from "@/lib/admin";
 
 export async function GET() {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    await requireAdmin();
+  } catch (err) {
+    return adminErrorResponse(err);
+  }
 
   const orders = await prisma.order.findMany({
     include: {
@@ -23,8 +26,11 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    await requireAdmin();
+  } catch (err) {
+    return adminErrorResponse(err);
+  }
 
   const { orderId, status } = await req.json();
 

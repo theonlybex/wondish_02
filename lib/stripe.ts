@@ -6,8 +6,6 @@ function getStripe() {
   return new Stripe(key, { apiVersion: "2024-04-10", typescript: true });
 }
 
-export const TRIAL_PERIOD_DAYS = 14;
-
 /** Resolve a price by lookup_key (set in Stripe dashboard) */
 export async function getPriceByLookupKey(lookupKey: string): Promise<string> {
   const prices = await getStripe().prices.list({ lookup_keys: [lookupKey], limit: 1 });
@@ -40,7 +38,6 @@ export async function createCheckoutSession({
     mode: "subscription",
     line_items: [{ price: priceId, quantity: 1 }],
     subscription_data: {
-      trial_period_days: TRIAL_PERIOD_DAYS,
       metadata: { accountId },
     },
     allow_promotion_codes: true,

@@ -123,7 +123,7 @@ export default function Hero() {
               {[
                 { value: "500+", label: "Recipes" },
                 { value: "10k+", label: "Members" },
-                { value: "14 days", label: "Free trial" },
+                { value: "$15", label: "Per month" },
               ].map(({ value, label }) => (
                 <div key={label} className="text-center">
                   <p className="text-xl font-bold text-white">{value}</p>
@@ -136,7 +136,7 @@ export default function Hero() {
                 href="/register"
                 className="inline-flex items-center gap-2 bg-[#4ade80] hover:bg-[#22c55e] text-[#0d1a10] px-7 py-3.5 rounded-xl font-semibold text-sm transition-colors duration-150 shadow-lg shadow-[#4ade80]/20"
               >
-                Start free trial
+                Get started free
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                   <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>

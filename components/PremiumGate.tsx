@@ -14,7 +14,7 @@ export default function PremiumGate() {
         {/* Heading */}
         <h2 className="text-2xl font-bold text-navy mb-3">Premium Feature</h2>
         <p className="text-[#8A8D93] text-sm leading-relaxed mb-8">
-          This feature is available on the Premium plan. Start your 14-day free trial — no charge until the trial ends.
+          This feature is available on the Premium plan. Upgrade to unlock the full Wondish experience.
         </p>
 
         {/* Features list */}
@@ -42,9 +42,9 @@ export default function PremiumGate() {
           href="/pricing"
           className="inline-flex items-center justify-center w-full px-6 py-3 rounded-xl bg-primary text-white font-semibold text-sm hover:bg-primary/90 transition-colors"
         >
-          Start free trial — $15/mo after 14 days
+          Upgrade to Premium — $15/mo
         </Link>
-        <p className="text-xs text-[#8A8D93] mt-3">Cancel anytime before the trial ends.</p>
+        <p className="text-xs text-[#8A8D93] mt-3">Cancel anytime. Secure billing via Stripe.</p>
       </div>
     </div>
   );

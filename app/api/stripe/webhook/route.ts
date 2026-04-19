@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
             await prisma.subscription.update({
               where: { accountId },
               data: {
-                status: "ACTIVE",
+                status: stripeSubscription.status === "trialing" ? "TRIALING" : "ACTIVE",
                 stripeCurrentPeriodEnd: new Date(
                   stripeSubscription.current_period_end * 1000
                 ),
