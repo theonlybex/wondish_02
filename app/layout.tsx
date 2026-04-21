@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,15 +11,7 @@ export const metadata: Metadata = {
   },
   description:
     "Your AI-powered meal planning platform. Personalized recipes, nutrition tracking, and health dashboards tailored to your goals.",
-  keywords: [
-    "meal planning",
-    "nutrition",
-    "healthy eating",
-    "recipes",
-    "weight loss",
-    "diet",
-    "meal prep",
-  ],
+  keywords: ["meal planning", "nutrition", "healthy eating", "recipes", "weight loss", "diet", "meal prep"],
   openGraph: {
     title: "Wondish — Personalized Nutrition & Meal Planning",
     description:
@@ -28,21 +22,23 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Wondish — Personalized Nutrition & Meal Planning",
-    description:
-      "Your AI-powered meal planning platform tailored to your goals.",
+    description: "Your AI-powered meal planning platform tailored to your goals.",
   },
   robots: { index: true, follow: true },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   return (
     <ClerkProvider>
-      <html lang="en" suppressHydrationWarning>
-        <body>{children}</body>
+      <html lang={locale} suppressHydrationWarning>
+        <body>
+          <NextIntlClientProvider messages={messages}>
+            {children}
+          </NextIntlClientProvider>
+        </body>
       </html>
     </ClerkProvider>
   );
