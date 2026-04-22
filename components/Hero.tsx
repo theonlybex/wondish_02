@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRef } from "react";
 import { useScroll, useTransform, motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 
 const INGREDIENTS = [
   { src: "/dish/tomato.png",   label: "Tomato",   x: -320, y: -200, delay: 0 },
@@ -17,6 +18,7 @@ const INGREDIENTS = [
 ];
 
 export default function Hero() {
+  const t = useTranslations("hero");
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { scrollYProgress } = useScroll({
@@ -55,19 +57,18 @@ export default function Hero() {
           >
             <div className="flex items-center gap-2 mb-8 bg-white/5 border border-white/10 rounded-full px-4 py-2">
               <span className="text-yellow-400 text-sm">★★★★★</span>
-              <span className="text-white/60 text-xs font-medium">Rated 4.9/5 by 10,000+ members</span>
+              <span className="text-white/60 text-xs font-medium">{t("badge")}</span>
             </div>
             <h1 className="text-[clamp(2.8rem,8vw,6rem)] font-bold text-white leading-[1.05] tracking-tight">
-              Every great meal
+              {t("headline1")}
               <br />
-              <span className="text-[#4ade80]">starts here.</span>
+              <span className="text-[#4ade80]">{t("headline2")}</span>
             </h1>
             <p className="mt-6 text-base sm:text-lg text-white/35 max-w-lg leading-relaxed">
-              AI-powered meal plans built around your body, goals, and taste —
-              scroll to see how it comes together.
+              {t("subheadline")}
             </p>
             <div className="mt-3 flex flex-col items-center gap-1 animate-bounce">
-              <span className="text-xs text-white/20 tracking-widest uppercase">scroll</span>
+              <span className="text-xs text-white/20 tracking-widest uppercase">{t("scroll")}</span>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M8 3v10M4 9l4 4 4-4" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
@@ -109,7 +110,7 @@ export default function Hero() {
               className="absolute bottom-[calc(50%-90px)] left-0 right-0 text-center pointer-events-none"
             >
               <span className="text-xs uppercase tracking-[0.3em] text-white/25 font-medium">
-                assembled
+                {t("assembled")}
               </span>
             </motion.div>
           </div>
@@ -121,9 +122,9 @@ export default function Hero() {
           >
             <div className="grid grid-cols-3 gap-8 mb-2">
               {[
-                { value: "500+", label: "Recipes" },
-                { value: "10k+", label: "Members" },
-                { value: "$15", label: "Per month" },
+                { value: "500+", label: t("statsRecipes") },
+                { value: "10k+", label: t("statsMembers") },
+                { value: "$15", label: t("statsPerMonth") },
               ].map(({ value, label }) => (
                 <div key={label} className="text-center">
                   <p className="text-xl font-bold text-white">{value}</p>
@@ -136,7 +137,7 @@ export default function Hero() {
                 href="/register"
                 className="inline-flex items-center gap-2 bg-[#4ade80] hover:bg-[#22c55e] text-[#0d1a10] px-7 py-3.5 rounded-xl font-semibold text-sm transition-colors duration-150 shadow-lg shadow-[#4ade80]/20"
               >
-                Get started free
+                {t("getStarted")}
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                   <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -145,7 +146,7 @@ export default function Hero() {
                 href="/dishes"
                 className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 px-7 py-3.5 rounded-xl font-semibold text-sm transition-colors duration-150 border border-white/[0.08] hover:border-white/15"
               >
-                Browse dishes
+                {t("browseDishes")}
               </Link>
             </div>
           </motion.div>
