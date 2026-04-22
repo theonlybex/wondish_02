@@ -185,7 +185,7 @@ function Ingredient({
       style={{ x, y, opacity, scale }}
       className="absolute w-16 h-16 rounded-full overflow-hidden pointer-events-none shadow-lg shadow-black/40"
     >
-      <Image src={src} alt="ingredient" fill className="object-cover" />
+      <Image src={src} alt="" fill className="object-cover" />
     </motion.div>
   );
 }
