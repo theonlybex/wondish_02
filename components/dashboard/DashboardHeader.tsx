@@ -108,9 +108,9 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
       <div className="flex items-center gap-3">
         <span className="text-[#8A8D93] text-sm hidden sm:block">{email}</span>
         {plan === "ADMIN" ? (
-          <Link href="/membership" className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors">Admin ✦</Link>
+          <Link href="/membership" className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors">{t("adminBadge")}</Link>
         ) : plan === "PREMIUM" ? (
-          <Link href="/membership" className="text-xs font-bold px-2.5 py-1 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors">Premium ✦</Link>
+          <Link href="/membership" className="text-xs font-bold px-2.5 py-1 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors">{t("premiumBadge")}</Link>
         ) : (
           <Link href="/pricing" className="text-xs font-bold px-2.5 py-1 rounded-full bg-[#F3F2FF] text-[#8A8D93] hover:bg-primary/10 hover:text-primary transition-colors">
             {t("upgrade")}
