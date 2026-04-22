@@ -32,7 +32,7 @@ export default async function PricingSection({ isLoggedIn = false }: { isLoggedI
               <p className="text-[#8A8D93] text-sm">{t("freeTagline")}</p>
             </div>
             <div className="mb-8">
-              <span className="text-4xl font-bold text-[#25293C]">$0</span>
+              <span className="text-4xl font-bold text-[#25293C]">{t("freePrice")}</span>
               <span className="text-[#8A8D93] text-sm ml-2">{t("perMonth")}</span>
             </div>
             <ul className="space-y-3 mb-8 flex-1">
@@ -61,7 +61,7 @@ export default async function PricingSection({ isLoggedIn = false }: { isLoggedI
               <p className="text-white/50 text-sm">{t("premiumTagline")}</p>
             </div>
             <div className="mb-8 relative">
-              <span className="text-4xl font-bold text-white">$15</span>
+              <span className="text-4xl font-bold text-white">{t("premiumPrice")}</span>
               <span className="text-white/40 text-sm ml-2">{t("perMonth")}</span>
               <p className="text-white/40 text-xs mt-1">{t("premiumCancelAnytime")}</p>
             </div>

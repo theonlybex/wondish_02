@@ -102,6 +102,8 @@
     "premiumF8": "Health journey dashboard",
     "premiumF9": "Advanced nutrition analytics",
     "premiumF10": "Priority support",
+    "freePrice": "$0",
+    "premiumPrice": "$15",
     "perMonth": "/ month",
     "footer": "No credit card required for the free plan · Cancel premium anytime · Secure billing via Stripe"
   },

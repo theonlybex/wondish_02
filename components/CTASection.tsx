@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 export default async function CTASection() {
   const t = await getTranslations("cta");
 
+  // statHighlight must appear verbatim inside stat for correct rendering
   const statParts = t("stat").split(t("statHighlight"));
 
   const trustBadges = [

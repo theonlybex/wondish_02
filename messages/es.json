@@ -102,6 +102,8 @@
     "premiumF8": "Panel de seguimiento de salud",
     "premiumF9": "Análisis nutricional avanzado",
     "premiumF10": "Soporte prioritario",
+    "freePrice": "$0",
+    "premiumPrice": "$15",
     "perMonth": "/ mes",
     "footer": "No se requiere tarjeta de crédito para el plan gratuito · Cancela Premium cuando quieras · Facturación segura vía Stripe"
   },
