@@ -174,7 +174,8 @@
     "upgrade": "Free → Upgrade",
     "enterCoupon": "Enter a coupon code to unlock access.",
     "enterCode": "ENTER CODE",
-    "apply": "Apply"
+    "apply": "Apply",
+    "error": "Something went wrong."
   },
   "overview": {
     "greeting": "Good to see you, {name} 👋",

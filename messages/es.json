@@ -174,7 +174,8 @@
     "upgrade": "Gratis → Mejorar",
     "enterCoupon": "Ingresa un código de cupón para desbloquear el acceso.",
     "enterCode": "INGRESA CÓDIGO",
-    "apply": "Aplicar"
+    "apply": "Aplicar",
+    "error": "Algo salió mal."
   },
   "overview": {
     "greeting": "Qué bueno verte, {name} 👋",
