@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import Link from "next/link";
 import MealStreakGrid, { GridDay } from "@/components/MealStreakGrid";
+import { getTranslations } from "next-intl/server";
 
 export const metadata = { title: "Overview" };
 
@@ -70,6 +71,8 @@ export default async function OverviewPage() {
       (jm) => jm.recipeId === m.recipeId && !jm.skipped
     );
   }).length;
+
+  const t = await getTranslations("overview");
 
   // ── Streak grid: registration date → Dec 31 ────────────────────────────────
   const gridDays: GridDay[] = [];
@@ -160,33 +163,33 @@ export default async function OverviewPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-navy">
-          Good to see you, {account.firstName} 👋
+          {t("greeting", { name: account.firstName })}
         </h1>
-        <p className="text-[#8A8D93] mt-1 text-sm">Here&apos;s your health snapshot for today.</p>
+        <p className="text-[#8A8D93] mt-1 text-sm">{t("snapshot")}</p>
       </div>
 
       {/* Stats */}
       <div className="grid sm:grid-cols-3 gap-5 mb-8">
         <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5">
-          <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-3">Today&apos;s Meals</p>
+          <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-3">{t("todaysMeals")}</p>
           <p className="text-3xl font-bold text-navy mb-1">
             {completedMeals}/{todayMenus.length || 4}
           </p>
-          <p className="text-[#8A8D93] text-xs">meals completed</p>
+          <p className="text-[#8A8D93] text-xs">{t("mealsCompleted")}</p>
         </div>
 
         <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5">
-          <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-3">Current Weight</p>
+          <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-3">{t("currentWeight")}</p>
           <p className="text-3xl font-bold text-navy mb-1">
             {currentWeight ? `${currentWeight} kg` : "—"}
           </p>
-          <p className="text-[#8A8D93] text-xs">from last journal entry</p>
+          <p className="text-[#8A8D93] text-xs">{t("fromLastJournal")}</p>
         </div>
 
         <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5">
-          <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-3">Streak</p>
-          <p className="text-3xl font-bold text-navy mb-1">{streak} days</p>
-          <p className="text-[#8A8D93] text-xs">consecutive journal entries</p>
+          <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-3">{t("streakLabel")}</p>
+          <p className="text-3xl font-bold text-navy mb-1">{t("streakDays", { count: streak })}</p>
+          <p className="text-[#8A8D93] text-xs">{t("consecutiveEntries")}</p>
         </div>
       </div>
 
@@ -201,9 +204,9 @@ export default async function OverviewPage() {
       {todayMenus.length > 0 ? (
         <div className="bg-white border border-[#E8E7EA] rounded-2xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-navy">Today&apos;s Meal Plan</h2>
+            <h2 className="font-semibold text-navy">{t("todaysMealPlan")}</h2>
             <Link href="/meal-plan" className="text-primary text-sm font-medium hover:underline">
-              View all →
+              {t("viewAll")}
             </Link>
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
@@ -220,12 +223,12 @@ export default async function OverviewPage() {
         </div>
       ) : (
         <div className="bg-white border border-[#E8E7EA] rounded-2xl p-6 mb-6 text-center">
-          <p className="text-[#8A8D93] mb-3">No meal plan for today.</p>
+          <p className="text-[#8A8D93] mb-3">{t("noMealPlan")}</p>
           <Link
             href="/meal-plan"
             className="inline-flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-primary-dark transition-colors"
           >
-            Set up meal plan
+            {t("setUpMealPlan")}
           </Link>
         </div>
       )}
@@ -235,15 +238,15 @@ export default async function OverviewPage() {
         <div className="relative bg-navy rounded-2xl p-8 overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-primary/15 rounded-full blur-3xl pointer-events-none" />
           <div className="relative">
-            <h2 className="text-white font-bold text-xl mb-2">Unlock the full experience</h2>
+            <h2 className="text-white font-bold text-xl mb-2">{t("upgradeTitle")}</h2>
             <p className="text-white/50 text-sm mb-6 max-w-md">
-              Upgrade to Premium for custom ingredients, full journey analytics, and priority support. First 14 days free.
+              {t("upgradeDesc")}
             </p>
             <Link
               href="/pricing"
               className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl font-semibold text-sm transition-all shadow-lg shadow-primary/30"
             >
-              Upgrade to Premium — $15/mo
+              {t("upgradeCta")}
             </Link>
           </div>
         </div>
