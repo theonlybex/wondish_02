@@ -1,5 +1,4 @@
 import Hero from "@/components/Hero";
-import SocialProofBar from "@/components/SocialProofBar";
 import Features from "@/components/Features";
 import PredictionTeaser from "@/components/PredictionTeaser";
 import HowItWorks from "@/components/HowItWorks";
@@ -11,7 +10,6 @@ export default function HomePage() {
   return (
     <>
       <Hero />
-      <SocialProofBar />
       <Features />
       <PredictionTeaser />
       <HowItWorks />

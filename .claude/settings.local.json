@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(node -e ' *)",
+      "Bash(git commit *)",
+      "Bash(node *)",
+      "Bash(awk '{print $1}')",
+      "Bash(xargs git *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(sorted\\(d.keys\\(\\)\\)\\)\\)\")"
+    ]
+  }
+}
