@@ -1,4 +1,3 @@
-import Image from "next/image";
 import type { Dish, MealTypeKey } from "@/types";
 import { clsx } from "clsx";
 import { getRecipeEmoji } from "@/lib/recipeEmoji";
@@ -24,26 +23,15 @@ interface DishCardProps {
 
 export default function DishCard({ dish, compact = false }: DishCardProps) {
   return (
-    <div className="group bg-white border border-[#E8E7EA] hover:border-primary/20 rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 flex flex-col">
-      {/* Image */}
-      {dish.imageUrl && (
-        <div className="relative w-full h-36 flex-shrink-0">
-          <Image
-            src={dish.imageUrl}
-            alt={dish.name}
-            fill
-            className="object-cover"
-            sizes="280px"
-          />
-        </div>
-      )}
+    <div className="group bg-white border border-[#E8E7EA] hover:border-primary/20 rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 flex flex-col h-full">
+      {/* Emoji banner */}
+      <div className="w-full h-28 flex-shrink-0 bg-[#F8F7FA] flex items-center justify-center text-5xl">
+        {dish.emoji || getRecipeEmoji(dish.name, dish.tags, dish.mealType)}
+      </div>
 
       <div className="p-5 flex flex-col flex-1">
       {/* Top row */}
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div className="w-10 h-10 rounded-xl bg-[#F8F7FA] flex items-center justify-center text-xl flex-shrink-0">
-          {dish.emoji || getRecipeEmoji(dish.name, dish.tags, dish.mealType)}
-        </div>
+      <div className="flex items-start justify-end gap-3 mb-4">
         <span
           className={clsx(
             "text-xs font-semibold px-2.5 py-1 rounded-full",

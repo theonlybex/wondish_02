@@ -7,6 +7,7 @@ const isPublicRoute = createRouteMatcher([
   "/register(.*)",
   "/pricing(.*)",
   "/dishes(.*)",
+  "/try(.*)",
   "/terms(.*)",
   "/privacy(.*)",
   "/api/auth/register",
@@ -14,6 +15,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/auth/reset-password",
   "/api/auth/verify-email(.*)",
   "/api/stripe/webhook",
+  "/api/taste/public-dishes",
 ]);
 
 const isAuthRoute = createRouteMatcher(["/login(.*)", "/register(.*)"]);

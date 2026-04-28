@@ -15,7 +15,7 @@ export default function Navbar() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-forest-deeper/95 backdrop-blur-md border-b border-white/[0.07]">
       <div className="max-w-6xl mx-auto px-5 sm:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="relative flex items-center justify-between h-16">
 
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 group">
@@ -31,12 +31,12 @@ export default function Navbar() {
           </Link>
 
           {/* Center nav */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
             <Link href="/dishes" className="text-white/60 hover:text-white px-4 py-2 rounded-lg hover:bg-white/[0.06] transition-all duration-150 text-sm font-medium">
               {t("dishes")}
             </Link>
             <Link href="/pricing" className="text-white/60 hover:text-white px-4 py-2 rounded-lg hover:bg-white/[0.06] transition-all duration-150 text-sm font-medium">
-              {t("pricing")}
+              Plans
             </Link>
           </nav>
 
@@ -57,7 +57,7 @@ export default function Navbar() {
               </>
             ) : (
               <>
-                <Link href="/login" className="text-white/60 hover:text-white px-4 py-2 rounded-lg hover:bg-white/[0.06] transition-all duration-150 text-sm font-medium">
+                <Link href="/login" className="text-white hover:text-white/80 px-4 py-2 rounded-lg hover:bg-white/[0.06] transition-all duration-150 text-sm font-medium">
                   {t("login")}
                 </Link>
                 <Link href="/register" className="bg-primary hover:bg-primary-dark text-forest-deeper px-4 py-2 rounded-lg transition-all duration-150 text-sm font-semibold shadow-lg shadow-primary/20">
@@ -90,7 +90,7 @@ export default function Navbar() {
               {t("dishes")}
             </Link>
             <Link href="/pricing" onClick={() => setOpen(false)} className="text-white/60 hover:text-white px-3 py-2.5 rounded-lg hover:bg-white/[0.06] text-sm font-medium">
-              {t("pricing")}
+              Plans
             </Link>
             <div className="border-t border-white/[0.06] mt-2 pt-2 flex flex-col gap-2">
               {isSignedIn ? (
@@ -107,10 +107,10 @@ export default function Navbar() {
                 </>
               ) : (
                 <>
-                  <Link href="/login" onClick={() => setOpen(false)} className="text-white/60 hover:text-white px-3 py-2.5 rounded-lg hover:bg-white/[0.06] text-sm font-medium">
+                  <Link href="/login" onClick={() => setOpen(false)} className="text-white hover:text-white/80 px-3 py-2.5 rounded-lg hover:bg-white/[0.06] text-sm font-medium">
                     {t("login")}
                   </Link>
-                  <Link href="/register" onClick={() => setOpen(false)} className="bg-primary text-forest-deeper px-3 py-2.5 rounded-lg text-sm font-semibold text-center">
+                  <Link href="/register" onClick={() => setOpen(false)} className="bg-primary hover:bg-primary-dark text-forest-deeper px-3 py-2.5 rounded-lg text-sm font-semibold text-center">
                     {t("getStarted")}
                   </Link>
                 </>

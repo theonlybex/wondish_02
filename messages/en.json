@@ -9,15 +9,15 @@
   },
   "hero": {
     "badge": "Rated 4.9/5 by 10,000+ members",
-    "headline1": "Every great meal",
-    "headline2": "starts here.",
-    "subheadline": "AI-powered meal plans built around your body, goals, and taste.",
+    "headline1": "We care about",
+    "headline2": "what you eat.",
+    "subheadline": "AI-powered meal planner built around the best ingredients.",
     "scroll": "scroll",
     "assembled": "assembled",
     "statsRecipes": "Recipes",
     "statsMembers": "Members",
     "statsPerMonth": "Per month",
-    "getStarted": "Get started free",
+    "getStarted": "Get started",
     "browseDishes": "Browse dishes"
   },
   "socialProof": {

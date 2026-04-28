@@ -9,15 +9,15 @@
   },
   "hero": {
     "badge": "Calificado 4.9/5 por más de 10.000 miembros",
-    "headline1": "Cada gran comida",
-    "headline2": "comienza aquí.",
-    "subheadline": "Planes de alimentación con IA diseñados según tu cuerpo, metas y gustos.",
+    "headline1": "Nos importa",
+    "headline2": "lo que comes.",
+    "subheadline": "Planificador de comidas con IA basado en los mejores ingredientes.",
     "scroll": "desplazar",
     "assembled": "ensamblado",
     "statsRecipes": "Recetas",
     "statsMembers": "Miembros",
     "statsPerMonth": "Por mes",
-    "getStarted": "Comenzar gratis",
+    "getStarted": "Comenzar",
     "browseDishes": "Ver platos"
   },
   "socialProof": {

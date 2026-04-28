@@ -77,12 +77,6 @@ export default function PredictionTeaser() {
                 <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </Link>
-            <Link
-              href="/pricing"
-              className="inline-flex items-center justify-center gap-2 text-white/50 hover:text-white/80 px-7 py-3.5 rounded-xl font-semibold text-sm transition-colors border border-white/10 hover:border-white/20"
-            >
-              {t("viewPlans")}
-            </Link>
           </div>
         </div>
 
