@@ -58,6 +58,7 @@ export default async function OverviewPage() {
 
   const t = await getTranslations("overview");
 
+
   // ── Streak grid: registration date → Dec 31 ────────────────────────────────
   const gridDays: GridDay[] = [];
   let totalCompleted = 0;
@@ -144,101 +145,220 @@ export default async function OverviewPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-navy">
-          {t("greeting", { name: account.firstName })}
+    <div className="max-w-4xl mx-auto pb-8">
+      <style>{`
+        @keyframes ov-rise {
+          from { opacity: 0; transform: translateY(18px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .ov { animation: ov-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .ov-meal-row:hover .ov-meal-emoji { transform: scale(1.15); }
+        .ov-meal-emoji { transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1); display: inline-block; }
+      `}</style>
+
+      {/* ── Greeting ───────────────────────────────────────────── */}
+      <div className="ov mb-10" style={{ animationDelay: "0ms" }}>
+        <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3" style={{ color: "#7DB87D" }}>
+          {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+        </p>
+        <h1 className="text-3xl font-bold text-[#0d1f10] leading-tight">
+          Welcome back, {account.firstName}.
         </h1>
-        <p className="text-[#B0B3BB] mt-1 text-sm">{t("snapshot")}</p>
-      </div>
-
-      {/* Stats */}
-      <div className="grid sm:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5 relative overflow-hidden group hover:border-primary/20 transition-colors">
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary/60 to-primary/0 rounded-t-2xl" />
-          <p className="text-[#B0B3BB] text-[10px] font-bold uppercase tracking-[0.15em] mb-3">{t("todaysMeals")}</p>
-          <p className="text-3xl font-bold text-navy mb-1 tabular-nums">
-            {completedMeals}<span className="text-[#D0D3DA] font-medium">/{todayMenus.length || 4}</span>
-          </p>
-          <p className="text-[#B0B3BB] text-xs">{t("mealsCompleted")}</p>
-        </div>
-
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5 relative overflow-hidden group hover:border-blue-200 transition-colors">
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-400/60 to-blue-400/0 rounded-t-2xl" />
-          <p className="text-[#B0B3BB] text-[10px] font-bold uppercase tracking-[0.15em] mb-3">{t("currentWeight")}</p>
-          <p className="text-3xl font-bold text-navy mb-1 tabular-nums">
-            {currentWeight ? currentWeight : "—"}<span className="text-[#B0B3BA] text-base font-medium ml-0.5">{currentWeight ? " kg" : ""}</span>
-          </p>
-          <p className="text-[#B0B3BB] text-xs">{t("fromLastJournal")}</p>
-        </div>
-
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5 relative overflow-hidden group hover:border-amber-200 transition-colors">
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-amber-400/60 to-amber-400/0 rounded-t-2xl" />
-          <p className="text-[#B0B3BB] text-[10px] font-bold uppercase tracking-[0.15em] mb-3">{t("streakLabel")}</p>
-          <p className="text-3xl font-bold text-navy mb-1 tabular-nums">{t("streakDays", { count: streak })}</p>
-          <p className="text-[#B0B3BB] text-xs">{t("consecutiveEntries")}</p>
+        <div className="flex items-center gap-3 mt-4">
+          <div className="h-px w-12 bg-primary/40" />
+          <p className="text-xs" style={{ color: "#9EA8A0" }}>{t("snapshot")}</p>
         </div>
       </div>
 
-      {/* Streak grid */}
+      {/* ── Stats ──────────────────────────────────────────────── */}
+      <div className="grid sm:grid-cols-3 gap-3 mb-8">
+        {[
+          {
+            label: t("todaysMeals"),
+            value: String(completedMeals),
+            suffix: `/${todayMenus.length || 4}`,
+            sub: t("mealsCompleted"),
+            accent: "#4ade80",
+            delay: "70ms",
+          },
+          {
+            label: t("currentWeight"),
+            value: currentWeight ? String(currentWeight) : "—",
+            suffix: currentWeight ? " kg" : "",
+            sub: t("fromLastJournal"),
+            accent: "#60a5fa",
+            delay: "140ms",
+          },
+          {
+            label: t("streakLabel"),
+            value: String(streak),
+            suffix: streak === 1 ? " day" : " days",
+            sub: t("consecutiveEntries"),
+            accent: "#fb923c",
+            delay: "210ms",
+          },
+        ].map(({ label, value, suffix, sub, accent, delay }) => (
+          <div
+            key={label}
+            className="ov bg-white rounded-2xl p-6 relative overflow-hidden group cursor-default select-none"
+            style={{
+              animationDelay: delay,
+              boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+            }}
+          >
+            {/* accent dot top-right */}
+            <div
+              className="absolute top-5 right-5 w-2 h-2 rounded-full"
+              style={{ backgroundColor: accent }}
+            />
+            <p
+              className="text-[9px] tracking-[0.22em] uppercase font-bold mb-5"
+              style={{ color: "#ADBDAD" }}
+            >
+              {label}
+            </p>
+            <div className="flex items-baseline gap-1 mb-2">
+              <span
+                className="font-black tabular-nums leading-none tracking-tight"
+                style={{ fontSize: "clamp(2.75rem, 5vw, 3.75rem)", color: "#0d1f10" }}
+              >
+                {value}
+              </span>
+              {suffix && (
+                <span className="text-lg font-medium" style={{ color: "#C8D4C8" }}>
+                  {suffix}
+                </span>
+              )}
+            </div>
+            <p className="text-xs" style={{ color: "#ADBDAD" }}>{sub}</p>
+            {/* hover glow */}
+            <div
+              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"
+              style={{ background: `radial-gradient(ellipse at 90% 110%, ${accent}18 0%, transparent 55%)` }}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* ── Activity grid ──────────────────────────────────────── */}
       {gridDays.length > 0 && (
-        <div className="mb-8">
+        <div className="ov mb-6" style={{ animationDelay: "280ms" }}>
           <MealStreakGrid days={gridDays} totalCompleted={totalCompleted} firstDay={gridFirstDay} />
         </div>
       )}
 
-      {/* Today's meal plan preview */}
+      {/* ── Today's plan ───────────────────────────────────────── */}
       {todayMenus.length > 0 ? (
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-6 mb-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-navy text-sm">{t("todaysMealPlan")}</h2>
-            <Link href="/meal-plan" className="text-primary text-xs font-semibold hover:text-primary-dark transition-colors">
+        <div
+          className="ov bg-white rounded-2xl overflow-hidden mb-5"
+          style={{
+            animationDelay: "340ms",
+            boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+          }}
+        >
+          <div className="flex items-center justify-between px-6 py-4 border-b border-[#F0F4F0]">
+            <div className="flex items-center gap-3">
+              <div className="w-1 h-5 rounded-full bg-primary" />
+              <h2 className="text-[#0d1f10] text-lg">{t("todaysMealPlan")}</h2>
+            </div>
+            <Link
+              href="/meal-plan"
+              className="text-[9px] tracking-[0.2em] uppercase font-bold transition-colors"
+              style={{ color: "#4ade80" }}
+            >
               {t("viewAll")} →
             </Link>
           </div>
-          <div className="grid sm:grid-cols-2 gap-2.5">
+
+          <div className="divide-y divide-[#F4F7F4]">
             {todayMenus.map((menu) => (
-              <div key={menu.id} className="flex items-center gap-3 p-3 rounded-xl bg-[#F8FAF8] border border-[#EEF0EE] hover:border-primary/20 transition-colors">
-                <span className="text-2xl w-9 h-9 flex items-center justify-center bg-white rounded-lg border border-[#E8E7EA] shadow-sm flex-shrink-0">{menu.recipe.emoji ?? "🍽"}</span>
-                <div className="min-w-0">
-                  <p className="font-medium text-[#25293C] text-sm leading-tight truncate">{menu.recipe.name}</p>
-                  <p className="text-[#B0B3BB] text-xs mt-0.5">{menu.mealType?.name}</p>
+              <div
+                key={menu.id}
+                className="ov-meal-row flex items-center gap-5 px-6 py-4 hover:bg-[#FAFCFA] transition-colors"
+              >
+                <span className="ov-meal-emoji text-3xl leading-none flex-shrink-0">
+                  {menu.recipe.emoji ?? "🍽"}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[#0d1f10] font-medium text-sm leading-snug truncate">
+                    {menu.recipe.name}
+                  </p>
+                  {menu.mealType?.name && (
+                    <p
+                      className="text-[9px] tracking-[0.15em] uppercase font-bold mt-0.5"
+                      style={{ color: "#ADBDAD" }}
+                    >
+                      {menu.mealType.name}
+                    </p>
+                  )}
                 </div>
+                <div
+                  className="w-4 h-4 rounded-full border-2 flex-shrink-0"
+                  style={{ borderColor: "#D8E4D8" }}
+                />
               </div>
             ))}
           </div>
         </div>
       ) : (
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-8 mb-5 text-center">
-          <p className="text-4xl mb-3">🍽</p>
-          <p className="text-[#25293C] font-semibold text-sm mb-1">{t("noMealPlan")}</p>
-          <p className="text-[#B0B3BB] text-xs mb-5">Your personalised daily menu will appear here.</p>
+        <div
+          className="ov bg-white rounded-2xl p-12 mb-5 text-center"
+          style={{
+            animationDelay: "340ms",
+            boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+          }}
+        >
+          <div className="text-5xl mb-4">🍽</div>
+          <p className="text-[#0d1f10] text-xl mb-2">{t("noMealPlan")}</p>
+          <p className="text-sm mb-7" style={{ color: "#ADBDAD" }}>
+            Your personalised daily menu will appear here.
+          </p>
           <Link
             href="/meal-plan"
-            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-primary/20"
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-6 py-3 rounded-xl text-sm font-bold transition-colors"
           >
             {t("setUpMealPlan")}
           </Link>
         </div>
       )}
 
-      {/* Upgrade CTA */}
+      {/* ── Upgrade CTA ────────────────────────────────────────── */}
       {account.subscription?.plan !== "PREMIUM" && (
-        <div className="relative rounded-2xl p-8 overflow-hidden" style={{ background: "linear-gradient(135deg, #0d1f10 0%, #152718 100%)" }}>
-          <div className="absolute top-0 right-0 w-80 h-80 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(74,222,128,0.12) 0%, transparent 70%)", transform: "translate(30%, -30%)" }} />
-          <div className="absolute bottom-0 left-0 w-40 h-40 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(74,222,128,0.06) 0%, transparent 70%)", transform: "translate(-30%, 30%)" }} />
+        <div
+          className="ov relative rounded-2xl p-9 overflow-hidden"
+          style={{
+            animationDelay: "400ms",
+            background: "linear-gradient(140deg, #0a1509 0%, #162a18 60%, #0d1f10 100%)",
+            boxShadow: "0 8px 32px rgba(13,31,16,0.25)",
+          }}
+        >
+          <div
+            className="absolute top-0 right-0 w-96 h-96 rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(74,222,128,0.10) 0%, transparent 65%)", transform: "translate(35%, -35%)" }}
+          />
+          <div
+            className="absolute bottom-0 left-0 w-48 h-48 rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(74,222,128,0.06) 0%, transparent 70%)", transform: "translate(-30%, 30%)" }}
+          />
           <div className="relative">
-            <p className="text-primary/60 text-[10px] font-bold uppercase tracking-[0.2em] mb-3">Premium</p>
-            <h2 className="text-white font-bold text-xl mb-2 leading-snug">{t("upgradeTitle")}</h2>
-            <p className="text-white/40 text-sm mb-6 max-w-md leading-relaxed">
+            <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-4" style={{ color: "rgba(74,222,128,0.45)" }}>
+              Premium
+            </p>
+            <h2 className="text-white text-2xl font-bold mb-2 leading-snug">
+              {t("upgradeTitle")}
+            </h2>
+            <p className="text-sm mb-7 max-w-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.38)" }}>
               {t("upgradeDesc")}
             </p>
             <Link
               href="/pricing"
-              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-lg shadow-primary/25"
+              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-6 py-3 rounded-xl font-bold text-sm transition-all"
+              style={{ boxShadow: "0 4px 20px rgba(74,222,128,0.25)" }}
             >
               {t("upgradeCta")}
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </Link>
           </div>
         </div>

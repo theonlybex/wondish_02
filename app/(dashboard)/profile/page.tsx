@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getAccount } from "@/lib/queries";
 import ProfileForm from "@/components/profile/ProfileForm";
 
 export const metadata = { title: "My Profile" };
@@ -16,10 +17,7 @@ export default async function ProfilePage({
   const isOnboarding = searchParams.onboarding === "true";
 
   const [account, patient, refData] = await Promise.all([
-    prisma.account.findUnique({
-      where: { clerkId: userId },
-      select: { firstName: true, lastName: true, email: true, subscription: true, roles: { include: { role: true } } },
-    }),
+    getAccount(userId),
     prisma.patient.findFirst({
       where: { account: { clerkId: userId } },
       include: {

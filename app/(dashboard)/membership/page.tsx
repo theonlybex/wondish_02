@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { getAccount } from "@/lib/queries";
 import Link from "next/link";
 
 export const metadata = { title: "My Membership" };
@@ -57,13 +57,7 @@ export default async function MembershipPage() {
   const { userId } = await auth();
   if (!userId) redirect("/login");
 
-  const account = await prisma.account.findUnique({
-    where: { clerkId: userId },
-    include: {
-      subscription: true,
-      roles: { include: { role: true } },
-    },
-  });
+  const account = await getAccount(userId);
 
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const sub = account?.subscription;

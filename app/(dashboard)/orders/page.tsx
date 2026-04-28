@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getAccount } from "@/lib/queries";
 import OrdersTable from "@/components/orders/OrdersTable";
 
 export const metadata = { title: "My Orders" };
@@ -8,25 +9,19 @@ export const metadata = { title: "My Orders" };
 export default async function OrdersPage() {
   const { userId } = await auth();
   if (!userId) redirect("/login");
-  const account = await prisma.account.findUnique({ where: { clerkId: userId } });
+  const account = await getAccount(userId);
   if (!account) redirect("/login");
   if (!account.onboardingComplete) redirect("/profile?onboarding=true");
 
-  const patient = await prisma.patient.findUnique({
-    where: { accountId: account.id },
-  });
-
-  const [orders, total] = await (patient
-    ? Promise.all([
-        prisma.order.findMany({
-          where: { patientId: patient.id },
-          include: { items: true },
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        }),
-        prisma.order.count({ where: { patientId: patient.id } }),
-      ])
-    : Promise.resolve([[], 0]));
+  const [orders, total] = await Promise.all([
+    prisma.order.findMany({
+      where: { patient: { account: { clerkId: userId } } },
+      include: { items: true },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    }),
+    prisma.order.count({ where: { patient: { account: { clerkId: userId } } } }),
+  ]);
 
   return (
     <div className="max-w-4xl mx-auto">

@@ -15,7 +15,6 @@ export default function DashboardSidebar({ isAdmin }: { isAdmin: boolean }) {
   const navItems = [
     { href: "/overview", label: t("overview"), icon: "▦" },
     { href: "/meal-plan", label: t("mealPlan"), icon: "🍽" },
-    { href: "/meal-plan/weekly", label: t("weeklyPlan"), icon: "📅" },
     { href: "/grocery-list", label: t("groceryList"), icon: "🛒" },
     { href: "/journal", label: t("myJournal"), icon: "📓" },
     { href: "/journey", label: t("myJourney"), icon: "📈" },

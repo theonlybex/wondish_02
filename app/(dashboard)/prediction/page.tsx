@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getAccount } from "@/lib/queries";
 import PredictionView from "@/components/prediction/PredictionView";
 
 export const metadata = { title: "Your Prediction" };
@@ -9,19 +10,11 @@ export default async function PredictionPage() {
   const { userId } = await auth();
   if (!userId) redirect("/login");
 
-  const [patient, account] = await Promise.all([
+  const [account, patient] = await Promise.all([
+    getAccount(userId),
     prisma.patient.findFirst({
       where: { account: { clerkId: userId } },
-      select: {
-        weight: true,
-        goalWeight: true,
-        weeklyGoal: true,
-        weightUnit: true,
-      },
-    }),
-    prisma.account.findUnique({
-      where: { clerkId: userId },
-      select: { subscription: { select: { plan: true, status: true } } },
+      select: { weight: true, goalWeight: true, weeklyGoal: true, weightUnit: true },
     }),
   ]);
 
