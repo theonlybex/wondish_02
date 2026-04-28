@@ -1,11 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { PrismaNeon } from "@prisma/adapter-neon";
-import ws from "ws";
 
-// Use WebSocket so the Neon serverless driver can reuse HTTP/WS connections
-// instead of opening a raw TCP socket on every cold invocation on Vercel.
-neonConfig.webSocketConstructor = ws;
+neonConfig.webSocketConstructor = WebSocket;
 
 function createPrismaClient() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
