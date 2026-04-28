@@ -7,7 +7,7 @@ export default function RegisterPage() {
     <div className="flex items-center justify-center w-full">
       <SignUp
         signInUrl="/login"
-        fallbackRedirectUrl="/profile?onboarding=true"
+        forceRedirectUrl="/profile?onboarding=true"
         appearance={{
           elements: {
             rootBox: "w-full max-w-md",

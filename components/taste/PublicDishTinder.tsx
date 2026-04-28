@@ -90,7 +90,7 @@ export default function PublicDishTinder() {
           Create a free account to save your preferences and get a meal plan built around what you actually want to eat.
         </p>
         <Link
-          href="/register"
+          href="/register?redirect_url=%2Fprofile"
           className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-primary hover:bg-primary-dark text-[#0a1509] font-bold text-sm shadow-lg shadow-primary/20 transition-colors"
         >
           Save my preferences

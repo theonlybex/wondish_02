@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getAccount, getOverviewPatient } from "@/lib/queries";
 import Link from "next/link";
 import MealStreakGrid, { GridDay } from "@/components/MealStreakGrid";
 import { getTranslations } from "next-intl/server";
@@ -10,36 +11,19 @@ export const metadata = { title: "Overview" };
 export default async function OverviewPage() {
   const { userId } = await auth();
   if (!userId) redirect("/login");
-  const account = await prisma.account.findUnique({
-    where: { clerkId: userId },
-    include: { subscription: true },
-  });
+
+  // Run account + patient in parallel; getAccount is deduped with layout.tsx
+  const [account, patient] = await Promise.all([
+    getAccount(userId),
+    getOverviewPatient(userId),
+  ]);
+
   if (!account) redirect("/login");
 
   // Onboarding redirect
   if (!account.onboardingComplete) {
     redirect("/profile?onboarding=true");
   }
-
-  const patient = await prisma.patient.findUnique({
-    where: { accountId: account.id },
-    include: {
-      journalEntries: {
-        orderBy: { date: "desc" },
-        take: 7,
-        include: { meals: true },
-      },
-      menus: {
-        where: {
-          date: {
-            gte: new Date(new Date().setHours(0, 0, 0, 0)),
-            lt: new Date(new Date().setHours(23, 59, 59, 999)),
-          },
-        },
-        include: { recipe: true, mealType: true },
-      },
-    },
-  });
 
   const todayMenus = patient?.menus ?? [];
   const latestJournal = patient?.journalEntries?.[0];
@@ -165,31 +149,34 @@ export default async function OverviewPage() {
         <h1 className="text-2xl font-bold text-navy">
           {t("greeting", { name: account.firstName })}
         </h1>
-        <p className="text-[#8A8D93] mt-1 text-sm">{t("snapshot")}</p>
+        <p className="text-[#B0B3BB] mt-1 text-sm">{t("snapshot")}</p>
       </div>
 
       {/* Stats */}
-      <div className="grid sm:grid-cols-3 gap-5 mb-8">
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5">
-          <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-3">{t("todaysMeals")}</p>
-          <p className="text-3xl font-bold text-navy mb-1">
-            {completedMeals}/{todayMenus.length || 4}
+      <div className="grid sm:grid-cols-3 gap-4 mb-8">
+        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5 relative overflow-hidden group hover:border-primary/20 transition-colors">
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary/60 to-primary/0 rounded-t-2xl" />
+          <p className="text-[#B0B3BB] text-[10px] font-bold uppercase tracking-[0.15em] mb-3">{t("todaysMeals")}</p>
+          <p className="text-3xl font-bold text-navy mb-1 tabular-nums">
+            {completedMeals}<span className="text-[#D0D3DA] font-medium">/{todayMenus.length || 4}</span>
           </p>
-          <p className="text-[#8A8D93] text-xs">{t("mealsCompleted")}</p>
+          <p className="text-[#B0B3BB] text-xs">{t("mealsCompleted")}</p>
         </div>
 
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5">
-          <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-3">{t("currentWeight")}</p>
-          <p className="text-3xl font-bold text-navy mb-1">
-            {currentWeight ? `${currentWeight} kg` : "—"}
+        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5 relative overflow-hidden group hover:border-blue-200 transition-colors">
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-400/60 to-blue-400/0 rounded-t-2xl" />
+          <p className="text-[#B0B3BB] text-[10px] font-bold uppercase tracking-[0.15em] mb-3">{t("currentWeight")}</p>
+          <p className="text-3xl font-bold text-navy mb-1 tabular-nums">
+            {currentWeight ? currentWeight : "—"}<span className="text-[#B0B3BA] text-base font-medium ml-0.5">{currentWeight ? " kg" : ""}</span>
           </p>
-          <p className="text-[#8A8D93] text-xs">{t("fromLastJournal")}</p>
+          <p className="text-[#B0B3BB] text-xs">{t("fromLastJournal")}</p>
         </div>
 
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5">
-          <p className="text-[#8A8D93] text-xs font-semibold uppercase tracking-wide mb-3">{t("streakLabel")}</p>
-          <p className="text-3xl font-bold text-navy mb-1">{t("streakDays", { count: streak })}</p>
-          <p className="text-[#8A8D93] text-xs">{t("consecutiveEntries")}</p>
+        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5 relative overflow-hidden group hover:border-amber-200 transition-colors">
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-amber-400/60 to-amber-400/0 rounded-t-2xl" />
+          <p className="text-[#B0B3BB] text-[10px] font-bold uppercase tracking-[0.15em] mb-3">{t("streakLabel")}</p>
+          <p className="text-3xl font-bold text-navy mb-1 tabular-nums">{t("streakDays", { count: streak })}</p>
+          <p className="text-[#B0B3BB] text-xs">{t("consecutiveEntries")}</p>
         </div>
       </div>
 
@@ -202,31 +189,33 @@ export default async function OverviewPage() {
 
       {/* Today's meal plan preview */}
       {todayMenus.length > 0 ? (
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-6 mb-6">
+        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-6 mb-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-navy">{t("todaysMealPlan")}</h2>
-            <Link href="/meal-plan" className="text-primary text-sm font-medium hover:underline">
-              {t("viewAll")}
+            <h2 className="font-semibold text-navy text-sm">{t("todaysMealPlan")}</h2>
+            <Link href="/meal-plan" className="text-primary text-xs font-semibold hover:text-primary-dark transition-colors">
+              {t("viewAll")} →
             </Link>
           </div>
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="grid sm:grid-cols-2 gap-2.5">
             {todayMenus.map((menu) => (
-              <div key={menu.id} className="flex items-center gap-3 p-3 rounded-xl bg-surface">
-                <span className="text-2xl">{menu.recipe.emoji ?? "🍽"}</span>
-                <div>
-                  <p className="font-medium text-navy text-sm">{menu.recipe.name}</p>
-                  <p className="text-[#8A8D93] text-xs">{menu.mealType?.name}</p>
+              <div key={menu.id} className="flex items-center gap-3 p-3 rounded-xl bg-[#F8FAF8] border border-[#EEF0EE] hover:border-primary/20 transition-colors">
+                <span className="text-2xl w-9 h-9 flex items-center justify-center bg-white rounded-lg border border-[#E8E7EA] shadow-sm flex-shrink-0">{menu.recipe.emoji ?? "🍽"}</span>
+                <div className="min-w-0">
+                  <p className="font-medium text-[#25293C] text-sm leading-tight truncate">{menu.recipe.name}</p>
+                  <p className="text-[#B0B3BB] text-xs mt-0.5">{menu.mealType?.name}</p>
                 </div>
               </div>
             ))}
           </div>
         </div>
       ) : (
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-6 mb-6 text-center">
-          <p className="text-[#8A8D93] mb-3">{t("noMealPlan")}</p>
+        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-8 mb-5 text-center">
+          <p className="text-4xl mb-3">🍽</p>
+          <p className="text-[#25293C] font-semibold text-sm mb-1">{t("noMealPlan")}</p>
+          <p className="text-[#B0B3BB] text-xs mb-5">Your personalised daily menu will appear here.</p>
           <Link
             href="/meal-plan"
-            className="inline-flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-primary-dark transition-colors"
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-primary/20"
           >
             {t("setUpMealPlan")}
           </Link>
@@ -235,18 +224,21 @@ export default async function OverviewPage() {
 
       {/* Upgrade CTA */}
       {account.subscription?.plan !== "PREMIUM" && (
-        <div className="relative bg-navy rounded-2xl p-8 overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-primary/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative rounded-2xl p-8 overflow-hidden" style={{ background: "linear-gradient(135deg, #0d1f10 0%, #152718 100%)" }}>
+          <div className="absolute top-0 right-0 w-80 h-80 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(74,222,128,0.12) 0%, transparent 70%)", transform: "translate(30%, -30%)" }} />
+          <div className="absolute bottom-0 left-0 w-40 h-40 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(74,222,128,0.06) 0%, transparent 70%)", transform: "translate(-30%, 30%)" }} />
           <div className="relative">
-            <h2 className="text-white font-bold text-xl mb-2">{t("upgradeTitle")}</h2>
-            <p className="text-white/50 text-sm mb-6 max-w-md">
+            <p className="text-primary/60 text-[10px] font-bold uppercase tracking-[0.2em] mb-3">Premium</p>
+            <h2 className="text-white font-bold text-xl mb-2 leading-snug">{t("upgradeTitle")}</h2>
+            <p className="text-white/40 text-sm mb-6 max-w-md leading-relaxed">
               {t("upgradeDesc")}
             </p>
             <Link
               href="/pricing"
-              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl font-semibold text-sm transition-all shadow-lg shadow-primary/30"
+              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-lg shadow-primary/25"
             >
               {t("upgradeCta")}
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </Link>
           </div>
         </div>

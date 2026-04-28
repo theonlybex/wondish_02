@@ -96,54 +96,58 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
   }, []);
 
   return (
-    <header className="h-16 bg-white border-b border-[#E8E7EA] flex items-center justify-between px-5 sm:px-8">
+    <header className="h-16 bg-white/80 backdrop-blur-sm border-b border-[#E8E7EA]/80 flex items-center justify-between px-5 sm:px-8">
       <button className="lg:hidden flex flex-col gap-1.5 p-1" onClick={onMenuToggle} aria-label="Toggle menu">
-        <span className="w-5 h-0.5 bg-[#25293C] block" />
-        <span className="w-5 h-0.5 bg-[#25293C] block" />
-        <span className="w-5 h-0.5 bg-[#25293C] block" />
+        <span className="w-5 h-0.5 bg-[#25293C] block rounded-full" />
+        <span className="w-5 h-0.5 bg-[#25293C] block rounded-full" />
+        <span className="w-5 h-0.5 bg-[#25293C] block rounded-full" />
       </button>
 
       <div className="flex-1" />
 
       <div className="flex items-center gap-3">
-        <span className="text-[#8A8D93] text-sm hidden sm:block">{email}</span>
+        <span className="text-[#B0B3BB] text-xs hidden sm:block">{email}</span>
         {plan === "ADMIN" ? (
-          <Link href="/membership" className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors">{t("adminBadge")}</Link>
+          <Link href="/membership" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200/80 text-amber-700 hover:bg-amber-100 transition-colors">
+            <span className="text-[10px]">★</span>{t("adminBadge")}
+          </Link>
         ) : plan === "PREMIUM" ? (
-          <Link href="/membership" className="text-xs font-bold px-2.5 py-1 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors">{t("premiumBadge")}</Link>
+          <Link href="/membership" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-[#f0fdf4] border border-primary/20 text-primary hover:bg-primary/10 transition-colors">
+            <span className="text-[10px]">✦</span>{t("premiumBadge")}
+          </Link>
         ) : (
-          <Link href="/pricing" className="text-xs font-bold px-2.5 py-1 rounded-full bg-[#F3F2FF] text-[#8A8D93] hover:bg-primary/10 hover:text-primary transition-colors">
-            {t("upgrade")}
+          <Link href="/pricing" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full border border-[#E8E7EA] text-[#8A8D93] hover:border-primary/30 hover:text-primary hover:bg-primary/5 transition-colors">
+            {t("upgrade")} →
           </Link>
         )}
 
         <div ref={dropdownRef} className="relative">
           <button
             onClick={() => { setOpen((v) => !v); setShowCoupon(false); }}
-            className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold text-sm hover:bg-primary/30 transition-colors"
+            className="w-9 h-9 rounded-full bg-[#f0fdf4] border-2 border-primary/20 flex items-center justify-center text-primary font-bold text-sm hover:border-primary/40 hover:bg-primary/10 transition-all"
           >
             {name?.charAt(0).toUpperCase() ?? "?"}
           </button>
 
           {open && (
-            <div className="absolute right-0 top-10 w-56 bg-white border border-[#E8E7EA] rounded-2xl shadow-xl shadow-black/8 z-50 overflow-hidden">
-              <div className="px-4 py-3 border-b border-[#F0F0F2]">
+            <div className="absolute right-0 top-11 w-56 bg-white border border-[#E8E7EA] rounded-2xl shadow-2xl shadow-black/10 z-50 overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#F0F0F2] bg-[#FAFAF9]">
                 <p className="text-[#25293C] font-semibold text-sm truncate">{name}</p>
-                <p className="text-[#8A8D93] text-xs truncate">{email}</p>
+                <p className="text-[#B0B3BB] text-xs truncate mt-0.5">{email}</p>
               </div>
 
               {!showCoupon ? (
                 <>
                   <div className="py-1.5">
-                    <Link href="/profile" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors">
+                    <Link href="/profile" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors">
                       <span className="text-base">👤</span> {t("myProfile")}
                     </Link>
-                    <button onClick={() => setShowCoupon(true)} className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors text-left">
+                    <button onClick={() => setShowCoupon(true)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors text-left">
                       <span className="text-base">🎟️</span> {t("redeemCoupon")}
                     </button>
                   </div>
                   <div className="border-t border-[#F0F0F2] py-1.5">
-                    <button onClick={() => signOut(() => router.push("/login"))} className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors text-left">
+                    <button onClick={() => signOut(() => router.push("/"))} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors text-left">
                       <span className="text-base">↩</span> {t("signOut")}
                     </button>
                   </div>

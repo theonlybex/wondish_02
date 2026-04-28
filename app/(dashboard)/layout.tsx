@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
+import { getAccount } from "@/lib/queries";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import PremiumGuard from "@/components/PremiumGuard";
@@ -20,10 +21,7 @@ export default async function DashboardLayout({
   const { userId } = await auth();
   if (!userId) redirect("/login");
 
-  const account = await prisma.account.findUnique({
-    where: { clerkId: userId },
-    include: { subscription: true, roles: { include: { role: true } } },
-  });
+  const account = await getAccount(userId);
 
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const isPremium = hasActivePremium(account?.subscription);
