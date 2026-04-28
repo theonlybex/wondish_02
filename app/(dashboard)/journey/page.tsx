@@ -6,7 +6,7 @@ import { getAccount } from "@/lib/queries";
 import { computeJourneyStats } from "@/lib/journey";
 import JourneyDashboard from "@/components/journey/JourneyDashboard";
 
-export const metadata = { title: "My Journey" };
+export const metadata = { title: "Journey" };
 
 export default async function JourneyPage() {
   const { userId } = await auth();
@@ -49,7 +49,7 @@ export default async function JourneyPage() {
         </p>
         <div className="flex items-end justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-[#0d1f10]">My Journey</h1>
+            <h1 className="text-3xl font-bold text-[#0d1f10]">Journey</h1>
             <p className="text-xs mt-1.5" style={{ color: "#9EA8A0" }}>Your health progress over the last 30 days</p>
           </div>
           <span

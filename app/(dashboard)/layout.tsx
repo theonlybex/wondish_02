@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
@@ -26,15 +26,25 @@ export default async function DashboardLayout({
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const isPremium = hasActivePremium(account?.subscription);
 
-  // New-premium onboarding: redirect to Dish Tinder only if user hasn't seen taste setup yet
+  // New-premium onboarding: redirect to Dish Tinder only if user hasn't seen taste setup yet.
+  // Cookie-gated: once taste_complete=1 is set we skip the DB query entirely on every navigation.
   if (isPremium && !isAdmin && account) {
-    const pathname = (await headers()).get("x-pathname") ?? "";
-    if (pathname && pathname !== "/taste") {
-      const patient = await prisma.patient.findUnique({
-        where: { accountId: account.id },
-        select: { profileCompleted: true },
-      });
-      if (patient && !patient.profileCompleted) redirect("/taste");
+    const tasteDone = cookies().get("taste_complete")?.value === "1";
+
+    if (!tasteDone) {
+      const pathname = (await headers()).get("x-pathname") ?? "";
+      if (pathname && pathname !== "/taste") {
+        const patient = await prisma.patient.findUnique({
+          where: { accountId: account.id },
+          select: { profileCompleted: true },
+        });
+        if (!patient?.profileCompleted) {
+          redirect("/taste");
+        }
+        // profileCompleted=true but no cookie yet (existing user pre-dating this change).
+        // Bounce through the cookie-setter once so future navigations skip this DB call.
+        redirect(`/api/taste/set-cookie?next=${encodeURIComponent(pathname)}`);
+      }
     }
   }
 

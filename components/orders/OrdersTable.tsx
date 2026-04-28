@@ -9,10 +9,14 @@ import { OrderDTO } from "@/types";
 interface OrdersTableProps {
   initialOrders: OrderDTO[];
   initialTotal: number;
+  totalSpent?: number;
   limit?: number;
 }
 
-const statusVariant: Record<string, "success" | "warning" | "error" | "info" | "neutral"> = {
+const statusVariant: Record<
+  string,
+  "success" | "warning" | "error" | "info" | "neutral"
+> = {
   PENDING: "neutral",
   CONFIRMED: "info",
   PREPARING: "warning",
@@ -20,9 +24,18 @@ const statusVariant: Record<string, "success" | "warning" | "error" | "info" | "
   CANCELED: "error",
 };
 
+const statusAccent: Record<string, string> = {
+  PENDING: "#8A8D93",
+  CONFIRMED: "#00CFE8",
+  PREPARING: "#FF9F43",
+  DELIVERED: "#4ade80",
+  CANCELED: "#EA5455",
+};
+
 export default function OrdersTable({
   initialOrders,
   initialTotal,
+  totalSpent = 0,
   limit = 10,
 }: OrdersTableProps) {
   const [orders, setOrders] = useState(initialOrders);
@@ -45,49 +58,158 @@ export default function OrdersTable({
     }
   };
 
+  const lastOrder = orders[0];
+
+  const stats = [
+    {
+      label: "Total Orders",
+      value: String(total),
+      sub: "",
+    },
+    {
+      label: "Total Spent",
+      value: `$${totalSpent.toFixed(2)}`,
+      sub: "",
+    },
+    {
+      label: "Last Order",
+      value: lastOrder
+        ? format(new Date(lastOrder.createdAt), "MMM d")
+        : "—",
+      sub: lastOrder
+        ? format(new Date(lastOrder.createdAt), "yyyy")
+        : "",
+    },
+  ];
+
   return (
     <div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#E8E7EA]">
-              <th className="text-left py-3 px-4 text-[#8A8D93] font-semibold">Date</th>
-              <th className="text-left py-3 px-4 text-[#8A8D93] font-semibold hidden md:table-cell">Items</th>
-              <th className="text-left py-3 px-4 text-[#8A8D93] font-semibold hidden sm:table-cell">Total</th>
-              <th className="text-left py-3 px-4 text-[#8A8D93] font-semibold">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((order) => (
-              <tr key={order.id} className="border-b border-[#E8E7EA] hover:bg-[#FAFAFA]">
-                <td className="py-3 px-4 text-navy font-medium">
-                  {format(new Date(order.createdAt), "MMM d, yyyy")}
-                </td>
-                <td className="py-3 px-4 hidden md:table-cell text-[#8A8D93]">
-                  {order.items.map((i) => `${i.name} ×${i.quantity}`).join(", ")}
-                </td>
-                <td className="py-3 px-4 hidden sm:table-cell text-navy">
-                  {order.totalAmount != null ? `$${order.totalAmount.toFixed(2)}` : "—"}
-                </td>
-                <td className="py-3 px-4">
-                  <Badge variant={statusVariant[order.status] ?? "neutral"}>
-                    {order.status.charAt(0) + order.status.slice(1).toLowerCase()}
-                  </Badge>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {orders.length === 0 && (
-          <div className="text-center py-12 text-[#8A8D93]">No orders yet.</div>
-        )}
+      {/* Stats bar */}
+      <div className="grid grid-cols-3 border-b border-[#E8E7EA]" style={{ background: "#FAFCFA" }}>
+        {stats.map((stat, i) => (
+          <div
+            key={stat.label}
+            className={`px-6 py-5 ${i > 0 ? "border-l border-[#E8E7EA]" : ""}`}
+          >
+            <p
+              className="text-[9px] tracking-[0.22em] uppercase font-bold mb-2"
+              style={{ color: "#ADBDAD" }}
+            >
+              {stat.label}
+            </p>
+            <div className="flex items-baseline gap-1.5">
+              <p
+                className="font-black tabular-nums text-[#0d1f10] leading-none"
+                style={{ fontSize: "1.75rem" }}
+              >
+                {stat.value}
+              </p>
+              {stat.sub && (
+                <span
+                  className="text-sm font-medium leading-none"
+                  style={{ color: "#C8D4C8" }}
+                >
+                  {stat.sub}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
 
+      {/* Order rows */}
+      {orders.length === 0 ? (
+        <div className="py-20 text-center">
+          <div
+            className="mx-auto w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-5"
+            style={{ background: "#F0F4F0" }}
+          >
+            📦
+          </div>
+          <p className="text-[#0d1f10] font-semibold text-lg mb-1">
+            No orders yet
+          </p>
+          <p className="text-sm" style={{ color: "#ADBDAD" }}>
+            Your order history will appear here once you place your first order.
+          </p>
+        </div>
+      ) : (
+        <div className="divide-y divide-[#F0F4F0]">
+          {orders.map((order) => {
+            const accent = statusAccent[order.status] ?? "#8A8D93";
+            const variant = statusVariant[order.status] ?? "neutral";
+            const label =
+              order.status.charAt(0) + order.status.slice(1).toLowerCase();
+
+            return (
+              <div
+                key={order.id}
+                className="flex items-center gap-4 px-6 py-4 hover:bg-[#FAFCFA] transition-colors"
+              >
+                {/* Status accent bar */}
+                <div
+                  className="w-0.5 h-10 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: accent }}
+                />
+
+                {/* Date */}
+                <div className="w-20 flex-shrink-0">
+                  <p className="text-sm font-bold text-[#0d1f10] leading-snug">
+                    {format(new Date(order.createdAt), "MMM d")}
+                  </p>
+                  <p
+                    className="text-[10px] font-medium leading-snug"
+                    style={{ color: "#ADBDAD" }}
+                  >
+                    {format(new Date(order.createdAt), "yyyy")}
+                  </p>
+                </div>
+
+                {/* Items */}
+                <div className="flex-1 min-w-0 hidden sm:block">
+                  <p className="text-sm text-[#0d1f10] truncate leading-snug">
+                    {order.items.length > 0
+                      ? order.items
+                          .map((it) => `${it.name} ×${it.quantity}`)
+                          .join(", ")
+                      : "No items"}
+                  </p>
+                  <p
+                    className="text-[10px] font-medium mt-0.5 leading-snug"
+                    style={{ color: "#ADBDAD" }}
+                  >
+                    {order.items.length} item
+                    {order.items.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+
+                {/* Amount */}
+                <div className="flex-shrink-0 text-right w-20">
+                  <p className="text-sm font-bold text-[#0d1f10]">
+                    {order.totalAmount != null
+                      ? `$${order.totalAmount.toFixed(2)}`
+                      : "—"}
+                  </p>
+                </div>
+
+                {/* Status badge */}
+                <div className="flex-shrink-0">
+                  <Badge variant={variant}>{label}</Badge>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-[#E8E7EA]">
-          <p className="text-[#8A8D93] text-xs">
-            Page {page} of {totalPages}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-[#E8E7EA]">
+          <p
+            className="text-[10px] tracking-[0.2em] uppercase font-bold"
+            style={{ color: "#ADBDAD" }}
+          >
+            Page {page} / {totalPages}
           </p>
           <div className="flex gap-2">
             <Button
@@ -97,7 +219,7 @@ export default function OrdersTable({
               loading={loading}
               onClick={() => loadPage(page - 1)}
             >
-              ‹ Prev
+              ← Prev
             </Button>
             <Button
               variant="secondary"
@@ -106,7 +228,7 @@ export default function OrdersTable({
               loading={loading}
               onClick={() => loadPage(page + 1)}
             >
-              Next ›
+              Next →
             </Button>
           </div>
         </div>

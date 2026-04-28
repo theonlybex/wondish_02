@@ -30,7 +30,6 @@ async function fetchItems(type: string): Promise<{ id: string; name: string }[]>
     "food-allergy": () => prisma.foodAllergy.findMany({ orderBy: { name: "asc" } }),
     "health-condition": () => prisma.healthCondition.findMany({ orderBy: { name: "asc" } }),
   };
-
   const fn = map[type];
   if (!fn) return [];
   return fn();
@@ -57,35 +56,62 @@ export default async function ParametersPage({
   if (!label) notFound();
 
   const items = await fetchItems(params.type);
-
   const navTypes = Object.entries(TYPE_LABELS);
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-navy">Parameters</h1>
-        <p className="text-[#8A8D93] text-sm mt-1">Manage reference data tables</p>
+      <style>{`
+        @keyframes ov-rise {
+          from { opacity: 0; transform: translateY(18px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .ov { animation: ov-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+      `}</style>
+
+      {/* Header */}
+      <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
+        <p
+          className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
+          style={{ color: "#7DB87D" }}
+        >
+          Admin · Parameters
+        </p>
+        <h1 className="text-3xl font-bold text-[#0d1f10]">{label}</h1>
+        <div className="flex items-center gap-3 mt-4">
+          <div className="h-px w-12 bg-primary/40" />
+          <p className="text-xs" style={{ color: "#9EA8A0" }}>
+            {items.length} {items.length === 1 ? "entry" : "entries"} · Manage reference data tables
+          </p>
+        </div>
       </div>
 
       {/* Type nav */}
-      <div className="flex flex-wrap gap-2 mb-6">
+      <div className="ov flex flex-wrap gap-2 mb-6" style={{ animationDelay: "70ms" }}>
         {navTypes.map(([t, l]) => (
           <a
             key={t}
             href={`/admin/parameters/${t}`}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+            className="px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+            style={
               params.type === t
-                ? "bg-primary text-white"
-                : "bg-[#F3F2FF] text-[#8A8D93] hover:bg-primary/10 hover:text-primary"
-            }`}
+                ? {
+                    background: "#4ade80",
+                    color: "#0a1509",
+                    boxShadow: "0 2px 8px rgba(74,222,128,0.3)",
+                  }
+                : {
+                    background: "#F0F4F0",
+                    color: "#8A8D93",
+                  }
+            }
           >
             {l}
           </a>
         ))}
       </div>
 
-      <div>
-        <h2 className="text-base font-semibold text-navy mb-4">{label}</h2>
+      {/* CRUD table */}
+      <div className="ov" style={{ animationDelay: "130ms" }}>
         <ParameterCrudTable type={params.type} initialItems={items} />
       </div>
     </div>

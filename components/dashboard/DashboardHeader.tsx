@@ -106,7 +106,7 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
       <div className="flex-1" />
 
       <div className="flex items-center gap-3">
-        <span className="text-[#B0B3BB] text-xs hidden sm:block">{email}</span>
+        <span className="text-[#B0B3BB] text-xs hidden sm:block">{name?.split(" ")[0]}</span>
         {plan === "ADMIN" ? (
           <Link href="/membership" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200/80 text-amber-700 hover:bg-amber-100 transition-colors">
             <span className="text-[10px]">★</span>{t("adminBadge")}
@@ -124,16 +124,15 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
         <div ref={dropdownRef} className="relative">
           <button
             onClick={() => { setOpen((v) => !v); setShowCoupon(false); }}
-            className="w-9 h-9 rounded-full bg-[#f0fdf4] border-2 border-primary/20 flex items-center justify-center text-primary font-bold text-sm hover:border-primary/40 hover:bg-primary/10 transition-all"
+            className="px-3 py-1.5 rounded-xl bg-[#f0fdf4] border border-primary/20 text-primary font-semibold text-xs hover:border-primary/40 hover:bg-primary/10 transition-all"
           >
-            {name?.charAt(0).toUpperCase() ?? "?"}
+            Settings
           </button>
 
           {open && (
             <div className="absolute right-0 top-11 w-56 bg-white border border-[#E8E7EA] rounded-2xl shadow-2xl shadow-black/10 z-50 overflow-hidden">
               <div className="px-4 py-3 border-b border-[#F0F0F2] bg-[#FAFAF9]">
-                <p className="text-[#25293C] font-semibold text-sm truncate">{name}</p>
-                <p className="text-[#B0B3BB] text-xs truncate mt-0.5">{email}</p>
+                <p className="text-[#25293C] font-semibold text-sm">Settings</p>
               </div>
 
               {!showCoupon ? (
@@ -141,6 +140,15 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
                   <div className="py-1.5">
                     <Link href="/profile" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors">
                       <span className="text-base">👤</span> {t("myProfile")}
+                    </Link>
+                    <Link href="/orders" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors">
+                      <span className="text-base">📦</span> {t("myOrders")}
+                    </Link>
+                    <Link href="/prediction" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors">
+                      <span className="text-base">🎯</span> {t("myPrediction")}
+                    </Link>
+                    <Link href="/membership" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors">
+                      <span className="text-base">⭐</span> {t("myMembership")}
                     </Link>
                     <button onClick={() => setShowCoupon(true)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors text-left">
                       <span className="text-base">🎟️</span> {t("redeemCoupon")}

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getAccount } from "@/lib/queries";
 import Link from "next/link";
 
-export const metadata = { title: "My Membership" };
+export const metadata = { title: "Membership" };
 
 const PREMIUM_BENEFITS = [
   {
@@ -19,7 +19,7 @@ const PREMIUM_BENEFITS = [
   {
     icon: "🛒",
     title: "Smart Grocery List",
-    description: "Auto-generated shopping list from your weekly plan. Organized by category, ready to use in the store.",
+    description: "Auto-generated shopping list from your weekly plan. Organised by category, ready to use in the store.",
   },
   {
     icon: "🎯",
@@ -61,7 +61,9 @@ export default async function MembershipPage() {
 
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const sub = account?.subscription;
-  const isPremium = isAdmin || (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(sub?.status ?? ""));
+  const isPremium =
+    isAdmin ||
+    (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(sub?.status ?? ""));
 
   if (!isPremium) redirect("/pricing");
 
@@ -72,85 +74,147 @@ export default async function MembershipPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
+      <style>{`
+        @keyframes ov-rise {
+          from { opacity: 0; transform: translateY(18px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .ov { animation: ov-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+      `}</style>
 
-      {/* Hero */}
-      <div className="relative bg-gradient-to-br from-primary/15 via-primary/8 to-transparent border border-primary/20 rounded-3xl p-8 sm:p-10 mb-8 overflow-hidden">
-        <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full bg-primary/10 pointer-events-none" />
-        <div className="relative">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-2xl">⭐</span>
-            <span className="text-primary text-sm font-bold uppercase tracking-widest">
-              {isAdmin ? "Admin Access" : "Premium Member"}
-            </span>
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-black text-navy mb-2">
-            Hey {firstName}, you&apos;re all set.
-          </h1>
-          <p className="text-[#5A5E6C] text-base max-w-lg">
+      {/* Header */}
+      <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
+        <p
+          className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
+          style={{ color: "#7DB87D" }}
+        >
+          Membership
+        </p>
+        <h1 className="text-3xl font-bold text-[#0d1f10]">
+          Hey {firstName}, you&apos;re all set.
+        </h1>
+        <div className="flex items-center gap-3 mt-4">
+          <div className="h-px w-12 bg-primary/40" />
+          <p className="text-xs" style={{ color: "#9EA8A0" }}>
             {isAdmin
-              ? "You have full admin access — all features are unlocked and no restrictions apply."
-              : "You have full access to everything Wondish has to offer. Here's what's included in your plan."}
+              ? "Full admin access — all features unlocked."
+              : "You have full access to everything Wondish has to offer."}
           </p>
-
-          {/* Subscription status */}
-          {!isAdmin && (
-            <div className="mt-6 flex flex-wrap gap-3">
-              {isTrialing && trialEnd && (
-                <div className="bg-white border border-primary/20 rounded-xl px-4 py-2.5 text-sm">
-                  <span className="text-[#8A8D93]">Free trial ends </span>
-                  <span className="text-navy font-semibold">
-                    {trialEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                  </span>
-                </div>
-              )}
-              {!isTrialing && periodEnd && (
-                <div className="bg-white border border-[#E8E7EA] rounded-xl px-4 py-2.5 text-sm">
-                  <span className="text-[#8A8D93]">Renews </span>
-                  <span className="text-navy font-semibold">
-                    {periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                  </span>
-                </div>
-              )}
-              <div className="bg-white border border-[#E8E7EA] rounded-xl px-4 py-2.5 text-sm">
-                <span className="text-[#8A8D93]">Status </span>
-                <span className="text-emerald-600 font-semibold capitalize">{sub?.status?.toLowerCase() ?? "active"}</span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Value callout */}
-      {!isAdmin && (
-        <div className="bg-navy rounded-2xl p-6 mb-8 flex items-center gap-5">
-          <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-primary/20 flex items-center justify-center">
-            <span className="text-2xl">💎</span>
+      {/* Hero plan card */}
+      <div
+        className="ov relative rounded-2xl overflow-hidden mb-6"
+        style={{
+          animationDelay: "70ms",
+          background: "linear-gradient(140deg, #0a1509 0%, #162a18 60%, #0d1f10 100%)",
+          boxShadow: "0 8px 32px rgba(13,31,16,0.25)",
+        }}
+      >
+        <div
+          className="absolute top-0 right-0 w-80 h-80 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(74,222,128,0.10) 0%, transparent 65%)", transform: "translate(35%, -35%)" }}
+        />
+        <div className="relative px-8 py-8 flex items-center gap-6">
+          <div className="w-14 h-14 rounded-2xl bg-primary/20 flex items-center justify-center flex-shrink-0 text-2xl">
+            {isAdmin ? "🛡" : "⭐"}
           </div>
-          <div>
-            <p className="text-white/50 text-xs uppercase tracking-widest font-semibold mb-0.5">Your Premium Plan — $15/month</p>
-            <p className="text-white font-bold text-base">Here&apos;s everything you&apos;re getting for your $15</p>
-            <p className="text-white/60 text-sm mt-0.5">9 powerful features, 500+ recipes, full analytics & more — all unlocked.</p>
+          <div className="flex-1">
+            <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-2" style={{ color: "rgba(74,222,128,0.5)" }}>
+              {isAdmin ? "Admin Access" : "Premium Member"}
+            </p>
+            <p className="text-white font-bold text-lg leading-snug">
+              {isAdmin
+                ? "All features unlocked — no restrictions apply."
+                : "Everything Wondish offers, fully unlocked."}
+            </p>
+            {!isAdmin && (
+              <div className="flex flex-wrap gap-3 mt-4">
+                {isTrialing && trialEnd && (
+                  <div
+                    className="rounded-xl px-4 py-2 text-sm"
+                    style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(74,222,128,0.2)" }}
+                  >
+                    <span style={{ color: "rgba(255,255,255,0.4)" }}>Trial ends </span>
+                    <span className="text-white font-semibold">
+                      {trialEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                    </span>
+                  </div>
+                )}
+                {!isTrialing && periodEnd && (
+                  <div
+                    className="rounded-xl px-4 py-2 text-sm"
+                    style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.08)" }}
+                  >
+                    <span style={{ color: "rgba(255,255,255,0.4)" }}>Renews </span>
+                    <span className="text-white font-semibold">
+                      {periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                    </span>
+                  </div>
+                )}
+                <div
+                  className="rounded-xl px-4 py-2 text-sm"
+                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.08)" }}
+                >
+                  <span style={{ color: "rgba(255,255,255,0.4)" }}>Status </span>
+                  <span className="text-primary font-semibold capitalize">
+                    {sub?.status?.toLowerCase() ?? "active"}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
       {/* Benefits grid */}
-      <div className="mb-8">
-        <h2 className="text-navy font-bold text-lg mb-5">Everything included in your plan</h2>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {PREMIUM_BENEFITS.map((b) => (
-            <div key={b.title} className="bg-white border border-[#E8E7EA] rounded-2xl p-5">
+      <div className="ov mb-6" style={{ animationDelay: "140ms" }}>
+        <p
+          className="text-[9px] tracking-[0.28em] uppercase font-bold mb-5"
+          style={{ color: "#ADBDAD" }}
+        >
+          Everything included
+        </p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {PREMIUM_BENEFITS.map((b, i) => (
+            <div
+              key={b.title}
+              className="bg-white rounded-2xl p-5 group cursor-default select-none relative overflow-hidden"
+              style={{
+                boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+                animationDelay: `${140 + i * 30}ms`,
+              }}
+            >
               <div className="text-2xl mb-3">{b.icon}</div>
-              <h3 className="text-navy font-semibold text-sm mb-1">{b.title}</h3>
-              <p className="text-[#8A8D93] text-xs leading-relaxed">{b.description}</p>
+              <h3 className="text-[#0d1f10] font-semibold text-sm mb-1">{b.title}</h3>
+              <p className="text-xs leading-relaxed" style={{ color: "#ADBDAD" }}>
+                {b.description}
+              </p>
+              <div
+                className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+                style={{ background: "radial-gradient(ellipse at 90% 110%, rgba(74,222,128,0.06) 0%, transparent 60%)" }}
+              />
             </div>
           ))}
         </div>
       </div>
 
       {/* Quick links */}
-      <div className="bg-[#F8F7FA] border border-[#E8E7EA] rounded-2xl p-6">
-        <h2 className="text-navy font-bold text-sm mb-4">Jump right in</h2>
+      <div
+        className="ov rounded-2xl p-6"
+        style={{
+          animationDelay: "420ms",
+          background: "#FAFCFA",
+          boxShadow: "0 0 0 1px rgba(13,31,16,0.04)",
+        }}
+      >
+        <p
+          className="text-[9px] tracking-[0.28em] uppercase font-bold mb-4"
+          style={{ color: "#ADBDAD" }}
+        >
+          Jump right in
+        </p>
         <div className="grid sm:grid-cols-3 gap-3">
           {[
             { href: "/meal-plan", label: "My Meal Plan", icon: "🍽" },
@@ -160,14 +224,15 @@ export default async function MembershipPage() {
             <Link
               key={href}
               href={href}
-              className="flex items-center gap-3 bg-white border border-[#E8E7EA] hover:border-primary/30 rounded-xl px-4 py-3 text-sm font-medium text-navy hover:text-primary transition-colors"
+              className="flex items-center gap-3 bg-white hover:border-primary/30 rounded-xl px-4 py-3 text-sm font-medium text-[#0d1f10] hover:text-primary transition-colors"
+              style={{ boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
             >
-              <span>{icon}</span> {label}
+              <span>{icon}</span>
+              {label}
             </Link>
           ))}
         </div>
       </div>
-
     </div>
   );
 }

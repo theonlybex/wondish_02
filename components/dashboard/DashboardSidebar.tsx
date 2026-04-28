@@ -2,27 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useClerk } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 export default function DashboardSidebar({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
-  const { signOut } = useClerk();
-  const router = useRouter();
   const t = useTranslations("sidebar");
 
   const navItems = [
     { href: "/overview", label: t("overview"), icon: "▦" },
     { href: "/meal-plan", label: t("mealPlan"), icon: "🍽" },
-    { href: "/grocery-list", label: t("groceryList"), icon: "🛒" },
     { href: "/journal", label: t("myJournal"), icon: "📓" },
     { href: "/journey", label: t("myJourney"), icon: "📈" },
-    { href: "/orders", label: t("myOrders"), icon: "📦" },
-    { href: "/profile", label: t("myProfile"), icon: "👤" },
-    { href: "/prediction", label: t("myPrediction"), icon: "🎯" },
     { href: "/taste", label: t("myTaste"), icon: "❤️" },
-    { href: "/membership", label: t("myMembership"), icon: "⭐" },
+    { href: "/grocery-list", label: t("groceryList"), icon: "🛒" },
   ];
 
   const adminItems = [
@@ -101,15 +93,6 @@ export default function DashboardSidebar({ isAdmin }: { isAdmin: boolean }) {
         )}
       </nav>
 
-      <div className="p-3 border-t border-white/[0.06]">
-        <button
-          onClick={() => signOut(() => router.push("/"))}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-white/40 hover:text-white/80 hover:bg-white/[0.05] w-full transition-all duration-150"
-        >
-          <span className="text-base w-5 text-center">↩</span>
-          {t("signOut")}
-        </button>
-      </div>
     </aside>
   );
 }

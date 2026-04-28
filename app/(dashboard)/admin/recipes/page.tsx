@@ -27,20 +27,49 @@ export default async function AdminRecipesPage() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+      <style>{`
+        @keyframes ov-rise {
+          from { opacity: 0; transform: translateY(18px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .ov { animation: ov-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+      `}</style>
+
+      <div className="ov flex items-start justify-between mb-8" style={{ animationDelay: "0ms" }}>
         <div>
-          <h1 className="text-2xl font-bold text-navy">Recipes</h1>
-          <p className="text-[#8A8D93] text-sm mt-1">{recipes.length} recipes in pool</p>
+          <p
+            className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
+            style={{ color: "#7DB87D" }}
+          >
+            Admin
+          </p>
+          <h1 className="text-3xl font-bold text-[#0d1f10]">Recipes</h1>
+          <div className="flex items-center gap-3 mt-4">
+            <div className="h-px w-12 bg-primary/40" />
+            <p className="text-xs" style={{ color: "#9EA8A0" }}>
+              {recipes.length} recipes in pool
+            </p>
+          </div>
         </div>
         <Link
           href="/admin/recipes/new"
-          className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
+          className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-5 py-2.5 rounded-xl text-sm font-bold transition-colors mt-8"
+          style={{ boxShadow: "0 4px 16px rgba(74,222,128,0.2)" }}
         >
-          + New Recipe
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+          New Recipe
         </Link>
       </div>
 
-      <div className="bg-white border border-[#E8E7EA] rounded-2xl">
+      <div
+        className="ov bg-white rounded-2xl overflow-hidden"
+        style={{
+          animationDelay: "80ms",
+          boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+        }}
+      >
         <RecipeListTable recipes={recipes as never} />
       </div>
     </div>

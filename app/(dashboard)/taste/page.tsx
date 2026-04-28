@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { getRecipeEmoji } from "@/lib/recipeEmoji";
 import DishTinder from "@/components/taste/DishTinder";
 
-export const metadata = { title: "My Taste Profile" };
+export const metadata = { title: "Taste Profile" };
 
 export default async function TasteProfilePage({
   searchParams,
@@ -21,7 +21,6 @@ export default async function TasteProfilePage({
   const patient = await prisma.patient.findUnique({ where: { accountId: account.id } });
   if (!patient) redirect("/profile?onboarding=true");
 
-  // ── Dish Tinder preferences ──────────────────────────────────────────────────
   const tinderPrefs = await prisma.patientDishPreference.findMany({
     where: { patientId: patient.id },
     include: {
@@ -37,7 +36,6 @@ export default async function TasteProfilePage({
     orderBy: { createdAt: "desc" },
   });
 
-  // Show Dish Tinder if: no preferences yet, OR user clicked "Rate More Dishes"
   if (tinderPrefs.length === 0 || discover === "1") {
     return (
       <div className="max-w-lg mx-auto py-4">
@@ -49,7 +47,6 @@ export default async function TasteProfilePage({
   const tinderLiked = tinderPrefs.filter((p) => p.liked);
   const tinderDisliked = tinderPrefs.filter((p) => !p.liked);
 
-  // ── Ingredient affinity (from liked tinder dishes) ───────────────────────────
   const ingredientCount: Record<string, number> = {};
   for (const pref of tinderLiked) {
     for (const ri of pref.recipe.ingredients) {
@@ -58,14 +55,14 @@ export default async function TasteProfilePage({
     }
   }
   const totalLiked = tinderLiked.length;
-  const ingredientAffinity = totalLiked > 0
-    ? Object.entries(ingredientCount)
-        .map(([name, count]) => ({ name, percent: Math.round((count / totalLiked) * 100), count }))
-        .sort((a, b) => b.percent - a.percent)
-        .slice(0, 15)
-    : [];
+  const ingredientAffinity =
+    totalLiked > 0
+      ? Object.entries(ingredientCount)
+          .map(([name, count]) => ({ name, percent: Math.round((count / totalLiked) * 100), count }))
+          .sort((a, b) => b.percent - a.percent)
+          .slice(0, 15)
+      : [];
 
-  // ── Journal meal ratings (existing My Taste data) ────────────────────────────
   const ratedMeals = await prisma.journalMeal.findMany({
     where: {
       journalEntry: { patientId: patient.id },
@@ -85,113 +82,193 @@ export default async function TasteProfilePage({
   const recipeStats: Record<string, { likes: number; dislikes: number; mealType: string }> = {};
   for (const m of ratedMeals) {
     if (!m.recipeId) continue;
-    if (!recipeStats[m.recipeId]) {
+    if (!recipeStats[m.recipeId])
       recipeStats[m.recipeId] = { likes: 0, dislikes: 0, mealType: m.mealType };
-    }
     if ((m.rating ?? 0) > 0) recipeStats[m.recipeId].likes++;
     else recipeStats[m.recipeId].dislikes++;
   }
 
   const journalRecipeIds = Object.keys(recipeStats);
-  const journalRecipes = journalRecipeIds.length > 0
-    ? await prisma.recipe.findMany({
-        where: { id: { in: journalRecipeIds } },
-        select: { id: true, name: true, emoji: true, tags: true, calories: true, mealType: { select: { name: true } } },
-      })
-    : [];
+  const journalRecipes =
+    journalRecipeIds.length > 0
+      ? await prisma.recipe.findMany({
+          where: { id: { in: journalRecipeIds } },
+          select: { id: true, name: true, emoji: true, tags: true, calories: true, mealType: { select: { name: true } } },
+        })
+      : [];
 
-  const journalLiked = journalRecipes.filter((r) => (recipeStats[r.id]?.likes ?? 0) > (recipeStats[r.id]?.dislikes ?? 0));
-  const journalDisliked = journalRecipes.filter((r) => (recipeStats[r.id]?.dislikes ?? 0) > (recipeStats[r.id]?.likes ?? 0));
+  const journalLiked = journalRecipes.filter(
+    (r) => (recipeStats[r.id]?.likes ?? 0) > (recipeStats[r.id]?.dislikes ?? 0)
+  );
+  const journalDisliked = journalRecipes.filter(
+    (r) => (recipeStats[r.id]?.dislikes ?? 0) > (recipeStats[r.id]?.likes ?? 0)
+  );
+
+  const totalDishes = tinderPrefs.length + journalRecipeIds.length;
+  const totalWouldTry = tinderLiked.length + journalLiked.length;
+  const totalWouldSkip = tinderDisliked.length + journalDisliked.length;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8">
+    <div className="max-w-3xl mx-auto pb-8">
+      <style>{`
+        @keyframes ov-rise {
+          from { opacity: 0; transform: translateY(18px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .ov { animation: ov-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+      `}</style>
+
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="ov flex items-start justify-between mb-8" style={{ animationDelay: "0ms" }}>
         <div>
-          <h1 className="text-2xl font-bold text-navy">My Taste Profile</h1>
-          <p className="text-[#8A8D93] text-sm mt-1">
-            Your personalised dish map — built from dishes you'd try and meals you've rated.
+          <p
+            className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
+            style={{ color: "#7DB87D" }}
+          >
+            Taste Profile
           </p>
+          <h1 className="text-3xl font-bold text-[#0d1f10]">Taste Profile</h1>
+          <div className="flex items-center gap-3 mt-4">
+            <div className="h-px w-12 bg-primary/40" />
+            <p className="text-xs" style={{ color: "#9EA8A0" }}>
+              Built from dishes you&apos;d try and meals you&apos;ve rated
+            </p>
+          </div>
         </div>
         <a
           href="/taste?discover=1"
-          className="px-4 py-2 rounded-xl border border-primary text-primary text-sm font-semibold hover:bg-primary/5 transition-colors shrink-0"
+          className="mt-8 inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-4 py-2.5 rounded-xl text-sm font-bold transition-colors flex-shrink-0"
+          style={{ boxShadow: "0 4px 16px rgba(74,222,128,0.2)" }}
         >
-          Rate More Dishes
+          Rate More
         </a>
       </div>
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5 text-center">
-          <p className="text-3xl font-black text-navy">{tinderPrefs.length + journalRecipeIds.length}</p>
-          <p className="text-[#8A8D93] text-xs mt-1">Dishes rated</p>
-        </div>
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center">
-          <p className="text-3xl font-black text-emerald-600">{tinderLiked.length + journalLiked.length}</p>
-          <p className="text-emerald-600/70 text-xs mt-1">Would Try 👍</p>
-        </div>
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center">
-          <p className="text-3xl font-black text-red-500">{tinderDisliked.length + journalDisliked.length}</p>
-          <p className="text-red-500/70 text-xs mt-1">Would Skip 👎</p>
+      {/* Stats bar */}
+      <div
+        className="ov bg-white rounded-2xl overflow-hidden mb-6"
+        style={{
+          animationDelay: "70ms",
+          boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+        }}
+      >
+        <div className="grid grid-cols-3" style={{ background: "#FAFCFA" }}>
+          {[
+            { label: "Dishes Rated", value: totalDishes, color: "#0d1f10" },
+            { label: "Would Try", value: totalWouldTry, color: "#4ade80" },
+            { label: "Would Skip", value: totalWouldSkip, color: "#EA5455" },
+          ].map((s, i) => (
+            <div key={s.label} className={`px-6 py-5 ${i > 0 ? "border-l border-[#E8E7EA]" : ""}`}>
+              <p
+                className="text-[9px] tracking-[0.22em] uppercase font-bold mb-2"
+                style={{ color: "#ADBDAD" }}
+              >
+                {s.label}
+              </p>
+              <p
+                className="font-black tabular-nums leading-none"
+                style={{ fontSize: "1.75rem", color: s.color }}
+              >
+                {s.value}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Ingredient Affinities */}
       {ingredientAffinity.length > 0 && (
-        <section>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xl">🧠</span>
-            <h2 className="font-bold text-navy text-base">Ingredients You Love</h2>
-            <span className="ml-auto text-xs text-[#8A8D93]">from your liked dishes</span>
+        <div
+          className="ov bg-white rounded-2xl p-6 mb-6"
+          style={{
+            animationDelay: "140ms",
+            boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+          }}
+        >
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <p
+                className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1"
+                style={{ color: "#ADBDAD" }}
+              >
+                Affinity Map
+              </p>
+              <h2 className="text-base font-bold text-[#0d1f10]">Ingredients You Love</h2>
+            </div>
+            <span className="text-2xl">🧠</span>
           </div>
-          <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5 space-y-3">
+          <div className="space-y-3">
             {ingredientAffinity.map(({ name, percent }) => (
               <div key={name} className="flex items-center gap-3">
-                <span className="text-sm text-navy font-medium w-36 truncate">{name}</span>
-                <div className="flex-1 h-2 bg-[#F0EFF5] rounded-full overflow-hidden">
+                <span className="text-sm text-[#0d1f10] font-medium w-36 truncate">{name}</span>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#F0F4F0" }}>
                   <div
-                    className="h-full bg-primary rounded-full transition-all"
-                    style={{ width: `${percent}%` }}
+                    className="h-full rounded-full"
+                    style={{ width: `${percent}%`, background: "linear-gradient(90deg, #4ade80, #22c55e)" }}
                   />
                 </div>
-                <span className="text-xs font-bold text-primary w-10 text-right">{percent}%</span>
+                <span
+                  className="text-xs font-bold w-10 text-right tabular-nums"
+                  style={{ color: "#4ade80" }}
+                >
+                  {percent}%
+                </span>
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-[#8A8D93] mt-2 pl-1">
-            Your meal plan prioritises recipes with these ingredients. Higher % = appears in more of your liked dishes.
+          <p className="text-[10px] mt-4" style={{ color: "#ADBDAD" }}>
+            Higher % = appears in more of your liked dishes. Your meal plan prioritises these ingredients.
           </p>
-        </section>
+        </div>
       )}
 
-      {/* Dishes You'd Try (Tinder) */}
+      {/* Dishes You'd Try */}
       {tinderLiked.length > 0 && (
-        <section>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xl">✅</span>
-            <h2 className="font-bold text-navy text-base">Dishes You'd Try</h2>
-            <span className="ml-auto text-xs text-[#8A8D93]">{tinderLiked.length} dishes</span>
+        <div className="ov mb-6" style={{ animationDelay: "210ms" }}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ADBDAD" }}>
+                Dish Tinder
+              </p>
+              <h2 className="text-base font-bold text-[#0d1f10]">Dishes You&apos;d Try</h2>
+            </div>
+            <span
+              className="text-[10px] font-bold tracking-widest uppercase"
+              style={{ color: "#4ade80" }}
+            >
+              {tinderLiked.length} dishes
+            </span>
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             {tinderLiked.map(({ recipe }) => {
               const emoji = recipe.emoji ?? getRecipeEmoji(recipe.name, recipe.tags, recipe.mealType?.name);
               return (
-                <div key={recipe.id} className="bg-white border border-emerald-100 rounded-2xl p-4 flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0 text-2xl">
+                <div
+                  key={recipe.id}
+                  className="bg-white rounded-2xl p-4 flex items-center gap-4"
+                  style={{ boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+                >
+                  <div
+                    className="w-0.5 h-10 rounded-full flex-shrink-0"
+                    style={{ background: "#4ade80" }}
+                  />
+                  <div
+                    className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-2xl"
+                    style={{ background: "rgba(74,222,128,0.08)" }}
+                  >
                     {emoji}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-navy text-sm truncate">{recipe.name}</p>
+                    <p className="font-semibold text-[#0d1f10] text-sm truncate">{recipe.name}</p>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       {recipe.mealType?.name && (
-                        <span className="text-[10px] text-[#8A8D93]">{recipe.mealType.name}</span>
+                        <span className="text-[10px]" style={{ color: "#ADBDAD" }}>{recipe.mealType.name}</span>
                       )}
                       {recipe.ethnic?.name && (
-                        <span className="text-[10px] text-primary">· {recipe.ethnic.name}</span>
+                        <span className="text-[10px]" style={{ color: "#4ade80" }}>· {recipe.ethnic.name}</span>
                       )}
                       {recipe.calories && (
-                        <span className="text-[10px] text-[#8A8D93]">· {recipe.calories} kcal</span>
+                        <span className="text-[10px]" style={{ color: "#ADBDAD" }}>· {recipe.calories} kcal</span>
                       )}
                     </div>
                   </div>
@@ -199,78 +276,139 @@ export default async function TasteProfilePage({
               );
             })}
           </div>
-        </section>
+        </div>
       )}
 
-      {/* Dishes You Loved (Journal) */}
+      {/* Meals You Loved (Journal) */}
       {journalLiked.length > 0 && (
-        <section>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xl">👍</span>
-            <h2 className="font-bold text-navy text-base">Meals You Loved</h2>
-            <span className="ml-auto text-xs text-[#8A8D93]">{journalLiked.length} from your journal</span>
+        <div className="ov mb-6" style={{ animationDelay: "270ms" }}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ADBDAD" }}>
+                From Your Journal
+              </p>
+              <h2 className="text-base font-bold text-[#0d1f10]">Meals You Loved</h2>
+            </div>
+            <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#4ade80" }}>
+              {journalLiked.length} meals
+            </span>
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             {journalLiked.map((r) => {
               const stats = recipeStats[r.id];
               const emoji = r.emoji ?? getRecipeEmoji(r.name, r.tags, r.mealType?.name);
               return (
-                <div key={r.id} className="bg-white border border-emerald-100 rounded-2xl p-4 flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0 text-2xl">
+                <div
+                  key={r.id}
+                  className="bg-white rounded-2xl p-4 flex items-center gap-4"
+                  style={{ boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+                >
+                  <div className="w-0.5 h-10 rounded-full flex-shrink-0" style={{ background: "#4ade80" }} />
+                  <div
+                    className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-2xl"
+                    style={{ background: "rgba(74,222,128,0.08)" }}
+                  >
                     {emoji}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-navy text-sm truncate">{r.name}</p>
+                    <p className="font-semibold text-[#0d1f10] text-sm truncate">{r.name}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      {r.calories && <span className="text-[10px] text-[#8A8D93]">{r.calories} kcal</span>}
-                      {r.mealType?.name && <span className="text-[10px] text-[#8A8D93]">· {r.mealType.name}</span>}
+                      {r.calories && (
+                        <span className="text-[10px]" style={{ color: "#ADBDAD" }}>{r.calories} kcal</span>
+                      )}
+                      {r.mealType?.name && (
+                        <span className="text-[10px]" style={{ color: "#ADBDAD" }}>· {r.mealType.name}</span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-0.5 flex-shrink-0">
                     {Array.from({ length: Math.min(stats?.likes ?? 0, 5) }).map((_, i) => (
-                      <span key={i} className="text-xs">💚</span>
+                      <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: "#4ade80" }} />
                     ))}
                   </div>
                 </div>
               );
             })}
           </div>
-        </section>
+        </div>
       )}
 
-      {/* Dishes to Skip (Tinder + Journal) */}
+      {/* Not Your Thing */}
       {(tinderDisliked.length > 0 || journalDisliked.length > 0) && (
-        <section>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xl">🙅</span>
-            <h2 className="font-bold text-navy text-base">Not Your Thing</h2>
-            <span className="ml-auto text-xs text-[#8A8D93]">{tinderDisliked.length + journalDisliked.length} dishes</span>
+        <div className="ov mb-6" style={{ animationDelay: "330ms" }}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ADBDAD" }}>
+                Excluded
+              </p>
+              <h2 className="text-base font-bold text-[#0d1f10]">Not Your Thing</h2>
+            </div>
+            <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#EA5455" }}>
+              {tinderDisliked.length + journalDisliked.length} dishes
+            </span>
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             {[...tinderDisliked.map((p) => p.recipe), ...journalDisliked].map((r) => {
               const emoji = r.emoji ?? getRecipeEmoji(r.name, r.tags, r.mealType?.name);
               return (
-                <div key={r.id} className="bg-white border border-red-100 rounded-2xl p-4 flex items-center gap-4 opacity-70">
-                  <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0 text-2xl">
+                <div
+                  key={r.id}
+                  className="bg-white rounded-2xl p-4 flex items-center gap-4 opacity-60"
+                  style={{ boxShadow: "0 1px 3px rgba(13,31,16,0.05), 0 0 0 1px rgba(13,31,16,0.03)" }}
+                >
+                  <div className="w-0.5 h-10 rounded-full flex-shrink-0" style={{ background: "#EA5455" }} />
+                  <div
+                    className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-2xl"
+                    style={{ background: "rgba(234,84,85,0.06)" }}
+                  >
                     {emoji}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-navy text-sm truncate line-through decoration-red-300">{r.name}</p>
-                    {r.mealType?.name && <p className="text-[10px] text-[#8A8D93] mt-1">{r.mealType.name}</p>}
+                    <p
+                      className="font-semibold text-sm truncate line-through"
+                      style={{ color: "#0d1f10", textDecorationColor: "#EA5455" }}
+                    >
+                      {r.name}
+                    </p>
+                    {r.mealType?.name && (
+                      <p className="text-[10px] mt-1" style={{ color: "#ADBDAD" }}>
+                        {r.mealType.name}
+                      </p>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
-        </section>
+        </div>
       )}
 
-      {/* Footer */}
-      <div className="bg-primary/5 border border-primary/15 rounded-2xl p-5 text-center">
-        <p className="text-navy text-sm font-medium mb-1">Your taste profile improves your meal plan</p>
-        <p className="text-[#8A8D93] text-xs">
-          The more you rate, the smarter your suggestions get. Liked dishes boost similar recipes in your meal plan.
-        </p>
+      {/* Footer CTA */}
+      <div
+        className="ov relative rounded-2xl p-8 overflow-hidden text-center"
+        style={{
+          animationDelay: "390ms",
+          background: "linear-gradient(140deg, #0a1509 0%, #162a18 60%, #0d1f10 100%)",
+          boxShadow: "0 8px 32px rgba(13,31,16,0.25)",
+        }}
+      >
+        <div
+          className="absolute top-0 right-0 w-64 h-64 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(74,222,128,0.08) 0%, transparent 65%)", transform: "translate(30%, -30%)" }}
+        />
+        <div className="relative">
+          <p className="text-white font-bold mb-2">Your taste profile improves your meal plan</p>
+          <p className="text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.38)" }}>
+            The more you rate, the smarter your suggestions get. Liked dishes boost similar recipes in your plan.
+          </p>
+          <a
+            href="/taste?discover=1"
+            className="inline-flex items-center gap-2 mt-6 bg-primary hover:bg-primary-dark text-[#0a1509] px-6 py-3 rounded-xl text-sm font-bold transition-colors"
+            style={{ boxShadow: "0 4px 20px rgba(74,222,128,0.25)" }}
+          >
+            Rate More Dishes
+          </a>
+        </div>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import JournalForm from "@/components/journal/JournalForm";
 
-export const metadata = { title: "My Journal" };
+export const metadata = { title: "Journal" };
 
 export default async function JournalPage() {
   const { userId } = await auth();
@@ -52,7 +52,7 @@ export default async function JournalPage() {
         </p>
         <div className="flex items-end justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-[#0d1f10]">My Journal</h1>
+            <h1 className="text-3xl font-bold text-[#0d1f10]">Journal</h1>
             <p className="text-xs mt-1.5" style={{ color: "#9EA8A0" }}>Log your meals, mood, and health metrics</p>
           </div>
           {journalEntry && (
