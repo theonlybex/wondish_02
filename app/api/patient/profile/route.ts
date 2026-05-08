@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { generateMealPlan } from "@/lib/meal-plan";
 import { addDays } from "date-fns";
+import { convertWeight, convertHeight, calcCBMI } from "@/lib/caloric-engine";
 
 async function getOrCreateAccount(userId: string) {
   let account = await prisma.account.findUnique({ where: { clerkId: userId } });
@@ -42,7 +43,7 @@ export async function GET() {
   const account = await prisma.account.findUnique({ where: { clerkId: userId } });
   if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
 
-  const [patient, genders, physicalActivities, motivations, healthConditions, foodPreferences, foodToAvoid, foodAllergies] =
+  const [patient, physicalActivities, motivations, healthConditions, foodPreferences, foodToAvoid, foodAllergies] =
     await Promise.all([
       prisma.patient.findUnique({
         where: { accountId: account.id },
@@ -55,8 +56,7 @@ export async function GET() {
           foodAllergies: true,
         },
       }),
-      prisma.gender.findMany({ orderBy: { name: "asc" } }),
-      prisma.physicalActivity.findMany({ orderBy: { level: "asc" } }),
+      prisma.physicalActivity.findMany({ orderBy: { level: "asc" }, where: { level: { lte: 4 } } }),
       prisma.motivation.findMany({ orderBy: { name: "asc" } }),
       prisma.healthCondition.findMany({ orderBy: { name: "asc" } }),
       prisma.foodPreference.findMany({ orderBy: { name: "asc" } }),
@@ -66,7 +66,7 @@ export async function GET() {
 
   return NextResponse.json({
     patient,
-    refData: { genders, physicalActivities, motivations, healthConditions, foodPreferences, foodToAvoid, foodAllergies },
+    refData: { physicalActivities, motivations, healthConditions, foodPreferences, foodToAvoid, foodAllergies },
   });
 }
 
@@ -79,8 +79,9 @@ export async function PATCH(req: NextRequest) {
 
   const body = await req.json();
   const {
-    firstName, lastName, birthday, genderId, height, heightUnit,
-    weight, weightUnit, physicalActivityId, goalWeight, weeklyGoal,
+    firstName, lastName, birthday, sexAtBirth, height, heightUnit,
+    heightFt, heightIn,
+    weight, weightUnit, physicalActivityId, goalWeight, goalWeightUnit, weeklyGoal,
     motivationIds, healthConditionIds, foodPreferenceIds, foodToAvoidIds, foodAllergyIds,
   } = body;
 
@@ -96,10 +97,12 @@ export async function PATCH(req: NextRequest) {
     },
   });
 
+  // Compute BMI using the caloric engine's unit-aware conversions
   let bmi: number | null = null;
   if (height && weight) {
-    const heightInM = heightUnit === "in" ? height * 0.0254 : height / 100;
-    bmi = parseFloat((weight / (heightInM * heightInM)).toFixed(1));
+    const ht = convertHeight(parseFloat(height), heightUnit === "in" ? "in" : "cm");
+    const wt = convertWeight(parseFloat(weight), weightUnit === "lbs" ? "lbs" : "kg");
+    bmi = parseFloat(calcCBMI(wt.kg, ht.m2).toFixed(1));
   }
 
   await prisma.account.update({
@@ -116,26 +119,32 @@ export async function PATCH(req: NextRequest) {
     create: {
       accountId: account.id,
       birthday: birthday ? new Date(birthday) : null,
-      genderId: genderId || null,
+      sexAtBirth: sexAtBirth || null,
       height: height ? parseFloat(height) : null,
-      heightUnit: heightUnit ?? "cm",
+      heightUnit: heightUnit ?? "ftin",
+      heightFt: heightFt ? parseInt(heightFt) : null,
+      heightIn: heightIn ? parseFloat(heightIn) : null,
       weight: weight ? parseFloat(weight) : null,
-      weightUnit: weightUnit ?? "kg",
+      weightUnit: weightUnit ?? "lbs",
       bmi,
       physicalActivityId: physicalActivityId || null,
       goalWeight: goalWeight ? parseFloat(goalWeight) : null,
+      goalWeightUnit: goalWeightUnit ?? "lbs",
       weeklyGoal: weeklyGoal ? parseFloat(weeklyGoal) : null,
     },
     update: {
       birthday: birthday ? new Date(birthday) : undefined,
-      genderId: genderId || null,
+      sexAtBirth: sexAtBirth || null,
       height: height ? parseFloat(height) : undefined,
-      heightUnit: heightUnit ?? "cm",
+      heightUnit: heightUnit ?? "ftin",
+      heightFt: heightFt ? parseInt(heightFt) : null,
+      heightIn: heightIn ? parseFloat(heightIn) : null,
       weight: weight ? parseFloat(weight) : undefined,
-      weightUnit: weightUnit ?? "kg",
+      weightUnit: weightUnit ?? "lbs",
       bmi: bmi ?? undefined,
       physicalActivityId: physicalActivityId || null,
       goalWeight: goalWeight ? parseFloat(goalWeight) : undefined,
+      goalWeightUnit: goalWeightUnit ?? "lbs",
       weeklyGoal: weeklyGoal ? parseFloat(weeklyGoal) : undefined,
     },
   });
@@ -169,7 +178,7 @@ export async function PATCH(req: NextRequest) {
     existing.weeklyGoal        !== (weeklyGoal        ? parseFloat(weeklyGoal)        : null) ||
     existing.physicalActivityId !== (physicalActivityId || null) ||
     existing.weight             !== (weight            ? parseFloat(weight)            : null) ||
-    existing.genderId           !== (genderId          || null) ||
+    existing.sexAtBirth         !== (sexAtBirth        || null) ||
     sorted(existing.motivations.map((m) => m.motivationId))      !== sorted(motivationIds      ?? []) ||
     sorted(existing.foodAllergies.map((f) => f.foodId))           !== sorted(foodAllergyIds     ?? []) ||
     sorted(existing.foodToAvoid.map((f) => f.foodId))             !== sorted(foodToAvoidIds     ?? []) ||

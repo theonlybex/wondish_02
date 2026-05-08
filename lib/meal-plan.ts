@@ -1,4 +1,9 @@
 import { prisma } from "@/lib/db";
+import {
+  computeAllMetrics,
+  type Sex,
+  type CaloricProfileInput,
+} from "@/lib/caloric-engine";
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -9,58 +14,57 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-// Gradual weekly deficits (kcal/day) — ported from legacy system
-// Gentle ramp: weeklyGoal ≤ 0.5 kg/week (300 cal deficit weeks 1-3, 400 weeks 4-5)
-const DEFICIT_GENTLE = [300, 300, 300, 400, 400] as const;
-// Steady:      weeklyGoal > 0.5 kg/week (500 cal deficit throughout)
-const DEFICIT_STRICT = [500, 500, 500, 500, 500] as const;
-
-function calcBMR(weightKg: number, heightCm: number, ageYears: number, isMale: boolean): number {
-  return 10 * weightKg + 6.25 * heightCm - 5 * ageYears + (isMale ? 5 : -161);
-}
-
-function calcEER(bmr: number, activityLevel: number): number {
-  const multipliers: Record<number, number> = {
-    1: 1.2,
-    2: 1.375,
-    3: 1.55,
-    4: 1.725,
-    5: 1.9,
-  };
-  return bmr * (multipliers[activityLevel] ?? 1.2);
-}
-
-// For weight loss: returns the kcal/day deficit for the current week of the plan
-function calcGradualDeficit(weeklyGoal: number, weekIndex: number): number {
-  const idx = Math.min(weekIndex, 4);
-  return (weeklyGoal <= 0.5 ? DEFICIT_GENTLE : DEFICIT_STRICT)[idx];
-}
-
-function adjustForGoal(eer: number, weeklyGoal: number): number {
-  return eer - (weeklyGoal * 1000) / 7;
-}
+// ─── Wondish Daily Caloric Distribution (from spec PDF) ─────────────────────
+// Breakfast: 20%, Main meal: 35%, Secondary meal: 30%, Snack: 15%
+// "Main meal" = lunch (biggest), "Secondary meal" = dinner
+//
+// The spec also defines ±50 kcal daily variance (pending review) — not yet applied.
 
 function mealCaloriesMap(daily: number): Record<string, number> {
   return {
-    breakfast: daily * 0.25,
-    lunch: daily * 0.35,
-    dinner: daily * 0.3,
-    snack: daily * 0.1,
+    breakfast: daily * 0.20,   // Breakfast — 20%
+    lunch:    daily * 0.35,    // Main meal (biggest) — 35%
+    dinner:   daily * 0.30,    // Secondary meal — 30%
+    snack:    daily * 0.15,    // Snack — 15%
   };
 }
 
-// Standard macro ratios per motivation (protein%, carbs%, fat%)
-const MACRO_RATIOS: Record<string, { protein: number; carbs: number; fat: number }> = {
-  "Lose weight":    { protein: 0.30, carbs: 0.40, fat: 0.30 },
-  "Build muscle":   { protein: 0.40, carbs: 0.40, fat: 0.20 },
-  "Improve energy": { protein: 0.20, carbs: 0.55, fat: 0.25 },
-  "Eat healthier":  { protein: 0.25, carbs: 0.50, fat: 0.25 },
-};
-const DEFAULT_MACRO_RATIO = { protein: 0.25, carbs: 0.50, fat: 0.25 };
+// ─── Macronutrient Distribution (from spec PDF) ─────────────────────────────
+//
+// The spec defines three macro profiles:
+//
+// | Profile       | Protein | Carbs | Fats  |
+// |---------------|---------|-------|-------|
+// | Balanced      |   30%   |  50%  |  20%  |
+// | Diabetic      |   35%   |  45%  |  20%  |
+// | Gain Muscle   |   30%   |  40%  |  30%  |
+//
+// Calories per gram: Protein = 4, Carbs = 4, Fats = 9
 
-// Blend ratios when user has multiple motivations
-function calcMacroRatio(motivationNames: string[]): { protein: number; carbs: number; fat: number } {
-  const active = motivationNames.filter((m) => MACRO_RATIOS[m]);
+// Maps motivation names AND health condition names to the official spec profiles.
+// A user with "Type 2 Diabetes" health condition gets the Diabetic profile.
+// A user with "Build muscle" motivation gets the Gain Muscle profile.
+// All other combinations default to Balanced.
+const MACRO_RATIOS: Record<string, { protein: number; carbs: number; fat: number }> = {
+  // Motivations
+  "Lose weight":      { protein: 0.30, carbs: 0.50, fat: 0.20 },  // Balanced
+  "Build muscle":     { protein: 0.30, carbs: 0.40, fat: 0.30 },  // Gain Muscle (spec)
+  "Improve energy":   { protein: 0.30, carbs: 0.50, fat: 0.20 },  // Balanced
+  "Eat healthier":    { protein: 0.30, carbs: 0.50, fat: 0.20 },  // Balanced
+  // Health conditions
+  "Type 2 Diabetes":  { protein: 0.35, carbs: 0.45, fat: 0.20 },  // Diabetic (spec)
+  "Diabetes":         { protein: 0.35, carbs: 0.45, fat: 0.20 },  // Diabetic alias
+};
+// Default profile = Balanced (from spec)
+const DEFAULT_MACRO_RATIO = { protein: 0.30, carbs: 0.50, fat: 0.20 };
+
+// Blend ratios when user has multiple motivations / conditions
+function calcMacroRatio(
+  motivationNames: string[],
+  conditionNames: string[] = []
+): { protein: number; carbs: number; fat: number } {
+  const allNames = [...motivationNames, ...conditionNames];
+  const active = allNames.filter((m) => MACRO_RATIOS[m]);
   if (active.length === 0) return DEFAULT_MACRO_RATIO;
   const sum = active.reduce(
     (acc, m) => {
@@ -70,6 +74,18 @@ function calcMacroRatio(motivationNames: string[]): { protein: number; carbs: nu
     { protein: 0, carbs: 0, fat: 0 }
   );
   return { protein: sum.protein / active.length, carbs: sum.carbs / active.length, fat: sum.fat / active.length };
+}
+
+/**
+ * Resolves the biological sex for caloric formulas from sexAtBirth.
+ */
+function resolveSex(sexAtBirth: string | null | undefined): Sex | null {
+  if (sexAtBirth) {
+    const s = sexAtBirth.toLowerCase();
+    if (s === "male") return "male";
+    if (s === "female") return "female";
+  }
+  return null;
 }
 
 type RecipeCandidate = {
@@ -153,7 +169,6 @@ export async function generateMealPlan(
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
     include: {
-      gender: true,
       physicalActivity: true,
       foodAllergies: { include: { food: { include: { bannedIngredients: true } } } },
       foodToAvoid: { include: { food: true } },
@@ -207,6 +222,9 @@ export async function generateMealPlan(
   // Motivation names for scoring
   const motivationNames = patient?.motivations.map((pm) => pm.motivation.name) ?? [];
 
+  // Health condition names — used for macro profile selection (e.g. Diabetic profile)
+  const conditionNames = patient?.healthConditions.map((hc) => hc.condition.name) ?? [];
+
   // Dish Tinder affinity: ingredient frequency from liked dishes → 0.0–1.0
   const allDishPrefs = patient?.dishPreferences ?? [];
   const likedDishPrefs = allDishPrefs.filter((dp) => dp.liked);
@@ -234,42 +252,36 @@ export async function generateMealPlan(
     }
   }
 
-  // Calculate daily calorie targets if we have enough data
+  // Calculate daily calorie targets using the Wondish caloric engine
   let caloriePlan: Record<string, number> | null = null;
   let dailyCals = 0;
   if (patient?.weight && patient?.height && patient?.birthday && patient?.physicalActivity?.level) {
-    const weightKg = patient.weightUnit === "lbs" ? patient.weight * 0.453592 : patient.weight;
-    const heightCm = patient.heightUnit === "in" ? patient.height * 2.54 : patient.height;
-    const ageYears =
-      (Date.now() - new Date(patient.birthday).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-    const genderName = (patient.gender?.name ?? "").toLowerCase();
-    const isMale = genderName.includes("male") && !genderName.includes("female");
-    const bmr = calcBMR(weightKg, heightCm, Math.floor(ageYears), isMale);
-    const eer = calcEER(bmr, patient.physicalActivity.level);
+    const sex = resolveSex(patient.sexAtBirth);
+    if (sex) {
+      const profileInput: CaloricProfileInput = {
+        sex,
+        birthday: new Date(patient.birthday),
+        heightValue: patient.height,
+        heightUnit: patient.heightUnit === "in" ? "in" : "cm",
+        cbwValue: patient.weight,
+        cbwUnit: (patient.weightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs",
+        activityLevel: patient.physicalActivity.level,
+        utbwValue: patient.goalWeight,
+        utbwUnit: (patient.goalWeightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs" | null,
+      };
 
-    let daily: number;
-    const weeklyGoal = patient.weeklyGoal ?? 0;
-    if (weeklyGoal > 0) {
-      // Weight loss: apply gradual deficit that ramps up week by week
-      const planStart = patient.mealPlanStartDate ?? startDate;
-      const weekIndex = Math.floor(
-        (startDate.getTime() - planStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
-      );
-      daily = eer - calcGradualDeficit(weeklyGoal, weekIndex);
-    } else {
-      // Maintain or gain: use flat adjustment
-      daily = weeklyGoal !== 0 ? adjustForGoal(eer, weeklyGoal) : eer;
+      const profile = computeAllMetrics(profileInput);
+      dailyCals = Math.round(profile.dailyCalories);
+      caloriePlan = mealCaloriesMap(dailyCals);
     }
-
-    const dailyFloor = Math.max(daily, 1200);
-    dailyCals = dailyFloor;
-    caloriePlan = mealCaloriesMap(dailyFloor);
   }
 
-  // Daily macro targets in grams based on motivations (protein: 4cal/g, carbs: 4cal/g, fat: 9cal/g)
+  // Daily macro targets in grams (spec: Protein=4kcal/g, Carbs=4kcal/g, Fats=9kcal/g)
+  // Macro profile is determined by motivations + health conditions (e.g. Diabetic)
+  // Defaults to Balanced profile if none match
   let dailyMacros: { proteinG: number; carbsG: number; fatG: number } | null = null;
-  if (dailyCals > 0 && motivationNames.length > 0) {
-    const ratio = calcMacroRatio(motivationNames);
+  if (dailyCals > 0) {
+    const ratio = calcMacroRatio(motivationNames, conditionNames);
     dailyMacros = {
       proteinG: (ratio.protein * dailyCals) / 4,
       carbsG:   (ratio.carbs   * dailyCals) / 4,

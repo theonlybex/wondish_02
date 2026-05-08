@@ -140,14 +140,17 @@ export interface PatientProfile {
   id: string;
   accountId: string;
   birthday?: string | null;
-  genderId?: string | null;
+  sexAtBirth?: string | null;
   weight?: number | null;
   weightUnit?: string | null;
   height?: number | null;
   heightUnit?: string | null;
+  heightFt?: number | null;
+  heightIn?: number | null;
   bmi?: number | null;
   physicalActivityId?: string | null;
   goalWeight?: number | null;
+  goalWeightUnit?: string | null;
   weeklyGoal?: number | null;
   mealPlanStartDate?: string | null;
   motivationIds: string[];
@@ -160,6 +163,55 @@ export interface PatientProfile {
     lastName: string;
     email: string;
   };
+}
+
+// ─── Caloric Profile ──────────────────────────────────────────────────────
+
+export type CBMIClassType = "underweight" | "healthy" | "overweight" | "obese";
+
+export interface CaloricProfileDTO {
+  // Inputs (normalized)
+  sex: "male" | "female";
+  age: number;
+  heightCm: number;
+  heightM: number;
+  heightM2: number;
+  cbwKg: number;
+  cbwLb: number;
+
+  // Body Weight calculations
+  ibwKg: number;
+  wtbwKg: number;
+  utbwKg: number | null;
+  tbwKg: number;
+
+  // BMI
+  cbmi: number;
+  cbmiClass: CBMIClassType;
+  ibmi: number;
+  wtbmi: number;
+  utbmi: number | null;
+
+  // BMR (Harris-Benedict)
+  bmrCBW: number;
+  bmrIBW: number;
+  bmrWTBW: number;
+  bmrUTBW: number | null;
+
+  // TDEE
+  activityMultiplier: number;
+  tdeeCBW: number;
+  tdeeIBW: number;
+  tdeeWTBW: number;
+  tdeeUTBW: number | null;
+
+  // Weight delta
+  wtl: number | null;
+  wtg: number | null;
+
+  // Target calories
+  dailyCalories: number;
+  minCaloriesValue: number;
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────

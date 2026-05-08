@@ -123,18 +123,22 @@ model Patient {
   accountId          String    @unique
   account            Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   birthday           DateTime?
+  sexAtBirth         String?   // "MALE" or "FEMALE" – used for caloric formulas
   genderId           String?
   gender             Gender?   @relation(fields: [genderId], references: [id])
   weight             Float?
-  weightUnit         String?   @default("kg")
-  height             Float?
-  heightUnit         String?   @default("cm")
+  weightUnit         String?   @default("lbs")
+  height             Float?               // stored in cm (converted from user input)
+  heightUnit         String?   @default("ftin")  // "cm" | "in" | "ftin"
+  heightFt           Int?                  // feet component (when heightUnit = "ftin")
+  heightIn           Float?               // inches component (when heightUnit = "ftin")
   bmi                Float?
   physicalActivityId String?
   physicalActivity   PhysicalActivity? @relation(fields: [physicalActivityId], references: [id])
   mealTypeId         String?
   mealType           MealType? @relation(fields: [mealTypeId], references: [id])
   goalWeight         Float?
+  goalWeightUnit     String?   @default("lbs")
   weeklyGoal         Float?    // kg per week
   mealPlanStartDate  DateTime?
 

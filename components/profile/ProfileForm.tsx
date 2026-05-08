@@ -1,14 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import MultiSelectChips from "@/components/profile/MultiSelectChips";
+import {
+  computeAllMetrics,
+  feetInchesToCm,
+  type Sex,
+  type CaloricProfileInput,
+  type CaloricProfile,
+} from "@/lib/caloric-engine";
 
 interface RefData {
-  genders: { id: string; name: string }[];
   physicalActivities: { id: string; name: string; level: number }[];
   motivations: { id: string; name: string }[];
   healthConditions: { id: string; name: string }[];
@@ -43,15 +49,65 @@ export default function ProfileForm({
     birthday: patient?.birthday
       ? new Date(patient.birthday as string).toISOString().slice(0, 10)
       : "",
-    genderId: (patient?.genderId as string) ?? "",
+    sexAtBirth: (patient?.sexAtBirth as string) ?? "",
     height: String(patient?.height ?? ""),
-    heightUnit: (patient?.heightUnit as string) ?? "cm",
+    heightUnit: (patient?.heightUnit as string) ?? "ftin",
+    heightFt: String(patient?.heightFt ?? ""),
+    heightIn: String(patient?.heightIn ?? ""),
     weight: String(patient?.weight ?? ""),
-    weightUnit: (patient?.weightUnit as string) ?? "kg",
+    weightUnit: (patient?.weightUnit as string) ?? "lbs",
     physicalActivityId: (patient?.physicalActivityId as string) ?? "",
     goalWeight: String(patient?.goalWeight ?? ""),
+    goalWeightUnit: (patient?.goalWeightUnit as string) ?? "lbs",
     weeklyGoal: String(patient?.weeklyGoal ?? ""),
   });
+
+  // Live caloric preview
+  const liveProfile: CaloricProfile | null = useMemo(() => {
+    const sex = form.sexAtBirth.toLowerCase() as Sex;
+    if (sex !== "male" && sex !== "female") return null;
+    if (!form.birthday || !form.height || !form.weight) return null;
+
+    const actLevel = refData.physicalActivities.find(
+      (a) => a.id === form.physicalActivityId
+    )?.level ?? 1;
+
+    let heightValue = parseFloat(form.height);
+    let heightUnit: "cm" | "in" = form.heightUnit === "in" ? "in" : "cm";
+    if (form.heightUnit === "ftin" && form.heightFt) {
+      heightValue = feetInchesToCm(
+        parseFloat(form.heightFt) || 0,
+        parseFloat(form.heightIn) || 0
+      );
+      heightUnit = "cm";
+    }
+
+    if (isNaN(heightValue) || heightValue <= 0) return null;
+    const weightValue = parseFloat(form.weight);
+    if (isNaN(weightValue) || weightValue <= 0) return null;
+
+    try {
+      const input: CaloricProfileInput = {
+        sex,
+        birthday: new Date(form.birthday),
+        heightValue,
+        heightUnit,
+        cbwValue: weightValue,
+        cbwUnit: form.weightUnit === "lbs" ? "lbs" : "kg",
+        activityLevel: actLevel,
+        utbwValue: form.goalWeight ? parseFloat(form.goalWeight) : null,
+        utbwUnit: form.goalWeightUnit === "lbs" ? "lbs" : "kg",
+      };
+      return computeAllMetrics(input);
+    } catch {
+      return null;
+    }
+  }, [
+    form.sexAtBirth, form.birthday, form.height, form.heightUnit,
+    form.heightFt, form.heightIn, form.weight, form.weightUnit,
+    form.physicalActivityId, form.goalWeight, form.goalWeightUnit,
+    refData.physicalActivities,
+  ]);
 
   const [motivationIds, setMotivationIds] = useState<string[]>(
     (patient?.motivations as { motivationId: string }[])?.map((m) => m.motivationId) ?? []
@@ -80,6 +136,19 @@ export default function ProfileForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          // If ft/in mode, convert to cm for the height field and pass original ft/in
+          height:
+            form.heightUnit === "ftin" && form.heightFt
+              ? String(
+                  feetInchesToCm(
+                    parseFloat(form.heightFt) || 0,
+                    parseFloat(form.heightIn) || 0
+                  )
+                )
+              : form.height,
+          // Keep heightUnit as "ftin" so the API knows the user's preference
+          heightFt: form.heightUnit === "ftin" ? form.heightFt : null,
+          heightIn: form.heightUnit === "ftin" ? form.heightIn : null,
           motivationIds,
           healthConditionIds,
           foodPreferenceIds,
@@ -150,11 +219,14 @@ export default function ProfileForm({
             onChange={(e) => setForm((f) => ({ ...f, birthday: e.target.value }))}
           />
           <Select
-            label="Gender"
-            value={form.genderId}
-            onChange={(e) => setForm((f) => ({ ...f, genderId: e.target.value }))}
-            options={refData.genders.map((g) => ({ value: g.id, label: g.name }))}
-            placeholder="Select gender"
+            label="Sex at Birth"
+            value={form.sexAtBirth}
+            onChange={(e) => setForm((f) => ({ ...f, sexAtBirth: e.target.value }))}
+            options={[
+              { value: "MALE", label: "Male" },
+              { value: "FEMALE", label: "Female" },
+            ]}
+            placeholder="Select sex at birth"
           />
         </div>
       </section>
@@ -163,29 +235,68 @@ export default function ProfileForm({
       <section>
         <h2 className="text-base font-semibold text-navy mb-4">Body Metrics</h2>
         <div className="grid sm:grid-cols-2 gap-4">
-          <div className="flex gap-2">
-            <Input
-              label="Height"
-              type="number"
-              min="0"
-              step="0.1"
-              className="flex-1"
-              value={form.height}
-              onChange={(e) => setForm((f) => ({ ...f, height: e.target.value }))}
-              placeholder="170"
-            />
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-[#25293C]">Unit</label>
-              <Select
-                options={[
-                  { value: "cm", label: "cm" },
-                  { value: "in", label: "in" },
-                ]}
-                value={form.heightUnit}
-                onChange={(e) => setForm((f) => ({ ...f, heightUnit: e.target.value }))}
+          {form.heightUnit === "ftin" ? (
+            <div className="flex gap-2">
+              <Input
+                label="Height (ft)"
+                type="number"
+                min="0"
+                step="1"
+                className="flex-1"
+                value={form.heightFt}
+                onChange={(e) => setForm((f) => ({ ...f, heightFt: e.target.value }))}
+                placeholder="5"
               />
+              <Input
+                label="(in)"
+                type="number"
+                min="0"
+                max="11"
+                step="1"
+                className="flex-1"
+                value={form.heightIn}
+                onChange={(e) => setForm((f) => ({ ...f, heightIn: e.target.value }))}
+                placeholder="9"
+              />
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-[#25293C]">Unit</label>
+                <Select
+                  options={[
+                    { value: "cm", label: "cm" },
+                    { value: "in", label: "in" },
+                    { value: "ftin", label: "ft/in" },
+                  ]}
+                  value={form.heightUnit}
+                  onChange={(e) => setForm((f) => ({ ...f, heightUnit: e.target.value }))}
+                />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex gap-2">
+              <Input
+                label="Height"
+                type="number"
+                min="0"
+                step="0.1"
+                className="flex-1"
+                value={form.height}
+                onChange={(e) => setForm((f) => ({ ...f, height: e.target.value }))}
+                placeholder="170"
+              />
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-[#25293C]">Unit</label>
+                <Select
+                  options={[
+                    { value: "cm", label: "cm" },
+                    { value: "in", label: "in" },
+                    { value: "ftin", label: "ft/in" },
+                  ]}
+                  value={form.heightUnit}
+                  onChange={(e) => setForm((f) => ({ ...f, heightUnit: e.target.value }))}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-2">
             <Input
@@ -196,14 +307,14 @@ export default function ProfileForm({
               className="flex-1"
               value={form.weight}
               onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))}
-              placeholder="70"
+              placeholder="150"
             />
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-[#25293C]">Unit</label>
               <Select
                 options={[
-                  { value: "kg", label: "kg" },
                   { value: "lbs", label: "lbs" },
+                  { value: "kg", label: "kg" },
                 ]}
                 value={form.weightUnit}
                 onChange={(e) => setForm((f) => ({ ...f, weightUnit: e.target.value }))}
@@ -222,21 +333,67 @@ export default function ProfileForm({
             placeholder="Select activity level"
           />
         </div>
+
+        {/* Live Caloric Summary */}
+        {liveProfile && (
+          <div className="mt-4 p-4 rounded-xl border border-primary/20 bg-primary/5">
+            <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">
+              Estimated Caloric Summary
+            </p>
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <div>
+                <span className="text-[#9EA8A0] text-xs">BMI</span>
+                <p className="font-bold text-[#25293C]">
+                  {liveProfile.cbmi.toFixed(1)}{" "}
+                  <span className="text-xs font-normal capitalize text-[#9EA8A0]">
+                    ({liveProfile.cbmiClass})
+                  </span>
+                </p>
+              </div>
+              <div>
+                <span className="text-[#9EA8A0] text-xs">Daily Calories</span>
+                <p className="font-bold text-primary">
+                  {Math.round(liveProfile.dailyCalories)} kcal
+                </p>
+              </div>
+              <div>
+                <span className="text-[#9EA8A0] text-xs">Target Weight</span>
+                <p className="font-bold text-[#25293C]">
+                  {liveProfile.tbwKg.toFixed(1)} kg
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Goals */}
       <section>
         <h2 className="text-base font-semibold text-navy mb-4">Goals</h2>
         <div className="grid sm:grid-cols-2 gap-4 mb-6">
-          <Input
-            label="Goal Weight (kg)"
-            type="number"
-            min="0"
-            step="0.1"
-            value={form.goalWeight}
-            onChange={(e) => setForm((f) => ({ ...f, goalWeight: e.target.value }))}
-            placeholder="65"
-          />
+          <div className="flex gap-2">
+            <Input
+              label="Goal Weight"
+              type="number"
+              min="0"
+              step="0.1"
+              className="flex-1"
+              value={form.goalWeight}
+              onChange={(e) => setForm((f) => ({ ...f, goalWeight: e.target.value }))}
+              placeholder="65"
+            />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-[#25293C]">Unit</label>
+              <Select
+                options={[
+                  { value: "kg", label: "kg" },
+                  { value: "lbs", label: "lbs" },
+                ]}
+                value={form.goalWeightUnit}
+                onChange={(e) => setForm((f) => ({ ...f, goalWeightUnit: e.target.value }))}
+              />
+            </div>
+          </div>
           <Select
             label="Weekly Goal"
             value={form.weeklyGoal}

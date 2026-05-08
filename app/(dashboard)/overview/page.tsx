@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { getAccount, getOverviewPatient } from "@/lib/queries";
 import Link from "next/link";
 import MealStreakGrid, { GridDay } from "@/components/MealStreakGrid";
+import CaloricProfileCard from "@/components/dashboard/CaloricProfileCard";
+import QuickJournalLog from "@/components/dashboard/QuickJournalLog";
 import { getTranslations } from "next-intl/server";
 
 export const metadata = { title: "Overview" };
@@ -240,6 +242,11 @@ export default async function OverviewPage() {
         ))}
       </div>
 
+      {/* ── Caloric Profile ─────────────────────────────────────── */}
+      <div className="ov mb-6" style={{ animationDelay: "250ms" }}>
+        <CaloricProfileCard />
+      </div>
+
       {/* ── Activity grid ──────────────────────────────────────── */}
       {gridDays.length > 0 && (
         <div className="ov mb-6" style={{ animationDelay: "280ms" }}>
@@ -247,80 +254,31 @@ export default async function OverviewPage() {
         </div>
       )}
 
-      {/* ── Today's plan ───────────────────────────────────────── */}
-      {todayMenus.length > 0 ? (
-        <div
-          className="ov bg-white rounded-2xl overflow-hidden mb-5"
-          style={{
-            animationDelay: "340ms",
-            boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
-          }}
-        >
-          <div className="flex items-center justify-between px-6 py-4 border-b border-[#F0F4F0]">
-            <div className="flex items-center gap-3">
-              <div className="w-1 h-5 rounded-full bg-primary" />
-              <h2 className="text-[#0d1f10] text-lg">{t("todaysMealPlan")}</h2>
-            </div>
-            <Link
-              href="/meal-plan"
-              className="text-[9px] tracking-[0.2em] uppercase font-bold transition-colors"
-              style={{ color: "#4ade80" }}
-            >
-              {t("viewAll")} →
-            </Link>
+      {/* ── Daily Journal Log ───────────────────────────────────── */}
+      <div
+        className="ov bg-white rounded-2xl overflow-hidden mb-5"
+        style={{
+          animationDelay: "340ms",
+          boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+        }}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#F0F4F0]">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-5 rounded-full bg-primary" />
+            <h2 className="text-[#0d1f10] text-lg">Daily Journal</h2>
           </div>
-
-          <div className="divide-y divide-[#F4F7F4]">
-            {todayMenus.map((menu) => (
-              <div
-                key={menu.id}
-                className="ov-meal-row flex items-center gap-5 px-6 py-4 hover:bg-[#FAFCFA] transition-colors"
-              >
-                <span className="ov-meal-emoji text-3xl leading-none flex-shrink-0">
-                  {menu.recipe.emoji ?? "🍽"}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[#0d1f10] font-medium text-sm leading-snug truncate">
-                    {menu.recipe.name}
-                  </p>
-                  {menu.mealType?.name && (
-                    <p
-                      className="text-[9px] tracking-[0.15em] uppercase font-bold mt-0.5"
-                      style={{ color: "#ADBDAD" }}
-                    >
-                      {menu.mealType.name}
-                    </p>
-                  )}
-                </div>
-                <div
-                  className="w-4 h-4 rounded-full border-2 flex-shrink-0"
-                  style={{ borderColor: "#D8E4D8" }}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div
-          className="ov bg-white rounded-2xl p-12 mb-5 text-center"
-          style={{
-            animationDelay: "340ms",
-            boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
-          }}
-        >
-          <div className="text-5xl mb-4">🍽</div>
-          <p className="text-[#0d1f10] text-xl mb-2">{t("noMealPlan")}</p>
-          <p className="text-sm mb-7" style={{ color: "#ADBDAD" }}>
-            Your personalised daily menu will appear here.
-          </p>
           <Link
-            href="/meal-plan"
-            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-6 py-3 rounded-xl text-sm font-bold transition-colors"
+            href="/journal"
+            className="text-[9px] tracking-[0.2em] uppercase font-bold transition-colors"
+            style={{ color: "#4ade80" }}
           >
-            {t("setUpMealPlan")}
+            Full Journal →
           </Link>
         </div>
-      )}
+        <div className="px-6 py-5">
+          <QuickJournalLog defaultWeightUnit={patient?.weightUnit ?? "lbs"} />
+        </div>
+      </div>
 
       {/* ── Upgrade CTA ────────────────────────────────────────── */}
       {account.subscription?.plan !== "PREMIUM" && (
