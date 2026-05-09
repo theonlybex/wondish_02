@@ -166,7 +166,7 @@ export default async function OverviewPage() {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto pb-8">
+    <div className="h-full overflow-hidden flex flex-col gap-4">
       <style>{`
         @keyframes ov-rise {
           from { opacity: 0; transform: translateY(18px); }
@@ -175,236 +175,99 @@ export default async function OverviewPage() {
         .ov { animation: ov-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
       `}</style>
 
-      {/* ── Two-column grid ─────────────────────────────────────────── */}
-      <div className="xl:grid xl:grid-cols-[1fr_320px] xl:gap-7 xl:items-start">
+      {/* ── Greeting row ────────────────────────────────────────────── */}
+      <div className="ov flex-shrink-0 flex items-center justify-between" style={{ animationDelay: "0ms" }}>
+        <div>
+          <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-1" style={{ color: "#7DB87D" }}>
+            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+          </p>
+          <h1 className="text-2xl font-bold text-[#0d1f10] leading-tight">
+            Welcome back, {account.firstName}.
+          </h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-px w-8 bg-primary/40" />
+          <p className="text-xs" style={{ color: "#9EA8A0" }}>{t("snapshot")}</p>
+        </div>
+      </div>
 
-        {/* ── LEFT COLUMN ─────────────────────────────────────────── */}
-        <div className="min-w-0">
-
-          {/* Greeting */}
-          <div className="ov mb-10" style={{ animationDelay: "0ms" }}>
-            <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3" style={{ color: "#7DB87D" }}>
-              {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-            </p>
-            <h1 className="text-3xl font-bold text-[#0d1f10] leading-tight">
-              Welcome back, {account.firstName}.
-            </h1>
-            <div className="flex items-center gap-3 mt-4">
-              <div className="h-px w-12 bg-primary/40" />
-              <p className="text-xs" style={{ color: "#9EA8A0" }}>{t("snapshot")}</p>
-            </div>
-          </div>
-
-          {/* Caloric Profile */}
-          <div className="ov mb-6" style={{ animationDelay: "120ms" }}>
-            <CaloricProfileCard />
-          </div>
-
-          {/* Activity grid */}
-          {gridDays.length > 0 && (
-            <div className="ov mb-6" style={{ animationDelay: "200ms" }}>
-              <MealStreakGrid days={gridDays} totalCompleted={totalCompleted} firstDay={gridFirstDay} />
-            </div>
-          )}
-
-          {/* Upgrade CTA */}
-          {account.subscription?.plan !== "PREMIUM" && (
-            <div
-              className="ov relative rounded-2xl p-9 overflow-hidden"
-              style={{
-                animationDelay: "280ms",
-                background: "linear-gradient(140deg, #0a1509 0%, #162a18 60%, #0d1f10 100%)",
-                boxShadow: "0 8px 32px rgba(13,31,16,0.25)",
-              }}
-            >
-              <div
-                className="absolute top-0 right-0 w-96 h-96 rounded-full pointer-events-none"
-                style={{ background: "radial-gradient(circle, rgba(74,222,128,0.10) 0%, transparent 65%)", transform: "translate(35%, -35%)" }}
-              />
-              <div
-                className="absolute bottom-0 left-0 w-48 h-48 rounded-full pointer-events-none"
-                style={{ background: "radial-gradient(circle, rgba(74,222,128,0.06) 0%, transparent 70%)", transform: "translate(-30%, 30%)" }}
-              />
-              <div className="relative">
-                <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-4" style={{ color: "rgba(74,222,128,0.45)" }}>
-                  Premium
-                </p>
-                <h2 className="text-white text-2xl font-bold mb-2 leading-snug">
-                  {t("upgradeTitle")}
-                </h2>
-                <p className="text-sm mb-7 max-w-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.38)" }}>
-                  {t("upgradeDesc")}
-                </p>
-                <Link
-                  href="/pricing"
-                  className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-6 py-3 rounded-xl font-bold text-sm transition-all"
-                  style={{ boxShadow: "0 4px 20px rgba(74,222,128,0.25)" }}
-                >
-                  {t("upgradeCta")}
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                    <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </Link>
-              </div>
-            </div>
-          )}
+      {/* ── Bento rectangle ─────────────────────────────────────────── */}
+      {/*
+          Grid areas:
+          [ caloric ] [ journal ] [ stats ]
+          [ streak  ] [ streak  ] [ stats ]
+          stats spans both rows forming a right-column rectangle
+      */}
+      <div
+        className="ov flex-1 min-h-0 grid gap-4"
+        style={{
+          animationDelay: "60ms",
+          gridTemplateColumns: "1fr 1fr 260px",
+          gridTemplateRows: "1fr 1fr",
+          gridTemplateAreas: `
+            "caloric journal stats"
+            "streak  streak  stats"
+          `,
+        }}
+      >
+        {/* Caloric Profile — top-left */}
+        <div
+          className="rounded-2xl overflow-hidden"
+          style={{ gridArea: "caloric", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+        >
+          <CaloricProfileCard />
         </div>
 
-        {/* ── RIGHT COLUMN ────────────────────────────────────────── */}
-        <div className="flex flex-col gap-4 mt-8 xl:mt-0">
-
-          {/* Meal Plan widget */}
-          <div
-            className="ov bg-white rounded-2xl overflow-hidden"
-            style={{
-              animationDelay: "60ms",
-              boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
-            }}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#F0F4F0]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-1 h-5 rounded-full bg-primary" />
-                <h2 className="text-[#0d1f10] text-sm font-bold">Today&apos;s Meals</h2>
-              </div>
-              <Link
-                href="/meal-plan"
-                className="text-[9px] tracking-[0.2em] uppercase font-bold transition-colors"
-                style={{ color: "#4ade80" }}
-              >
-                Full Plan →
-              </Link>
+        {/* Journal — top-middle */}
+        <div
+          className="bg-white rounded-2xl overflow-hidden flex flex-col"
+          style={{ gridArea: "journal", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+        >
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#F0F4F0] flex-shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="w-1 h-4 rounded-full" style={{ background: "#a78bfa" }} />
+              <h2 className="text-[#0d1f10] text-sm font-bold">Daily Journal</h2>
             </div>
-
-            <div className="px-5 py-4">
-              {todayMenus.length === 0 ? (
-                <div className="flex flex-col items-center py-6 gap-2">
-                  <span className="text-3xl">🍽️</span>
-                  <p className="text-xs text-center" style={{ color: "#ADBDAD" }}>
-                    No meals planned today
-                  </p>
-                  <Link
-                    href="/meal-plan"
-                    className="mt-1 text-[10px] font-bold px-3 py-1.5 rounded-lg transition-colors"
-                    style={{ background: "rgba(74,222,128,0.1)", color: "#3aad5a" }}
-                  >
-                    View meal plan
-                  </Link>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {todayMenus.map((menu) => {
-                    const isLogged = (latestJournal?.meals ?? []).some(
-                      (jm) => jm.recipeId === menu.recipeId && !jm.skipped
-                    );
-                    return (
-                      <div
-                        key={menu.id}
-                        className="flex items-center gap-3 p-2.5 rounded-xl transition-colors"
-                        style={{ background: isLogged ? "rgba(74,222,128,0.06)" : "#FAFBFA" }}
-                      >
-                        <span className="text-xl flex-shrink-0">
-                          {(menu.recipe as { emoji?: string }).emoji ?? "🍽️"}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className="text-xs font-bold leading-tight truncate"
-                            style={{ color: "#0d1f10" }}
-                          >
-                            {menu.recipe.name}
-                          </p>
-                          <p className="text-[10px] mt-0.5" style={{ color: "#ADBDAD" }}>
-                            {menu.mealType?.name ?? ""}{menu.recipe.calories ? ` · ${menu.recipe.calories} kcal` : ""}
-                          </p>
-                        </div>
-                        {isLogged && (
-                          <div
-                            className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px]"
-                            style={{ background: "#4ade80", color: "#0a1509" }}
-                          >
-                            ✓
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {/* Progress bar */}
-                  <div className="mt-3 flex items-center gap-2.5">
-                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#F0F4F0" }}>
-                      <div
-                        className="h-full rounded-full transition-all duration-700"
-                        style={{
-                          width: `${todayMenus.length ? (completedMeals / todayMenus.length) * 100 : 0}%`,
-                          background: "#4ade80",
-                        }}
-                      />
-                    </div>
-                    <span className="text-[9px] font-bold tabular-nums flex-shrink-0" style={{ color: "#ADBDAD" }}>
-                      {completedMeals}/{todayMenus.length}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
+            <Link
+              href="/journal"
+              className="text-[9px] tracking-[0.2em] uppercase font-bold transition-colors"
+              style={{ color: "#a78bfa" }}
+            >
+              Full Journal →
+            </Link>
           </div>
-
-          {/* Journal widget */}
-          <div
-            className="ov bg-white rounded-2xl overflow-hidden"
-            style={{
-              animationDelay: "130ms",
-              boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
-            }}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#F0F4F0]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-1 h-5 rounded-full" style={{ background: "#a78bfa" }} />
-                <h2 className="text-[#0d1f10] text-sm font-bold">Daily Journal</h2>
-              </div>
-              <Link
-                href="/journal"
-                className="text-[9px] tracking-[0.2em] uppercase font-bold transition-colors"
-                style={{ color: "#a78bfa" }}
-              >
-                Full Journal →
-              </Link>
-            </div>
-            <div className="px-5 py-5">
-              <QuickJournalLog defaultWeightUnit={patient?.weightUnit ?? "lbs"} />
-            </div>
+          <div className="px-5 py-4 flex-1 overflow-hidden">
+            <QuickJournalLog defaultWeightUnit={patient?.weightUnit ?? "lbs"} />
           </div>
+        </div>
 
-          {/* Stats cards — stacked column */}
+        {/* Stats — right column, spans both rows */}
+        <div
+          className="flex flex-col gap-3"
+          style={{ gridArea: "stats" }}
+        >
           {statsCards.map(({ label, value, suffix, sub, accent, delay }) => (
             <div
               key={label}
-              className="ov bg-white rounded-2xl p-5 relative overflow-hidden group cursor-default select-none"
+              className="ov bg-white rounded-2xl p-5 relative overflow-hidden group cursor-default select-none flex-1"
               style={{
                 animationDelay: delay,
                 boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
               }}
             >
-              <div
-                className="absolute top-4 right-4 w-2 h-2 rounded-full"
-                style={{ backgroundColor: accent }}
-              />
-              <p
-                className="text-[9px] tracking-[0.22em] uppercase font-bold mb-3"
-                style={{ color: "#ADBDAD" }}
-              >
+              <div className="absolute top-4 right-4 w-2 h-2 rounded-full" style={{ backgroundColor: accent }} />
+              <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-3" style={{ color: "#ADBDAD" }}>
                 {label}
               </p>
               <div className="flex items-baseline gap-1 mb-1.5">
                 <span
                   className="font-black tabular-nums leading-none tracking-tight"
-                  style={{ fontSize: "clamp(2.2rem, 4vw, 2.8rem)", color: "#0d1f10" }}
+                  style={{ fontSize: "clamp(2rem, 3.5vw, 2.6rem)", color: "#0d1f10" }}
                 >
                   {value}
                 </span>
                 {suffix && (
-                  <span className="text-base font-medium" style={{ color: "#C8D4C8" }}>
-                    {suffix}
-                  </span>
+                  <span className="text-sm font-medium" style={{ color: "#C8D4C8" }}>{suffix}</span>
                 )}
               </div>
               <p className="text-xs" style={{ color: "#ADBDAD" }}>{sub}</p>
@@ -414,7 +277,50 @@ export default async function OverviewPage() {
               />
             </div>
           ))}
+
+          {/* Upgrade CTA — fills remaining space at bottom */}
+          {account.subscription?.plan !== "PREMIUM" && (
+            <div
+              className="ov relative rounded-2xl p-5 overflow-hidden flex-1"
+              style={{
+                animationDelay: "280ms",
+                background: "linear-gradient(140deg, #0a1509 0%, #162a18 60%, #0d1f10 100%)",
+                boxShadow: "0 4px 16px rgba(13,31,16,0.2)",
+              }}
+            >
+              <div
+                className="absolute top-0 right-0 w-40 h-40 rounded-full pointer-events-none"
+                style={{ background: "radial-gradient(circle, rgba(74,222,128,0.12) 0%, transparent 65%)", transform: "translate(30%, -30%)" }}
+              />
+              <div className="relative">
+                <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-2" style={{ color: "rgba(74,222,128,0.5)" }}>
+                  Premium
+                </p>
+                <p className="text-white text-sm font-bold mb-3 leading-snug">{t("upgradeTitle")}</p>
+                <Link
+                  href="/pricing"
+                  className="inline-flex items-center gap-1.5 bg-primary text-[#0a1509] px-4 py-2 rounded-lg font-bold text-xs transition-all hover:bg-primary-dark"
+                  style={{ boxShadow: "0 2px 12px rgba(74,222,128,0.25)" }}
+                >
+                  {t("upgradeCta")}
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* Meal Streak Grid — bottom-left, spans 2 cols */}
+        {gridDays.length > 0 && (
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ gridArea: "streak", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+          >
+            <MealStreakGrid days={gridDays} totalCompleted={totalCompleted} firstDay={gridFirstDay} />
+          </div>
+        )}
       </div>
     </div>
   );
