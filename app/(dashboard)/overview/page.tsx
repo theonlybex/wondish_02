@@ -206,13 +206,13 @@ export default async function OverviewPage() {
             [ journal ] [ caloric ] [ stats ]
       */}
       <div
-        className="ov flex-1 min-h-0 grid gap-4"
+        className="ov flex-1 min-h-0 grid gap-3"
         style={{
           animationDelay: "60ms",
           gridTemplateColumns: "1fr 1fr 280px",
           ...(gridDays.length > 0
             ? {
-                gridTemplateRows: "1fr 1fr",
+                gridTemplateRows: "2fr 3fr",
                 gridTemplateAreas: `
                   "streak  streak  stats"
                   "journal caloric stats"
@@ -259,7 +259,7 @@ export default async function OverviewPage() {
 
         {/* Caloric Profile */}
         <div
-          className="rounded-2xl overflow-auto bg-white"
+          className="rounded-2xl overflow-hidden bg-white"
           style={{ gridArea: "caloric", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
         >
           <CaloricProfileCard />

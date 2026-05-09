@@ -53,7 +53,7 @@ export default function CaloricProfileCard() {
 
   if (loading) {
     return (
-      <div className="bg-white border border-[#E8E7EA] rounded-2xl p-6 animate-pulse">
+      <div className="bg-white h-full p-5 animate-pulse">
         <div className="h-5 w-40 bg-gray-200 rounded mb-4" />
         <div className="grid grid-cols-2 gap-4">
           {[...Array(6)].map((_, i) => (
@@ -66,7 +66,7 @@ export default function CaloricProfileCard() {
 
   if (error || !profile) {
     return (
-      <div className="bg-white border border-[#E8E7EA] rounded-2xl p-6">
+      <div className="bg-white h-full p-5">
         <h3 className="font-semibold text-[#25293C] mb-2">Caloric Profile</h3>
         <p className="text-sm text-[#9EA8A0]">
           {error || "Complete your profile to see your caloric analysis."}
@@ -97,7 +97,7 @@ export default function CaloricProfileCard() {
     : "At target weight";
 
   return (
-    <div className="bg-white border border-[#E8E7EA] rounded-2xl p-6">
+    <div className="bg-white h-full p-5">
       <style>{`
         @keyframes cp-rise {
           from { opacity: 0; transform: translateY(14px); }
@@ -111,13 +111,13 @@ export default function CaloricProfileCard() {
         .cp-ring { animation: cp-ring 1.2s cubic-bezier(0.22, 1, 0.36, 1) both 0.3s; }
       `}</style>
 
-      <h3 className="font-semibold text-[#25293C] mb-5 cp-a">Caloric Profile</h3>
+      <h3 className="font-semibold text-[#25293C] mb-3 cp-a">Caloric Profile</h3>
 
       {/* Top row: Calorie ring + BMI gauge */}
-      <div className="flex flex-wrap gap-6 mb-6">
+      <div className="flex flex-wrap gap-4 mb-4">
         {/* Calorie ring */}
         <div className="cp-a flex flex-col items-center" style={{ animationDelay: "60ms" }}>
-          <div className="relative w-[132px] h-[132px]">
+          <div className="relative w-[110px] h-[110px]">
             <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
               <circle
                 cx="60" cy="60" r="54"
@@ -173,7 +173,7 @@ export default function CaloricProfileCard() {
       </div>
 
       {/* Metrics grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
         <MetricTile
           label="Current Weight"
           value={`${fmt(profile.cbwKg)} kg`}

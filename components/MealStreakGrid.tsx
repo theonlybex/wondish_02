@@ -106,7 +106,7 @@ export default function MealStreakGrid({ days, totalCompleted, firstDay }: MealS
   }
 
   return (
-    <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5 sm:p-6">
+    <div className="bg-white h-full p-5 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-bold text-navy text-base">Meal Plan Activity</h2>
         <span className="text-[#8A8D93] text-xs">
