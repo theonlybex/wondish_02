@@ -97,7 +97,7 @@ export default function CaloricProfileCard() {
     : "At target weight";
 
   return (
-    <div className="bg-white h-full p-5">
+    <div className="bg-white h-full flex flex-col">
       <style>{`
         @keyframes cp-rise {
           from { opacity: 0; transform: translateY(14px); }
@@ -111,7 +111,12 @@ export default function CaloricProfileCard() {
         .cp-ring { animation: cp-ring 1.2s cubic-bezier(0.22, 1, 0.36, 1) both 0.3s; }
       `}</style>
 
-      <h3 className="font-semibold text-[#25293C] mb-3 cp-a">Caloric Profile</h3>
+      <div className="flex items-center gap-2.5 px-5 py-3 border-b border-[#F0F4F0] flex-shrink-0">
+        <div className="w-1 h-4 rounded-full" style={{ background: "#7DB87D" }} />
+        <h3 className="text-[#0d1f10] text-sm font-bold">Caloric Profile</h3>
+      </div>
+
+      <div className="p-5 flex-1 overflow-auto">
 
       {/* Top row: Calorie ring + BMI gauge */}
       <div className="flex flex-wrap gap-4 mb-4">
@@ -233,6 +238,7 @@ export default function CaloricProfileCard() {
           <span className="text-[10px] text-[#9EA8A0]">{fmt(profile.cbwKg)} kg</span>
           <span className="text-[10px] text-[#9EA8A0]">{fmt(profile.tbwKg)} kg</span>
         </div>
+      </div>
       </div>
     </div>
   );

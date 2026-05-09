@@ -106,15 +106,19 @@ export default function MealStreakGrid({ days, totalCompleted, firstDay }: MealS
   }
 
   return (
-    <div className="bg-white h-full p-5 sm:p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-bold text-navy text-base">Meal Plan Activity</h2>
-        <span className="text-[#8A8D93] text-xs">
+    <div className="bg-white h-full flex flex-col">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-[#F0F4F0] flex-shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-1 h-4 rounded-full" style={{ background: "#22c55e" }} />
+          <h2 className="text-[#0d1f10] text-sm font-bold">Meal Plan Activity</h2>
+        </div>
+        <span className="text-[9px] tracking-[0.2em] uppercase font-bold" style={{ color: "#ADBDAD" }}>
           {totalCompleted} day{totalCompleted !== 1 ? "s" : ""} completed
         </span>
       </div>
 
-      <div className="w-full overflow-hidden">
+      <div className="p-5 sm:p-6 flex-1 flex flex-col">
+      <div className="w-full overflow-hidden flex-1">
         <div
           style={{
             display: "grid",
@@ -137,6 +141,7 @@ export default function MealStreakGrid({ days, totalCompleted, firstDay }: MealS
           />
         ))}
         <span className="text-[#8A8D93] text-[10px] select-none">More</span>
+      </div>
       </div>
     </div>
   );
