@@ -27,7 +27,12 @@ export default async function OverviewPage() {
 
   const todayMenus = patient?.menus ?? [];
   const latestJournal = patient?.journalEntries?.[0];
-  const currentWeight = latestJournal?.weight ?? null;
+  // Weight: prefer latest journal weight, fallback to profile weight
+  const journalWeight = latestJournal?.weight ?? null;
+  const profileWeight = patient?.weight ?? null;
+  const currentWeight = journalWeight ?? profileWeight;
+  const weightUnit = patient?.weightUnit === "lbs" ? "lbs" : "kg";
+  const weightSource = journalWeight ? "from journal" : profileWeight ? "from profile" : "";
 
   const streak = (() => {
     const entries = patient?.journalEntries ?? [];
@@ -149,9 +154,9 @@ export default async function OverviewPage() {
     },
     {
       label: t("currentWeight"),
-      value: currentWeight ? String(currentWeight) : "—",
-      suffix: currentWeight ? " kg" : "",
-      sub: t("fromLastJournal"),
+      value: currentWeight ? String(Math.round(currentWeight * 10) / 10) : "—",
+      suffix: currentWeight ? ` ${weightUnit}` : "",
+      sub: weightSource || t("fromLastJournal"),
       accent: "#60a5fa",
       delay: "140ms",
     },
@@ -193,23 +198,33 @@ export default async function OverviewPage() {
 
       {/* ── Bento grid ───────────────────────────────────────────── */}
       {/*
-          [ streak  ] [ streak  ] [ stats ]
-          [ journal ] [ caloric ] [ stats ]
-          Two equal rows filling viewport, stats spans both rows
+          With streak data:
+            [ streak  ] [ streak  ] [ stats ]
+            [ journal ] [ caloric ] [ stats ]
+
+          Without streak data:
+            [ journal ] [ caloric ] [ stats ]
       */}
       <div
         className="ov flex-1 min-h-0 grid gap-4"
         style={{
           animationDelay: "60ms",
           gridTemplateColumns: "1fr 1fr 280px",
-          gridTemplateRows: "1fr 1fr",
-          gridTemplateAreas: `
-            "streak  streak  stats"
-            "journal caloric stats"
-          `,
+          ...(gridDays.length > 0
+            ? {
+                gridTemplateRows: "1fr 1fr",
+                gridTemplateAreas: `
+                  "streak  streak  stats"
+                  "journal caloric stats"
+                `,
+              }
+            : {
+                gridTemplateRows: "1fr",
+                gridTemplateAreas: `"journal caloric stats"`,
+              }),
         }}
       >
-        {/* Meal Streak Grid — top, spans 2 cols */}
+        {/* Meal Streak Grid — top, spans 2 cols (only if data exists) */}
         {gridDays.length > 0 && (
           <div
             className="rounded-2xl overflow-hidden"
@@ -219,7 +234,7 @@ export default async function OverviewPage() {
           </div>
         )}
 
-        {/* Daily Journal — bottom-left */}
+        {/* Daily Journal */}
         <div
           className="bg-white rounded-2xl overflow-hidden flex flex-col"
           style={{ gridArea: "journal", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
@@ -242,9 +257,9 @@ export default async function OverviewPage() {
           </div>
         </div>
 
-        {/* Caloric Profile — bottom-right */}
+        {/* Caloric Profile */}
         <div
-          className="rounded-2xl overflow-hidden"
+          className="rounded-2xl overflow-auto bg-white"
           style={{ gridArea: "caloric", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
         >
           <CaloricProfileCard />
