@@ -191,39 +191,40 @@ export default async function OverviewPage() {
         </div>
       </div>
 
-      {/* ── Bento rectangle ─────────────────────────────────────────── */}
+      {/* ── Bento grid ───────────────────────────────────────────── */}
       {/*
-          Grid areas:
-          [ caloric ] [ journal ] [ stats ]
           [ streak  ] [ streak  ] [ stats ]
-          stats spans both rows forming a right-column rectangle
+          [ journal ] [ caloric ] [ stats ]
+          Two equal rows filling viewport, stats spans both rows
       */}
       <div
         className="ov flex-1 min-h-0 grid gap-4"
         style={{
           animationDelay: "60ms",
-          gridTemplateColumns: "1fr 1fr 260px",
+          gridTemplateColumns: "1fr 1fr 280px",
           gridTemplateRows: "1fr 1fr",
           gridTemplateAreas: `
-            "caloric journal stats"
             "streak  streak  stats"
+            "journal caloric stats"
           `,
         }}
       >
-        {/* Caloric Profile — top-left */}
-        <div
-          className="rounded-2xl overflow-hidden"
-          style={{ gridArea: "caloric", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
-        >
-          <CaloricProfileCard />
-        </div>
+        {/* Meal Streak Grid — top, spans 2 cols */}
+        {gridDays.length > 0 && (
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ gridArea: "streak", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+          >
+            <MealStreakGrid days={gridDays} totalCompleted={totalCompleted} firstDay={gridFirstDay} />
+          </div>
+        )}
 
-        {/* Journal — top-middle */}
+        {/* Daily Journal — bottom-left */}
         <div
           className="bg-white rounded-2xl overflow-hidden flex flex-col"
           style={{ gridArea: "journal", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
         >
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#F0F4F0] flex-shrink-0">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-[#F0F4F0] flex-shrink-0">
             <div className="flex items-center gap-2.5">
               <div className="w-1 h-4 rounded-full" style={{ background: "#a78bfa" }} />
               <h2 className="text-[#0d1f10] text-sm font-bold">Daily Journal</h2>
@@ -236,9 +237,17 @@ export default async function OverviewPage() {
               Full Journal →
             </Link>
           </div>
-          <div className="px-5 py-4 flex-1 overflow-hidden">
-            <QuickJournalLog defaultWeightUnit={patient?.weightUnit ?? "lbs"} />
+          <div className="px-5 py-3 flex-1 overflow-auto">
+            <QuickJournalLog defaultWeightUnit="lbs" />
           </div>
+        </div>
+
+        {/* Caloric Profile — bottom-right */}
+        <div
+          className="rounded-2xl overflow-hidden"
+          style={{ gridArea: "caloric", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+        >
+          <CaloricProfileCard />
         </div>
 
         {/* Stats — right column, spans both rows */}
@@ -311,16 +320,6 @@ export default async function OverviewPage() {
             </div>
           )}
         </div>
-
-        {/* Meal Streak Grid — bottom-left, spans 2 cols */}
-        {gridDays.length > 0 && (
-          <div
-            className="rounded-2xl overflow-hidden"
-            style={{ gridArea: "streak", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
-          >
-            <MealStreakGrid days={gridDays} totalCompleted={totalCompleted} firstDay={gridFirstDay} />
-          </div>
-        )}
       </div>
     </div>
   );
