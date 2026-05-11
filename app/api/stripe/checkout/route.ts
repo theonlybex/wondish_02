@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 import { createStripeCustomer, createCheckoutSession, createCustomerPortalSession } from "@/lib/stripe";
 
@@ -12,11 +12,29 @@ export async function POST(req: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   try {
-    const account = await prisma.account.findUnique({
+    let account = await prisma.account.findUnique({
       where: { clerkId: userId },
       include: { subscription: true },
     });
-    if (!account) return NextResponse.json({ error: "Account not found." }, { status: 404 });
+
+    if (!account) {
+      const client = await clerkClient();
+      const clerkUser = await client.users.getUser(userId);
+      const email = clerkUser.emailAddresses[0]?.emailAddress ?? "";
+      const firstName = clerkUser.firstName ?? "";
+      const lastName = clerkUser.lastName ?? "";
+
+      account = await prisma.account.create({
+        data: {
+          clerkId: userId,
+          email,
+          firstName,
+          lastName,
+          subscription: { create: {} },
+        },
+        include: { subscription: true },
+      });
+    }
 
     let customerId = account.subscription?.stripeCustomerId;
     if (!customerId) {
