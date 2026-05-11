@@ -22,7 +22,11 @@ export async function POST(req: NextRequest) {
     if (!customerId) {
       const customer = await createStripeCustomer(account.email, `${account.firstName} ${account.lastName}`);
       customerId = customer.id;
-      await prisma.subscription.update({ where: { accountId: account.id }, data: { stripeCustomerId: customerId } });
+      await prisma.subscription.upsert({
+        where: { accountId: account.id },
+        update: { stripeCustomerId: customerId },
+        create: { accountId: account.id, stripeCustomerId: customerId },
+      });
     }
 
     const checkoutSession = await createCheckoutSession({
