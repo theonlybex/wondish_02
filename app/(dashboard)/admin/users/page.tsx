@@ -29,6 +29,7 @@ function Initials({ name }: { name: string }) {
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<Record<string, unknown>[]>([]);
+  const [currentAccountId, setCurrentAccountId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -40,6 +41,7 @@ export default function AdminUsersPage() {
     const res = await fetch(url);
     const data = await res.json();
     setUsers(data.items ?? []);
+    if (data.currentAccountId) setCurrentAccountId(data.currentAccountId);
     setLoading(false);
   };
 
@@ -142,6 +144,10 @@ export default function AdminUsersPage() {
               {users.map((user) => {
                 const u = user as Record<string, unknown>;
                 const sub = u.subscription as Record<string, unknown> | null;
+                const roles = u.roles as { role: { name: string } }[] | undefined;
+                const userIsAdmin = roles?.some((r) => r.role.name === "SUPER") ?? false;
+                const isSelf = u.id === currentAccountId;
+                const isProtected = isSelf || userIsAdmin;
                 const fullName = `${u.firstName} ${u.lastName}`;
                 return (
                   <div
@@ -170,22 +176,34 @@ export default function AdminUsersPage() {
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <Button
-                        variant={sub?.plan === "PREMIUM" ? "danger" : "primary"}
-                        size="sm"
-                        loading={planTogglingId === u.id}
-                        onClick={() => handlePlanToggle(u.id as string, (sub?.plan as string) ?? "FREE")}
-                      >
-                        {sub?.plan === "PREMIUM" ? "→ Free" : "→ Premium"}
-                      </Button>
-                      <Button
-                        variant={u.isEnabled ? "danger" : "secondary"}
-                        size="sm"
-                        loading={togglingId === u.id}
-                        onClick={() => handleToggle(u.id as string, u.isEnabled as boolean)}
-                      >
-                        {u.isEnabled ? "Disable" : "Enable"}
-                      </Button>
+                      {isProtected ? (
+                        <span
+                          className="text-[10px] font-medium px-2 py-1 rounded-lg"
+                          style={{ background: "#F0F4F0", color: "#ADBDAD" }}
+                          title={isSelf ? "Cannot modify your own account" : "Only managers can modify admins"}
+                        >
+                          {isSelf ? "You" : "Admin"}
+                        </span>
+                      ) : (
+                        <>
+                          <Button
+                            variant={sub?.plan === "PREMIUM" ? "danger" : "primary"}
+                            size="sm"
+                            loading={planTogglingId === u.id}
+                            onClick={() => handlePlanToggle(u.id as string, (sub?.plan as string) ?? "FREE")}
+                          >
+                            {sub?.plan === "PREMIUM" ? "→ Free" : "→ Premium"}
+                          </Button>
+                          <Button
+                            variant={u.isEnabled ? "danger" : "secondary"}
+                            size="sm"
+                            loading={togglingId === u.id}
+                            onClick={() => handleToggle(u.id as string, u.isEnabled as boolean)}
+                          >
+                            {u.isEnabled ? "Disable" : "Enable"}
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 );

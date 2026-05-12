@@ -4,7 +4,7 @@ import { requireAdmin, adminErrorResponse } from "@/lib/admin";
 
 export async function GET(req: NextRequest) {
   try {
-    await requireAdmin();
+    const admin = await requireAdmin();
 
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get("page") ?? "1");
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
         where,
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ subscription: { plan: "desc" } }, { createdAt: "desc" }],
         include: {
           subscription: { select: { plan: true, status: true } },
           roles: { include: { role: true } },
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
       prisma.account.count({ where }),
     ]);
 
-    return NextResponse.json({ items, total, page, limit });
+    return NextResponse.json({ items, total, page, limit, currentAccountId: admin.id });
   } catch (err) {
     return adminErrorResponse(err);
   }
@@ -44,9 +44,19 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    await requireAdmin();
+    const admin = await requireAdmin();
 
     const body = await req.json();
+    const targetId = body.id as string;
+
+    if (targetId === admin.id) throw new Error("FORBIDDEN");
+
+    const target = await prisma.account.findUnique({
+      where: { id: targetId },
+      include: { roles: { include: { role: true } } },
+    });
+    const targetIsAdmin = target?.roles?.some((r) => r.role.name === "SUPER") ?? false;
+    if (targetIsAdmin) throw new Error("FORBIDDEN");
 
     if ("plan" in body) {
       const { id, plan } = body as { id: string; plan: "FREE" | "PREMIUM" };
