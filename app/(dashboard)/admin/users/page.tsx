@@ -32,7 +32,6 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [planTogglingId, setPlanTogglingId] = useState<string | null>(null);
 
   const loadUsers = async (q?: string) => {
     setLoading(true);
@@ -44,24 +43,6 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => { loadUsers(); }, []);
-
-  const handlePlanToggle = async (id: string, currentPlan: string) => {
-    const plan = currentPlan === "PREMIUM" ? "FREE" : "PREMIUM";
-    setPlanTogglingId(id);
-    await fetch("/api/admin/users", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, plan }),
-    });
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === id
-          ? { ...u, subscription: { ...(u.subscription as Record<string, unknown> ?? {}), plan } }
-          : u
-      )
-    );
-    setPlanTogglingId(null);
-  };
 
   const handleToggle = async (id: string, isEnabled: boolean) => {
     setTogglingId(id);
@@ -169,15 +150,7 @@ export default function AdminUsersPage() {
                       </Badge>
                     </div>
 
-                    <div className="flex-shrink-0 flex items-center gap-2">
-                      <Button
-                        variant={sub?.plan === "PREMIUM" ? "secondary" : "primary"}
-                        size="sm"
-                        loading={planTogglingId === u.id}
-                        onClick={() => handlePlanToggle(u.id as string, (sub?.plan as string) ?? "FREE")}
-                      >
-                        {sub?.plan === "PREMIUM" ? "Set Free" : "Set Premium"}
-                      </Button>
+                    <div className="flex-shrink-0">
                       <Button
                         variant={u.isEnabled ? "danger" : "secondary"}
                         size="sm"

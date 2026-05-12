@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
-import { createStripeCustomer, createCheckoutSession, createCustomerPortalSession } from "@/lib/stripe";
+import { createStripeCustomer, createCheckoutSession, createCustomerPortalSession, getPriceByLookupKey } from "@/lib/stripe";
 
-const LOOKUP_KEY = process.env.STRIPE_PRICE_LOOKUP_KEY ?? "premium_monthly";
+async function resolvePriceId(): Promise<string> {
+  const directId = process.env.STRIPE_PREMIUM_PRICE_ID;
+  if (directId) return directId;
+  const lookupKey = process.env.STRIPE_PRICE_LOOKUP_KEY ?? "premium_monthly";
+  return getPriceByLookupKey(lookupKey);
+}
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -24,16 +29,26 @@ export async function POST(req: NextRequest) {
       const firstName = clerkUser.firstName ?? "";
       const lastName = clerkUser.lastName ?? "";
 
-      account = await prisma.account.create({
-        data: {
-          clerkId: userId,
-          email,
-          firstName,
-          lastName,
-          subscription: { create: {} },
-        },
-        include: { subscription: true },
-      });
+      // Account may exist under a different auth path — link Clerk ID rather than creating a duplicate
+      const existing = await prisma.account.findUnique({ where: { email } });
+      if (existing) {
+        account = await prisma.account.update({
+          where: { email },
+          data: { clerkId: userId },
+          include: { subscription: true },
+        });
+      } else {
+        account = await prisma.account.create({
+          data: {
+            clerkId: userId,
+            email,
+            firstName,
+            lastName,
+            subscription: { create: {} },
+          },
+          include: { subscription: true },
+        });
+      }
     }
 
     let customerId = account.subscription?.stripeCustomerId;
@@ -47,9 +62,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const priceId = await resolvePriceId();
     const checkoutSession = await createCheckoutSession({
       customerId,
-      lookupKey: LOOKUP_KEY,
+      priceId,
       successUrl: `${appUrl}/taste`,
       cancelUrl: `${appUrl}/pricing`,
       accountId: account.id,

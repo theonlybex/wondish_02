@@ -96,7 +96,7 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
   }, []);
 
   return (
-    <header className="h-16 bg-white/80 backdrop-blur-sm border-b border-[#E8E7EA]/80 flex items-center justify-between px-5 sm:px-8">
+    <header className="relative z-10 h-16 bg-white/80 backdrop-blur-sm border-b border-[#E8E7EA]/80 flex items-center justify-between px-5 sm:px-8">
       <button className="lg:hidden flex flex-col gap-1.5 p-1" onClick={onMenuToggle} aria-label="Toggle menu">
         <span className="w-5 h-0.5 bg-[#25293C] block rounded-full" />
         <span className="w-5 h-0.5 bg-[#25293C] block rounded-full" />

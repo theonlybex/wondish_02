@@ -20,19 +20,17 @@ export async function createStripeCustomer(email: string, name: string) {
 
 export async function createCheckoutSession({
   customerId,
-  lookupKey,
+  priceId,
   successUrl,
   cancelUrl,
   accountId,
 }: {
   customerId: string;
-  lookupKey: string;
+  priceId: string;
   successUrl: string;
   cancelUrl: string;
   accountId: string;
 }) {
-  const priceId = await getPriceByLookupKey(lookupKey);
-
   return getStripe().checkout.sessions.create({
     customer: customerId,
     mode: "subscription",

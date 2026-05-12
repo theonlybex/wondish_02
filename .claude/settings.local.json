@@ -12,7 +12,11 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(sorted\\(d.keys\\(\\)\\)\\)\\)\")",
       "Bash(netstat -ano)",
       "Bash(findstr \":3000 \")",
-      "Bash(findstr LISTENING)"
+      "Bash(findstr LISTENING)",
+      "PowerShell(stripe *)",
+      "PowerShell(stripe login *)",
+      "Bash(npx vercel *)",
+      "Bash(git push *)"
     ]
   }
 }
