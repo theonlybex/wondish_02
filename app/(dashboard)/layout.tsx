@@ -33,7 +33,9 @@ export default async function DashboardLayout({
 
     if (!tasteDone) {
       const pathname = (await headers()).get("x-pathname") ?? "";
-      if (pathname && pathname !== "/taste") {
+      // Skip taste redirect when user is on /profile — they need to finish onboarding first.
+      // Redirecting to /taste from here would fight the middleware's onboarding guard and loop.
+      if (pathname && pathname !== "/taste" && !pathname.startsWith("/profile")) {
         const patient = await prisma.patient.findUnique({
           where: { accountId: account.id },
           select: { profileCompleted: true },
