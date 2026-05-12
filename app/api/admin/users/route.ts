@@ -46,7 +46,28 @@ export async function PATCH(req: NextRequest) {
   try {
     await requireAdmin();
 
-    const { id, isEnabled } = await req.json();
+    const body = await req.json();
+
+    if ("plan" in body) {
+      const { id, plan } = body as { id: string; plan: "FREE" | "PREMIUM" };
+
+      await prisma.subscription.upsert({
+        where: { accountId: id },
+        update: {
+          plan,
+          status: plan === "PREMIUM" ? "ACTIVE" : "CANCELED",
+        },
+        create: {
+          accountId: id,
+          plan,
+          status: plan === "PREMIUM" ? "ACTIVE" : "CANCELED",
+        },
+      });
+
+      return NextResponse.json({ id, plan });
+    }
+
+    const { id, isEnabled } = body as { id: string; isEnabled: boolean };
 
     const account = await prisma.account.update({
       where: { id },

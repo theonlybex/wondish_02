@@ -32,6 +32,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [planTogglingId, setPlanTogglingId] = useState<string | null>(null);
 
   const loadUsers = async (q?: string) => {
     setLoading(true);
@@ -53,6 +54,24 @@ export default function AdminUsersPage() {
     });
     setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, isEnabled: !isEnabled } : u)));
     setTogglingId(null);
+  };
+
+  const handlePlanToggle = async (id: string, currentPlan: string) => {
+    const newPlan = currentPlan === "PREMIUM" ? "FREE" : "PREMIUM";
+    setPlanTogglingId(id);
+    await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, plan: newPlan }),
+    });
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === id
+          ? { ...u, subscription: { ...(u.subscription as Record<string, unknown>), plan: newPlan } }
+          : u
+      )
+    );
+    setPlanTogglingId(null);
   };
 
   return (
@@ -150,7 +169,15 @@ export default function AdminUsersPage() {
                       </Badge>
                     </div>
 
-                    <div className="flex-shrink-0">
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Button
+                        variant={sub?.plan === "PREMIUM" ? "danger" : "primary"}
+                        size="sm"
+                        loading={planTogglingId === u.id}
+                        onClick={() => handlePlanToggle(u.id as string, (sub?.plan as string) ?? "FREE")}
+                      >
+                        {sub?.plan === "PREMIUM" ? "→ Free" : "→ Premium"}
+                      </Button>
                       <Button
                         variant={u.isEnabled ? "danger" : "secondary"}
                         size="sm"
