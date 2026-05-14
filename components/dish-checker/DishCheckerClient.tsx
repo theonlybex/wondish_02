@@ -43,7 +43,15 @@ export default function DishCheckerClient({ firstName }: Props) {
         body: JSON.stringify({ messages: history }),
       });
 
-      if (!res.ok || !res.body) throw new Error("Request failed");
+      if (!res.ok) {
+        let errMsg = "Sorry, something went wrong. Please try again.";
+        try {
+          const errData = await res.json();
+          if (errData?.error) errMsg = errData.error;
+        } catch { /* ignore parse errors */ }
+        throw new Error(errMsg);
+      }
+      if (!res.body) throw new Error("No response body");
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -61,12 +69,12 @@ export default function DishCheckerClient({ firstName }: Props) {
           ];
         });
       }
-    } catch {
+    } catch (err) {
       setMessages((prev) => [
         ...prev.slice(0, -1),
         {
           role: "assistant",
-          content: "Sorry, something went wrong. Please try again.",
+          content: err instanceof Error ? err.message : "Sorry, something went wrong. Please try again.",
         },
       ]);
     } finally {

@@ -84,11 +84,12 @@ export async function POST(req: NextRequest) {
   });
 
   const foodMapText = buildFoodMapText(patient);
-  const systemPrompt = buildSystemPrompt(account.firstName, foodMapText);
+  const systemPrompt = buildSystemPrompt(account.firstName ?? "there", foodMapText);
 
   const validMessages = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
-    .filter((m) => typeof m.content === "string" && m.content.trim().length > 0);
+    .filter((m) => typeof m.content === "string" && m.content.trim().length > 0)
+    .map((m) => ({ ...m, content: m.content.slice(0, 4000) }));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stream = anthropic.messages.stream({

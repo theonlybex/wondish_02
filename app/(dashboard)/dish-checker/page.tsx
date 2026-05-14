@@ -37,7 +37,7 @@ export default async function DishCheckerPage() {
       </div>
 
       <div className="dc flex-1 min-h-0" style={{ animationDelay: "80ms" }}>
-        <DishCheckerClient firstName={account.firstName} />
+        <DishCheckerClient firstName={account.firstName ?? ""} />
       </div>
     </div>
   );
