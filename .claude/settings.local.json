@@ -16,7 +16,8 @@
       "PowerShell(stripe *)",
       "PowerShell(stripe login *)",
       "Bash(npx vercel *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(npx tsc *)"
     ]
   }
 }
