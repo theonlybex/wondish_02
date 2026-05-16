@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getAccount } from "@/lib/queries";
 import DishCheckerClient from "@/components/dish-checker/DishCheckerClient";
 
-export const metadata = { title: "Check your Dishes" };
+export const metadata = { title: "Clara" };
 
 export default async function DishCheckerPage() {
   const { userId } = await auth();
@@ -30,7 +30,7 @@ export default async function DishCheckerPage() {
         >
           Premium · AI Advisor
         </p>
-        <h1 className="text-3xl font-bold text-[#0d1f10]">Check your Dishes</h1>
+        <h1 className="text-3xl font-bold text-[#0d1f10]">Clara</h1>
         <p className="text-xs mt-1.5" style={{ color: "#9EA8A0" }}>
           Your personal AI food advisor
         </p>
