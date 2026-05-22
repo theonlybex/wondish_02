@@ -53,17 +53,19 @@ const ANIM = `
 function DaysCounter({ target }: { target: number }) {
   const [count, setCount] = useState(0);
   useEffect(() => {
+    let cancelled = false;
     let s = 0;
     const steps = 55;
     const interval = 2000 / steps;
     const tick = () => {
+      if (cancelled) return;
       s++;
       setCount(Math.round((1 - Math.pow(1 - s / steps, 3)) * target));
       if (s < steps) setTimeout(tick, interval);
       else setCount(target);
     };
     const id = setTimeout(tick, 300);
-    return () => clearTimeout(id);
+    return () => { cancelled = true; clearTimeout(id); };
   }, [target]);
   return <span className="tabular-nums">{count}</span>;
 }
@@ -140,7 +142,9 @@ export default function PredictionQuiz() {
     }
     if (step === 4) {
       if (!s.goalWeight || Number(s.goalWeight) <= 0) { setError(t("enterWeight")); return; }
-      if (Number(s.goalWeight) >= Number(s.currentWeight)) { setError(t("goalLessThanCurrent")); return; }
+      const currentLbsNorm = toLbs(s.currentWeight, s.weightUnit);
+      const goalLbsNorm    = toLbs(s.goalWeight, s.weightUnit);
+      if (goalLbsNorm >= currentLbsNorm) { setError(t("goalLessThanCurrent")); return; }
     }
     if (step === 6 && (!s.weeklyPace || Number(s.weeklyPace) <= 0)) {
       setError(t("enterPace")); return;
