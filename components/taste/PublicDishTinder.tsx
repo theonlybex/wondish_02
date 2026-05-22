@@ -25,6 +25,7 @@ export default function PublicDishTinder({ prefetchedDishes }: Props) {
   const [swiping, setSwiping] = useState(false);
   const [done, setDone] = useState(false);
   const [likedCount, setLikedCount] = useState(0);
+  const [restored, setRestored] = useState(false);
 
   // If no prefetched dishes were provided, fetch them (standalone /try page fallback)
   useEffect(() => {
@@ -41,6 +42,39 @@ export default function PublicDishTinder({ prefetchedDishes }: Props) {
       setDishes(prefetchedDishes);
     }
   }, [prefetchedDishes, dishes.length]);
+
+  // Restore progress from localStorage so returning users don't re-swipe
+  useEffect(() => {
+    if (dishes.length === 0 || restored) return;
+    try {
+      const saved: { id: string; liked: boolean }[] = JSON.parse(
+        localStorage.getItem("wondish_taste") ?? "[]"
+      );
+      if (saved.length === 0) { setRestored(true); return; }
+
+      const swipedIds = new Set(saved.map((s) => String(s.id)));
+      const liked = saved.filter((s) => s.liked).length;
+
+      // Find how many leading dishes have already been swiped
+      let resumeIndex = 0;
+      for (let i = 0; i < dishes.length; i++) {
+        if (swipedIds.has(String(dishes[i].id))) {
+          resumeIndex = i + 1;
+        } else {
+          break;
+        }
+      }
+
+      if (resumeIndex >= dishes.length) {
+        setDone(true);
+        setLikedCount(liked);
+      } else if (resumeIndex > 0) {
+        setIndex(resumeIndex);
+        setLikedCount(liked);
+      }
+    } catch {}
+    setRestored(true);
+  }, [dishes, restored]);
 
   const swipe = (liked: boolean) => {
     if (swiping || index >= dishes.length) return;
