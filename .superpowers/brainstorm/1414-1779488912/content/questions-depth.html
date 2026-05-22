@@ -1,0 +1,29 @@
+<h2>What should we ask users to calculate their prediction?</h2>
+<p class="subtitle">The existing dashboard formula uses 3 inputs. We can keep it lean or collect more for a richer estimate.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Minimal — 3 questions</h3>
+      <p>Current weight → Goal weight → Weekly pace (e.g. 0.5 kg/week)</p>
+      <p style="margin-top:8px;font-size:0.82em;opacity:0.6">Fast to fill out. Same formula as the dashboard. Lower friction = more completions.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Standard — 5 questions</h3>
+      <p>Current weight → Goal weight → Weekly pace → Age → Activity level</p>
+      <p style="margin-top:8px;font-size:0.82em;opacity:0.6">Adds TDEE-style context. Can show a more personalised number. A bit more work to fill in.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Full profile — 6–7 questions</h3>
+      <p>Weight + goal + pace + gender + age + height + activity level</p>
+      <p style="margin-top:8px;font-size:0.82em;opacity:0.6">Most accurate estimate via Mifflin-St Jeor / Harris-Benedict. Higher drop-off risk on a landing page.</p>
+    </div>
+  </div>
+</div>
