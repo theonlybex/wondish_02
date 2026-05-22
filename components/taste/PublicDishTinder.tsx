@@ -59,7 +59,7 @@ export default function PublicDishTinder() {
     return (
       <div className="flex flex-col items-center py-20">
         <div className="text-4xl animate-pulse mb-4">🍽</div>
-        <p className="text-[#8A8D93] text-sm">Loading dishes…</p>
+        <p className="text-white/40 text-sm">Loading dishes…</p>
       </div>
     );
   }
@@ -68,8 +68,8 @@ export default function PublicDishTinder() {
     return (
       <div className="text-center py-16">
         <p className="text-5xl mb-4">🍽</p>
-        <p className="text-[#25293C] font-semibold text-lg mb-2">No dishes available yet.</p>
-        <p className="text-[#8A8D93] text-sm mb-6">Check back soon — new recipes are added regularly.</p>
+        <p className="text-white font-semibold text-lg mb-2">No dishes available yet.</p>
+        <p className="text-white/40 text-sm mb-6">Check back soon — new recipes are added regularly.</p>
         <Link href="/register" className="px-6 py-3 rounded-2xl bg-primary text-[#0a1509] font-semibold text-sm">
           Create your account →
         </Link>
@@ -81,24 +81,24 @@ export default function PublicDishTinder() {
     return (
       <div className="flex flex-col items-center py-12 text-center max-w-sm mx-auto">
         <div className="text-6xl mb-5">🎉</div>
-        <h2 className="text-2xl font-bold text-[#25293C] mb-2">Nice taste!</h2>
-        <p className="text-[#8A8D93] text-sm mb-1">
-          You liked <span className="text-primary font-semibold">{likedCount}</span> out of{" "}
-          <span className="font-semibold">{dishes.length}</span> dishes.
+        <h2 className="text-2xl font-bold text-white mb-2">Nice taste!</h2>
+        <p className="text-white/40 text-sm mb-1">
+          You liked <span className="text-[#4ade80] font-semibold">{likedCount}</span> out of{" "}
+          <span className="font-semibold text-white/60">{dishes.length}</span> dishes.
         </p>
-        <p className="text-[#8A8D93] text-sm mb-8 max-w-xs leading-relaxed">
-          Create a free account to save your preferences and get a meal plan built around what you actually want to eat.
+        <p className="text-white/30 text-sm mb-8 max-w-xs leading-relaxed">
+          Create a free account to save your taste profile and get a personalized meal plan.
         </p>
         <Link
           href="/register?redirect_url=%2Fprofile"
-          className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-primary hover:bg-primary-dark text-[#0a1509] font-bold text-sm shadow-lg shadow-primary/20 transition-colors"
+          className="inline-flex items-center gap-2 px-10 py-4 rounded-xl bg-[#4ade80] hover:bg-[#22c55e] text-[#0a1509] font-bold text-base shadow-xl shadow-[#4ade80]/25 hover:shadow-[#4ade80]/40 transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
         >
-          Save my preferences
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          Save your Taste
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </Link>
-        <p className="text-[#8A8D93] text-xs mt-4">Free — no credit card needed</p>
+        <p className="text-white/20 text-xs mt-4">Free — no credit card needed</p>
       </div>
     );
   }
@@ -110,17 +110,17 @@ export default function PublicDishTinder() {
   return (
     <div className="max-w-sm mx-auto">
       <div className="text-center mb-5">
-        <p className="text-xs font-bold text-primary uppercase tracking-widest">
+        <p className="text-xs font-bold text-[#4ade80] uppercase tracking-widest">
           What would you eat?
         </p>
       </div>
 
       {/* Progress */}
       <div className="flex items-center gap-3 mb-5">
-        <div className="flex-1 h-1.5 bg-[#F0EFF5] rounded-full overflow-hidden">
-          <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+        <div className="flex-1 h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
+          <div className="h-full bg-[#4ade80] rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
         </div>
-        <span className="text-xs text-[#8A8D93] shrink-0">{index + 1} / {dishes.length}</span>
+        <span className="text-xs text-white/30 shrink-0">{index + 1} / {dishes.length}</span>
       </div>
 
       {/* Card */}
@@ -177,8 +177,8 @@ export default function PublicDishTinder() {
         </div>
       </div>
 
-      <p className="text-[#8A8D93] text-xs text-center mt-5">
-        Your preferences are saved when you create a free account
+      <p className="text-white/20 text-xs text-center mt-5">
+        Swipe on mobile or tap the buttons
       </p>
     </div>
   );
