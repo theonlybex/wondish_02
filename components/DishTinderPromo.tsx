@@ -1,6 +1,30 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import PublicDishTinder from "@/components/taste/PublicDishTinder";
 
+interface Dish {
+  id: string;
+  name: string;
+  emoji?: string | null;
+  description?: string | null;
+  calories?: number | null;
+  tags: string[];
+  mealType?: { name: string } | null;
+  ethnic?: { name: string } | null;
+}
+
 export default function DishTinderPromo() {
+  // Prefetch dishes immediately on page load so they're ready by the time user scrolls here
+  const [dishes, setDishes] = useState<Dish[]>([]);
+
+  useEffect(() => {
+    fetch("/api/taste/public-dishes")
+      .then((r) => r.json())
+      .then((data) => setDishes(data.dishes ?? []))
+      .catch(() => {});
+  }, []);
+
   return (
     <section className="relative bg-[#0a1509] min-h-[110vh] py-20 px-5 sm:px-8 overflow-hidden flex items-center">
       <style>{`
@@ -59,8 +83,8 @@ export default function DishTinderPromo() {
           Rate dishes in minutes. Your meal plan instantly reflects your taste — no guessing, no foods you hate.
         </p>
 
-        {/* Embedded swiper */}
-        <PublicDishTinder />
+        {/* Embedded swiper — dishes are prefetched */}
+        <PublicDishTinder prefetchedDishes={dishes} />
 
       </div>
     </section>

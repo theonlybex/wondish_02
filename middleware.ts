@@ -25,8 +25,8 @@ export default clerkMiddleware(async (auth, req) => {
   const { pathname } = req.nextUrl;
 
   // Redirect authenticated users away from landing/auth pages to their dashboard
-  if (userId && isAuthRoute(req)) {
-    return NextResponse.redirect(new URL("/meal-plan", req.url));
+  if (userId && (isAuthRoute(req) || pathname === "/")) {
+    return NextResponse.redirect(new URL("/overview", req.url));
   }
 
   if (!isPublicRoute(req) && !userId) {

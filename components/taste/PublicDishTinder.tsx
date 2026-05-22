@@ -15,20 +15,32 @@ interface Dish {
   ethnic?: { name: string } | null;
 }
 
-export default function PublicDishTinder() {
-  const [dishes, setDishes] = useState<Dish[]>([]);
+interface Props {
+  prefetchedDishes?: Dish[];
+}
+
+export default function PublicDishTinder({ prefetchedDishes }: Props) {
+  const [dishes, setDishes] = useState<Dish[]>(prefetchedDishes ?? []);
   const [index, setIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [swiping, setSwiping] = useState(false);
   const [done, setDone] = useState(false);
   const [likedCount, setLikedCount] = useState(0);
 
+  // If no prefetched dishes were provided, fetch them (standalone /try page fallback)
   useEffect(() => {
+    if (prefetchedDishes && prefetchedDishes.length > 0) return;
     fetch("/api/taste/public-dishes")
       .then((r) => r.json())
       .then((data) => setDishes(data.dishes ?? []))
-      .finally(() => setLoading(false));
-  }, []);
+      .catch(() => {});
+  }, [prefetchedDishes]);
+
+  // Sync when prefetched dishes arrive asynchronously
+  useEffect(() => {
+    if (prefetchedDishes && prefetchedDishes.length > 0 && dishes.length === 0) {
+      setDishes(prefetchedDishes);
+    }
+  }, [prefetchedDishes, dishes.length]);
 
   const swipe = (liked: boolean) => {
     if (swiping || index >= dishes.length) return;
@@ -55,39 +67,21 @@ export default function PublicDishTinder() {
     else setIndex((i) => i + 1);
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center py-20">
-        <div className="text-4xl animate-pulse mb-4">🍽</div>
-        <p className="text-white/40 text-sm">Loading dishes…</p>
-      </div>
-    );
-  }
-
   if (dishes.length === 0) {
-    return (
-      <div className="text-center py-16">
-        <p className="text-5xl mb-4">🍽</p>
-        <p className="text-white font-semibold text-lg mb-2">No dishes available yet.</p>
-        <p className="text-white/40 text-sm mb-6">Check back soon — new recipes are added regularly.</p>
-        <Link href="/register" className="px-6 py-3 rounded-2xl bg-primary text-[#0a1509] font-semibold text-sm">
-          Create your account →
-        </Link>
-      </div>
-    );
+    return null;
   }
 
   if (done) {
     return (
       <div className="flex flex-col items-center py-12 text-center max-w-sm mx-auto">
         <div className="text-6xl mb-5">🎉</div>
-        <h2 className="text-2xl font-bold text-white mb-2">Nice taste!</h2>
+        <h2 className="text-2xl font-bold text-white mb-2">Good Picks!</h2>
         <p className="text-white/40 text-sm mb-1">
           You liked <span className="text-[#4ade80] font-semibold">{likedCount}</span> out of{" "}
           <span className="font-semibold text-white/60">{dishes.length}</span> dishes.
         </p>
         <p className="text-white/30 text-sm mb-8 max-w-xs leading-relaxed">
-          Create a free account to save your taste profile and get a personalized meal plan.
+          Create a free account to get your very own custom filters.
         </p>
         <Link
           href="/register?redirect_url=%2Fprofile"
