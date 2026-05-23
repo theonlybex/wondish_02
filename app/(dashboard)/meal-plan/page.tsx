@@ -52,15 +52,22 @@ export default async function MealPlanPage() {
     if (m.recipeId && m.rating != null) initialMealRatings[m.recipeId] = m.rating;
   }
 
+  const loggedSet = new Set(loggedRecipeIds);
+
   const totalCalories = menus.reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
   const totalProtein  = menus.reduce((sum, m) => sum + (m.recipe.protein  ?? 0), 0);
   const totalCarbs    = menus.reduce((sum, m) => sum + (m.recipe.carbs    ?? 0), 0);
   const totalFat      = menus.reduce((sum, m) => sum + (m.recipe.fat      ?? 0), 0);
 
-  const calPct  = Math.min(100, (totalCalories / 2000) * 100);
-  const protPct = Math.min(100, (totalProtein  / 150)  * 100);
-  const carbPct = Math.min(100, (totalCarbs    / 250)  * 100);
-  const fatPct  = Math.min(100, (totalFat      / 70)   * 100);
+  const consumedCalories = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
+  const consumedProtein  = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.protein  ?? 0), 0);
+  const consumedCarbs    = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.carbs    ?? 0), 0);
+  const consumedFat      = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.fat      ?? 0), 0);
+
+  const calPct  = totalCalories > 0 ? Math.min(100, (consumedCalories / totalCalories) * 100) : 0;
+  const protPct = totalProtein  > 0 ? Math.min(100, (consumedProtein  / totalProtein)  * 100) : 0;
+  const carbPct = totalCarbs    > 0 ? Math.min(100, (consumedCarbs    / totalCarbs)    * 100) : 0;
+  const fatPct  = totalFat      > 0 ? Math.min(100, (consumedFat      / totalFat)      * 100) : 0;
 
   return (
     <div className="max-w-6xl mx-auto pb-8">
@@ -128,7 +135,11 @@ export default async function MealPlanPage() {
                 Today&apos;s calories
               </p>
               <div className="text-center mb-5">
-                <span className="text-5xl font-black tracking-tight text-[#0d1f10] tabular-nums leading-none">
+                <span className="text-5xl font-black tracking-tight tabular-nums leading-none" style={{ color: "#4ade80" }}>
+                  {Math.round(consumedCalories)}
+                </span>
+                <span className="text-xl font-bold mx-1" style={{ color: "#C8D4C8" }}>/</span>
+                <span className="text-xl font-bold tabular-nums" style={{ color: "#0d1f10" }}>
                   {Math.round(totalCalories)}
                 </span>
                 <span className="text-sm font-medium ml-1.5" style={{ color: "#C8D4C8" }}>kcal</span>
@@ -137,14 +148,17 @@ export default async function MealPlanPage() {
               {/* Macros stacked */}
               <div className="space-y-3 mb-5">
                 {[
-                  { label: "Protein", value: Math.round(totalProtein), color: "#60a5fa" },
-                  { label: "Carbs",   value: Math.round(totalCarbs),   color: "#fb923c" },
-                  { label: "Fat",     value: Math.round(totalFat),     color: "#a78bfa" },
-                ].map(({ label, value, color }) => (
+                  { label: "Protein", consumed: Math.round(consumedProtein), total: Math.round(totalProtein), color: "#60a5fa" },
+                  { label: "Carbs",   consumed: Math.round(consumedCarbs),   total: Math.round(totalCarbs),   color: "#fb923c" },
+                  { label: "Fat",     consumed: Math.round(consumedFat),     total: Math.round(totalFat),     color: "#a78bfa" },
+                ].map(({ label, consumed, total, color }) => (
                   <div key={label} className="flex items-center justify-between">
                     <p className="text-[9px] tracking-[0.18em] uppercase font-bold" style={{ color: "#ADBDAD" }}>{label}</p>
-                    <p className="text-xl font-black tabular-nums leading-none" style={{ color: "#0d1f10" }}>
-                      {value}<span className="text-xs font-medium ml-0.5" style={{ color: color }}>g</span>
+                    <p className="tabular-nums leading-none" style={{ color: "#0d1f10" }}>
+                      <span className="text-lg font-bold" style={{ color }}>{consumed}</span>
+                      <span className="text-xs font-medium mx-0.5" style={{ color: "#C8D4C8" }}>/</span>
+                      <span className="text-base font-bold">{total}</span>
+                      <span className="text-xs font-medium ml-0.5" style={{ color }}>g</span>
                     </p>
                   </div>
                 ))}
