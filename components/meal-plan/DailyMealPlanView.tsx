@@ -331,6 +331,16 @@ export default function DailyMealPlanView({
   const completedCalories = menus
     .filter((m) => loggedSet.has(m.recipe.id))
     .reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
+  const totalProtein     = menus.reduce((sum, m) => sum + (m.recipe.protein  ?? 0), 0);
+  const totalCarbs       = menus.reduce((sum, m) => sum + (m.recipe.carbs    ?? 0), 0);
+  const totalFat         = menus.reduce((sum, m) => sum + (m.recipe.fat      ?? 0), 0);
+  const consumedProtein  = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.protein  ?? 0), 0);
+  const consumedCarbs    = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.carbs    ?? 0), 0);
+  const consumedFat      = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.fat      ?? 0), 0);
+  const calPct  = totalCalories > 0 ? Math.min(100, (completedCalories / totalCalories) * 100) : 0;
+  const protPct = totalProtein  > 0 ? Math.min(100, (consumedProtein   / totalProtein)  * 100) : 0;
+  const carbPct = totalCarbs    > 0 ? Math.min(100, (consumedCarbs     / totalCarbs)    * 100) : 0;
+  const fatPct  = totalFat      > 0 ? Math.min(100, (consumedFat       / totalFat)      * 100) : 0;
 
   const mealGroups = MEAL_ORDER
     .map((name) => ({
@@ -342,7 +352,12 @@ export default function DailyMealPlanView({
     .filter((g) => g.dishes.length > 0);
 
   return (
-    <div>
+    <div className="flex gap-6 items-start">
+      <style>{`
+        @keyframes mp-bar { from { width: 0%; } }
+        .mp-bar { animation: mp-bar 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
+      `}</style>
+      <div className="flex-1 min-w-0">
       {profileIncomplete && (
         <div className="bg-error/10 border border-error/20 rounded-2xl p-4 mb-4 text-sm text-error">
           Complete your health profile before generating a meal plan.{" "}
@@ -361,11 +376,6 @@ export default function DailyMealPlanView({
           onClick={() => navigate("next")}
           className="w-9 h-9 rounded-xl border border-[#c8e6cc] flex items-center justify-center hover:bg-[#f0fdf4] transition-colors text-forest"
         >›</button>
-        <div className="ml-auto">
-          {menus.length > 0 && (
-            <CaloriePill total={totalCalories} completed={completedCalories} />
-          )}
-        </div>
       </div>
 
       {/* Completion banner */}
@@ -565,6 +575,73 @@ export default function DailyMealPlanView({
           currentCalories={swapModal.calories}
           onSwapped={handleSwapped}
         />
+      )}
+      </div>
+
+      {menus.length > 0 && (
+        <div className="w-64 shrink-0 sticky top-6">
+          <div
+            className="rounded-2xl p-5"
+            style={{
+              background: "#fff",
+              boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+            }}
+          >
+            <p className="text-[9px] tracking-[0.22em] uppercase font-bold text-center mb-2" style={{ color: "#ADBDAD" }}>
+              Today&apos;s calories
+            </p>
+            <div className="text-center mb-5">
+              <span className="text-5xl font-black tracking-tight tabular-nums leading-none" style={{ color: "#4ade80" }}>
+                {Math.round(completedCalories)}
+              </span>
+              <span className="text-xl font-bold mx-1" style={{ color: "#C8D4C8" }}>/</span>
+              <span className="text-xl font-bold tabular-nums" style={{ color: "#0d1f10" }}>
+                {Math.round(totalCalories)}
+              </span>
+              <span className="text-sm font-medium ml-1.5" style={{ color: "#C8D4C8" }}>kcal</span>
+            </div>
+
+            <div className="space-y-3 mb-5">
+              {[
+                { label: "Protein", consumed: Math.round(consumedProtein), total: Math.round(totalProtein), color: "#60a5fa" },
+                { label: "Carbs",   consumed: Math.round(consumedCarbs),   total: Math.round(totalCarbs),   color: "#fb923c" },
+                { label: "Fat",     consumed: Math.round(consumedFat),     total: Math.round(totalFat),     color: "#a78bfa" },
+              ].map(({ label, consumed, total, color }) => (
+                <div key={label} className="flex items-center justify-between">
+                  <p className="text-[9px] tracking-[0.18em] uppercase font-bold" style={{ color: "#ADBDAD" }}>{label}</p>
+                  <p className="tabular-nums leading-none" style={{ color: "#0d1f10" }}>
+                    <span className="text-lg font-bold" style={{ color }}>{consumed}</span>
+                    <span className="text-xs font-medium mx-0.5" style={{ color: "#C8D4C8" }}>/</span>
+                    <span className="text-base font-bold">{total}</span>
+                    <span className="text-xs font-medium ml-0.5" style={{ color }}>g</span>
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-2.5">
+              {[
+                { label: "Cal",     pct: calPct,  color: "#4ade80" },
+                { label: "Protein", pct: protPct, color: "#60a5fa" },
+                { label: "Carbs",   pct: carbPct, color: "#fb923c" },
+                { label: "Fat",     pct: fatPct,  color: "#a78bfa" },
+              ].map(({ label, pct, color }, i) => (
+                <div key={label} className="flex items-center gap-2">
+                  <p className="text-[9px] w-11 font-bold uppercase tracking-wide flex-shrink-0" style={{ color: "#ADBDAD" }}>{label}</p>
+                  <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#F0F4F0" }}>
+                    <div
+                      className="mp-bar h-full rounded-full"
+                      style={{ width: `${pct}%`, background: color, animationDelay: `${200 + i * 60}ms` }}
+                    />
+                  </div>
+                  <p className="text-[9px] font-bold w-7 text-right tabular-nums flex-shrink-0" style={{ color: "#ADBDAD" }}>
+                    {Math.round(pct)}%
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
