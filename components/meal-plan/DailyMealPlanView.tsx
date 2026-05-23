@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import SwapMealModal from "@/components/meal-plan/SwapMealModal";
 import Button from "@/components/ui/Button";
 import { MenuEntry, RecipeDTO } from "@/types";
-import { getRecipeEmoji } from "@/lib/recipeEmoji";
 
 interface DailyMealPlanViewProps {
   initialMenus: MenuEntry[];
@@ -79,10 +78,9 @@ function InlineDishExpand({
       className="overflow-hidden"
     >
       <div className="pt-3 mt-2 border-t border-[#e8f5e9]">
-        {/* Emoji + tags */}
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-3xl">{r.emoji ?? getRecipeEmoji(r.name, r.tags, menu.mealType?.name)}</span>
-          <div className="flex flex-wrap gap-1">
+        {/* Tags */}
+        {(r.ethnic?.name || r.dishType?.name) && (
+          <div className="flex flex-wrap gap-1 mb-3">
             {r.ethnic?.name && (
               <span className="text-[9px] font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                 {r.ethnic.name}
@@ -94,7 +92,7 @@ function InlineDishExpand({
               </span>
             )}
           </div>
-        </div>
+        )}
 
         {/* Stats + swap */}
         <div className="flex items-center gap-2 mb-3">
