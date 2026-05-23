@@ -53,18 +53,17 @@ export default async function MealPlanPage() {
   }
 
   const totalCalories = menus.reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
-  const totalProtein = menus.reduce((sum, m) => sum + (m.recipe.protein ?? 0), 0);
-  const totalCarbs = menus.reduce((sum, m) => sum + (m.recipe.carbs ?? 0), 0);
-  const totalFat = menus.reduce((sum, m) => sum + (m.recipe.fat ?? 0), 0);
+  const totalProtein  = menus.reduce((sum, m) => sum + (m.recipe.protein  ?? 0), 0);
+  const totalCarbs    = menus.reduce((sum, m) => sum + (m.recipe.carbs    ?? 0), 0);
+  const totalFat      = menus.reduce((sum, m) => sum + (m.recipe.fat      ?? 0), 0);
 
-  // Macro bar widths — calories anchors at 2000 kcal, macros at sensible daily targets
   const calPct  = Math.min(100, (totalCalories / 2000) * 100);
   const protPct = Math.min(100, (totalProtein  / 150)  * 100);
   const carbPct = Math.min(100, (totalCarbs    / 250)  * 100);
   const fatPct  = Math.min(100, (totalFat      / 70)   * 100);
 
   return (
-    <div className="max-w-5xl mx-auto pb-8">
+    <div className="max-w-6xl mx-auto pb-8">
       <style>{`
         @keyframes mp-rise {
           from { opacity: 0; transform: translateY(14px); }
@@ -100,79 +99,82 @@ export default async function MealPlanPage() {
         </Link>
       </div>
 
-      {/* ── Nutrition summary card ──────────────────────────────── */}
-      {menus.length > 0 && (
-        <div
-          className="mp rounded-2xl p-6 mb-6"
-          style={{
-            animationDelay: "100ms",
-            background: "#fff",
-            boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
-          }}
-        >
-          {/* Top row: calories prominent, macros right */}
-          <div className="flex items-end justify-between mb-5">
-            <div>
-              <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1.5" style={{ color: "#ADBDAD" }}>
+      {/* ── Two-column layout: dishes left, calories right ──────── */}
+      <div className={menus.length > 0 ? "flex gap-6 items-start" : ""}>
+
+        {/* Left: daily plan view */}
+        <div className={`mp ${menus.length > 0 ? "flex-1 min-w-0" : ""}`} style={{ animationDelay: "160ms" }}>
+          <DailyMealPlanView
+            initialMenus={menus as never}
+            initialDate={format(today, "yyyy-MM-dd")}
+            mealPlanStartDate={patient?.mealPlanStartDate?.toISOString() ?? null}
+            initialLoggedRecipeIds={loggedRecipeIds}
+            initialMealRatings={initialMealRatings}
+          />
+        </div>
+
+        {/* Right: vertical nutrition card */}
+        {menus.length > 0 && (
+          <div className="mp w-64 shrink-0 sticky top-6" style={{ animationDelay: "100ms" }}>
+            <div
+              className="rounded-2xl p-5"
+              style={{
+                background: "#fff",
+                boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+              }}
+            >
+              {/* Calories */}
+              <p className="text-[9px] tracking-[0.22em] uppercase font-bold text-center mb-2" style={{ color: "#ADBDAD" }}>
                 Today&apos;s calories
               </p>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-4xl font-black tracking-tight text-[#0d1f10] tabular-nums leading-none">
+              <div className="text-center mb-5">
+                <span className="text-5xl font-black tracking-tight text-[#0d1f10] tabular-nums leading-none">
                   {Math.round(totalCalories)}
                 </span>
-                <span className="text-sm font-medium" style={{ color: "#C8D4C8" }}>kcal</span>
+                <span className="text-sm font-medium ml-1.5" style={{ color: "#C8D4C8" }}>kcal</span>
+              </div>
+
+              {/* Macros stacked */}
+              <div className="space-y-3 mb-5">
+                {[
+                  { label: "Protein", value: Math.round(totalProtein), color: "#60a5fa" },
+                  { label: "Carbs",   value: Math.round(totalCarbs),   color: "#fb923c" },
+                  { label: "Fat",     value: Math.round(totalFat),     color: "#a78bfa" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <p className="text-[9px] tracking-[0.18em] uppercase font-bold" style={{ color: "#ADBDAD" }}>{label}</p>
+                    <p className="text-xl font-black tabular-nums leading-none" style={{ color: "#0d1f10" }}>
+                      {value}<span className="text-xs font-medium ml-0.5" style={{ color: color }}>g</span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Progress bars */}
+              <div className="space-y-2.5">
+                {[
+                  { label: "Cal",     pct: calPct,  color: "#4ade80" },
+                  { label: "Protein", pct: protPct, color: "#60a5fa" },
+                  { label: "Carbs",   pct: carbPct, color: "#fb923c" },
+                  { label: "Fat",     pct: fatPct,  color: "#a78bfa" },
+                ].map(({ label, pct, color }, i) => (
+                  <div key={label} className="flex items-center gap-2">
+                    <p className="text-[9px] w-11 font-bold uppercase tracking-wide flex-shrink-0" style={{ color: "#ADBDAD" }}>{label}</p>
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#F0F4F0" }}>
+                      <div
+                        className="mp-bar h-full rounded-full"
+                        style={{ width: `${pct}%`, background: color, animationDelay: `${200 + i * 60}ms` }}
+                      />
+                    </div>
+                    <p className="text-[9px] font-bold w-7 text-right tabular-nums flex-shrink-0" style={{ color: "#ADBDAD" }}>
+                      {Math.round(pct)}%
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="flex gap-5 text-right">
-              {[
-                { label: "Protein", value: Math.round(totalProtein),  color: "#60a5fa" },
-                { label: "Carbs",   value: Math.round(totalCarbs),    color: "#fb923c" },
-                { label: "Fat",     value: Math.round(totalFat),      color: "#a78bfa" },
-              ].map(({ label, value, color }) => (
-                <div key={label}>
-                  <p className="text-[9px] tracking-[0.18em] uppercase font-bold mb-1" style={{ color: "#ADBDAD" }}>{label}</p>
-                  <p className="text-xl font-black tabular-nums leading-none" style={{ color: "#0d1f10" }}>
-                    {value}<span className="text-xs font-medium ml-0.5" style={{ color: "#C8D4C8" }}>g</span>
-                  </p>
-                </div>
-              ))}
-            </div>
           </div>
-
-          {/* Macro progress bars */}
-          <div className="space-y-2.5">
-            {[
-              { label: "Calories", pct: calPct,  color: "#4ade80" },
-              { label: "Protein",  pct: protPct, color: "#60a5fa" },
-              { label: "Carbs",    pct: carbPct, color: "#fb923c" },
-              { label: "Fat",      pct: fatPct,  color: "#a78bfa" },
-            ].map(({ label, pct, color }, i) => (
-              <div key={label} className="flex items-center gap-3">
-                <p className="text-[9px] w-12 font-bold uppercase tracking-wide flex-shrink-0" style={{ color: "#ADBDAD" }}>{label}</p>
-                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#F0F4F0" }}>
-                  <div
-                    className="mp-bar h-full rounded-full"
-                    style={{ width: `${pct}%`, background: color, animationDelay: `${200 + i * 60}ms` }}
-                  />
-                </div>
-                <p className="text-[9px] font-bold w-8 text-right tabular-nums flex-shrink-0" style={{ color: "#ADBDAD" }}>
-                  {Math.round(pct)}%
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Daily plan view ────────────────────────────────────── */}
-      <div className="mp" style={{ animationDelay: "260ms" }}>
-        <DailyMealPlanView
-          initialMenus={menus as never}
-          initialDate={format(today, "yyyy-MM-dd")}
-          mealPlanStartDate={patient?.mealPlanStartDate?.toISOString() ?? null}
-          initialLoggedRecipeIds={loggedRecipeIds}
-          initialMealRatings={initialMealRatings}
-        />
+        )}
       </div>
     </div>
   );
