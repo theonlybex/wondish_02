@@ -46,6 +46,8 @@ export default function RecipeForm({ recipe, refData, mode }: RecipeFormProps) {
     mealTypeId: recipe?.mealTypeId ?? "",
     dishTypeId: recipe?.dishTypeId ?? "",
     ethnicId: recipe?.ethnicId ?? "",
+    family: recipe?.family ?? "",
+    subFamily: recipe?.subFamily ?? "",
   });
 
   const [ingredients, setIngredients] = useState<IngredientRow[]>(
@@ -88,6 +90,8 @@ export default function RecipeForm({ recipe, refData, mode }: RecipeFormProps) {
       mealTypeId: form.mealTypeId || null,
       dishTypeId: form.dishTypeId || null,
       ethnicId: form.ethnicId || null,
+      family: form.family || null,
+      subFamily: form.subFamily || null,
       ingredients: ingredients
         .filter((i) => i.ingredientId)
         .map((i) => ({
@@ -169,6 +173,20 @@ export default function RecipeForm({ recipe, refData, mode }: RecipeFormProps) {
           onChange={(e) => setForm((f) => ({ ...f, ethnicId: e.target.value }))}
           options={refData.ethnics.map((m) => ({ value: m.id, label: m.name }))}
           placeholder="Select cuisine"
+        />
+
+        <Input
+          label="Family"
+          value={form.family}
+          onChange={(e) => setForm((f) => ({ ...f, family: e.target.value }))}
+          placeholder="e.g. Chicken, Fish, Grain, Salad"
+        />
+
+        <Input
+          label="Sub-family"
+          value={form.subFamily}
+          onChange={(e) => setForm((f) => ({ ...f, subFamily: e.target.value }))}
+          placeholder="e.g. Grilled Chicken, Brown Rice"
         />
       </div>
 

@@ -38,9 +38,18 @@ export async function POST() {
       skipDuplicates: true,
     });
 
+    await prisma.dishType.updateMany({
+      where: { name: "Main Course" },
+      data: { name: "Main Dish" },
+    });
+
     await prisma.dishType.createMany({
       data: [
-        { name: "Main Course" },
+        { name: "Main Dish" },
+        { name: "Complete Meal" },
+        { name: "Veggie Side Dish" },
+        { name: "Fruity Side Dish" },
+        { name: "Starchy Side Dish" },
         { name: "Side Dish" },
         { name: "Salad" },
         { name: "Soup" },

@@ -335,6 +335,8 @@ model Recipe {
   servings    Int?     @default(1)
   isPublic    Boolean  @default(true)
   tags        String[]
+  family      String?
+  subFamily   String?
   dishTypeId  String?
   dishType    DishType?  @relation(fields: [dishTypeId], references: [id])
   mealTypeId  String?

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { format, addDays, subDays } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import MealCard from "@/components/meal-plan/MealCard";
@@ -22,61 +22,41 @@ function parseLocalDate(dateStr: string): Date {
   return new Date(y, m - 1, d);
 }
 
-// ── Calories meter ────────────────────────────────────────────────────────────
-function CaloriesMeter({
-  totalCalories,
-  completedCalories,
-  completedCount,
-  totalCount,
-}: {
-  totalCalories: number;
-  completedCalories: number;
-  completedCount: number;
-  totalCount: number;
-}) {
-  const pct = totalCalories > 0 ? Math.min(100, Math.round((completedCalories / totalCalories) * 100)) : 0;
-  const isComplete = completedCount === totalCount && totalCount > 0;
-  const fillColor = isComplete ? "#34d399" : "#7367F0";
+// ── Meal order and time labels ────────────────────────────────────────────────
+const MEAL_ORDER = ["Breakfast", "Lunch", "Snack", "Dinner"] as const;
+const MEAL_TIMES: Record<string, string> = {
+  Breakfast: "8am",
+  Lunch:     "12pm",
+  Snack:     "3pm",
+  Dinner:    "7pm",
+};
 
+// Map dishType name to a role badge
+function roleBadge(dishTypeName?: string | null): { label: string; bg: string; text: string } | null {
+  const n = (dishTypeName ?? "").toLowerCase();
+  if (n === "complete meal")     return { label: "Complete meal", bg: "bg-[#dcfce7]", text: "text-[#15803d]" };
+  if (n === "veggie side dish")  return { label: "Veggie side",   bg: "bg-[#d1fae5]", text: "text-[#059669]" };
+  if (n === "starchy side dish") return { label: "Starchy side",  bg: "bg-[#fef3c7]", text: "text-[#b45309]" };
+  if (n === "fruity side dish")  return { label: "Fruity side",   bg: "bg-[#fef9c3]", text: "text-[#a16207]" };
+  if (n === "dessert")           return { label: "Dessert",        bg: "bg-[#fce7f3]", text: "text-[#be185d]" };
+  if (n === "beverage")          return { label: "Beverage",       bg: "bg-[#eff6ff]", text: "text-[#1d4ed8]" };
+  if (n === "main dish" || n === "main course" || n === "side dish" || n === "salad" || n === "soup")
+    return { label: "Main", bg: "bg-[#dcfce7]", text: "text-[#15803d]" };
+  return null;
+}
+
+// ── Calorie pill ──────────────────────────────────────────────────────────────
+function CaloriePill({ total, completed }: { total: number; completed: number }) {
   return (
-    <div className="w-16 shrink-0 flex flex-col items-center gap-2 sticky top-6 pt-1">
-      <p className="text-[9px] font-bold text-[#8A8D93] uppercase tracking-widest text-center leading-tight">
-        Daily<br />Calories
-      </p>
-
-      {/* Vertical bar */}
-      <div className="relative w-7 h-56 bg-[#F0EFF4] rounded-full overflow-hidden">
-        <div
-          className="absolute bottom-0 left-0 right-0 rounded-full transition-all duration-700"
-          style={{
-            height: `${pct}%`,
-            background: `linear-gradient(to top, ${fillColor}, ${fillColor}99)`,
-          }}
-        />
-        {[25, 50, 75].map((tick) => (
-          <div
-            key={tick}
-            className="absolute left-0 right-0 h-px bg-white/60"
-            style={{ bottom: `${tick}%` }}
-          />
-        ))}
-      </div>
-
-      <div className="text-center">
-        <p className={`font-bold text-sm ${isComplete ? "text-emerald-500" : "text-navy"}`}>
-          {pct}%
-        </p>
-        <p className="text-[10px] text-[#8A8D93] mt-0.5">{Math.round(completedCalories)}</p>
-        <p className="text-[10px] text-[#8A8D93]">/ {Math.round(totalCalories)}</p>
-        <p className="text-[10px] text-[#8A8D93]">kcal</p>
-      </div>
-
-      {isComplete && <span className="text-xl">🎯</span>}
+    <div className="flex items-center gap-1.5 bg-white border border-[#c8e6cc] rounded-full px-3 py-1.5">
+      <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
+      <span className="text-[10px] font-bold text-forest">{Math.round(completed)}</span>
+      <span className="text-[10px] text-[#5a7a5d]">/ {Math.round(total)} kcal</span>
     </div>
   );
 }
 
-// ── Expanded recipe panel ────────────────────────────────────────────────────
+// ── Expanded recipe panel ─────────────────────────────────────────────────────
 function ExpandedRecipe({
   menu,
   onClose,
@@ -87,7 +67,7 @@ function ExpandedRecipe({
 }: {
   menu: MenuEntry;
   onClose: () => void;
-  onSwap: (menuId: string, mealTypeId: string, recipeId: string) => void;
+  onSwap: (menuId: string, mealTypeId: string, recipeId: string, calories: number) => void;
   isCompleted: boolean;
   rating: number | null;
   onRate: (recipeId: string, mealTypeName: string, rating: number) => void;
@@ -106,7 +86,7 @@ function ExpandedRecipe({
       className="bg-white border border-[#E8E7EA] rounded-3xl overflow-hidden flex flex-col"
       style={{ minHeight: 480 }}
     >
-      {/* ── Hero header ── */}
+      {/* Hero header */}
       <div className="bg-gradient-to-br from-primary/10 to-primary/5 px-8 pt-8 pb-6 relative">
         <button
           onClick={onClose}
@@ -157,7 +137,7 @@ function ExpandedRecipe({
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => onSwap(menu.id, menu.mealTypeId ?? "", r.id)}
+              onClick={() => onSwap(menu.id, menu.mealTypeId ?? "", r.id, r.calories ?? 0)}
             >
               Swap meal
             </Button>
@@ -165,7 +145,7 @@ function ExpandedRecipe({
         </div>
       </div>
 
-      {/* ── Body ── */}
+      {/* Body */}
       <div className="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-6">
         <section>
           <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-widest mb-3">Nutrition</p>
@@ -286,7 +266,7 @@ function ExpandedRecipe({
   );
 }
 
-// ── Main component ───────────────────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────────────────────
 export default function DailyMealPlanView({
   initialMenus,
   initialDate,
@@ -303,67 +283,17 @@ export default function DailyMealPlanView({
   const [settingStart, setSettingStart] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
-
-  const handleRegenerate = async () => {
-    setRegenerating(true);
-    setSelectedId(null);
-    try {
-      const dateStr = format(date, "yyyy-MM-dd");
-      const endDate = format(addDays(date, 6), "yyyy-MM-dd");
-      await fetch("/api/meal-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startDate: dateStr, endDate }),
-      });
-      const res = await fetch(`/api/meal-plan?date=${dateStr}`);
-      setMenus((await res.json()).menus ?? []);
-    } finally {
-      setRegenerating(false);
-    }
-  };
-
+  const [profileIncomplete, setProfileIncomplete] = useState(false);
   const [swapModal, setSwapModal] = useState<{
     menuId: string;
     mealTypeId: string;
     recipeId: string;
+    calories: number;
   } | null>(null);
-
-  const navigate = async (dir: "prev" | "next") => {
-    setSelectedId(null);
-    const newDate = dir === "next" ? addDays(date, 1) : subDays(date, 1);
-    const dateStr = format(newDate, "yyyy-MM-dd");
-    setDate(newDate);
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/meal-plan?date=${dateStr}`);
-      const data = await res.json();
-      let fetched = data.menus ?? [];
-
-      if (fetched.length === 0 && dir === "next") {
-        const endDate = format(addDays(newDate, 6), "yyyy-MM-dd");
-        await fetch("/api/meal-plan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ startDate: dateStr, endDate }),
-        });
-        const retry = await fetch(`/api/meal-plan?date=${dateStr}`);
-        const retryData = await retry.json();
-        fetched = retryData.menus ?? [];
-        setLoggedRecipeIds(retryData.loggedRecipeIds ?? []);
-        setMealRatings(retryData.mealRatings ?? {});
-      } else {
-        setLoggedRecipeIds(data.loggedRecipeIds ?? []);
-        setMealRatings(data.mealRatings ?? {});
-      }
-
-      setMenus(fetched);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSetStartDate = async () => {
     setSettingStart(true);
+    setProfileIncomplete(false);
     try {
       const res = await fetch("/api/meal-plan/start-date", {
         method: "POST",
@@ -371,11 +301,73 @@ export default function DailyMealPlanView({
         body: JSON.stringify({ startDate: format(new Date(), "yyyy-MM-dd") }),
       });
       const data = await res.json();
-      setStartDate(new Date(data.startDate));
+      const newStartDate = new Date(data.startDate);
+      setStartDate(newStartDate);
+
+      const startStr = format(newStartDate, "yyyy-MM-dd");
+      const endStr   = format(addDays(newStartDate, 34), "yyyy-MM-dd");
+      const genRes = await fetch("/api/meal-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startDate: startStr, endDate: endStr }),
+      });
+      if (!genRes.ok) {
+        const err = await genRes.json();
+        if (err.error === "Profile not complete") { setProfileIncomplete(true); return; }
+      }
+
       const mRes = await fetch(`/api/meal-plan?date=${format(new Date(), "yyyy-MM-dd")}`);
-      setMenus((await mRes.json()).menus ?? []);
+      const mData = await mRes.json();
+      setMenus(mData.menus ?? []);
+      setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
+      setMealRatings(mData.mealRatings ?? {});
     } finally {
       setSettingStart(false);
+    }
+  };
+
+  const handleRegenerate = async () => {
+    if (!startDate) return;
+    setRegenerating(true);
+    setSelectedId(null);
+    setProfileIncomplete(false);
+    try {
+      const startStr = format(startDate, "yyyy-MM-dd");
+      const endStr   = format(addDays(startDate, 34), "yyyy-MM-dd");
+      const genRes = await fetch("/api/meal-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startDate: startStr, endDate: endStr }),
+      });
+      if (!genRes.ok) {
+        const err = await genRes.json();
+        if (err.error === "Profile not complete") { setProfileIncomplete(true); return; }
+      }
+      const dateStr = format(date, "yyyy-MM-dd");
+      const res = await fetch(`/api/meal-plan?date=${dateStr}`);
+      const data = await res.json();
+      setMenus(data.menus ?? []);
+      setLoggedRecipeIds(data.loggedRecipeIds ?? []);
+      setMealRatings(data.mealRatings ?? {});
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const navigate = async (dir: "prev" | "next") => {
+    setSelectedId(null);
+    const newDate  = dir === "next" ? addDays(date, 1) : subDays(date, 1);
+    const dateStr  = format(newDate, "yyyy-MM-dd");
+    setDate(newDate);
+    setLoading(true);
+    try {
+      const res  = await fetch(`/api/meal-plan?date=${dateStr}`);
+      const data = await res.json();
+      setMenus(data.menus ?? []);
+      setLoggedRecipeIds(data.loggedRecipeIds ?? []);
+      setMealRatings(data.mealRatings ?? {});
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -397,41 +389,52 @@ export default function DailyMealPlanView({
   };
 
   const selectedMenu = selectedId ? menus.find((m) => m.id === selectedId) ?? null : null;
-  const otherMenus = selectedMenu ? menus.filter((m) => m.id !== selectedId) : [];
+  const otherMenus   = selectedMenu ? menus.filter((m) => m.id !== selectedId) : [];
 
-  const loggedSet = new Set(loggedRecipeIds);
-  const isAllDone = menus.length > 0 && menus.every((m) => loggedSet.has(m.recipe.id));
-  const completedCount = menus.filter((m) => loggedSet.has(m.recipe.id)).length;
-
-  // Split menus into main dishes and side dishes
-  const mainDishMenus = menus.filter((m) => {
-    const dt = m.recipe.dishType?.name?.toLowerCase() ?? "";
-    return dt !== "side";
-  });
-  const sideDishMenus = menus.filter((m) => {
-    const dt = m.recipe.dishType?.name?.toLowerCase() ?? "";
-    return dt === "side";
-  });
-
-  // Calories tracking
-  const totalCalories = menus.reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
+  const loggedSet       = new Set(loggedRecipeIds);
+  const isAllDone       = menus.length > 0 && menus.every((m) => loggedSet.has(m.recipe.id));
+  const completedCount  = menus.filter((m) => loggedSet.has(m.recipe.id)).length;
+  const totalCalories   = menus.reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
   const completedCalories = menus
     .filter((m) => loggedSet.has(m.recipe.id))
     .reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
 
+  // Group menus by meal type in display order
+  const mealGroups = MEAL_ORDER
+    .map((name) => ({
+      name,
+      time: MEAL_TIMES[name] ?? "",
+      isLunch: name === "Lunch",
+      dishes: menus.filter((m) => m.mealType?.name === name),
+    }))
+    .filter((g) => g.dishes.length > 0);
+
   return (
     <div>
-      {/* Date nav */}
+      {/* Profile-incomplete banner */}
+      {profileIncomplete && (
+        <div className="bg-error/10 border border-error/20 rounded-2xl p-4 mb-4 text-sm text-error">
+          Complete your health profile before generating a meal plan.{" "}
+          <a href="/profile" className="underline font-semibold">Go to Profile →</a>
+        </div>
+      )}
+
+      {/* Date nav + calorie pill */}
       <div className="flex items-center gap-4 mb-6">
         <button
           onClick={() => navigate("prev")}
-          className="w-9 h-9 rounded-xl border border-[#E8E7EA] flex items-center justify-center hover:bg-[#F3F2FF] transition-colors text-navy"
+          className="w-9 h-9 rounded-xl border border-[#c8e6cc] flex items-center justify-center hover:bg-[#f0fdf4] transition-colors text-forest"
         >‹</button>
-        <p className="font-semibold text-navy text-lg">{format(date, "EEEE, MMMM d")}</p>
+        <p className="font-semibold text-forest text-lg">{format(date, "EEEE, MMMM d")}</p>
         <button
           onClick={() => navigate("next")}
-          className="w-9 h-9 rounded-xl border border-[#E8E7EA] flex items-center justify-center hover:bg-[#F3F2FF] transition-colors text-navy"
+          className="w-9 h-9 rounded-xl border border-[#c8e6cc] flex items-center justify-center hover:bg-[#f0fdf4] transition-colors text-forest"
         >›</button>
+        <div className="ml-auto">
+          {menus.length > 0 && (
+            <CaloriePill total={totalCalories} completed={completedCalories} />
+          )}
+        </div>
       </div>
 
       {/* Completion banner */}
@@ -439,14 +442,13 @@ export default function DailyMealPlanView({
         <div
           className={`flex items-center gap-3 rounded-2xl px-4 py-3 mb-5 text-sm font-medium transition-all ${
             isAllDone
-              ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
-              : "bg-[#F8F7FA] border border-[#E8E7EA] text-[#8A8D93]"
+              ? "bg-[#dcfce7] border border-[#86efac] text-[#1e3422]"
+              : "bg-[#f4faf5] border border-[#c8e6cc] text-[#5a7a5d]"
           }`}
         >
-          <span className="text-xl">{isAllDone ? "🎉" : "🍽"}</span>
           <div className="flex-1">
             {isAllDone ? (
-              <span className="font-semibold">All meals done for today — this day is now on your streak!</span>
+              <span className="font-semibold">All meals done for today — great job!</span>
             ) : (
               <span>
                 {completedCount}/{menus.length} meals logged
@@ -459,7 +461,7 @@ export default function DailyMealPlanView({
               {menus.map((m) => (
                 <div
                   key={m.id}
-                  className={`w-2 h-2 rounded-full ${loggedSet.has(m.recipe.id) ? "bg-emerald-400" : "bg-[#E8E7EA]"}`}
+                  className={`w-2 h-2 rounded-full ${loggedSet.has(m.recipe.id) ? "bg-primary" : "bg-[#c8e6cc]"}`}
                 />
               ))}
             </div>
@@ -471,122 +473,193 @@ export default function DailyMealPlanView({
       {!startDate && (
         <div className="bg-primary/10 border border-primary/20 rounded-2xl p-6 text-center mb-6">
           <p className="text-navy font-semibold mb-2">Set your meal plan start date</p>
-          <p className="text-[#8A8D93] text-sm mb-4">We&apos;ll generate a personalized 7-day meal plan starting today.</p>
+          <p className="text-[#8A8D93] text-sm mb-4">We&apos;ll generate a personalized 35-day meal plan starting today.</p>
           <Button loading={settingStart} onClick={handleSetStartDate}>Start Meal Plan Today</Button>
         </div>
       )}
 
-      {/* Cards + Calories Meter */}
+      {/* Main content */}
       {loading ? (
-        <div className="text-center py-12 text-[#8A8D93]">Loading…</div>
+        <div className="text-center py-12 text-[#5a7a5d]">Loading…</div>
       ) : menus.length === 0 ? (
-        <div className="text-center py-12 text-[#8A8D93]">
+        <div className="text-center py-12 text-[#5a7a5d]">
           No meal plan for this day.
           {startDate && (
-            <p className="mt-2 text-sm">Meal plan started {format(startDate, "MMMM d")} — this day may be outside the generated range.</p>
+            <p className="mt-2 text-sm">This day is outside your current plan.</p>
           )}
         </div>
       ) : (
-        <div className="flex gap-5 items-start">
-          {/* Dishes area */}
-          <div className="flex-1 min-w-0">
-            <AnimatePresence initial={false}>
-              {selectedMenu ? (
-                /* ── Expanded layout ── */
-                <motion.div
-                  key="expanded"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex gap-4 items-start"
-                >
-                  {/* Big card */}
-                  <div className="flex-1 min-w-0">
-                    <ExpandedRecipe
-                      menu={selectedMenu}
-                      onClose={() => setSelectedId(null)}
-                      onSwap={(menuId, mealTypeId, recipeId) => setSwapModal({ menuId, mealTypeId, recipeId })}
-                      isCompleted={loggedSet.has(selectedMenu.recipe.id)}
-                      rating={mealRatings[selectedMenu.recipe.id] ?? null}
-                      onRate={handleRate}
-                    />
-                  </div>
+        <AnimatePresence initial={false}>
+          {selectedMenu ? (
+            /* ── Expanded layout ── */
+            <motion.div
+              key="expanded"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="flex gap-4 items-start"
+            >
+              <div className="flex-1 min-w-0">
+                <ExpandedRecipe
+                  menu={selectedMenu}
+                  onClose={() => setSelectedId(null)}
+                  onSwap={(menuId, mealTypeId, recipeId, calories) =>
+                    setSwapModal({ menuId, mealTypeId, recipeId, calories })
+                  }
+                  isCompleted={loggedSet.has(selectedMenu.recipe.id)}
+                  rating={mealRatings[selectedMenu.recipe.id] ?? null}
+                  onRate={handleRate}
+                />
+              </div>
 
-                  {/* Other meals sidebar */}
-                  <div className="w-48 shrink-0 flex flex-col gap-2.5">
-                    <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-widest px-1 mb-1">Other meals</p>
-                    {otherMenus.map((m) => (
-                      <MealCard
-                        key={m.id}
-                        menuId={m.id}
-                        recipe={m.recipe}
-                        mealTypeName={m.mealType?.name}
-                        compact
-                        isCompleted={loggedSet.has(m.recipe.id)}
-                        onSelect={() => setSelectedId(m.id)}
-                      />
-                    ))}
-                  </div>
-                </motion.div>
-              ) : (
-                /* ── Grid layout ── */
-                <motion.div
-                  key="grid"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {/* Main dishes */}
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    {mainDishMenus.map((menu) => (
-                      <MealCard
-                        key={menu.id}
-                        menuId={menu.id}
-                        recipe={menu.recipe}
-                        mealTypeName={menu.mealType?.name}
-                        isCompleted={loggedSet.has(menu.recipe.id)}
-                        onSelect={() => setSelectedId(menu.id)}
-                      />
-                    ))}
-                  </div>
+              <div className="w-48 shrink-0 flex flex-col gap-2.5">
+                <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-widest px-1 mb-1">Other meals</p>
+                {otherMenus.map((m) => (
+                  <MealCard
+                    key={m.id}
+                    menuId={m.id}
+                    recipe={m.recipe}
+                    mealTypeName={m.mealType?.name}
+                    compact
+                    isCompleted={loggedSet.has(m.recipe.id)}
+                    onSelect={() => setSelectedId(m.id)}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          ) : (
+            /* ── Timeline layout ── */
+            <motion.div
+              key="grid"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div
+                className="grid gap-0 bg-[#f4faf5] rounded-2xl p-4"
+                style={{ gridTemplateColumns: "40px 24px 1fr" }}
+              >
+                {mealGroups.map((group, idx) => {
+                  const isLast = idx === mealGroups.length - 1;
+                  return (
+                    <React.Fragment key={group.name}>
+                      {/* Time label */}
+                      <div className="text-right pr-1 pt-[10px]">
+                        <span className="text-[9px] font-semibold text-[#86a98a]">{group.time}</span>
+                      </div>
 
-                  {/* Side dishes section */}
-                  {sideDishMenus.length > 0 && (
-                    <div className="mt-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="h-px flex-1 bg-[#E8E7EA]" />
-                        <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-widest">Side Dishes</p>
-                        <div className="h-px flex-1 bg-[#E8E7EA]" />
+                      {/* Spine */}
+                      <div className="flex flex-col items-center">
+                        <div
+                          className="mt-[10px] w-2.5 h-2.5 rounded-full bg-primary border-2 border-white shrink-0 z-10"
+                          style={{ boxShadow: "0 0 0 1px #4ade80" }}
+                        />
+                        {!isLast && (
+                          <div className="flex-1 w-0.5 bg-gradient-to-b from-primary to-[#86efac]" />
+                        )}
                       </div>
-                      <div className="grid sm:grid-cols-2 gap-4">
-                        {sideDishMenus.map((menu) => (
-                          <MealCard
-                            key={menu.id}
-                            menuId={menu.id}
-                            recipe={menu.recipe}
-                            mealTypeName={menu.mealType?.name}
-                            isCompleted={loggedSet.has(menu.recipe.id)}
-                            onSelect={() => setSelectedId(menu.id)}
-                          />
-                        ))}
+
+                      {/* Meal card */}
+                      <div className={`pl-2 ${isLast ? "pb-0" : "pb-2.5"}`}>
+                        <div
+                          className={
+                            group.isLunch
+                              ? "bg-white border-[1.5px] border-primary rounded-xl overflow-hidden shadow-[0_2px_14px_rgba(74,222,128,.12)]"
+                              : "bg-white border border-[#c8e6cc] rounded-xl overflow-hidden"
+                          }
+                        >
+                          {/* Card header */}
+                          <div
+                            className={`flex items-center justify-between px-3.5 py-2.5 border-b border-[#e8f5e9] ${
+                              group.isLunch ? "bg-[#f0fdf4]" : ""
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-[9px] font-bold text-primary uppercase tracking-[.08em]">
+                                {group.name}
+                              </span>
+                              {group.isLunch && (
+                                <span className="text-[8px] font-bold bg-primary text-forest px-1.5 py-0.5 rounded-full">
+                                  Biggest meal
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[9px] text-[#5a7a5d]">
+                              {Math.round(group.dishes.reduce((s, m) => s + (m.recipe.calories ?? 0), 0))} kcal
+                            </span>
+                          </div>
+
+                          {/* Dish rows */}
+                          <div className="px-3.5 py-2.5 flex flex-col">
+                            {group.dishes.map((menu, dIdx) => {
+                              const badge      = roleBadge(menu.recipe.dishType?.name);
+                              const isCompleted = loggedSet.has(menu.recipe.id);
+                              const isMainDish  = dIdx === 0;
+                              return (
+                                <React.Fragment key={menu.id}>
+                                  {dIdx > 0 && <div className="h-px bg-[#e8f5e9] my-2" />}
+                                  <div
+                                    className="flex items-center justify-between gap-2 cursor-pointer"
+                                    onClick={() => setSelectedId(menu.id)}
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <p className={`text-forest truncate ${isMainDish ? "text-[11px] font-semibold" : "text-[10px] font-medium"}`}>
+                                        {menu.recipe.name}
+                                        {isCompleted && <span className="ml-1.5 text-primary text-[9px] font-bold">✓</span>}
+                                      </p>
+                                      <p className="text-[9px] text-[#5a7a5d] mt-0.5">
+                                        {[
+                                          menu.recipe.calories ? `${menu.recipe.calories} kcal` : null,
+                                          menu.recipe.protein  ? `${menu.recipe.protein}g protein` : null,
+                                        ].filter(Boolean).join(" · ")}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      {badge && (
+                                        <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${badge.bg} ${badge.text}`}>
+                                          {badge.label}
+                                        </span>
+                                      )}
+                                      <button
+                                        className="w-[22px] h-[22px] border border-[#c8e6cc] rounded-md flex items-center justify-center text-[#5a7a5d] text-[9px] hover:bg-[#f0fdf4] transition-colors"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSwapModal({
+                                            menuId:     menu.id,
+                                            mealTypeId: menu.mealTypeId ?? "",
+                                            recipeId:   menu.recipe.id,
+                                            calories:   menu.recipe.calories ?? 0,
+                                          });
+                                        }}
+                                      >
+                                        ↔
+                                      </button>
+                                    </div>
+                                  </div>
+                                </React.Fragment>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </motion.div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+
+              {/* Regenerate button */}
+              {startDate && (
+                <div className="mt-4 flex justify-end">
+                  <Button variant="secondary" size="sm" loading={regenerating} onClick={handleRegenerate}>
+                    Regenerate plan
+                  </Button>
+                </div>
               )}
-            </AnimatePresence>
-          </div>
-
-          {/* Calories meter */}
-          <CaloriesMeter
-            totalCalories={totalCalories}
-            completedCalories={completedCalories}
-            completedCount={completedCount}
-            totalCount={menus.length}
-          />
-        </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       )}
 
       {swapModal && (
@@ -596,6 +669,7 @@ export default function DailyMealPlanView({
           menuId={swapModal.menuId}
           mealTypeId={swapModal.mealTypeId}
           currentRecipeId={swapModal.recipeId}
+          currentCalories={swapModal.calories}
           onSwapped={handleSwapped}
         />
       )}

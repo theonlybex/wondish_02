@@ -11,6 +11,7 @@ interface SwapMealModalProps {
   menuId: string;
   mealTypeId: string;
   currentRecipeId: string;
+  currentCalories?: number | null;
   onSwapped: (menuId: string, newRecipe: RecipeDTO) => void;
 }
 
@@ -20,6 +21,7 @@ export default function SwapMealModal({
   menuId,
   mealTypeId,
   currentRecipeId,
+  currentCalories,
   onSwapped,
 }: SwapMealModalProps) {
   const [alternatives, setAlternatives] = useState<RecipeDTO[]>([]);
@@ -29,13 +31,14 @@ export default function SwapMealModal({
   useEffect(() => {
     if (!open || !mealTypeId) return;
     setLoading(true);
+    const calories = currentCalories ?? 0;
     fetch(
-      `/api/meal-plan/alternatives?mealTypeId=${mealTypeId}&excludeRecipeId=${currentRecipeId}`
+      `/api/meal-plan/alternatives?mealTypeId=${mealTypeId}&excludeRecipeId=${currentRecipeId}&currentCalories=${calories}`
     )
       .then((r) => r.json())
       .then((d) => setAlternatives(d.alternatives ?? []))
       .finally(() => setLoading(false));
-  }, [open, mealTypeId, currentRecipeId]);
+  }, [open, mealTypeId, currentRecipeId, currentCalories]);
 
   const handleSelect = async (recipe: RecipeDTO) => {
     setSwappingId(recipe.id);

@@ -64,6 +64,8 @@ export interface RecipeDTO {
   cookTime?: number | null;
   servings?: number | null;
   tags: string[];
+  family?: string | null;
+  subFamily?: string | null;
   mealTypeId?: string | null;
   mealType?: { id: string; name: string } | null;
   dishTypeId?: string | null;
