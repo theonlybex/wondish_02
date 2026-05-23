@@ -1,0 +1,177 @@
+<h2>Layout C — Timeline, no emojis</h2>
+<p class="subtitle">Refining the timeline view. Let me know if the dish role badges, colours, or spacing need adjusting.</p>
+
+<div style="max-width:480px;margin:24px auto;">
+  <div class="mockup">
+    <div class="mockup-header">Thursday, May 22 — Daily Meal Plan</div>
+    <div class="mockup-body" style="background:#F7F6FB;padding:20px;">
+
+      <!-- Date nav + calorie bar -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:28px;height:28px;border:1px solid #E8E7EA;border-radius:8px;background:white;display:flex;align-items:center;justify-content:center;font-size:12px;color:#8A8D93;">‹</div>
+          <span style="font-weight:600;color:#1C1A29;font-size:13px;">Thursday, May 22</span>
+          <div style="width:28px;height:28px;border:1px solid #E8E7EA;border-radius:8px;background:white;display:flex;align-items:center;justify-content:center;font-size:12px;color:#8A8D93;">›</div>
+        </div>
+        <!-- Mini calorie pill -->
+        <div style="background:white;border:1px solid #E8E7EA;border-radius:20px;padding:4px 12px;display:flex;align-items:center;gap:6px;">
+          <div style="width:6px;height:6px;border-radius:50%;background:#7367F0;"></div>
+          <span style="font-size:10px;font-weight:600;color:#1C1A29;">1,620</span>
+          <span style="font-size:10px;color:#8A8D93;">/ 2,100 kcal</span>
+        </div>
+      </div>
+
+      <!-- Timeline -->
+      <div style="display:flex;gap:12px;">
+
+        <!-- Time spine -->
+        <div style="display:flex;flex-direction:column;align-items:center;padding-top:3px;min-width:28px;">
+          <span style="font-size:9px;font-weight:600;color:#8A8D93;">8am</span>
+          <div style="width:1px;background:linear-gradient(to bottom,#E8E7EA,#E8E7EA);flex:1;margin:6px 0;min-height:36px;"></div>
+          <span style="font-size:9px;font-weight:600;color:#8A8D93;">12pm</span>
+          <div style="width:1px;background:#E8E7EA;flex:1;margin:6px 0;min-height:72px;"></div>
+          <span style="font-size:9px;font-weight:600;color:#8A8D93;">3pm</span>
+          <div style="width:1px;background:#E8E7EA;flex:1;margin:6px 0;min-height:36px;"></div>
+          <span style="font-size:9px;font-weight:600;color:#8A8D93;">7pm</span>
+          <div style="width:1px;background:#E8E7EA;flex:1;margin:6px 0;min-height:52px;"></div>
+        </div>
+
+        <!-- Meal cards column -->
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+
+          <!-- Breakfast -->
+          <div style="background:white;border:1px solid #E8E7EA;border-radius:12px;overflow:hidden;">
+            <div style="padding:10px 12px;border-bottom:1px solid #F0EFF4;display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:9px;font-weight:700;color:#7367F0;text-transform:uppercase;letter-spacing:.07em;">Breakfast</span>
+              <span style="font-size:9px;color:#8A8D93;">380 kcal</span>
+            </div>
+            <div style="padding:10px 12px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div>
+                  <div style="font-size:11px;font-weight:600;color:#1C1A29;">Avocado Toast</div>
+                  <div style="font-size:9px;color:#8A8D93;margin-top:1px;">12g protein · 42g carbs · 18g fat</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="font-size:9px;background:#F3F2FF;color:#7367F0;padding:2px 7px;border-radius:20px;font-weight:600;">Main</span>
+                  <div style="width:22px;height:22px;border:1px solid #E8E7EA;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                    <span style="font-size:9px;color:#8A8D93;">↔</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Lunch — highlighted as biggest meal -->
+          <div style="background:white;border:1.5px solid #7367F0;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(115,103,240,.12);">
+            <div style="padding:10px 12px;border-bottom:1px solid #F0EFF4;display:flex;align-items:center;justify-content:space-between;background:#F9F8FF;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:9px;font-weight:700;color:#7367F0;text-transform:uppercase;letter-spacing:.07em;">Lunch</span>
+                <span style="font-size:8px;background:#7367F0;color:white;padding:1px 6px;border-radius:20px;font-weight:600;">Biggest meal</span>
+              </div>
+              <span style="font-size:9px;color:#8A8D93;">590 kcal</span>
+            </div>
+            <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+              <!-- Main dish -->
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div>
+                  <div style="font-size:11px;font-weight:600;color:#1C1A29;">Tuna Nicoise Salad</div>
+                  <div style="font-size:9px;color:#8A8D93;margin-top:1px;">34g protein · 22g carbs · 18g fat</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="font-size:9px;background:#F3F2FF;color:#7367F0;padding:2px 7px;border-radius:20px;font-weight:600;">Main</span>
+                  <div style="width:22px;height:22px;border:1px solid #E8E7EA;border-radius:6px;display:flex;align-items:center;justify-content:center;">
+                    <span style="font-size:9px;color:#8A8D93;">↔</span>
+                  </div>
+                </div>
+              </div>
+              <!-- Divider -->
+              <div style="height:1px;background:#F0EFF4;"></div>
+              <!-- Veggie side -->
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div>
+                  <div style="font-size:10px;font-weight:500;color:#1C1A29;">Steamed Broccoli</div>
+                  <div style="font-size:9px;color:#8A8D93;margin-top:1px;">80 kcal</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="font-size:9px;background:#F0FFF4;color:#22c55e;padding:2px 7px;border-radius:20px;font-weight:600;">Veggie side</span>
+                  <div style="width:22px;height:22px;border:1px solid #E8E7EA;border-radius:6px;display:flex;align-items:center;justify-content:center;">
+                    <span style="font-size:9px;color:#8A8D93;">↔</span>
+                  </div>
+                </div>
+              </div>
+              <!-- Dessert -->
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div>
+                  <div style="font-size:10px;font-weight:500;color:#1C1A29;">Flan</div>
+                  <div style="font-size:9px;color:#8A8D93;margin-top:1px;">120 kcal</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="font-size:9px;background:#FFF7ED;color:#f97316;padding:2px 7px;border-radius:20px;font-weight:600;">Dessert</span>
+                  <div style="width:22px;height:22px;border:1px solid #E8E7EA;border-radius:6px;display:flex;align-items:center;justify-content:center;">
+                    <span style="font-size:9px;color:#8A8D93;">↔</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Snack -->
+          <div style="background:white;border:1px solid #E8E7EA;border-radius:12px;overflow:hidden;">
+            <div style="padding:10px 12px;border-bottom:1px solid #F0EFF4;display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:9px;font-weight:700;color:#7367F0;text-transform:uppercase;letter-spacing:.07em;">Snack</span>
+              <span style="font-size:9px;color:#8A8D93;">210 kcal</span>
+            </div>
+            <div style="padding:10px 12px;display:flex;align-items:center;justify-content:space-between;">
+              <div>
+                <div style="font-size:11px;font-weight:600;color:#1C1A29;">Apple & Almond Butter</div>
+                <div style="font-size:9px;color:#8A8D93;margin-top:1px;">6g protein · 28g carbs · 10g fat</div>
+              </div>
+              <div style="width:22px;height:22px;border:1px solid #E8E7EA;border-radius:6px;display:flex;align-items:center;justify-content:center;">
+                <span style="font-size:9px;color:#8A8D93;">↔</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dinner -->
+          <div style="background:white;border:1px solid #E8E7EA;border-radius:12px;overflow:hidden;">
+            <div style="padding:10px 12px;border-bottom:1px solid #F0EFF4;display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:9px;font-weight:700;color:#7367F0;text-transform:uppercase;letter-spacing:.07em;">Dinner</span>
+              <span style="font-size:9px;color:#8A8D93;">640 kcal</span>
+            </div>
+            <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div>
+                  <div style="font-size:11px;font-weight:600;color:#1C1A29;">Chicken Stir Fry</div>
+                  <div style="font-size:9px;color:#8A8D93;margin-top:1px;">38g protein · 42g carbs · 16g fat</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="font-size:9px;background:#F3F2FF;color:#7367F0;padding:2px 7px;border-radius:20px;font-weight:600;">Main</span>
+                  <div style="width:22px;height:22px;border:1px solid #E8E7EA;border-radius:6px;display:flex;align-items:center;justify-content:center;">
+                    <span style="font-size:9px;color:#8A8D93;">↔</span>
+                  </div>
+                </div>
+              </div>
+              <div style="height:1px;background:#F0EFF4;"></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div>
+                  <div style="font-size:10px;font-weight:500;color:#1C1A29;">Brown Rice</div>
+                  <div style="font-size:9px;color:#8A8D93;margin-top:1px;">150 kcal</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="font-size:9px;background:#EFF6FF;color:#3b82f6;padding:2px 7px;border-radius:20px;font-weight:600;">Starchy side</span>
+                  <div style="width:22px;height:22px;border:1px solid #E8E7EA;border-radius:6px;display:flex;align-items:center;justify-content:center;">
+                    <span style="font-size:9px;color:#8A8D93;">↔</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="text-align:center;margin-top:16px;">Does this direction feel right? Let me know what to adjust — colours, spacing, badge style, calorie display, etc.</p>

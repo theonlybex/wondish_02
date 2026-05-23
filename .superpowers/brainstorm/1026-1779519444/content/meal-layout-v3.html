@@ -1,0 +1,199 @@
+<h2>Layout C — Brand colours applied</h2>
+<p class="subtitle">Timeline view with the forest-green palette. Let me know what to tweak.</p>
+
+<style>
+  .mp-surface   { background: #f4faf5; }
+  .mp-card      { background: white; border: 1px solid #c8e6cc; border-radius: 12px; overflow: hidden; }
+  .mp-card-head { padding: 10px 14px; border-bottom: 1px solid #e8f5e9; display: flex; align-items: center; justify-content: space-between; }
+  .mp-label     { font-size: 9px; font-weight: 700; color: #22c55e; text-transform: uppercase; letter-spacing: .08em; }
+  .mp-kcal      { font-size: 9px; color: #5a7a5d; }
+  .mp-body      { padding: 10px 14px; }
+  .mp-dish      { display: flex; align-items: center; justify-content: space-between; }
+  .mp-name      { font-size: 11px; font-weight: 600; color: #1e3422; }
+  .mp-meta      { font-size: 9px; color: #5a7a5d; margin-top: 2px; }
+  .mp-divider   { height: 1px; background: #e8f5e9; margin: 8px 0; }
+  .mp-swap      { width: 22px; height: 22px; border: 1px solid #c8e6cc; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #5a7a5d; font-size: 9px; flex-shrink: 0; cursor: pointer; }
+  .mp-badge     { font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+  .badge-main   { background: #dcfce7; color: #15803d; }
+  .badge-veggie { background: #d1fae5; color: #059669; }
+  .badge-starchy{ background: #fef3c7; color: #b45309; }
+  .badge-fruity { background: #ffe4e6; color: #e11d48; }
+  .badge-dessert{ background: #fce7f3; color: #be185d; }
+  .mp-spine-time{ font-size: 9px; font-weight: 600; color: #86a98a; min-width: 28px; text-align: right; }
+  .mp-spine-line{ width: 1px; background: #c8e6cc; margin: 5px auto; }
+  .mp-actions   { display: flex; align-items: center; gap: 5px; }
+  .lunch-card   { background: white; border: 1.5px solid #4ade80; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 14px rgba(74,222,128,.15); }
+  .lunch-head   { padding: 10px 14px; border-bottom: 1px solid #e8f5e9; display: flex; align-items: center; justify-content: space-between; background: #f0fdf4; }
+  .lunch-badge  { font-size: 8px; font-weight: 700; background: #4ade80; color: #1e3422; padding: 1px 7px; border-radius: 20px; }
+</style>
+
+<div style="max-width:500px;margin:24px auto;">
+
+  <!-- Top bar: date nav + calorie summary -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:30px;height:30px;border:1px solid #c8e6cc;border-radius:8px;background:white;display:flex;align-items:center;justify-content:center;font-size:13px;color:#5a7a5d;">‹</div>
+      <span style="font-weight:700;color:#1e3422;font-size:13px;">Thursday, May 22</span>
+      <div style="width:30px;height:30px;border:1px solid #c8e6cc;border-radius:8px;background:white;display:flex;align-items:center;justify-content:center;font-size:13px;color:#5a7a5d;">›</div>
+    </div>
+    <!-- Calorie pill -->
+    <div style="background:white;border:1px solid #c8e6cc;border-radius:20px;padding:5px 12px;display:flex;align-items:center;gap:6px;">
+      <div style="width:7px;height:7px;border-radius:50%;background:#4ade80;"></div>
+      <span style="font-size:10px;font-weight:700;color:#1e3422;">1,620</span>
+      <span style="font-size:10px;color:#5a7a5d;">/ 2,100 kcal</span>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div style="display:flex;gap:10px;background:#f4faf5;border-radius:16px;padding:16px;">
+
+    <!-- Spine -->
+    <div style="display:flex;flex-direction:column;align-items:flex-end;padding-top:4px;gap:0;">
+      <span class="mp-spine-time">8am</span>
+      <div class="mp-spine-line" style="height:36px;"></div>
+      <span class="mp-spine-time">12pm</span>
+      <div class="mp-spine-line" style="height:78px;"></div>
+      <span class="mp-spine-time">3pm</span>
+      <div class="mp-spine-line" style="height:32px;"></div>
+      <span class="mp-spine-time">7pm</span>
+      <div class="mp-spine-line" style="height:52px;"></div>
+    </div>
+
+    <!-- Cards -->
+    <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+
+      <!-- BREAKFAST -->
+      <div class="mp-card">
+        <div class="mp-card-head">
+          <span class="mp-label">Breakfast</span>
+          <span class="mp-kcal">380 kcal</span>
+        </div>
+        <div class="mp-body">
+          <div class="mp-dish">
+            <div>
+              <div class="mp-name">Avocado Toast</div>
+              <div class="mp-meta">12g protein · 42g carbs · 18g fat</div>
+            </div>
+            <div class="mp-actions">
+              <span class="mp-badge badge-main">Main</span>
+              <div class="mp-swap">↔</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LUNCH — biggest meal -->
+      <div class="lunch-card">
+        <div class="lunch-head">
+          <div style="display:flex;align-items:center;gap:7px;">
+            <span class="mp-label" style="color:#15803d;">Lunch</span>
+            <span class="lunch-badge">Biggest meal</span>
+          </div>
+          <span class="mp-kcal">590 kcal</span>
+        </div>
+        <div class="mp-body" style="display:flex;flex-direction:column;gap:0;">
+          <!-- Main dish -->
+          <div class="mp-dish">
+            <div>
+              <div class="mp-name">Tuna Nicoise Salad</div>
+              <div class="mp-meta">34g protein · 22g carbs · 18g fat</div>
+            </div>
+            <div class="mp-actions">
+              <span class="mp-badge badge-main">Main</span>
+              <div class="mp-swap">↔</div>
+            </div>
+          </div>
+          <div class="mp-divider"></div>
+          <!-- Veggie side -->
+          <div class="mp-dish">
+            <div>
+              <div class="mp-name" style="font-size:10px;font-weight:500;">Steamed Broccoli</div>
+              <div class="mp-meta">80 kcal · 3g protein</div>
+            </div>
+            <div class="mp-actions">
+              <span class="mp-badge badge-veggie">Veggie side</span>
+              <div class="mp-swap">↔</div>
+            </div>
+          </div>
+          <div class="mp-divider"></div>
+          <!-- Dessert -->
+          <div class="mp-dish">
+            <div>
+              <div class="mp-name" style="font-size:10px;font-weight:500;">Flan</div>
+              <div class="mp-meta">120 kcal</div>
+            </div>
+            <div class="mp-actions">
+              <span class="mp-badge badge-dessert">Dessert</span>
+              <div class="mp-swap">↔</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SNACK -->
+      <div class="mp-card">
+        <div class="mp-card-head">
+          <span class="mp-label">Snack</span>
+          <span class="mp-kcal">210 kcal</span>
+        </div>
+        <div class="mp-body">
+          <div class="mp-dish">
+            <div>
+              <div class="mp-name">Apple & Almond Butter</div>
+              <div class="mp-meta">6g protein · 28g carbs · 10g fat</div>
+            </div>
+            <div class="mp-actions">
+              <div class="mp-swap">↔</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DINNER -->
+      <div class="mp-card">
+        <div class="mp-card-head">
+          <span class="mp-label">Dinner</span>
+          <span class="mp-kcal">640 kcal</span>
+        </div>
+        <div class="mp-body" style="display:flex;flex-direction:column;gap:0;">
+          <div class="mp-dish">
+            <div>
+              <div class="mp-name">Chicken Stir Fry</div>
+              <div class="mp-meta">38g protein · 42g carbs · 16g fat</div>
+            </div>
+            <div class="mp-actions">
+              <span class="mp-badge badge-main">Main</span>
+              <div class="mp-swap">↔</div>
+            </div>
+          </div>
+          <div class="mp-divider"></div>
+          <div class="mp-dish">
+            <div>
+              <div class="mp-name" style="font-size:10px;font-weight:500;">Brown Rice</div>
+              <div class="mp-meta">150 kcal · 3g protein</div>
+            </div>
+            <div class="mp-actions">
+              <span class="mp-badge badge-starchy">Starchy side</span>
+              <div class="mp-swap">↔</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Completion banner -->
+  <div style="margin-top:12px;background:#dcfce7;border:1px solid #86efac;border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+    <div style="flex:1;font-size:11px;font-weight:500;color:#1e3422;">2 / 4 meals logged — keep going!</div>
+    <div style="display:flex;gap:4px;">
+      <div style="width:8px;height:8px;border-radius:50%;background:#4ade80;"></div>
+      <div style="width:8px;height:8px;border-radius:50%;background:#4ade80;"></div>
+      <div style="width:8px;height:8px;border-radius:50%;background:#c8e6cc;"></div>
+      <div style="width:8px;height:8px;border-radius:50%;background:#c8e6cc;"></div>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="text-align:center;margin-top:16px;">Happy with this direction? Or anything to adjust — badge colours, font weight, card shadows, spacing?</p>
