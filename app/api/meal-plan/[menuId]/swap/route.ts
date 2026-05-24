@@ -33,14 +33,19 @@ export async function PATCH(
 
   const newRecipe = await prisma.recipe.findUnique({
     where: { id: recipeId },
-    include: { ingredients: { include: { ingredient: true } } },
+    include: {
+      dishType:    true,
+      ingredients: { include: { ingredient: true } },
+    },
   });
   if (!newRecipe) return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
 
+  // Meal type must match
   if (menu.mealTypeId && newRecipe.mealTypeId !== menu.mealTypeId) {
     return NextResponse.json({ error: "Recipe not suitable for this meal slot" }, { status: 400 });
   }
 
+  // Banned ingredient check
   const allergyNames      = patient.foodAllergies.flatMap((a) => [a.food.name, ...a.food.bannedIngredients.map((b) => b.name)]);
   const foodsToAvoidNames = patient.foodToAvoid.map((f) => f.food.name);
   const conditionBanned   = patient.healthConditions.flatMap((hc) => hc.condition.bannedIngredients.map((b) => b.name));
@@ -51,10 +56,71 @@ export async function PATCH(
     ...conditionBanned, ...preferenceBanned, ...motivationBanned,
   ].map((n) => n.toLowerCase()));
 
-  const recipeIngredientNames = newRecipe.ingredients.map((ri) => ri.ingredient.name.toLowerCase());
-  const hasBanned = recipeIngredientNames.some((n) => allBannedNames.has(n));
+  const hasBanned = newRecipe.ingredients.some((ri) => allBannedNames.has(ri.ingredient.name.toLowerCase()));
   if (hasBanned) {
     return NextResponse.json({ error: "Recipe contains ingredients you cannot eat" }, { status: 400 });
+  }
+
+  // Family / subfamily constraints — check against all other menus on the same day
+  const dayStart = new Date(menu.date);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(menu.date);
+  dayEnd.setHours(23, 59, 59, 999);
+
+  const sameDayMenus = await prisma.menu.findMany({
+    where: {
+      patientId: patient.id,
+      id:        { not: params.menuId },
+      date:      { gte: dayStart, lte: dayEnd },
+    },
+    include: {
+      recipe: {
+        select: {
+          family:    true,
+          subFamily: true,
+          dishType:  { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  // Family rule: same family cannot appear twice on the same day.
+  // Exception: beverages not tagged fruity/veggie.
+  if (newRecipe.family) {
+    const dishTypeName = newRecipe.dishType?.name?.toLowerCase() ?? "";
+    const familyLower  = newRecipe.family.toLowerCase();
+    const exempt = dishTypeName === "beverage" &&
+      !familyLower.includes("fruity") && !familyLower.includes("veggie");
+
+    if (!exempt) {
+      const familyConflict = sameDayMenus.some((m) => {
+        if (m.recipe.family !== newRecipe.family) return false;
+        const otherDishType = m.recipe.dishType?.name?.toLowerCase() ?? "";
+        const otherFamily   = m.recipe.family?.toLowerCase() ?? "";
+        const otherExempt   = otherDishType === "beverage" &&
+          !otherFamily.includes("fruity") && !otherFamily.includes("veggie");
+        return !otherExempt;
+      });
+      if (familyConflict) {
+        return NextResponse.json(
+          { error: "A dish from the same family is already in today's plan" },
+          { status: 400 }
+        );
+      }
+    }
+  }
+
+  // Sub-family rule: same sub-family cannot appear twice within the same meal type.
+  if (newRecipe.subFamily) {
+    const sameMealConflict = sameDayMenus.some(
+      (m) => m.mealTypeId === menu.mealTypeId && m.recipe.subFamily === newRecipe.subFamily
+    );
+    if (sameMealConflict) {
+      return NextResponse.json(
+        { error: "A dish from the same sub-family is already in this meal" },
+        { status: 400 }
+      );
+    }
   }
 
   const updated = await prisma.menu.update({

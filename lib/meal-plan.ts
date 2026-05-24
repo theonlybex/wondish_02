@@ -64,7 +64,7 @@ function resolveSex(sexAtBirth: string | null | undefined): Sex | null {
 }
 
 type RecipeCandidate = {
-  id: string;
+  id:        string;
   protein:   number | null;
   calories:  number | null;
   carbs:     number | null;
@@ -72,6 +72,7 @@ type RecipeCandidate = {
   fat:       number | null;
   family:    string | null;
   subFamily: string | null;
+  dishType:  { name: string } | null;
   ingredients: { ingredient: { name: string } }[];
 };
 
@@ -81,7 +82,7 @@ function pickByMotivation(
   affinityMap: Record<string, number> = {},
   seenIngredientNames: Set<string> = new Set()
 ): RecipeCandidate {
-  if (candidates.length <= 1) return candidates[0] ?? shuffleArray(candidates)[0];
+  if (candidates.length === 1) return candidates[0];
 
   const hasAffinity = Object.keys(affinityMap).length > 0;
 
@@ -122,7 +123,6 @@ function pickByMotivation(
   return shuffleArray(scored.slice(0, Math.min(3, scored.length)))[0];
 }
 
-// Recipes with null family/subFamily are never blocked.
 function buildFamilyFilter(dailyFamilies: Set<string>) {
   if (dailyFamilies.size === 0) return {};
   return {
@@ -143,16 +143,21 @@ function buildSubFamilyFilter(mealSubFamilies: Set<string>) {
   };
 }
 
-// Beverages are exempt from the daily family constraint.
+// Beverages not tagged fruity/veggie are exempt from the daily family constraint (per spec).
+function isBeverageExempt(recipe: RecipeCandidate): boolean {
+  const dishType = recipe.dishType?.name?.toLowerCase() ?? "";
+  const family   = recipe.family?.toLowerCase() ?? "";
+  return dishType === "beverage" && !family.includes("fruity") && !family.includes("veggie");
+}
+
 function trackChosen(
   recipe: RecipeCandidate,
-  isBeverage: boolean,
   dailyFamilies: Set<string>,
   mealSubFamilies: Set<string>,
-  usedIds: Set<string>
+  weekUsedIds: Set<string>
 ) {
-  usedIds.add(recipe.id);
-  if (recipe.family && !isBeverage) dailyFamilies.add(recipe.family);
+  weekUsedIds.add(recipe.id);
+  if (recipe.family && !isBeverageExempt(recipe)) dailyFamilies.add(recipe.family);
   if (recipe.subFamily) mealSubFamilies.add(recipe.subFamily);
 }
 
@@ -180,16 +185,14 @@ export async function generateMealPlan(
     },
   });
 
-  // Profile completeness gate
-  if (!patient?.profileCompleted) {
-    throw new Error("PROFILE_INCOMPLETE");
-  }
+  if (!patient?.profileCompleted) throw new Error("PROFILE_INCOMPLETE");
 
-  const allergyNames     = patient.foodAllergies.flatMap((a) => [a.food.name, ...a.food.bannedIngredients.map((b) => b.name)]);
+  // ── Build banned ingredients set ───────────────────────────────────────────
+  const allergyNames      = patient.foodAllergies.flatMap((a) => [a.food.name, ...a.food.bannedIngredients.map((b) => b.name)]);
   const foodsToAvoidNames = patient.foodToAvoid.map((f) => f.food.name);
-  const conditionBanned  = patient.healthConditions.flatMap((hc) => hc.condition.bannedIngredients.map((b) => b.name));
-  const preferenceBanned = patient.foodPreferences.flatMap((fp) => fp.food.bannedIngredients.map((b) => b.name));
-  const motivationBanned = patient.motivations.flatMap((pm) => pm.motivation.bannedIngredients.map((b) => b.name));
+  const conditionBanned   = patient.healthConditions.flatMap((hc) => hc.condition.bannedIngredients.map((b) => b.name));
+  const preferenceBanned  = patient.foodPreferences.flatMap((fp) => fp.food.bannedIngredients.map((b) => b.name));
+  const motivationBanned  = patient.motivations.flatMap((pm) => pm.motivation.bannedIngredients.map((b) => b.name));
 
   const allBannedNames = Array.from(new Set([
     ...allergyNames, ...foodsToAvoidNames,
@@ -199,8 +202,8 @@ export async function generateMealPlan(
   const motivationNames = patient.motivations.map((pm) => pm.motivation.name);
   const conditionNames  = patient.healthConditions.map((hc) => hc.condition.name);
 
-  const allDishPrefs   = patient.dishPreferences;
-  const likedDishPrefs = allDishPrefs.filter((dp) => dp.liked);
+  // ── Build affinity map from liked dishes ───────────────────────────────────
+  const likedDishPrefs = patient.dishPreferences.filter((dp) => dp.liked);
   const totalLiked     = likedDishPrefs.length;
   const ingredientCount: Record<string, number> = {};
   for (const dp of likedDishPrefs) {
@@ -214,10 +217,11 @@ export async function generateMealPlan(
     for (const [n, c] of Object.entries(ingredientCount)) affinityMap[n] = c / totalLiked;
   }
   const seenIngredientNames = new Set<string>();
-  for (const dp of allDishPrefs) {
+  for (const dp of patient.dishPreferences) {
     for (const ri of dp.recipe.ingredients) seenIngredientNames.add(ri.ingredient.name.toLowerCase());
   }
 
+  // ── Caloric targets ────────────────────────────────────────────────────────
   let caloriePlan: Record<string, number> | null = null;
   let dailyCals = 0;
   if (patient.weight && patient.height && patient.birthday && patient.physicalActivity?.level) {
@@ -225,18 +229,18 @@ export async function generateMealPlan(
     if (sex) {
       const profileInput: CaloricProfileInput = {
         sex,
-        birthday:    new Date(patient.birthday),
-        heightValue: patient.height,
-        heightUnit:  patient.heightUnit === "in" ? "in" : "cm",
-        cbwValue:    patient.weight,
-        cbwUnit:     (patient.weightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs",
+        birthday:      new Date(patient.birthday),
+        heightValue:   patient.height,
+        heightUnit:    patient.heightUnit === "in" ? "in" : "cm",
+        cbwValue:      patient.weight,
+        cbwUnit:       (patient.weightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs",
         activityLevel: patient.physicalActivity.level,
-        utbwValue:   patient.goalWeight,
-        utbwUnit:    (patient.goalWeightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs" | null,
+        utbwValue:     patient.goalWeight,
+        utbwUnit:      (patient.goalWeightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs" | null,
       };
       const profile = computeAllMetrics(profileInput);
-      dailyCals   = Math.round(profile.dailyCalories);
-      caloriePlan = mealCaloriesMap(dailyCals);
+      dailyCals    = Math.round(profile.dailyCalories);
+      caloriePlan  = mealCaloriesMap(dailyCals);
     }
   }
 
@@ -257,7 +261,6 @@ export async function generateMealPlan(
   });
 
   const menus: { patientId: string; recipeId: string; mealTypeId: string; date: Date }[] = [];
-  const usedIds = new Set<string>();
 
   const hasContentFilter = {
     ingredients: { some: {} },
@@ -272,22 +275,32 @@ export async function generateMealPlan(
   const recipeSelect = {
     id: true, protein: true, calories: true, carbs: true, fiber: true, fat: true,
     family: true, subFamily: true,
+    dishType:    { select: { name: true } },
     ingredients: { select: { ingredient: { select: { name: true } } } },
   };
 
   const snackMealType = mealTypes.find((mt) => mt.name.toLowerCase() === "snack") ?? mealTypes[mealTypes.length - 1];
 
+  // weekUsedIds resets every 7 days — prevents recipe exhaustion while still
+  // ensuring no recipe repeats within the same week.
+  const weekUsedIds = new Set<string>();
+  let dayIndex = 0;
+
   const current = new Date(startDate);
   while (current <= endDate) {
-    let dayCalories  = 0;
+    if (dayIndex % 7 === 0) weekUsedIds.clear();
+    dayIndex++;
+
+    let dayCalories = 0;
     const dailyFamilies = new Set<string>();
 
     for (const mealType of mealTypes) {
-      const mealNameLower = mealType.name.toLowerCase();
-      const target        = caloriePlan ? (caloriePlan[mealNameLower] ?? null) : null;
+      const mealNameLower   = mealType.name.toLowerCase();
+      const target          = caloriePlan ? (caloriePlan[mealNameLower] ?? null) : null;
       const mealSubFamilies = new Set<string>();
+      let   mealCalories    = 0; // calories accumulated for this meal only
 
-      const usedFilter      = usedIds.size > 0 ? { id: { notIn: Array.from(usedIds) } } : {};
+      const usedFilter      = weekUsedIds.size > 0 ? { id: { notIn: Array.from(weekUsedIds) } } : {};
       const familyFilter    = buildFamilyFilter(dailyFamilies);
       const subFamilyFilter = buildSubFamilyFilter(mealSubFamilies);
 
@@ -313,13 +326,16 @@ export async function generateMealPlan(
 
       if (completeCandidates.length > 0) {
         const chosen = pickByMotivation(completeCandidates, motivationNames, affinityMap, seenIngredientNames);
-        trackChosen(chosen, false, dailyFamilies, mealSubFamilies, usedIds);
-        dayCalories += chosen.calories ?? 0;
+        trackChosen(chosen, dailyFamilies, mealSubFamilies, weekUsedIds);
+        mealCalories += chosen.calories ?? 0;
+        dayCalories  += chosen.calories ?? 0;
         menus.push({ patientId, recipeId: chosen.id, mealTypeId: mealType.id, date: new Date(current) });
         continue;
       }
 
       // ── Step B: Main Dish ──────────────────────────────────────────────────
+      // Lunch/dinner: main dish targets 75% of the meal budget (sides fill the rest).
+      // Breakfast/snack: main dish targets the full meal budget.
       const mainTarget = target !== null
         ? (mealNameLower === "lunch" || mealNameLower === "dinner" ? target * 0.75 : target)
         : null;
@@ -340,6 +356,7 @@ export async function generateMealPlan(
         }
       }
 
+      // Fallback 1: any main dish for this meal type, ignoring calorie range
       if (!mainChosen) {
         const fallback1 = await prisma.recipe.findMany({
           where: {
@@ -348,21 +365,45 @@ export async function generateMealPlan(
           },
           select: recipeSelect,
         });
-        if (fallback1.length > 0) mainChosen = pickByMotivation(fallback1, motivationNames, affinityMap, seenIngredientNames);
+        if (fallback1.length > 0) {
+          mainChosen = pickByMotivation(fallback1, motivationNames, affinityMap, seenIngredientNames);
+        }
       }
 
+      // Fallback 2: any recipe for this meal type, still respecting all constraints
       if (!mainChosen) {
-        const fallback2 = await prisma.recipe.findFirst({
+        const fallback2 = await prisma.recipe.findMany({
+          where: {
+            mealTypeId: mealType.id,
+            isPublic: true,
+            ...hasContentFilter,
+            ...usedFilter,
+            ...bannedFilter,
+            ...familyFilter,
+            ...subFamilyFilter,
+          },
+          select: recipeSelect,
+          take: 10,
+        });
+        if (fallback2.length > 0) {
+          mainChosen = pickByMotivation(fallback2, motivationNames, affinityMap, seenIngredientNames);
+        }
+      }
+
+      // Fallback 3: last resort — any recipe for this meal type with no constraints
+      if (!mainChosen) {
+        const fallback3 = await prisma.recipe.findFirst({
           where: { mealTypeId: mealType.id, isPublic: true, ...hasContentFilter },
           select: recipeSelect,
         });
-        if (fallback2) mainChosen = fallback2;
+        if (fallback3) mainChosen = fallback3;
       }
 
       if (!mainChosen) continue;
 
-      trackChosen(mainChosen, false, dailyFamilies, mealSubFamilies, usedIds);
-      dayCalories += mainChosen.calories ?? 0;
+      trackChosen(mainChosen, dailyFamilies, mealSubFamilies, weekUsedIds);
+      mealCalories += mainChosen.calories ?? 0;
+      dayCalories  += mainChosen.calories ?? 0;
       menus.push({ patientId, recipeId: mainChosen.id, mealTypeId: mealType.id, date: new Date(current) });
 
       // ── Step C: Side dishes (lunch and dinner only) ────────────────────────
@@ -382,12 +423,13 @@ export async function generateMealPlan(
         const sideCalBudget = target! * 0.25;
 
         const pickSide = async (dishTypeName: string, scoreByGap: (r: RecipeCandidate) => number) => {
-          const sideUsedFilter      = usedIds.size > 0 ? { id: { notIn: Array.from(usedIds) } } : {};
+          const sideUsedFilter      = weekUsedIds.size > 0 ? { id: { notIn: Array.from(weekUsedIds) } } : {};
           const sideFamilyFilter    = buildFamilyFilter(dailyFamilies);
           const sideSubFamilyFilter = buildSubFamilyFilter(mealSubFamilies);
 
           const sideCandidates = await prisma.recipe.findMany({
             where: {
+              mealTypeId: mealType.id,
               isPublic: true,
               dishType: { name: dishTypeName },
               calories: { gte: sideCalBudget * 0.5, lte: sideCalBudget * 1.5 },
@@ -405,8 +447,9 @@ export async function generateMealPlan(
           scored.sort((a, b) => b._score - a._score);
           const side = shuffleArray(scored.slice(0, 3))[0];
 
-          trackChosen(side, false, dailyFamilies, mealSubFamilies, usedIds);
-          dayCalories += side.calories ?? 0;
+          trackChosen(side, dailyFamilies, mealSubFamilies, weekUsedIds);
+          mealCalories += side.calories ?? 0;
+          dayCalories  += side.calories ?? 0;
           menus.push({ patientId, recipeId: side.id, mealTypeId: mealType.id, date: new Date(current) });
         };
 
@@ -418,51 +461,59 @@ export async function generateMealPlan(
           -(Math.abs((r.carbs ?? 0) - carbsGap) + Math.abs((r.fat ?? 0) - fatGap))
         );
 
-        const calRemaining = target! - (dayCalories % (target! + 1));
-        if (calRemaining > sideCalBudget * 0.4) {
-          await pickSide("Fruity Side Dish", (r) => -(Math.abs((r.calories ?? 0) - calRemaining)));
+        // Fruity side only when a meaningful calorie gap remains for this meal
+        const calGapAfterSides = target! - mealCalories;
+        if (calGapAfterSides > sideCalBudget * 0.4) {
+          await pickSide("Fruity Side Dish", (r) => -(Math.abs((r.calories ?? 0) - calGapAfterSides)));
         }
       }
 
-      // ── Step D: Dessert (lunch only) ───────────────────────────────────────
+      // ── Step D: Dessert — biggest meal (lunch) only, when a calorie gap warrants it ─
       if (mealNameLower === "lunch" && target !== null && !dailyFamilies.has("dessert")) {
-        const dessertUsedFilter      = usedIds.size > 0 ? { id: { notIn: Array.from(usedIds) } } : {};
-        const dessertFamilyFilter    = buildFamilyFilter(dailyFamilies);
-        const dessertSubFamilyFilter = buildSubFamilyFilter(mealSubFamilies);
+        const dessertCalGap = target - mealCalories;
+        if (dessertCalGap > 0) {
+          const dessertUsedFilter      = weekUsedIds.size > 0 ? { id: { notIn: Array.from(weekUsedIds) } } : {};
+          const dessertFamilyFilter    = buildFamilyFilter(dailyFamilies);
+          const dessertSubFamilyFilter = buildSubFamilyFilter(mealSubFamilies);
 
-        const dessertBudget = target * 0.15;
-        const dessertCandidates = await prisma.recipe.findMany({
-          where: {
-            isPublic: true,
-            dishType: { name: "Dessert" },
-            calories: { gte: dessertBudget * 0.5, lte: dessertBudget * 1.5 },
-            ...hasContentFilter,
-            ...dessertUsedFilter,
-            ...bannedFilter,
-            ...dessertFamilyFilter,
-            ...dessertSubFamilyFilter,
-          },
-          select: recipeSelect,
-        });
+          const dessertBudget     = target * 0.15;
+          const dessertCandidates = await prisma.recipe.findMany({
+            where: {
+              mealTypeId: mealType.id,
+              isPublic: true,
+              dishType: { name: "Dessert" },
+              calories: { gte: dessertBudget * 0.5, lte: dessertBudget * 1.5 },
+              ...hasContentFilter,
+              ...dessertUsedFilter,
+              ...bannedFilter,
+              ...dessertFamilyFilter,
+              ...dessertSubFamilyFilter,
+            },
+            select: recipeSelect,
+          });
 
-        if (dessertCandidates.length > 0) {
-          const dessert = pickByMotivation(dessertCandidates, motivationNames, affinityMap, seenIngredientNames);
-          trackChosen(dessert, false, dailyFamilies, mealSubFamilies, usedIds);
-          dayCalories += dessert.calories ?? 0;
-          menus.push({ patientId, recipeId: dessert.id, mealTypeId: mealType.id, date: new Date(current) });
+          if (dessertCandidates.length > 0) {
+            const dessert = pickByMotivation(dessertCandidates, motivationNames, affinityMap, seenIngredientNames);
+            trackChosen(dessert, dailyFamilies, mealSubFamilies, weekUsedIds);
+            mealCalories += dessert.calories ?? 0;
+            dayCalories  += dessert.calories ?? 0;
+            menus.push({ patientId, recipeId: dessert.id, mealTypeId: mealType.id, date: new Date(current) });
+          }
         }
       }
     }
 
     // ── Calorie top-up ─────────────────────────────────────────────────────
+    // If the day is still below 90% of target, pad with snack-tagged recipes.
     if (snackMealType && dailyCals > 0 && dayCalories < dailyCals * 0.9) {
       let extraCount = 0;
       const MAX_EXTRA = 4;
       while (dayCalories < dailyCals * 0.9 && extraCount < MAX_EXTRA) {
         const calGap          = dailyCals - dayCalories;
-        const extraUsedFilter = usedIds.size > 0 ? { id: { notIn: Array.from(usedIds) } } : {};
+        const extraUsedFilter = weekUsedIds.size > 0 ? { id: { notIn: Array.from(weekUsedIds) } } : {};
         const extraCandidates = await prisma.recipe.findMany({
           where: {
+            mealTypeId: snackMealType.id,
             isPublic: true,
             calories: { gte: Math.round(calGap * 0.25), lte: Math.round(calGap) },
             ...hasContentFilter,
@@ -475,7 +526,7 @@ export async function generateMealPlan(
         const extra = pickByMotivation(extraCandidates, motivationNames, affinityMap, seenIngredientNames);
         dayCalories += extra.calories ?? 0;
         extraCount++;
-        usedIds.add(extra.id);
+        weekUsedIds.add(extra.id);
         menus.push({ patientId, recipeId: extra.id, mealTypeId: snackMealType.id, date: new Date(current) });
       }
     }

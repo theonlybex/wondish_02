@@ -308,6 +308,7 @@ export default function DailyMealPlanView({
   };
 
   const handleRate = async (recipeId: string, mealTypeName: string, rating: number) => {
+    setSelectedId(null);
     const dateStr = format(date, "yyyy-MM-dd");
     const res = await fetch("/api/journal/log-meal", {
       method: "POST",
@@ -555,13 +556,6 @@ export default function DailyMealPlanView({
             })}
           </div>
 
-          {startDate && (
-            <div className="mt-4 flex justify-end">
-              <Button variant="secondary" size="sm" loading={regenerating} onClick={handleRegenerate}>
-                Regenerate plan
-              </Button>
-            </div>
-          )}
         </div>
       )}
 
@@ -641,6 +635,13 @@ export default function DailyMealPlanView({
               ))}
             </div>
           </div>
+          {startDate && (
+            <div className="mt-3">
+              <Button variant="secondary" size="sm" loading={regenerating} onClick={handleRegenerate} className="w-full">
+                Regenerate plan
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
