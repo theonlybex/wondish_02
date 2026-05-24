@@ -1,4 +1,12 @@
-const STAGES = [
+type Stage = {
+  num: string;
+  phase: string;
+  title: string;
+  points: readonly string[];
+  isOutput?: boolean;
+};
+
+const STAGES: Stage[] = [
   {
     num: "01",
     phase: "Inputs",
@@ -59,7 +67,7 @@ const STAGES = [
     ],
     isOutput: true,
   },
-] as const;
+];
 
 const DELAYS = ["0s", "0.8s", "1.6s", "2.4s", "3.2s"];
 const CONN_DELAYS = ["0s", "0.6s", "1.2s", "1.8s"];
