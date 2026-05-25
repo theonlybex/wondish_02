@@ -11,8 +11,8 @@ export default function HomePage() {
   return (
     <>
       <Hero />
-      <DishTinderPromo />
       <DishesPreview />
+      <DishTinderPromo />
       <PredictionTeaser />
       <HowItWorks />
       <CustomizationLayers />
