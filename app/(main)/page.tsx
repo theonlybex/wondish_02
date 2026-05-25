@@ -11,11 +11,11 @@ export default function HomePage() {
   return (
     <>
       <Hero />
-      <CustomizationLayers />
       <DishTinderPromo />
       <DishesPreview />
       <PredictionTeaser />
       <HowItWorks />
+      <CustomizationLayers />
       <PricingSection />
       <CTASection />
     </>

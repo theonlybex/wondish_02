@@ -20,7 +20,9 @@
       "Bash(npx tsc *)",
       "Bash(git *)",
       "Bash(npm test *)",
-      "Bash(npx prisma *)"
+      "Bash(npx prisma *)",
+      "Bash(start *)",
+      "Bash(Remove-Item *)"
     ]
   }
 }
