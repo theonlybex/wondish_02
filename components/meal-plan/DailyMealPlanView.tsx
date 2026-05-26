@@ -263,10 +263,9 @@ export default function DailyMealPlanView({
     setSelectedId(null);
     setProfileIncomplete(false);
     try {
-      const today    = new Date();
-      const startStr = format(today, "yyyy-MM-dd");
-      const endStr   = format(addDays(today, 6), "yyyy-MM-dd");
-      const genRes = await fetch("/api/meal-plan", {
+      const startStr = format(date, "yyyy-MM-dd");
+      const endStr   = format(addDays(date, 6), "yyyy-MM-dd");
+      await fetch("/api/meal-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ startDate: startStr, endDate: endStr }),
@@ -420,7 +419,7 @@ export default function DailyMealPlanView({
           <p>No meal plan for this day.</p>
           {startDate && (
             <>
-              <p className="mt-2 text-sm">Your plan has expired. Regenerate to get meals starting today.</p>
+              <p className="mt-2 text-sm">No meals for this day. Generate a 7-day plan from here.</p>
               <Button
                 loading={regenerating}
                 onClick={handleRegenerate}
