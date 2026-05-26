@@ -13,8 +13,8 @@ export default function HomePage() {
       <Hero />
       <DishesPreview />
       <DishTinderPromo />
-      <PredictionTeaser />
       <HowItWorks />
+      <PredictionTeaser />
       <CustomizationLayers />
       <PricingSection />
       <CTASection />

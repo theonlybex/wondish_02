@@ -76,10 +76,7 @@ export default function HowItWorks() {
   return (
     <section
       style={{
-        background: "#060c07",
-        backgroundImage:
-          "linear-gradient(rgba(74,222,128,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(74,222,128,0.025) 1px, transparent 1px)",
-        backgroundSize: "44px 44px",
+        background: "#ffffff",
       }}
       className="py-24 px-5 sm:px-8 overflow-hidden"
     >
@@ -95,24 +92,24 @@ export default function HowItWorks() {
           100% { left: 100%; opacity: 0; }
         }
         @keyframes hiw-card-breath {
-          0%, 100% { box-shadow: 0 0 0 1px rgba(74,222,128,0.10), 0 8px 32px rgba(0,0,0,0.4); }
-          50%      { box-shadow: 0 0 0 1px rgba(74,222,128,0.22), 0 8px 40px rgba(74,222,128,0.06); }
+          0%, 100% { box-shadow: 0 0 0 1px rgba(22,101,52,0.12), 0 8px 32px rgba(0,0,0,0.06); }
+          50%      { box-shadow: 0 0 0 1px rgba(22,101,52,0.22), 0 8px 40px rgba(22,101,52,0.08); }
         }
         @keyframes hiw-output-pulse {
           0%, 100% {
-            box-shadow: 0 0 0 1px rgba(74,222,128,0.40),
-                        0 0 40px rgba(74,222,128,0.12),
-                        inset 0 0 40px rgba(74,222,128,0.03);
+            box-shadow: 0 0 0 1px rgba(22,101,52,0.35),
+                        0 0 40px rgba(22,101,52,0.08),
+                        inset 0 0 40px rgba(22,101,52,0.02);
           }
           50% {
-            box-shadow: 0 0 0 1px rgba(74,222,128,0.65),
-                        0 0 64px rgba(74,222,128,0.22),
-                        inset 0 0 40px rgba(74,222,128,0.07);
+            box-shadow: 0 0 0 1px rgba(22,101,52,0.50),
+                        0 0 64px rgba(22,101,52,0.14),
+                        inset 0 0 40px rgba(22,101,52,0.04);
           }
         }
         @keyframes hiw-num-glow {
-          0%, 100% { text-shadow: 0 0 6px rgba(74,222,128,0.25); }
-          50%      { text-shadow: 0 0 18px rgba(74,222,128,0.80), 0 0 36px rgba(74,222,128,0.30); }
+          0%, 100% { text-shadow: 0 0 6px rgba(22,101,52,0.15); }
+          50%      { text-shadow: 0 0 18px rgba(22,101,52,0.40), 0 0 36px rgba(22,101,52,0.15); }
         }
         @keyframes hiw-header-fade-in {
           from { opacity: 0; transform: translateY(18px); }
@@ -133,16 +130,16 @@ export default function HowItWorks() {
           background: linear-gradient(
             90deg,
             transparent 0%,
-            rgba(74,222,128,0.10) 10%,
-            rgba(74,222,128,0.75) 40%,
-            rgba(74,222,128,1.00) 50%,
-            rgba(74,222,128,0.75) 60%,
-            rgba(74,222,128,0.10) 90%,
+            rgba(22,101,52,0.15) 10%,
+            rgba(22,101,52,0.60) 40%,
+            rgba(22,101,52,0.80) 50%,
+            rgba(22,101,52,0.60) 60%,
+            rgba(22,101,52,0.15) 90%,
             transparent 100%
           );
           background-size: 300% 100%;
           animation: hiw-line-flow 2.4s linear infinite;
-          box-shadow: 0 0 6px rgba(74,222,128,0.35);
+          box-shadow: 0 0 6px rgba(22,101,52,0.20);
         }
         .hiw-dot {
           position: absolute;
@@ -150,8 +147,8 @@ export default function HowItWorks() {
           width: 7px;
           height: 7px;
           border-radius: 50%;
-          background: #4ade80;
-          box-shadow: 0 0 10px #4ade80, 0 0 22px rgba(74,222,128,0.55);
+          background: #16a34a;
+          box-shadow: 0 0 10px #16a34a, 0 0 22px rgba(22,163,74,0.45);
           animation: hiw-dot-travel 2.4s linear infinite;
         }
         .hiw-header {
@@ -164,7 +161,7 @@ export default function HowItWorks() {
         <div className="hiw-header mb-16 max-w-2xl">
           <p
             className="text-[10px] font-bold uppercase tracking-[0.28em] mb-5"
-            style={{ color: "#4ade80" }}
+            style={{ color: "#16a34a" }}
           >
             The Algorithm
           </p>
@@ -172,7 +169,7 @@ export default function HowItWorks() {
             className="font-extrabold leading-[1.08] mb-5"
             style={{
               fontSize: "clamp(2rem, 4vw, 3.25rem)",
-              color: "#f0fdf4",
+              color: "#111827",
               letterSpacing: "-0.02em",
             }}
           >
@@ -180,7 +177,7 @@ export default function HowItWorks() {
             <br />
             is built
           </h2>
-          <p className="text-sm leading-relaxed" style={{ color: "#3d6b42" }}>
+          <p className="text-sm leading-relaxed" style={{ color: "#6b7280" }}>
             A five-stage pipeline that translates your body data and dietary
             profile into a precise, personalised 35-day daily menu.
           </p>
@@ -198,11 +195,11 @@ export default function HowItWorks() {
                 style={{
                   animationDelay: DELAYS[i],
                   background: stage.isOutput
-                    ? "linear-gradient(145deg, rgba(74,222,128,0.09) 0%, rgba(74,222,128,0.04) 100%)"
-                    : "rgba(255,255,255,0.025)",
+                    ? "linear-gradient(145deg, rgba(22,163,74,0.06) 0%, rgba(22,163,74,0.02) 100%)"
+                    : "#f9fafb",
                   border: stage.isOutput
-                    ? "1px solid rgba(74,222,128,0.38)"
-                    : "1px solid rgba(255,255,255,0.065)",
+                    ? "1px solid rgba(22,163,74,0.30)"
+                    : "1px solid rgba(0,0,0,0.08)",
                 }}
               >
                 {/* Phase tag */}
@@ -210,9 +207,9 @@ export default function HowItWorks() {
                   className="inline-block text-[9px] font-bold uppercase tracking-[0.2em] px-2 py-0.5 rounded mb-3"
                   style={{
                     background: stage.isOutput
-                      ? "rgba(74,222,128,0.18)"
-                      : "rgba(74,222,128,0.08)",
-                    color: "rgba(74,222,128,0.75)",
+                      ? "rgba(22,163,74,0.12)"
+                      : "rgba(22,163,74,0.06)",
+                    color: "#16a34a",
                   }}
                 >
                   {stage.phase}
@@ -224,7 +221,7 @@ export default function HowItWorks() {
                   style={{
                     animationDelay: DELAYS[i],
                     fontSize: "clamp(1.6rem, 2.2vw, 2.25rem)",
-                    color: "#4ade80",
+                    color: "#16a34a",
                     letterSpacing: "-0.04em",
                   }}
                 >
@@ -236,7 +233,7 @@ export default function HowItWorks() {
                   className="font-bold mb-4 leading-tight"
                   style={{
                     fontSize: "clamp(0.8rem, 1vw, 0.95rem)",
-                    color: stage.isOutput ? "#a3f0b8" : "#d1fae5",
+                    color: stage.isOutput ? "#166534" : "#1f2937",
                     letterSpacing: "-0.01em",
                   }}
                 >
@@ -249,8 +246,8 @@ export default function HowItWorks() {
                   style={{
                     height: "1px",
                     background: stage.isOutput
-                      ? "rgba(74,222,128,0.25)"
-                      : "rgba(255,255,255,0.06)",
+                      ? "rgba(22,163,74,0.20)"
+                      : "rgba(0,0,0,0.06)",
                   }}
                 />
 
@@ -263,8 +260,8 @@ export default function HowItWorks() {
                       style={{
                         fontSize: "0.68rem",
                         color: stage.isOutput
-                          ? "rgba(74,222,128,0.75)"
-                          : "rgba(209,250,229,0.38)",
+                          ? "#166534"
+                          : "#6b7280",
                       }}
                     >
                       <span
@@ -273,8 +270,8 @@ export default function HowItWorks() {
                           width: 3,
                           height: 3,
                           background: stage.isOutput
-                            ? "rgba(74,222,128,0.8)"
-                            : "rgba(74,222,128,0.3)",
+                            ? "#16a34a"
+                            : "rgba(22,163,74,0.4)",
                         }}
                       />
                       {pt}
@@ -308,7 +305,7 @@ export default function HowItWorks() {
                         height: 0,
                         borderTop: "3.5px solid transparent",
                         borderBottom: "3.5px solid transparent",
-                        borderLeft: "5px solid rgba(74,222,128,0.55)",
+                        borderLeft: "5px solid rgba(22,163,74,0.45)",
                       }}
                     />
                   </div>
@@ -327,11 +324,11 @@ export default function HowItWorks() {
                 style={{
                   animationDelay: DELAYS[i],
                   background: stage.isOutput
-                    ? "linear-gradient(145deg, rgba(74,222,128,0.09) 0%, rgba(74,222,128,0.04) 100%)"
-                    : "rgba(255,255,255,0.025)",
+                    ? "linear-gradient(145deg, rgba(22,163,74,0.06) 0%, rgba(22,163,74,0.02) 100%)"
+                    : "#f9fafb",
                   border: stage.isOutput
-                    ? "1px solid rgba(74,222,128,0.38)"
-                    : "1px solid rgba(255,255,255,0.065)",
+                    ? "1px solid rgba(22,163,74,0.30)"
+                    : "1px solid rgba(0,0,0,0.08)",
                 }}
               >
                 <div className="flex items-center gap-3 mb-3">
@@ -339,7 +336,7 @@ export default function HowItWorks() {
                     className="font-black"
                     style={{
                       fontSize: "1.75rem",
-                      color: "#4ade80",
+                      color: "#16a34a",
                       letterSpacing: "-0.04em",
                       lineHeight: 1,
                     }}
@@ -350,8 +347,8 @@ export default function HowItWorks() {
                     <span
                       className="inline-block text-[9px] font-bold uppercase tracking-[0.2em] px-1.5 py-0.5 rounded mb-0.5"
                       style={{
-                        background: "rgba(74,222,128,0.08)",
-                        color: "rgba(74,222,128,0.7)",
+                        background: "rgba(22,163,74,0.06)",
+                        color: "#16a34a",
                       }}
                     >
                       {stage.phase}
@@ -360,7 +357,7 @@ export default function HowItWorks() {
                       className="font-bold leading-tight"
                       style={{
                         fontSize: "0.88rem",
-                        color: stage.isOutput ? "#a3f0b8" : "#d1fae5",
+                        color: stage.isOutput ? "#166534" : "#1f2937",
                       }}
                     >
                       {stage.title}
@@ -371,7 +368,7 @@ export default function HowItWorks() {
                   className="mb-3"
                   style={{
                     height: "1px",
-                    background: "rgba(255,255,255,0.06)",
+                    background: "rgba(0,0,0,0.06)",
                   }}
                 />
                 <div className="flex flex-wrap gap-x-3 gap-y-1.5">
@@ -381,8 +378,8 @@ export default function HowItWorks() {
                       className="text-[11px]"
                       style={{
                         color: stage.isOutput
-                          ? "rgba(74,222,128,0.75)"
-                          : "rgba(209,250,229,0.4)",
+                          ? "#166534"
+                          : "#6b7280",
                       }}
                     >
                       {pt}
@@ -398,8 +395,8 @@ export default function HowItWorks() {
                       className="absolute inset-0"
                       style={{
                         background:
-                          "linear-gradient(180deg, rgba(74,222,128,0.7) 0%, rgba(74,222,128,0.15) 100%)",
-                        boxShadow: "0 0 6px rgba(74,222,128,0.3)",
+                          "linear-gradient(180deg, rgba(22,163,74,0.5) 0%, rgba(22,163,74,0.10) 100%)",
+                        boxShadow: "0 0 6px rgba(22,163,74,0.2)",
                       }}
                     />
                   </div>
