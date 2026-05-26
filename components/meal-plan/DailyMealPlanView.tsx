@@ -241,7 +241,7 @@ export default function DailyMealPlanView({
       setStartDate(newStartDate);
 
       const startStr = format(newStartDate, "yyyy-MM-dd");
-      const endStr   = format(addDays(newStartDate, 34), "yyyy-MM-dd");
+      const endStr   = format(addDays(newStartDate, 6), "yyyy-MM-dd");
       const genRes = await fetch("/api/meal-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -265,7 +265,7 @@ export default function DailyMealPlanView({
     try {
       const today    = new Date();
       const startStr = format(today, "yyyy-MM-dd");
-      const endStr   = format(addDays(today, 34), "yyyy-MM-dd");
+      const endStr   = format(addDays(today, 6), "yyyy-MM-dd");
       const genRes = await fetch("/api/meal-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -407,7 +407,7 @@ export default function DailyMealPlanView({
       {!startDate && (
         <div className="bg-primary/10 border border-primary/20 rounded-2xl p-6 text-center mb-6">
           <p className="text-navy font-semibold mb-2">Set your meal plan start date</p>
-          <p className="text-[#8A8D93] text-sm mb-4">We&apos;ll generate a personalized 35-day meal plan starting today.</p>
+          <p className="text-[#8A8D93] text-sm mb-4">We&apos;ll generate a personalized 7-day meal plan starting today.</p>
           <Button loading={settingStart} onClick={handleSetStartDate}>Start Meal Plan Today</Button>
         </div>
       )}

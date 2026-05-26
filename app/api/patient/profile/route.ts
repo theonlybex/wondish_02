@@ -114,7 +114,7 @@ export async function PATCH(req: NextRequest) {
     },
   });
 
-  const isProfileComplete = !!(birthday && sexAtBirth && (height || (heightFt && heightIn)) && weight && physicalActivityId);
+  const isProfileComplete = !!(birthday && (height || (heightFt && heightIn)) && weight && physicalActivityId);
 
   const patient = await prisma.patient.upsert({
     where: { accountId: account.id },
