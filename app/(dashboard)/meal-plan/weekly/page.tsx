@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { startOfWeek, addDays, format } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
+import { generateMealPlan } from "@/lib/meal-plan";
 import Link from "next/link";
 import WeeklyMealPlanGrid from "@/components/meal-plan/WeeklyMealPlanGrid";
 
@@ -19,22 +20,41 @@ export default async function WeeklyPlanPage() {
   const weekEnd = addDays(weekStart, 6);
   weekEnd.setHours(23, 59, 59, 999);
 
-  const menus = await prisma.menu.findMany({
-    where: {
-      patient: { account: { clerkId: userId } },
-      date: { gte: weekStart, lte: weekEnd },
-    },
-    include: {
-      recipe: {
-        include: {
-          mealType: true,
-          ingredients: { include: { ingredient: true } },
-        },
+  const menuInclude = {
+    recipe: {
+      include: {
+        mealType: true,
+        ingredients: { include: { ingredient: true } },
       },
-      mealType: true,
     },
+    mealType: true,
+  } as const;
+
+  const patient = await prisma.patient.findFirst({
+    where: { account: { clerkId: userId } },
+    select: { id: true, mealPlanStartDate: true, profileCompleted: true },
+  });
+
+  let menus = await prisma.menu.findMany({
+    where: { patient: { account: { clerkId: userId } }, date: { gte: weekStart, lte: weekEnd } },
+    include: menuInclude,
     orderBy: [{ date: "asc" }, { mealType: { name: "asc" } }],
   });
+
+  if (menus.length === 0 && patient?.id && patient.mealPlanStartDate && patient.profileCompleted) {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      await generateMealPlan(patient.id, today, addDays(today, 34));
+      menus = await prisma.menu.findMany({
+        where: { patient: { account: { clerkId: userId } }, date: { gte: weekStart, lte: weekEnd } },
+        include: menuInclude,
+        orderBy: [{ date: "asc" }, { mealType: { name: "asc" } }],
+      });
+    } catch {
+      // Profile incomplete or generation error — show empty grid
+    }
+  }
 
   const weekLabel = (() => {
     const s = weekStart;

@@ -426,8 +426,19 @@ export default function DailyMealPlanView({
         <div className="text-center py-12 text-[#5a7a5d]">Loading…</div>
       ) : menus.length === 0 ? (
         <div className="text-center py-12 text-[#5a7a5d]">
-          No meal plan for this day.
-          {startDate && <p className="mt-2 text-sm">This day is outside your current plan.</p>}
+          <p>No meal plan for this day.</p>
+          {startDate && (
+            <>
+              <p className="mt-2 text-sm">Your plan has expired. Regenerate to get meals starting today.</p>
+              <Button
+                loading={regenerating}
+                onClick={handleRegenerate}
+                className="mt-4 mx-auto"
+              >
+                Generate meal plan
+              </Button>
+            </>
+          )}
         </div>
       ) : (
         <div>

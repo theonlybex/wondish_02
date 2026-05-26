@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
+import { generateMealPlan } from "@/lib/meal-plan";
 import DailyMealPlanView from "@/components/meal-plan/DailyMealPlanView";
 import Link from "next/link";
 
@@ -41,9 +42,33 @@ export default async function MealPlanPage() {
     }),
     prisma.patient.findFirst({
       where: { account: { clerkId: userId } },
-      select: { mealPlanStartDate: true },
+      select: { id: true, mealPlanStartDate: true, profileCompleted: true },
     }),
   ]);
+
+  // Auto-generate a fresh 35-day plan when no meals exist for today
+  let finalMenus = menus;
+  if (menus.length === 0 && patient?.id && patient.mealPlanStartDate && patient.profileCompleted) {
+    try {
+      await generateMealPlan(patient.id, today, addDays(today, 34));
+      finalMenus = await prisma.menu.findMany({
+        where: { patient: { account: { clerkId: userId } }, date: { gte: today, lte: todayEnd } },
+        include: {
+          recipe: {
+            include: {
+              mealType: true,
+              dishType: true,
+              ingredients: { include: { ingredient: true } },
+            },
+          },
+          mealType: true,
+        },
+        orderBy: { mealType: { name: "asc" } },
+      });
+    } catch {
+      // Profile incomplete or generation error — show empty state
+    }
+  }
 
   const activeMeals = (todayJournal?.meals ?? []).filter((m) => !m.skipped && m.recipeId);
   const loggedRecipeIds = activeMeals.map((m) => m.recipeId as string);
@@ -87,7 +112,7 @@ export default async function MealPlanPage() {
 
       <div className="mp" style={{ animationDelay: "160ms" }}>
         <DailyMealPlanView
-          initialMenus={menus as never}
+          initialMenus={finalMenus as never}
           initialDate={format(today, "yyyy-MM-dd")}
           mealPlanStartDate={patient?.mealPlanStartDate?.toISOString() ?? null}
           initialLoggedRecipeIds={loggedRecipeIds}
