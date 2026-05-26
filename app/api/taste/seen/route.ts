@@ -19,7 +19,7 @@ export async function POST() {
 
   await prisma.patient.update({
     where: { accountId: account.id },
-    data: { profileCompleted: true },
+    data: { tasteCompleted: true },
   });
 
   const res = NextResponse.json({ ok: true });

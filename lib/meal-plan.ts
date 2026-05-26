@@ -185,7 +185,8 @@ export async function generateMealPlan(
     },
   });
 
-  if (!patient?.profileCompleted) throw new Error("PROFILE_INCOMPLETE");
+  if (!patient) throw new Error("PATIENT_NOT_FOUND");
+  if (!patient.profileCompleted) throw new Error("PROFILE_INCOMPLETE");
 
   // ── Build banned ingredients set ───────────────────────────────────────────
   const allergyNames      = patient.foodAllergies.flatMap((a) => [a.food.name, ...a.food.bannedIngredients.map((b) => b.name)]);

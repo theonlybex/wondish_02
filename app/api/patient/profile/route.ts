@@ -114,6 +114,8 @@ export async function PATCH(req: NextRequest) {
     },
   });
 
+  const isProfileComplete = !!(birthday && sexAtBirth && (height || (heightFt && heightIn)) && weight && physicalActivityId);
+
   const patient = await prisma.patient.upsert({
     where: { accountId: account.id },
     create: {
@@ -131,6 +133,7 @@ export async function PATCH(req: NextRequest) {
       goalWeight: goalWeight ? parseFloat(goalWeight) : null,
       goalWeightUnit: goalWeightUnit ?? "lbs",
       weeklyGoal: weeklyGoal ? parseFloat(weeklyGoal) : null,
+      profileCompleted: isProfileComplete,
     },
     update: {
       birthday: birthday ? new Date(birthday) : undefined,
@@ -146,6 +149,7 @@ export async function PATCH(req: NextRequest) {
       goalWeight: goalWeight ? parseFloat(goalWeight) : undefined,
       goalWeightUnit: goalWeightUnit ?? "lbs",
       weeklyGoal: weeklyGoal ? parseFloat(weeklyGoal) : undefined,
+      ...(isProfileComplete ? { profileCompleted: true } : {}),
     },
   });
 

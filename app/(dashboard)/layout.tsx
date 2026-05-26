@@ -38,12 +38,12 @@ export default async function DashboardLayout({
       if (pathname && pathname !== "/taste" && !pathname.startsWith("/profile")) {
         const patient = await prisma.patient.findUnique({
           where: { accountId: account.id },
-          select: { profileCompleted: true },
+          select: { tasteCompleted: true },
         });
-        if (!patient?.profileCompleted) {
+        if (!patient?.tasteCompleted) {
           redirect("/taste");
         }
-        // profileCompleted=true but no cookie yet (existing user pre-dating this change).
+        // tasteCompleted=true but no cookie yet (existing user pre-dating this change).
         // Bounce through the cookie-setter once so future navigations skip this DB call.
         redirect(`/api/taste/set-cookie?next=${encodeURIComponent(pathname)}`);
       }

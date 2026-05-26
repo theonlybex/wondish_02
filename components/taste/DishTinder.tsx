@@ -15,7 +15,7 @@ interface TinderDish {
   ethnic?: { name: string } | null;
 }
 
-export default function DishTinder() {
+export default function DishTinder({ isDiscover = false }: { isDiscover?: boolean }) {
   const router = useRouter();
   const [dishes, setDishes] = useState<TinderDish[]>([]);
   const [index, setIndex] = useState(0);
@@ -30,6 +30,14 @@ export default function DishTinder() {
       .then((data) => setDishes(data.dishes ?? []))
       .finally(() => setLoading(false));
   }, []);
+
+  // In "Rate More" mode the user already completed taste — mark complete immediately
+  // so navigating away mid-session doesn't lock them out of the dashboard.
+  useEffect(() => {
+    if (isDiscover) {
+      fetch("/api/taste/seen", { method: "POST" });
+    }
+  }, [isDiscover]);
 
   // Mark taste setup as seen in DB so layout doesn't redirect back after completion
   useEffect(() => {

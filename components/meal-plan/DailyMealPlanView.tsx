@@ -247,11 +247,6 @@ export default function DailyMealPlanView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ startDate: startStr, endDate: endStr }),
       });
-      if (!genRes.ok) {
-        const err = await genRes.json();
-        if (err.error === "Profile not complete") { setProfileIncomplete(true); return; }
-      }
-
       const mRes = await fetch(`/api/meal-plan?date=${format(new Date(), "yyyy-MM-dd")}`);
       const mData = await mRes.json();
       setMenus(mData.menus ?? []);
@@ -276,10 +271,6 @@ export default function DailyMealPlanView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ startDate: startStr, endDate: endStr }),
       });
-      if (!genRes.ok) {
-        const err = await genRes.json();
-        if (err.error === "Profile not complete") { setProfileIncomplete(true); return; }
-      }
       const dateStr = format(date, "yyyy-MM-dd");
       const res = await fetch(`/api/meal-plan?date=${dateStr}`);
       const data = await res.json();

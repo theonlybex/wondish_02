@@ -39,7 +39,7 @@ export default async function TasteProfilePage({
   if (tinderPrefs.length === 0 || discover === "1") {
     return (
       <div className="max-w-lg mx-auto py-4">
-        <DishTinder />
+        <DishTinder isDiscover={discover === "1"} />
       </div>
     );
   }
