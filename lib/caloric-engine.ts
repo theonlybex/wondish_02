@@ -424,6 +424,39 @@ export function computeAllMetrics(input: CaloricProfileInput): CaloricProfile {
   };
 }
 
+// ─── Slow Calorie Deficit Schedule ───────────────────────────────────────────
+// Weekly deficit/surplus applied to TDEE based on BMI class.
+// Overweight → subtract; underweight → add; healthy → no change.
+// Index is 1-based week number. Weeks beyond 5 use the week-5 value.
+const DEFICIT_BY_WEEK = [0, 300, 300, 400, 400, 400] as const;
+
+/**
+ * Returns the kcal adjustment for a given week of the 35-day plan.
+ * Positive = reduce calories (overweight deficit).
+ * Negative = increase calories (underweight surplus).
+ * Zero = healthy BMI, no change.
+ */
+export function slowDeficitForWeek(cbmiClass: CBMIClass, weekNumber: number): number {
+  const deficit = DEFICIT_BY_WEEK[Math.min(weekNumber, DEFICIT_BY_WEEK.length - 1)] ?? 400;
+  if (cbmiClass === "overweight" || cbmiClass === "obese")  return  deficit;
+  if (cbmiClass === "underweight")                          return -deficit;
+  return 0;
+}
+
+/**
+ * Daily calorie target for a specific week of the plan.
+ * Applies the slow deficit/surplus schedule, then floors to minimum calories.
+ */
+export function weeklyDailyCals(
+  tdeeCBW: number,
+  cbmiClass: CBMIClass,
+  weekNumber: number,
+  minCal: number
+): number {
+  const adjustment = slowDeficitForWeek(cbmiClass, weekNumber);
+  return Math.max(Math.round(tdeeCBW - adjustment), minCal);
+}
+
 // ─── Macro Profiles ───────────────────────────────────────────────────────────
 
 export type MacroProfile = "balanced" | "diabetic" | "gain_muscle";

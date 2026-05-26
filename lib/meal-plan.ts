@@ -4,9 +4,11 @@ import {
   computeMealCalories,
   resolveMacroProfile,
   getMacroPercentages,
+  weeklyDailyCals,
   type Sex,
   type CaloricProfileInput,
   type MacroPercentages,
+  type CBMIClass,
 } from "@/lib/caloric-engine";
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -199,7 +201,12 @@ export async function generateMealPlan(
   }
 
   // ── Caloric targets ────────────────────────────────────────────────────────
-  let dailyCals = 0;
+  // baseTDEE is TDEE at current body weight (maintenance).
+  // The slow deficit schedule is applied per-week inside the day loop.
+  let baseTDEE: number = 0;
+  let cbmiClass: CBMIClass = "healthy";
+  let minCal: number = 2000;
+
   if (patient.weight && patient.height && patient.birthday && patient.physicalActivity?.level) {
     const sex = resolveSex(patient.sexAtBirth, patient.gender?.name);
     if (sex) {
@@ -215,19 +222,19 @@ export async function generateMealPlan(
         utbwUnit:      (patient.goalWeightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs" | null,
       };
       const profile = computeAllMetrics(profileInput);
-      dailyCals = Math.round(profile.dailyCalories);
+      baseTDEE  = Math.round(profile.tdeeCBW);
+      cbmiClass = profile.cbmiClass;
+      minCal    = profile.minCaloriesValue;
     }
   }
 
-  // Fall back to 2000 kcal when the full caloric profile cannot be computed
-  // (e.g. sexAtBirth missing). This ensures sides, dessert, and top-up logic
-  // always run so every user gets a nutritionally complete meal.
-  if (dailyCals === 0) dailyCals = 2000;
+  // Fall back to 2000 kcal / healthy class when the full caloric profile
+  // cannot be computed (e.g. sexAtBirth missing).
+  if (baseTDEE === 0) { baseTDEE = 2000; minCal = 1200; }
 
   const healthConditionNames = patient.healthConditions.map((hc) => hc.condition.name);
   const macroProfile = resolveMacroProfile(healthConditionNames, motivationNames);
   const macroTarget  = getMacroPercentages(macroProfile);
-  const caloriePlan  = computeMealCalories(dailyCals);
 
   const rawMealTypes = await prisma.mealType.findMany();
   const mealTypeOrder = ["breakfast", "lunch", "dinner", "snack"];
@@ -271,6 +278,12 @@ export async function generateMealPlan(
   while (current <= endDate) {
     if (dayIndex % 7 === 0) weekUsedIds.clear();
     dayIndex++;
+
+    // Apply the slow calorie deficit: weeks 1-2 subtract 300 kcal, weeks 3-5
+    // subtract 400 kcal (for overweight). Symmetric surplus for underweight.
+    const weekNumber  = Math.ceil(dayIndex / 7);
+    const weekCals    = weeklyDailyCals(baseTDEE, cbmiClass, weekNumber, minCal);
+    const caloriePlan = computeMealCalories(weekCals);
 
     let dayCalories = 0;
     const dailyFamilies = new Set<string>();
@@ -406,11 +419,11 @@ export async function generateMealPlan(
 
     // ── Calorie top-up ─────────────────────────────────────────────────────
     // If the day is still below 90 % of target, pad with snack-tagged recipes.
-    if (snackMealType && dayCalories < dailyCals * 0.9) {
+    if (snackMealType && dayCalories < weekCals * 0.9) {
       let extraCount = 0;
       const MAX_EXTRA = 4;
-      while (dayCalories < dailyCals * 0.9 && extraCount < MAX_EXTRA) {
-        const calGap          = dailyCals - dayCalories;
+      while (dayCalories < weekCals * 0.9 && extraCount < MAX_EXTRA) {
+        const calGap          = weekCals - dayCalories;
         const extraUsedFilter = weekUsedIds.size > 0 ? { id: { notIn: Array.from(weekUsedIds) } } : {};
         const extraFamilyFilter = buildFamilyFilter(dailyFamilies);
         const extraAndFilters = Object.keys(extraFamilyFilter).length > 0 ? [extraFamilyFilter] : [];
