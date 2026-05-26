@@ -358,15 +358,15 @@ export default function DailyMealPlanView({
       )}
 
       {/* Date nav + calorie pill */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-center mb-6">
         <button
           onClick={() => navigate("prev")}
-          className="w-9 h-9 rounded-xl border border-[#c8e6cc] flex items-center justify-center hover:bg-[#f0fdf4] transition-colors text-forest"
+          className="w-9 h-9 rounded-xl border border-[#c8e6cc] flex items-center justify-center hover:bg-[#f0fdf4] transition-colors text-forest shrink-0"
         >‹</button>
-        <p className="font-semibold text-forest text-lg">{format(date, "EEEE, MMMM d")}</p>
+        <p className="flex-1 text-center font-semibold text-forest text-lg">{format(date, "EEEE, MMMM d")}</p>
         <button
           onClick={() => navigate("next")}
-          className="w-9 h-9 rounded-xl border border-[#c8e6cc] flex items-center justify-center hover:bg-[#f0fdf4] transition-colors text-forest"
+          className="w-9 h-9 rounded-xl border border-[#c8e6cc] flex items-center justify-center hover:bg-[#f0fdf4] transition-colors text-forest shrink-0"
         >›</button>
       </div>
 
