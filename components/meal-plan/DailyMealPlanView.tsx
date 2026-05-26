@@ -268,8 +268,9 @@ export default function DailyMealPlanView({
     setSelectedId(null);
     setProfileIncomplete(false);
     try {
-      const startStr = format(startDate, "yyyy-MM-dd");
-      const endStr   = format(addDays(startDate, 34), "yyyy-MM-dd");
+      const today    = new Date();
+      const startStr = format(today, "yyyy-MM-dd");
+      const endStr   = format(addDays(today, 34), "yyyy-MM-dd");
       const genRes = await fetch("/api/meal-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

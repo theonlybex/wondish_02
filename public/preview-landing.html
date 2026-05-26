@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wondish — Premium Landing Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      /* ── Wondish Palette ─────────────────── */
+      --primary:       #4ade80;
+      --primary-light:  #86efac;
+      --primary-dark:   #22c55e;
+      --forest:         #1e3422;
+      --forest-dark:    #152718;
+      --forest-deeper:  #0d1a10;
+      --forest-surface: #263b2a;
+      --bg-hero:        #0a1509;
+      --surface:        #f4faf5;
+      --success:        #28C76F;
+      --warning:        #FF9F43;
+      --error:          #EA5455;
+      --info:           #00CFE8;
+      --text-body:      #33303C;
+      --text-primary:   #f0fdf4;
+      --text-secondary: rgba(240,253,244,0.45);
+      --text-tertiary:  rgba(240,253,244,0.28);
+      --font-main: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--bg-hero);
+    }
+
+    body {
+      font-family: var(--font-main);
+      background: var(--bg-hero);
+      color: var(--text-primary);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ─── Utility ─────────────────────────────────────── */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--primary);
+      margin-bottom: 16px;
+    }
+
+    .gradient-text {
+      color: var(--primary);
+      text-shadow: 0 0 80px rgba(74,222,128,0.35);
+    }
+
+    /* ─── Reveal animations ──────────────────────────── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(60px);
+      transition: opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+                  transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+    .reveal-delay-4 { transition-delay: 0.4s; }
+
+    /* ─── Nav ─────────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(10,21,9,0.7);
+      backdrop-filter: blur(40px) saturate(180%);
+      -webkit-backdrop-filter: blur(40px) saturate(180%);
+      border-bottom: 1px solid rgba(74,222,128,0.06);
+    }
+    .nav-logo {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--text-primary);
+    }
+    .nav-logo span { color: var(--primary); }
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+    }
+    .nav-links a {
+      text-decoration: none;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      transition: color 0.3s;
+    }
+    .nav-links a:hover { color: var(--text-primary); }
+    .nav-cta {
+      padding: 9px 22px;
+      border-radius: 100px;
+      background: var(--primary);
+      color: var(--bg-hero);
+      font-family: var(--font-main);
+      font-size: 13px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.3s, background 0.2s;
+    }
+    .nav-cta:hover {
+      background: var(--primary-dark);
+      transform: scale(1.04);
+      box-shadow: 0 0 30px rgba(74,222,128,0.2);
+    }
+
+    /* ─── Hero ────────────────────────────────────────── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 140px 24px 100px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(ellipse, rgba(74,222,128,0.07) 0%, transparent 68%);
+      pointer-events: none;
+    }
+    .hero-overline {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(74,222,128,0.6);
+      margin-bottom: 32px;
+      position: relative;
+    }
+    .hero-overline::before,
+    .hero-overline::after {
+      content: '';
+      width: 40px;
+      height: 1px;
+      background: rgba(74,222,128,0.3);
+    }
+    .hero h1 {
+      font-size: clamp(52px, 8.5vw, 110px);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.035em;
+      margin-bottom: 24px;
+      position: relative;
+      color: #ffffff;
+    }
+    .hero-sub {
+      font-size: clamp(15px, 1.8vw, 18px);
+      color: rgba(255,255,255,0.35);
+      max-width: 500px;
+      line-height: 1.7;
+      margin-bottom: 48px;
+      position: relative;
+    }
+    .hero-buttons {
+      display: flex;
+      gap: 16px;
+      position: relative;
+    }
+    .btn-primary {
+      padding: 16px 40px;
+      border-radius: 12px;
+      background: var(--primary);
+      color: var(--bg-hero);
+      font-family: var(--font-main);
+      font-size: 14px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.3s, background 0.15s;
+      box-shadow: 0 8px 32px rgba(74,222,128,0.2);
+      position: relative;
+    }
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      transform: scale(1.04);
+      box-shadow: 0 12px 44px rgba(74,222,128,0.28);
+    }
+    .btn-outline {
+      padding: 16px 40px;
+      border-radius: 12px;
+      background: transparent;
+      color: var(--text-primary);
+      font-family: var(--font-main);
+      font-size: 14px;
+      font-weight: 600;
+      border: 1px solid rgba(74,222,128,0.15);
+      cursor: pointer;
+      transition: border-color 0.3s, background 0.3s;
+    }
+    .btn-outline:hover {
+      border-color: rgba(74,222,128,0.35);
+      background: rgba(74,222,128,0.04);
+    }
+
+    /* ─── Hero Visual ─────────────────────────────────── */
+    .hero-visual {
+      margin-top: 80px;
+      width: 100%;
+      max-width: 1000px;
+      position: relative;
+    }
+    .hero-mockup {
+      width: 100%;
+      aspect-ratio: 16/9;
+      border-radius: 20px;
+      background: linear-gradient(145deg, var(--forest) 0%, var(--forest-deeper) 100%);
+      border: 1px solid rgba(74,222,128,0.08);
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 40px 100px rgba(0,0,0,0.5), 0 0 0 1px rgba(74,222,128,0.06);
+    }
+    .hero-mockup-inner {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      padding: 40px;
+      width: 100%;
+    }
+    .mockup-card {
+      aspect-ratio: 3/4;
+      border-radius: 16px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+      border: 1px solid rgba(74,222,128,0.08);
+    }
+    .mockup-card:hover { transform: scale(1.03); }
+    .mockup-card:nth-child(1) {
+      background: linear-gradient(145deg, var(--forest-surface) 0%, var(--forest-dark) 100%);
+    }
+    .mockup-card:nth-child(2) {
+      background: linear-gradient(145deg, #2a2218 0%, #1a1510 100%);
+      transform: translateY(-20px);
+    }
+    .mockup-card:nth-child(2):hover { transform: translateY(-20px) scale(1.03); }
+    .mockup-card:nth-child(3) {
+      background: linear-gradient(145deg, #162a2e 0%, #0d1a1c 100%);
+    }
+    .mockup-card-content {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 24px;
+      background: linear-gradient(to top, rgba(10,21,9,0.95), transparent);
+    }
+    .mockup-card-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .mockup-card-title {
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .mockup-card-emoji {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -60%);
+      font-size: 48px;
+    }
+    .label-green   { color: var(--primary); }
+    .label-orange  { color: var(--warning); }
+    .label-info    { color: var(--info); }
+    .label-error   { color: var(--error); }
+    .label-success { color: var(--success); }
+
+    /* ─── Showcase Section ────────────────────────────── */
+    .showcase {
+      padding: 160px 0;
+    }
+    .showcase-header {
+      text-align: center;
+      margin-bottom: 80px;
+    }
+    .showcase-header h2 {
+      font-size: clamp(36px, 5vw, 64px);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin-bottom: 20px;
+    }
+    .showcase-header p {
+      font-size: 17px;
+      color: var(--text-secondary);
+      max-width: 500px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* ─── Bento Grid ──────────────────────────────────── */
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+      padding: 0 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .bento-card {
+      border-radius: 24px;
+      padding: 40px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      min-height: 380px;
+      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+                  box-shadow 0.4s;
+      border: 1px solid rgba(74,222,128,0.06);
+    }
+    .bento-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .bento-card-large {
+      grid-column: span 7;
+      background: linear-gradient(160deg, var(--forest) 0%, var(--forest-deeper) 100%);
+    }
+    .bento-card-medium {
+      grid-column: span 5;
+      background: linear-gradient(160deg, #2a2015 0%, #1a1510 100%);
+    }
+    .bento-card-wide {
+      grid-column: span 8;
+      background: linear-gradient(160deg, #132028 0%, #0a1518 100%);
+    }
+    .bento-card-small {
+      grid-column: span 4;
+      background: linear-gradient(160deg, var(--forest-dark) 0%, var(--forest-deeper) 100%);
+    }
+    .bento-visual {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .bento-emoji {
+      font-size: 80px;
+      opacity: 0.5;
+      transition: opacity 0.4s, transform 0.4s;
+    }
+    .bento-card:hover .bento-emoji {
+      opacity: 0.75;
+      transform: scale(1.08);
+    }
+    .bento-card-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      position: relative;
+      z-index: 2;
+    }
+    .bento-card h3 {
+      font-size: clamp(22px, 2.5vw, 30px);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+      position: relative;
+      z-index: 2;
+    }
+    .bento-card p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      max-width: 400px;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* ─── Split Feature Rows ──────────────────────────── */
+    .split-section {
+      padding: 120px 0;
+    }
+    .split-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto 120px;
+      padding: 0 24px;
+    }
+    .split-row:last-child { margin-bottom: 0; }
+    .split-row.reverse { direction: rtl; }
+    .split-row.reverse > * { direction: ltr; }
+    .split-text h2 {
+      font-size: clamp(32px, 4vw, 48px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      margin-bottom: 20px;
+    }
+    .split-text p {
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+    .split-text .feature-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .split-text .feature-list li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    .split-text .feature-list .check {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: rgba(74,222,128,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: var(--primary);
+      flex-shrink: 0;
+      box-shadow: 0 0 0 1px rgba(74,222,128,0.15);
+    }
+    .split-visual {
+      aspect-ratio: 4/3;
+      border-radius: 24px;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(74,222,128,0.06);
+    }
+    .split-visual-inner {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 100px;
+    }
+    .sv-green  { background: linear-gradient(145deg, var(--forest) 0%, var(--forest-deeper) 100%); }
+    .sv-orange { background: linear-gradient(145deg, #2a1f15 0%, #1a1510 100%); }
+    .sv-blue   { background: linear-gradient(145deg, #132028 0%, #0a1518 100%); }
+
+    /* ─── Stats Bar ───────────────────────────────────── */
+    .stats-bar {
+      padding: 80px 0;
+      border-top: 1px solid rgba(74,222,128,0.06);
+      border-bottom: 1px solid rgba(74,222,128,0.06);
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 40px;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 0 24px;
+      text-align: center;
+    }
+    .stat-item h3 {
+      font-size: clamp(40px, 5vw, 60px);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+    .stat-item h3 .accent-g { color: var(--primary); }
+    .stat-item h3 .accent-o { color: var(--warning); }
+    .stat-item h3 .accent-s { color: var(--success); }
+    .stat-item h3 .accent-i { color: var(--info); }
+    .stat-item p {
+      font-size: 13px;
+      color: var(--text-tertiary);
+      font-weight: 500;
+    }
+
+    /* ─── Cinematic Full-Width Band ───────────────────── */
+    .cinematic-band {
+      position: relative;
+      min-height: 70vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 120px 24px;
+      overflow: hidden;
+      background: linear-gradient(180deg, var(--bg-hero) 0%, var(--forest-deeper) 50%, var(--bg-hero) 100%);
+    }
+    .cinematic-band::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(74,222,128,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .cinematic-content {
+      position: relative;
+      z-index: 2;
+    }
+    .cinematic-content h2 {
+      font-size: clamp(40px, 6vw, 80px);
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.04em;
+      margin-bottom: 24px;
+    }
+    .cinematic-content p {
+      font-size: 17px;
+      color: var(--text-secondary);
+      max-width: 520px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+
+    /* ─── Marquee Dish Tray ─────────────────────────────── */
+    .scroll-tray-section {
+      padding: 120px 0 80px;
+    }
+    .scroll-tray-header {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 48px;
+    }
+    .scroll-tray-header h2 {
+      font-size: clamp(32px, 4vw, 48px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .scroll-tray-header a {
+      font-size: 14px;
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+      transition: opacity 0.3s;
+    }
+    .scroll-tray-header a:hover { opacity: 0.7; }
+
+    /* Marquee wrapper */
+    .marquee-wrapper {
+      position: relative;
+      overflow: hidden;
+      padding: 8px 0 32px;
+    }
+    /* Edge fade masks */
+    .marquee-wrapper::before,
+    .marquee-wrapper::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 120px;
+      z-index: 3;
+      pointer-events: none;
+    }
+    .marquee-wrapper::before {
+      left: 0;
+      background: linear-gradient(to right, var(--bg-hero), transparent);
+    }
+    .marquee-wrapper::after {
+      right: 0;
+      background: linear-gradient(to left, var(--bg-hero), transparent);
+    }
+
+    .marquee-track {
+      display: flex;
+      gap: 20px;
+      width: max-content;
+      animation: marquee-scroll 40s linear infinite;
+    }
+    .marquee-wrapper:hover .marquee-track {
+      animation-play-state: paused;
+    }
+
+    @keyframes marquee-scroll {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    .tray-card {
+      flex: 0 0 280px;
+      border-radius: 20px;
+      overflow: hidden;
+      border: 1px solid rgba(74,222,128,0.06);
+      background: var(--forest-deeper);
+      transition: transform 0.3s, border-color 0.3s;
+    }
+    .tray-card:hover {
+      transform: translateY(-6px) scale(1.02);
+      border-color: rgba(74,222,128,0.2);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+    }
+    .tray-card-img {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 64px;
+      position: relative;
+    }
+    .tray-card-img::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 50%;
+      background: linear-gradient(to top, var(--forest-deeper), transparent);
+    }
+    .tray-card-body {
+      padding: 20px;
+    }
+    .tray-card-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 100px;
+      margin-bottom: 10px;
+    }
+    .tray-card-body h4 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .tray-card-body p {
+      font-size: 13px;
+      color: var(--text-tertiary);
+      line-height: 1.5;
+    }
+    .tray-card-meta {
+      display: flex;
+      gap: 16px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(74,222,128,0.06);
+    }
+    .tray-card-meta span {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      font-weight: 500;
+    }
+    .tray-card-meta strong { color: var(--text-primary); }
+
+    /* Card backgrounds */
+    .tc-1 .tray-card-img { background: linear-gradient(145deg, var(--forest-surface), var(--forest-dark)); }
+    .tc-2 .tray-card-img { background: linear-gradient(145deg, #2a2015, #1a1510); }
+    .tc-3 .tray-card-img { background: linear-gradient(145deg, #132028, #0a1518); }
+    .tc-4 .tray-card-img { background: linear-gradient(145deg, var(--forest-dark), var(--forest-deeper)); }
+    .tc-5 .tray-card-img { background: linear-gradient(145deg, #2a2515, #1a1810); }
+    .tc-6 .tray-card-img { background: linear-gradient(145deg, var(--forest-surface), var(--forest)); }
+
+    .tag-green  { background: rgba(74,222,128,0.1);  color: var(--primary); }
+    .tag-orange { background: rgba(255,159,67,0.1);  color: var(--warning); }
+    .tag-info   { background: rgba(0,207,232,0.1);   color: var(--info); }
+    .tag-error  { background: rgba(234,84,85,0.1);   color: var(--error); }
+
+    /* ─── CTA Section ─────────────────────────────────── */
+    .cta-section {
+      padding: 160px 24px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .cta-section::before {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1200px;
+      height: 600px;
+      background: radial-gradient(ellipse, rgba(74,222,128,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .cta-section h2 {
+      font-size: clamp(40px, 6vw, 72px);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    .cta-section p {
+      font-size: 17px;
+      color: var(--text-secondary);
+      margin-bottom: 40px;
+      position: relative;
+    }
+    .cta-buttons {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      position: relative;
+    }
+
+    /* ─── Footer ──────────────────────────────────────── */
+    footer {
+      border-top: 1px solid rgba(74,222,128,0.06);
+      padding: 60px 24px;
+    }
+    .footer-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 2fr repeat(3, 1fr);
+      gap: 40px;
+    }
+    .footer-brand p {
+      font-size: 13px;
+      color: var(--text-tertiary);
+      line-height: 1.7;
+      max-width: 280px;
+      margin-top: 12px;
+    }
+    .footer-col h4 {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+    .footer-col ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .footer-col a {
+      text-decoration: none;
+      font-size: 13px;
+      color: var(--text-tertiary);
+      transition: color 0.3s;
+    }
+    .footer-col a:hover { color: var(--text-primary); }
+    .footer-bottom {
+      max-width: 1200px;
+      margin: 40px auto 0;
+      padding-top: 24px;
+      border-top: 1px solid rgba(74,222,128,0.06);
+      font-size: 12px;
+      color: var(--text-tertiary);
+    }
+
+    /* ─── Floating orbs (decorative) ──────────────────── */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+      animation: orb-float 12s ease-in-out infinite;
+    }
+    @keyframes orb-float {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-30px) scale(1.05); }
+    }
+    @keyframes ctaPulse {
+      0%   { opacity: 0.6; transform: scale(1); }
+      100% { opacity: 0;   transform: scale(1.6); }
+    }
+    .cta-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 12px;
+      background: var(--primary);
+      animation: ctaPulse 2.2s ease-out infinite;
+      pointer-events: none;
+    }
+
+    /* ─── Responsive ──────────────────────────────────── */
+    @media (max-width: 900px) {
+      .nav-links { display: none; }
+      .bento-card-large, .bento-card-medium, .bento-card-wide, .bento-card-small {
+        grid-column: span 12;
+      }
+      .split-row {
+        grid-template-columns: 1fr;
+        gap: 40px;
+      }
+      .split-row.reverse { direction: ltr; }
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 32px;
+      }
+      .footer-inner {
+        grid-template-columns: 1fr 1fr;
+      }
+      .hero-mockup-inner {
+        padding: 20px;
+        gap: 10px;
+      }
+    }
+    @media (max-width: 600px) {
+      .stats-grid { grid-template-columns: 1fr; }
+      .footer-inner { grid-template-columns: 1fr; }
+      .hero-buttons, .cta-buttons {
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══ Navigation ═══ -->
+  <nav>
+    <div class="nav-logo">won<span>dish</span></div>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how">How It Works</a></li>
+      <li><a href="#menu">Menu</a></li>
+      <li><a href="#pricing">Pricing</a></li>
+    </ul>
+    <button class="nav-cta">Get Started</button>
+  </nav>
+
+  <!-- ═══ Hero ═══ -->
+  <section class="hero" id="top">
+    <div class="orb" style="width:600px;height:600px;background:rgba(74,222,128,0.04);top:-10%;left:-10%;animation-delay:0s;"></div>
+    <div class="orb" style="width:400px;height:400px;background:rgba(34,197,94,0.03);bottom:10%;right:-5%;animation-delay:4s;"></div>
+
+    <div class="reveal hero-overline">AI-Powered Meal Planning</div>
+    <h1 class="reveal reveal-delay-1">
+      Eat smarter.<br /><span class="gradient-text">Live better.</span>
+    </h1>
+    <p class="reveal reveal-delay-2 hero-sub">
+      AI-powered meal plans built from your body, your goals, and the ingredients you already have. Personalized nutrition, simplified.
+    </p>
+    <div class="reveal reveal-delay-3 hero-buttons">
+      <div style="position:relative;display:inline-flex;">
+        <div class="cta-ring"></div>
+        <button class="btn-primary">Get Started →</button>
+      </div>
+      <button class="btn-outline">See How It Works</button>
+    </div>
+
+    <div class="reveal reveal-delay-4 hero-visual">
+      <div class="hero-mockup">
+        <div class="hero-mockup-inner">
+          <div class="mockup-card">
+            <div class="mockup-card-emoji">🥗</div>
+            <div class="mockup-card-content">
+              <div class="mockup-card-label label-green">Lunch</div>
+              <div class="mockup-card-title">Mediterranean Bowl</div>
+            </div>
+          </div>
+          <div class="mockup-card">
+            <div class="mockup-card-emoji">🔥</div>
+            <div class="mockup-card-content">
+              <div class="mockup-card-label label-orange">Today's Goal</div>
+              <div class="mockup-card-title">1,840 kcal remaining</div>
+            </div>
+          </div>
+          <div class="mockup-card">
+            <div class="mockup-card-emoji">📊</div>
+            <div class="mockup-card-content">
+              <div class="mockup-card-label label-info">Analytics</div>
+              <div class="mockup-card-title">Weekly Insights</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Stats Bar ═══ -->
+  <section class="stats-bar">
+    <div class="stats-grid">
+      <div class="stat-item reveal">
+        <h3><span class="accent-g">500</span>+</h3>
+        <p>Curated Recipes</p>
+      </div>
+      <div class="stat-item reveal reveal-delay-1">
+        <h3><span class="accent-o">35</span></h3>
+        <p>Days Per Plan</p>
+      </div>
+      <div class="stat-item reveal reveal-delay-2">
+        <h3><span class="accent-s">6</span></h3>
+        <p>Layers of Personalization</p>
+      </div>
+      <div class="stat-item reveal reveal-delay-3">
+        <h3><span class="accent-i">24</span>/7</h3>
+        <p>Plan Adjustments</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Bento Features ═══ -->
+  <section class="showcase" id="features">
+    <div class="container">
+      <div class="showcase-header reveal">
+        <div class="section-label">Features</div>
+        <h2>Everything you need.<br />Nothing you don't.</h2>
+        <p>Six layers of intelligence work together to build your perfect plan.</p>
+      </div>
+    </div>
+
+    <div class="bento-grid">
+      <div class="bento-card bento-card-large reveal">
+        <div class="bento-visual"><div class="bento-emoji">🎯</div></div>
+        <div class="bento-card-label label-green">Smart Goals</div>
+        <h3>Your goals.<br />Your rules.</h3>
+        <p>Set your target weight, timeline, and dietary style. We calculate exact daily calories and build everything from there.</p>
+      </div>
+      <div class="bento-card bento-card-medium reveal reveal-delay-1">
+        <div class="bento-visual"><div class="bento-emoji">🧬</div></div>
+        <div class="bento-card-label label-orange">Preferences</div>
+        <h3>Keto, vegan, or just 'no mushrooms'</h3>
+        <p>Set dietary styles, allergies, and foods to avoid. Your plan never ignores this.</p>
+      </div>
+      <div class="bento-card bento-card-wide reveal">
+        <div class="bento-visual"><div class="bento-emoji">📈</div></div>
+        <div class="bento-card-label label-info">Progress Tracking</div>
+        <h3>Watch trends emerge.<br />Know what's working.</h3>
+        <p>Log meals, weight, energy, and mood. See patterns in your data that reveal what's driving your results — and what isn't.</p>
+      </div>
+      <div class="bento-card bento-card-small reveal reveal-delay-1">
+        <div class="bento-visual"><div class="bento-emoji">🔬</div></div>
+        <div class="bento-card-label label-success">Analytics</div>
+        <h3>Full macro breakdowns</h3>
+        <p>The science behind your food, explained simply.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Cinematic Band ═══ -->
+  <section class="cinematic-band" id="how">
+    <div class="cinematic-content reveal">
+      <div class="section-label" style="color: var(--warning);">How It Works</div>
+      <h2>Built by an<br /><span class="gradient-text">algorithm,</span><br />not a template.</h2>
+      <p>Most meal apps hand you a generic plan. Wondish runs a five-stage pipeline tailored to your exact body and preferences.</p>
+      <button class="btn-outline">Explore the Algorithm →</button>
+    </div>
+  </section>
+
+  <!-- ═══ Split Features ═══ -->
+  <section class="split-section">
+    <div class="split-row reveal">
+      <div class="split-text">
+        <div class="section-label">Caloric Engine</div>
+        <h2>Precision nutrition,<br />down to the calorie.</h2>
+        <p>Using the Harris-Benedict equation and your activity level, we compute your exact daily energy needs — then split it across meals.</p>
+        <ul class="feature-list">
+          <li><span class="check">✓</span> BMR-based calculation</li>
+          <li><span class="check">✓</span> Activity multiplier applied</li>
+          <li><span class="check">✓</span> Safe minimum floor (1200–1500 kcal)</li>
+          <li><span class="check">✓</span> Per-meal calorie budget</li>
+        </ul>
+      </div>
+      <div class="split-visual sv-green">
+        <div class="split-visual-inner">⚡</div>
+      </div>
+    </div>
+
+    <div class="split-row reverse reveal">
+      <div class="split-text">
+        <div class="section-label" style="color: var(--warning);">Safety Filters</div>
+        <h2>Zero risk.<br />Maximum flavor.</h2>
+        <p>Allergies, conditions, and personal avoidances are merged into one safety layer. Nothing slips through.</p>
+        <ul class="feature-list">
+          <li><span class="check">✓</span> Allergy-derived ingredient bans</li>
+          <li><span class="check">✓</span> Medical condition restrictions</li>
+          <li><span class="check">✓</span> Preference exclusions</li>
+          <li><span class="check">✓</span> One merged safety set</li>
+        </ul>
+      </div>
+      <div class="split-visual sv-orange">
+        <div class="split-visual-inner">🛡️</div>
+      </div>
+    </div>
+
+    <div class="split-row reveal">
+      <div class="split-text">
+        <div class="section-label" style="color: var(--info);">Dish Builder</div>
+        <h2>Meals designed<br />around you.</h2>
+        <p>Complete dishes with sides, desserts, and variety. No repeated meals, no boring weeks. Just food you actually want to eat.</p>
+        <ul class="feature-list">
+          <li><span class="check">✓</span> Main + sides + dessert combos</li>
+          <li><span class="check">✓</span> Weekly deduplication</li>
+          <li><span class="check">✓</span> Motivation-scored picks</li>
+          <li><span class="check">✓</span> Breakfast · Lunch · Dinner · Snack</li>
+        </ul>
+      </div>
+      <div class="split-visual sv-blue">
+        <div class="split-visual-inner">🍽️</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Spinning Dish Tray ═══ -->
+  <section class="scroll-tray-section" id="menu">
+    <div class="scroll-tray-header reveal">
+      <div>
+        <div class="section-label">The Menu</div>
+        <h2>Dishes you'll love.</h2>
+      </div>
+      <a href="#">View all dishes →</a>
+    </div>
+    <div class="marquee-wrapper">
+      <div class="marquee-track">
+        <!-- ── Set A (original cards) ── -->
+        <div class="tray-card tc-1">
+          <div class="tray-card-img">🥑</div>
+          <div class="tray-card-body">
+            <span class="tray-card-tag tag-green">Breakfast</span>
+            <h4>Avocado Toast Bowl</h4>
+            <p>Sourdough, poached eggs, microgreens</p>
+            <div class="tray-card-meta">
+              <span><strong>340</strong> kcal</span>
+              <span><strong>22g</strong> protein</span>
+              <span><strong>8</strong> min</span>
+            </div>
+          </div>
+        </div>
+        <div class="tray-card tc-2">
+          <div class="tray-card-img">🍗</div>
+          <div class="tray-card-body">
+            <span class="tray-card-tag tag-orange">Lunch</span>
+            <h4>Grilled Chicken Caesar</h4>
+            <p>Romaine, parmesan, house dressing</p>
+            <div class="tray-card-meta">
+              <span><strong>420</strong> kcal</span>
+              <span><strong>38g</strong> protein</span>
+              <span><strong>20</strong> min</span>
+            </div>
+          </div>
+        </div>
+        <div class="tray-card tc-3">
+          <div class="tray-card-img">🐟</div>
+          <div class="tray-card-body">
+            <span class="tray-card-tag tag-info">Dinner</span>
+            <h4>Teriyaki Salmon</h4>
+            <p>Steamed rice, edamame, sesame</p>
+            <div class="tray-card-meta">
+              <span><strong>560</strong> kcal</span>
+              <span><strong>42g</strong> protein</span>
+              <span><strong>25</strong> min</span>
+            </div>
+          </div>
+        </div>
+        <div class="tray-card tc-4">
+          <div class="tray-card-img">🥘</div>
+          <div class="tray-card-body">
+            <span class="tray-card-tag tag-green">Dinner</span>
+            <h4>Moroccan Chickpea Stew</h4>
+            <p>Spiced tomato, sweet potato, herbs</p>
+            <div class="tray-card-meta">
+              <span><strong>380</strong> kcal</span>
+              <span><strong>18g</strong> protein</span>
+              <span><strong>30</strong> min</span>
+            </div>
+          </div>
+        </div>
+        <div class="tray-card tc-5">
+          <div class="tray-card-img">🥞</div>
+          <div class="tray-card-body">
+            <span class="tray-card-tag tag-orange">Breakfast</span>
+            <h4>Protein Pancakes</h4>
+            <p>Banana, oats, whey, maple</p>
+            <div class="tray-card-meta">
+              <span><strong>360</strong> kcal</span>
+              <span><strong>28g</strong> protein</span>
+              <span><strong>12</strong> min</span>
+            </div>
+          </div>
+        </div>
+        <div class="tray-card tc-6">
+          <div class="tray-card-img">🥙</div>
+          <div class="tray-card-body">
+            <span class="tray-card-tag tag-info">Lunch</span>
+            <h4>Falafel Wrap</h4>
+            <p>Hummus, pickles, tahini</p>
+            <div class="tray-card-meta">
+              <span><strong>440</strong> kcal</span>
+              <span><strong>16g</strong> protein</span>
+              <span><strong>15</strong> min</span>
+            </div>
+          </div>
+        </div>
+        <!-- ── Set B (duplicate for seamless loop) ── -->
+        <div class="tray-card tc-1" aria-hidden="true">
+          <div class="tray-card-img">🥑</div>
+          <div class="tray-card-body">
+            <span class="tray-card-tag tag-green">Breakfast</span>
+            <h4>Avocado Toast Bowl</h4>
+            <p>Sourdough, poached eggs, microgreens</p>
+            <div class="tray-card-meta">
+              <span><strong>340</strong> kcal</span>
+              <span><strong>22g</strong> protein</span>
+              <span><strong>8</strong> min</span>
+            </div>
+          </div>
+        </div>
+        <div class="tray-card tc-2" aria-hidden="true">
+          <div class="tray-card-img">🍗</div>
+          <div class="tray-card-body">
+            <span class="tray-card-tag tag-orange">Lunch</span>
+            <h4>Grilled Chicken Caesar</h4>
+            <p>Romaine, parmesan, house dressing</p>
+            <div class="tray-card-meta">
+              <span><strong>420</strong> kcal</span>
+              <span><strong>38g</strong> protein</span>
+              <span><strong>20</strong> min</span>
+            </div>
+          </div>
+        </div>
+        <div class="tray-card tc-3" aria-hidden="true">
+          <div class="tray-card-img">🐟</div>
+          <div class="tray-card-body">
+            <span class="tray-card-tag tag-info">Dinner</span>
+            <h4>Teriyaki Salmon</h4>
+            <p>Steamed rice, edamame, sesame</p>
+            <div class="tray-card-meta">
+              <span><strong>560</strong> kcal</span>
+              <span><strong>42g</strong> protein</span>
+              <span><strong>25</strong> min</span>
+            </div>
+          </div>
+        </div>
+        <div class="tray-card tc-4" aria-hidden="true">
+          <div class="tray-card-img">🥘</div>
+          <div class="tray-card-body">
+            <span class="tray-card-tag tag-green">Dinner</span>
+            <h4>Moroccan Chickpea Stew</h4>
+            <p>Spiced tomato, sweet potato, herbs</p>
+            <div class="tray-card-meta">
+              <span><strong>380</strong> kcal</span>
+              <span><strong>18g</strong> protein</span>
+              <span><strong>30</strong> min</span>
+            </div>
+          </div>
+        </div>
+        <div class="tray-card tc-5" aria-hidden="true">
+          <div class="tray-card-img">🥞</div>
+          <div class="tray-card-body">
+            <span class="tray-card-tag tag-orange">Breakfast</span>
+            <h4>Protein Pancakes</h4>
+            <p>Banana, oats, whey, maple</p>
+            <div class="tray-card-meta">
+              <span><strong>360</strong> kcal</span>
+              <span><strong>28g</strong> protein</span>
+              <span><strong>12</strong> min</span>
+            </div>
+          </div>
+        </div>
+        <div class="tray-card tc-6" aria-hidden="true">
+          <div class="tray-card-img">🥙</div>
+          <div class="tray-card-body">
+            <span class="tray-card-tag tag-info">Lunch</span>
+            <h4>Falafel Wrap</h4>
+            <p>Hummus, pickles, tahini</p>
+            <div class="tray-card-meta">
+              <span><strong>440</strong> kcal</span>
+              <span><strong>16g</strong> protein</span>
+              <span><strong>15</strong> min</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ CTA ═══ -->
+  <section class="cta-section" id="pricing">
+    <h2 class="reveal">Ready to eat<br /><span class="gradient-text">smarter?</span></h2>
+    <p class="reveal reveal-delay-1">Join thousands building healthier habits with Wondish. Start free, upgrade when you're ready.</p>
+    <div class="cta-buttons reveal reveal-delay-2">
+      <div style="position:relative;display:inline-flex;">
+        <div class="cta-ring"></div>
+        <button class="btn-primary">Start Free Today →</button>
+      </div>
+      <button class="btn-outline">Compare Plans</button>
+    </div>
+  </section>
+
+  <!-- ═══ Footer ═══ -->
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="nav-logo">won<span>dish</span></div>
+        <p>Personalized meal planning powered by science. Built with care for your health, your preferences, and your kitchen.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#">Features</a></li>
+          <li><a href="#">Pricing</a></li>
+          <li><a href="#">Meal Plans</a></li>
+          <li><a href="#">Dish Library</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="#">About</a></li>
+          <li><a href="#">Blog</a></li>
+          <li><a href="#">Careers</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="#">Privacy</a></li>
+          <li><a href="#">Terms</a></li>
+          <li><a href="#">Cookies</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      © 2025 Wondish. All rights reserved.
+    </div>
+  </footer>
+
+  <!-- ═══ Scroll Reveal Script ═══ -->
+  <script>
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+          }
+        });
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -60px 0px' }
+    );
+
+    document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
+
+    // Parallax on hero orbs
+    document.addEventListener('mousemove', (e) => {
+      const orbs = document.querySelectorAll('.orb');
+      const x = (e.clientX / window.innerWidth - 0.5) * 2;
+      const y = (e.clientY / window.innerHeight - 0.5) * 2;
+      orbs.forEach((orb, i) => {
+        const speed = (i + 1) * 12;
+        orb.style.transform = `translate(${x * speed}px, ${y * speed}px)`;
+      });
+    });
+  </script>
+
+</body>
+</html>
