@@ -41,10 +41,13 @@ export default async function WeeklyPlanPage() {
     orderBy: [{ date: "asc" }, { mealType: { name: "asc" } }],
   });
 
-  if (menus.length === 0 && patient?.id && patient.mealPlanStartDate && patient.profileCompleted) {
+  if (menus.length === 0 && patient?.id && patient.profileCompleted) {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+      if (!patient.mealPlanStartDate) {
+        await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
+      }
       await generateMealPlan(patient.id, today, addDays(today, 34));
       menus = await prisma.menu.findMany({
         where: { patient: { account: { clerkId: userId } }, date: { gte: weekStart, lte: weekEnd } },
