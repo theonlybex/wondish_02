@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { resolveMacroProfile, getMacroPercentages } from "@/lib/caloric-engine";
 
 export async function PATCH(
   req: NextRequest,
@@ -59,6 +60,25 @@ export async function PATCH(
   const hasBanned = newRecipe.ingredients.some((ri) => allBannedNames.has(ri.ingredient.name.toLowerCase()));
   if (hasBanned) {
     return NextResponse.json({ error: "Recipe contains ingredients you cannot eat" }, { status: 400 });
+  }
+
+  // Macro alignment check — replacement must not deviate more than 50 percentage
+  // points (summed across protein/carbs/fat) from the patient's macro profile.
+  const conditionNames  = patient.healthConditions.map((hc) => hc.condition.name);
+  const motivationNames = patient.motivations.map((pm) => pm.motivation.name);
+  const macroTarget     = getMacroPercentages(resolveMacroProfile(conditionNames, motivationNames));
+  if (newRecipe.calories && newRecipe.calories > 0) {
+    const cal       = newRecipe.calories;
+    const deviation =
+      Math.abs(((newRecipe.protein ?? 0) * 4) / cal - macroTarget.protein) +
+      Math.abs(((newRecipe.carbs   ?? 0) * 4) / cal - macroTarget.carbs)   +
+      Math.abs(((newRecipe.fat     ?? 0) * 9) / cal - macroTarget.fat);
+    if (deviation > 0.50) {
+      return NextResponse.json(
+        { error: "Recipe macros do not align with your nutrition profile" },
+        { status: 400 }
+      );
+    }
   }
 
   // Family / subfamily constraints — check against all other menus on the same day

@@ -96,8 +96,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid date range" }, { status: 400 });
   }
   const daysDiff = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-  if (daysDiff < 0 || daysDiff > 7) {
-    return NextResponse.json({ error: "Date range must be between 1 and 7 days" }, { status: 400 });
+  if (daysDiff < 0 || daysDiff > 35) {
+    return NextResponse.json({ error: "Date range must be between 1 and 35 days" }, { status: 400 });
   }
 
   const count = await generateMealPlan(patient.id, start, end);

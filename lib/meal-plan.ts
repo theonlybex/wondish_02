@@ -1,8 +1,12 @@
 import { prisma } from "@/lib/db";
 import {
   computeAllMetrics,
+  computeMealCalories,
+  resolveMacroProfile,
+  getMacroPercentages,
   type Sex,
   type CaloricProfileInput,
+  type MacroPercentages,
 } from "@/lib/caloric-engine";
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -13,16 +17,6 @@ function shuffleArray<T>(arr: T[]): T[] {
   }
   return a;
 }
-
-function mealCaloriesMap(daily: number): Record<string, number> {
-  return {
-    breakfast: daily * 0.20,
-    lunch:     daily * 0.35,
-    dinner:    daily * 0.30,
-    snack:     daily * 0.15,
-  };
-}
-
 
 function resolveSex(sexAtBirth: string | null | undefined, genderName?: string | null): Sex | null {
   for (const val of [sexAtBirth, genderName]) {
@@ -51,7 +45,8 @@ function pickByMotivation(
   candidates: RecipeCandidate[],
   motivationNames: string[],
   affinityMap: Record<string, number> = {},
-  seenIngredientNames: Set<string> = new Set()
+  seenIngredientNames: Set<string> = new Set(),
+  macroTarget?: MacroPercentages
 ): RecipeCandidate {
   if (candidates.length === 1) return candidates[0];
 
@@ -75,6 +70,16 @@ function pickByMotivation(
         score -= (r.fat ?? 0) * 0.5;
         score += (r.protein ?? 0) * 0.5;
       }
+    }
+    // Macro profile alignment: penalise recipes whose macro ratios deviate
+    // from the patient's target (balanced / diabetic / gain_muscle).
+    if (macroTarget && (r.calories ?? 0) > 0) {
+      const cal = r.calories!;
+      const deviation =
+        Math.abs(((r.protein ?? 0) * 4) / cal - macroTarget.protein) +
+        Math.abs(((r.carbs   ?? 0) * 4) / cal - macroTarget.carbs)   +
+        Math.abs(((r.fat     ?? 0) * 9) / cal - macroTarget.fat);
+      score -= deviation * 40;
     }
     if (hasAffinity) {
       for (const ri of r.ingredients) {
@@ -219,9 +224,18 @@ export async function generateMealPlan(
   // always run so every user gets a nutritionally complete meal.
   if (dailyCals === 0) dailyCals = 2000;
 
-  const caloriePlan = mealCaloriesMap(dailyCals);
+  const healthConditionNames = patient.healthConditions.map((hc) => hc.condition.name);
+  const macroProfile = resolveMacroProfile(healthConditionNames, motivationNames);
+  const macroTarget  = getMacroPercentages(macroProfile);
+  const caloriePlan  = computeMealCalories(dailyCals);
 
-  const mealTypes = await prisma.mealType.findMany();
+  const rawMealTypes = await prisma.mealType.findMany();
+  const mealTypeOrder = ["breakfast", "lunch", "dinner", "snack"];
+  const mealTypes = [...rawMealTypes].sort((a, b) => {
+    const ai = mealTypeOrder.indexOf(a.name.toLowerCase());
+    const bi = mealTypeOrder.indexOf(b.name.toLowerCase());
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
 
   await prisma.menu.deleteMany({
     where: { patientId, date: { gte: startDate, lte: endDate } },
@@ -260,69 +274,134 @@ export async function generateMealPlan(
 
     let dayCalories = 0;
     const dailyFamilies = new Set<string>();
+    let lunchTotalCalories = 0; // tracked after lunch to cap dinner
+
+    const lunchMealType = mealTypes.find((mt) => mt.name.toLowerCase() === "lunch");
 
     for (const mealType of mealTypes) {
       const mealNameLower   = mealType.name.toLowerCase();
       const target          = caloriePlan[mealNameLower] ?? null;
       const mealSubFamilies = new Set<string>();
       let   mealCalories    = 0;
+      const isBiggestMeal   = mealNameLower === "lunch";
+      const isDinner        = mealNameLower === "dinner";
+      const isSnack         = mealNameLower === "snack";
 
-      // Helper: query recipes for this meal type with optional calorie range.
+      // Lunch/Dinner recipes are stored under the Lunch meal type (spec column
+      // "Lunch/Dinner"). Dinner queries must include both IDs so the full
+      // savoury pool is available for both slots.
+      const eligibleMealTypeIds =
+        isDinner && lunchMealType
+          ? [mealType.id, lunchMealType.id]
+          : [mealType.id];
+
+      // Cap dinner total so it never exceeds lunch (spec: lunch is the biggest
+      // meal). Applies an upper bound when selecting dinner's first recipe.
+      const dinnerCalCap = isDinner && lunchTotalCalories > 0
+        ? lunchTotalCalories - 1
+        : null;
+
+      // dishTypeNames = null → no dish-type restriction (any dish type).
       // Re-reads weekUsedIds / family sets each call so filters stay fresh.
-      // Family and subFamily filters are combined via AND to avoid OR-key collision.
-      const queryRecipes = async (calMin?: number, calMax?: number): Promise<RecipeCandidate[]> => {
+      // Snack-slot queries relax the content filter: simple items like fruits,
+      // nuts, and beverages are valid without a full ingredient list.
+      const contentFilter = isSnack ? {} : hasContentFilter;
+
+      const queryRecipes = async (
+        dishTypeNames: string[] | null,
+        calMin?: number,
+        calMax?: number
+      ): Promise<RecipeCandidate[]> => {
         const usedFilter = weekUsedIds.size > 0 ? { id: { notIn: Array.from(weekUsedIds) } } : {};
-        const calFilter  = calMin != null && calMax != null ? { calories: { gte: calMin, lte: calMax } } : {};
+        const calFilter  = calMin != null && calMax != null
+          ? { calories: { gte: Math.round(calMin), lte: Math.round(calMax) } }
+          : {};
+        const dishFilter = dishTypeNames
+          ? { dishType: { name: { in: dishTypeNames, mode: "insensitive" as const } } }
+          : {};
         const andFilters = [
-          ...( dailyFamilies.size   > 0 ? [buildFamilyFilter(dailyFamilies)]     : []),
-          ...( mealSubFamilies.size > 0 ? [buildSubFamilyFilter(mealSubFamilies)] : []),
+          ...(dailyFamilies.size   > 0 ? [buildFamilyFilter(dailyFamilies)]     : []),
+          ...(mealSubFamilies.size > 0 ? [buildSubFamilyFilter(mealSubFamilies)] : []),
         ];
         return prisma.recipe.findMany({
           where: {
-            mealTypeId: mealType.id,
+            mealTypeId: { in: eligibleMealTypeIds },
             isPublic: true,
-            ...hasContentFilter,
+            ...contentFilter,
             ...usedFilter,
             ...bannedFilter,
             ...calFilter,
+            ...dishFilter,
             ...(andFilters.length > 0 ? { AND: andFilters } : {}),
           },
           select: recipeSelect,
         });
       };
 
-      // ── Primary recipe ─────────────────────────────────────────────────────
-      // Try calories in [55 %, 135 %] of the meal target, then fall back to any.
-      let primary: RecipeCandidate | undefined;
+      const addRecipe = (recipe: RecipeCandidate) => {
+        trackChosen(recipe, dailyFamilies, mealSubFamilies, weekUsedIds);
+        mealCalories += recipe.calories ?? 0;
+        dayCalories  += recipe.calories ?? 0;
+        menus.push({ patientId, recipeId: recipe.id, mealTypeId: mealType.id, date: new Date(current) });
+      };
+
+      const pick = (pool: RecipeCandidate[]) =>
+        pickByMotivation(pool, motivationNames, affinityMap, seenIngredientNames, macroTarget);
+
+      // ── Step 1: Try a complete meal ────────────────────────────────────────
       if (target !== null) {
-        const targeted = await queryRecipes(target * 0.55, target * 1.35);
-        if (targeted.length > 0) {
-          primary = pickByMotivation(targeted, motivationNames, affinityMap, seenIngredientNames);
+        const calMax = dinnerCalCap !== null ? Math.min(target * 1.35, dinnerCalCap) : target * 1.35;
+        const pool   = await queryRecipes(["complete meal"], target * 0.55, calMax);
+        if (pool.length > 0) addRecipe(pick(pool));
+      }
+
+      // ── Step 2: Main dish + sides (when no complete meal was found) ────────
+      if (mealCalories === 0) {
+        const mainTarget  = target ?? 0;
+        const mainCalMax  = dinnerCalCap !== null ? Math.min(mainTarget * 0.80, dinnerCalCap) : mainTarget * 0.80;
+        let mainPool      = await queryRecipes(["main dish"], mainTarget * 0.40, mainCalMax);
+        if (mainPool.length === 0) mainPool = await queryRecipes(["main dish"]);
+
+        if (mainPool.length > 0) {
+          addRecipe(pick(mainPool));
+
+          if (target !== null) {
+            // Fill remaining calories with sides in spec-defined priority order.
+            for (const sideType of ["veggie side dish", "starchy side dish", "fruity side dish"]) {
+              if (mealCalories >= target * 0.90) break;
+              const gap  = target - mealCalories;
+              const pool = await queryRecipes([sideType], gap * 0.15, gap * 0.80);
+              if (pool.length > 0) addRecipe(pick(pool));
+            }
+          }
+        } else {
+          // No typed dish found — fall back to any recipe for this meal slot.
+          // Always keep a calorie cap to avoid oversized recipes landing here.
+          const cap      = target ?? 800;
+          const anyPool  = await queryRecipes(null, cap * 0.30, cap * 1.20);
+          const fallback = anyPool.length > 0 ? anyPool : await queryRecipes(null, undefined, cap * 1.20);
+          if (fallback.length > 0) addRecipe(pick(fallback));
         }
       }
-      if (!primary) {
-        const any = await queryRecipes();
-        if (any.length > 0) primary = pickByMotivation(any, motivationNames, affinityMap, seenIngredientNames);
+
+      if (mealCalories === 0) continue;
+
+      // ── Step 3: Dessert for the biggest meal (lunch) ───────────────────────
+      if (isBiggestMeal && target !== null && mealCalories < target * 0.85) {
+        const gap  = target - mealCalories;
+        const pool = await queryRecipes(["dessert"], gap * 0.25, gap * 1.10);
+        if (pool.length > 0) addRecipe(pick(pool));
       }
-      if (!primary) continue;
 
-      trackChosen(primary, dailyFamilies, mealSubFamilies, weekUsedIds);
-      mealCalories += primary.calories ?? 0;
-      dayCalories  += primary.calories ?? 0;
-      menus.push({ patientId, recipeId: primary.id, mealTypeId: mealType.id, date: new Date(current) });
-
-      // ── Secondary recipe — fill gap when primary is < 70 % of target ───────
+      // ── Step 4: Generic filler if still < 70 % of target ──────────────────
       if (target !== null && mealCalories < target * 0.70) {
-        const gap = target - mealCalories;
-        const fillers = await queryRecipes(gap * 0.25, gap * 1.10);
-        if (fillers.length > 0) {
-          const secondary = pickByMotivation(fillers, motivationNames, affinityMap, seenIngredientNames);
-          trackChosen(secondary, dailyFamilies, mealSubFamilies, weekUsedIds);
-          mealCalories += secondary.calories ?? 0;
-          dayCalories  += secondary.calories ?? 0;
-          menus.push({ patientId, recipeId: secondary.id, mealTypeId: mealType.id, date: new Date(current) });
-        }
+        const gap    = target - mealCalories;
+        const capMax = dinnerCalCap !== null ? Math.min(gap * 1.10, dinnerCalCap - mealCalories) : gap * 1.10;
+        const pool   = await queryRecipes(null, gap * 0.25, capMax);
+        if (pool.length > 0) addRecipe(pick(pool));
       }
+
+      if (isBiggestMeal) lunchTotalCalories = mealCalories;
     }
 
     // ── Calorie top-up ─────────────────────────────────────────────────────
@@ -333,6 +412,8 @@ export async function generateMealPlan(
       while (dayCalories < dailyCals * 0.9 && extraCount < MAX_EXTRA) {
         const calGap          = dailyCals - dayCalories;
         const extraUsedFilter = weekUsedIds.size > 0 ? { id: { notIn: Array.from(weekUsedIds) } } : {};
+        const extraFamilyFilter = buildFamilyFilter(dailyFamilies);
+        const extraAndFilters = Object.keys(extraFamilyFilter).length > 0 ? [extraFamilyFilter] : [];
         const extraCandidates = await prisma.recipe.findMany({
           where: {
             mealTypeId: snackMealType.id,
@@ -341,16 +422,18 @@ export async function generateMealPlan(
             ...hasContentFilter,
             ...extraUsedFilter,
             ...bannedFilter,
+            ...(extraAndFilters.length > 0 ? { AND: extraAndFilters } : {}),
           },
           select: recipeSelect,
         });
         if (extraCandidates.length === 0) break;
-        const extra = pickByMotivation(extraCandidates, motivationNames, affinityMap, seenIngredientNames);
+        const extra = pickByMotivation(extraCandidates, motivationNames, affinityMap, seenIngredientNames, macroTarget);
         const extraCals = extra.calories ?? 0;
         if (extraCals <= 0) break; // no useful calorie contribution; further picks won't help
         dayCalories += extraCals;
         extraCount++;
         weekUsedIds.add(extra.id);
+        if (extra.family && !isBeverageExempt(extra)) dailyFamilies.add(extra.family);
         menus.push({ patientId, recipeId: extra.id, mealTypeId: snackMealType.id, date: new Date(current) });
       }
     }

@@ -46,14 +46,14 @@ export default async function MealPlanPage() {
     }),
   ]);
 
-  // Auto-generate a fresh 7-day plan when no meals exist for today
+  // Auto-generate a fresh 35-day plan when no meals exist for today
   let finalMenus = menus;
   if (menus.length === 0 && patient?.id && patient.profileCompleted) {
     try {
       if (!patient.mealPlanStartDate) {
         await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
       }
-      await generateMealPlan(patient.id, today, addDays(today, 6));
+      await generateMealPlan(patient.id, today, addDays(today, 34));
       finalMenus = await prisma.menu.findMany({
         where: { patient: { account: { clerkId: userId } }, date: { gte: today, lte: todayEnd } },
         include: {

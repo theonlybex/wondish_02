@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
   const start = new Date(startDate);
   start.setHours(0, 0, 0, 0);
-  const end = addDays(start, 6);
+  const end = addDays(start, 34);
   end.setHours(23, 59, 59, 999);
 
   await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: start } });

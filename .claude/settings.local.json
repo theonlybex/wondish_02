@@ -22,7 +22,9 @@
       "Bash(npm test *)",
       "Bash(npx prisma *)",
       "Bash(start *)",
-      "Bash(Remove-Item *)"
+      "Bash(Remove-Item *)",
+      "Bash(npx tsx *)",
+      "WebSearch"
     ]
   }
 }

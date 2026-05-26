@@ -310,7 +310,8 @@ export interface CaloricProfile {
   wtg: number | null;       // weight to gain (positive if underweight)
 
   // Target calories
-  dailyCalories: number;    // the TDEE for the target weight, floored to minCalories
+  dailyCalories: number;    // TDEE for CBW, floored to minCalories — active meal plan target
+  targetCalories: number;   // TDEE for TBW, floored to minCalories — informational goal state
   minCaloriesValue: number;
 }
 
@@ -374,10 +375,14 @@ export function computeAllMetrics(input: CaloricProfileInput): CaloricProfile {
   const wtl = weightDiff > 0 ? weightDiff : null;
   const wtg = weightDiff < 0 ? Math.abs(weightDiff) : null;
 
-  // 13. Daily calorie target = TDEE for the target weight, floored to minimum
+  // 13. Daily calorie target = TDEE for CBW (current weight), floored to minimum.
+  // Per spec, the meal plan uses CBW-based calories each month; the deficit is
+  // achieved progressively as CBW decreases month by month toward TBW.
+  // targetCalories (TBW-based) is exposed for display and goal-tracking only.
   const minCal = minCalories(sex);
-  const targetTDEE = utbwKg != null && tdeeUTBW != null ? tdeeUTBW : tdeeWTBW;
-  const dailyCalories = Math.max(targetTDEE, minCal);
+  const tbwTDEE        = utbwKg != null && tdeeUTBW != null ? tdeeUTBW : tdeeWTBW;
+  const dailyCalories  = Math.max(tdeeCBW, minCal);
+  const targetCalories = Math.max(tbwTDEE, minCal);
 
   return {
     sex,
@@ -414,6 +419,108 @@ export function computeAllMetrics(input: CaloricProfileInput): CaloricProfile {
     wtg,
 
     dailyCalories,
+    targetCalories,
     minCaloriesValue: minCal,
+  };
+}
+
+// ─── Macro Profiles ───────────────────────────────────────────────────────────
+
+export type MacroProfile = "balanced" | "diabetic" | "gain_muscle";
+
+export interface MacroPercentages {
+  protein: number;
+  carbs:   number;
+  fat:     number;
+}
+
+export interface MealMacros {
+  calories: number;
+  proteinG: number;
+  carbsG:   number;
+  fatG:     number;
+}
+
+export interface DailyMacroDistribution {
+  profile:       MacroProfile;
+  dailyCalories: number;
+  totalProteinG: number;
+  totalCarbsG:   number;
+  totalFatG:     number;
+  meals:         Record<string, MealMacros>;
+}
+
+const MACRO_PROFILES: Record<MacroProfile, MacroPercentages> = {
+  balanced:    { protein: 0.30, carbs: 0.50, fat: 0.20 },
+  diabetic:    { protein: 0.35, carbs: 0.45, fat: 0.20 },
+  gain_muscle: { protein: 0.30, carbs: 0.40, fat: 0.30 },
+};
+
+// Lunch is the main meal (35 %), dinner is secondary (30 %).
+const MEAL_CALORIE_FRACTIONS: Record<string, number> = {
+  breakfast: 0.20,
+  lunch:     0.35,
+  dinner:    0.30,
+  snack:     0.15,
+};
+
+/**
+ * Determine the macro profile from a patient's health conditions and motivations.
+ * Diabetic condition takes priority; muscle-gain motivation is next; balanced otherwise.
+ */
+export function resolveMacroProfile(
+  healthConditionNames: string[],
+  motivationNames: string[]
+): MacroProfile {
+  const conds = healthConditionNames.map((n) => n.toLowerCase());
+  const mots  = motivationNames.map((n) => n.toLowerCase());
+  if (conds.some((c) => c.includes("diabet"))) return "diabetic";
+  if (mots.some((m) => m.includes("muscle") || m.includes("gain"))) return "gain_muscle";
+  return "balanced";
+}
+
+export function getMacroPercentages(profile: MacroProfile): MacroPercentages {
+  return MACRO_PROFILES[profile];
+}
+
+/**
+ * Break a daily calorie total into per-meal calorie targets (kcal).
+ */
+export function computeMealCalories(dailyCalories: number): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(MEAL_CALORIE_FRACTIONS).map(([meal, frac]) => [meal, dailyCalories * frac])
+  );
+}
+
+/**
+ * Compute grams of protein, carbs, and fat for each meal given a daily calorie
+ * total and the patient's macro profile.
+ * Protein: 4 kcal/g  |  Carbs: 4 kcal/g  |  Fat: 9 kcal/g
+ */
+export function computeDailyMacros(
+  dailyCalories: number,
+  profile: MacroProfile
+): DailyMacroDistribution {
+  const pct    = MACRO_PROFILES[profile];
+  const r1     = (n: number) => Math.round(n * 10) / 10;
+  const mealCals = computeMealCalories(dailyCalories);
+  const meals: Record<string, MealMacros> = {};
+
+  for (const [meal, cal] of Object.entries(mealCals)) {
+    meals[meal] = {
+      calories: Math.round(cal),
+      proteinG: r1((cal * pct.protein) / 4),
+      carbsG:   r1((cal * pct.carbs)   / 4),
+      fatG:     r1((cal * pct.fat)     / 9),
+    };
+  }
+
+  return {
+    profile,
+    dailyCalories: Math.round(dailyCalories),
+    totalProteinG: r1((dailyCalories * pct.protein) / 4),
+    totalCarbsG:   r1((dailyCalories * pct.carbs)   / 4),
+    totalFatG:     r1((dailyCalories * pct.fat)     / 9),
+    meals,
   };
 }

@@ -192,21 +192,25 @@ export async function PATCH(req: NextRequest) {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const weekEnd = addDays(today, 6);
-  weekEnd.setHours(23, 59, 59, 999);
 
   if (!patient.mealPlanStartDate) {
-    // First save: generate initial meal plan
+    // First save: generate the full 35-day plan per spec.
+    const planEnd = addDays(today, 34);
+    planEnd.setHours(23, 59, 59, 999);
     try {
       await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
-      await generateMealPlan(patient.id, today, weekEnd);
+      await generateMealPlan(patient.id, today, planEnd);
     } catch (e) {
       console.error("[profile] meal plan generation failed:", e);
     }
   } else if (mealPlanFieldsChanged) {
-    // Profile changed: regenerate current week to reflect new goals/motivations
+    // Profile changed: regenerate from today to the end of the original 35-day window.
+    const originalEnd = addDays(new Date(patient.mealPlanStartDate), 34);
+    originalEnd.setHours(23, 59, 59, 999);
+    const regenEnd = originalEnd > today ? originalEnd : addDays(today, 34);
+    regenEnd.setHours(23, 59, 59, 999);
     try {
-      await generateMealPlan(patient.id, today, weekEnd);
+      await generateMealPlan(patient.id, today, regenEnd);
     } catch (e) {
       console.error("[profile] meal plan regeneration failed:", e);
     }
