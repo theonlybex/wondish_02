@@ -473,7 +473,7 @@ export async function generateMealPlan(
       }
 
       // ── Step D: Dessert — biggest meal (lunch) only, when a calorie gap warrants it ─
-      if (mealNameLower === "lunch" && !dailyFamilies.has("dessert")) {
+      if (mealNameLower === "lunch" && target !== null && !dailyFamilies.has("dessert")) {
         const dessertCalGap = target - mealCalories;
         if (dessertCalGap > 0) {
           const dessertUsedFilter      = weekUsedIds.size > 0 ? { id: { notIn: Array.from(weekUsedIds) } } : {};
