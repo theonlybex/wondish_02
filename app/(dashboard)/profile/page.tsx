@@ -21,6 +21,7 @@ export default async function ProfilePage({
     prisma.patient.findFirst({
       where: { account: { clerkId: userId } },
       include: {
+        gender: true,
         motivations: true,
         healthConditions: true,
         foodPreferences: true,

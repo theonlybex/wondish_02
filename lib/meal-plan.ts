@@ -54,9 +54,10 @@ function calcMacroRatio(
   };
 }
 
-function resolveSex(sexAtBirth: string | null | undefined): Sex | null {
-  if (sexAtBirth) {
-    const s = sexAtBirth.toLowerCase();
+function resolveSex(sexAtBirth: string | null | undefined, genderName?: string | null): Sex | null {
+  for (const val of [sexAtBirth, genderName]) {
+    if (!val) continue;
+    const s = val.toLowerCase();
     if (s === "male") return "male";
     if (s === "female") return "female";
   }
@@ -170,6 +171,7 @@ export async function generateMealPlan(
     where: { id: patientId },
     include: {
       physicalActivity: true,
+      gender:           true,
       foodAllergies:    { include: { food: { include: { bannedIngredients: true } } } },
       foodToAvoid:      { include: { food: true } },
       healthConditions: { include: { condition: { include: { bannedIngredients: true } } } },
@@ -223,10 +225,9 @@ export async function generateMealPlan(
   }
 
   // ── Caloric targets ────────────────────────────────────────────────────────
-  let caloriePlan: Record<string, number> | null = null;
   let dailyCals = 0;
   if (patient.weight && patient.height && patient.birthday && patient.physicalActivity?.level) {
-    const sex = resolveSex(patient.sexAtBirth);
+    const sex = resolveSex(patient.sexAtBirth, patient.gender?.name);
     if (sex) {
       const profileInput: CaloricProfileInput = {
         sex,
@@ -240,20 +241,23 @@ export async function generateMealPlan(
         utbwUnit:      (patient.goalWeightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs" | null,
       };
       const profile = computeAllMetrics(profileInput);
-      dailyCals    = Math.round(profile.dailyCalories);
-      caloriePlan  = mealCaloriesMap(dailyCals);
+      dailyCals = Math.round(profile.dailyCalories);
     }
   }
 
-  let dailyMacros: { proteinG: number; carbsG: number; fatG: number } | null = null;
-  if (dailyCals > 0) {
-    const ratio = calcMacroRatio(motivationNames, conditionNames);
-    dailyMacros = {
-      proteinG: (ratio.protein * dailyCals) / 4,
-      carbsG:   (ratio.carbs   * dailyCals) / 4,
-      fatG:     (ratio.fat     * dailyCals) / 9,
-    };
-  }
+  // Fall back to 2000 kcal when the full caloric profile cannot be computed
+  // (e.g. sexAtBirth missing). This ensures sides, dessert, and top-up logic
+  // always run so every user gets a nutritionally complete meal.
+  if (dailyCals === 0) dailyCals = 2000;
+
+  const caloriePlan = mealCaloriesMap(dailyCals);
+
+  const ratio = calcMacroRatio(motivationNames, conditionNames);
+  const dailyMacros = {
+    proteinG: (ratio.protein * dailyCals) / 4,
+    carbsG:   (ratio.carbs   * dailyCals) / 4,
+    fatG:     (ratio.fat     * dailyCals) / 9,
+  };
 
   const mealTypes = await prisma.mealType.findMany();
 
@@ -408,10 +412,9 @@ export async function generateMealPlan(
       menus.push({ patientId, recipeId: mainChosen.id, mealTypeId: mealType.id, date: new Date(current) });
 
       // ── Step C: Side dishes (lunch and dinner only) ────────────────────────
-      const needsSides = dailyMacros !== null && target !== null &&
-        (mealNameLower === "lunch" || mealNameLower === "dinner");
+      const needsSides = mealNameLower === "lunch" || mealNameLower === "dinner";
 
-      if (needsSides && dailyMacros) {
+      if (needsSides) {
         const mealShare         = target! / dailyCals;
         const mealProteinTarget = dailyMacros.proteinG * mealShare;
         const mealCarbsTarget   = dailyMacros.carbsG   * mealShare;
@@ -470,7 +473,7 @@ export async function generateMealPlan(
       }
 
       // ── Step D: Dessert — biggest meal (lunch) only, when a calorie gap warrants it ─
-      if (mealNameLower === "lunch" && target !== null && !dailyFamilies.has("dessert")) {
+      if (mealNameLower === "lunch" && !dailyFamilies.has("dessert")) {
         const dessertCalGap = target - mealCalories;
         if (dessertCalGap > 0) {
           const dessertUsedFilter      = weekUsedIds.size > 0 ? { id: { notIn: Array.from(weekUsedIds) } } : {};
@@ -506,7 +509,7 @@ export async function generateMealPlan(
 
     // ── Calorie top-up ─────────────────────────────────────────────────────
     // If the day is still below 90% of target, pad with snack-tagged recipes.
-    if (snackMealType && dailyCals > 0 && dayCalories < dailyCals * 0.9) {
+    if (snackMealType && dayCalories < dailyCals * 0.9) {
       let extraCount = 0;
       const MAX_EXTRA = 4;
       while (dayCalories < dailyCals * 0.9 && extraCount < MAX_EXTRA) {

@@ -15,6 +15,7 @@ import {
 } from "@/lib/caloric-engine";
 
 interface RefData {
+  genders: { id: string; name: string }[];
   physicalActivities: { id: string; name: string; level: number }[];
   motivations: { id: string; name: string }[];
   healthConditions: { id: string; name: string }[];
@@ -43,13 +44,26 @@ export default function ProfileForm({
 
   const patient = initialData as Record<string, unknown> | null;
 
+  function normalizeGenderName(val: unknown): string {
+    if (!val || typeof val !== "string") return "";
+    const s = val.toLowerCase();
+    if (s === "male") return "Male";
+    if (s === "female") return "Female";
+    return val;
+  }
+
+  const initialSex =
+    normalizeGenderName(patient?.sexAtBirth) ||
+    normalizeGenderName((patient?.gender as { name?: string } | null)?.name) ||
+    "";
+
   const [form, setForm] = useState({
     firstName: accountData.firstName ?? "",
     lastName: accountData.lastName ?? "",
     birthday: patient?.birthday
       ? new Date(patient.birthday as string).toISOString().slice(0, 10)
       : "",
-    sexAtBirth: (patient?.sexAtBirth as string) ?? "",
+    sexAtBirth: initialSex,
     height: String(patient?.height ?? ""),
     heightUnit: (patient?.heightUnit as string) ?? "ftin",
     heightFt: String(patient?.heightFt ?? ""),
@@ -222,10 +236,7 @@ export default function ProfileForm({
             label="Sex at Birth"
             value={form.sexAtBirth}
             onChange={(e) => setForm((f) => ({ ...f, sexAtBirth: e.target.value }))}
-            options={[
-              { value: "MALE", label: "Male" },
-              { value: "FEMALE", label: "Female" },
-            ]}
+            options={refData.genders.map((g) => ({ value: g.name, label: g.name }))}
             placeholder="Select sex at birth"
           />
         </div>
