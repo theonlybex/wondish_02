@@ -14,7 +14,7 @@ const PREMIUM_BENEFITS = [
   {
     icon: "📅",
     title: "Full Weekly Schedule",
-    description: "See your entire 7-day plan at a glance. Swap meals, adjust portions, and stay on track every day.",
+    description: "See your entire 35-day plan week by week. Swap meals, adjust portions, and stay on track every day.",
   },
   {
     icon: "🛒",

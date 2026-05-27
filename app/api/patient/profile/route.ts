@@ -205,11 +205,16 @@ export async function PATCH(req: NextRequest) {
     }
   } else if (mealPlanFieldsChanged) {
     // Profile changed: regenerate from today to the end of the original 35-day window.
+    // If the plan has expired, reset the start date to today and generate a fresh 35 days.
     const originalEnd = addDays(new Date(patient.mealPlanStartDate), 34);
     originalEnd.setHours(23, 59, 59, 999);
-    const regenEnd = originalEnd > today ? originalEnd : addDays(today, 34);
+    const planExpired = originalEnd <= today;
+    const regenEnd = planExpired ? addDays(today, 34) : originalEnd;
     regenEnd.setHours(23, 59, 59, 999);
     try {
+      if (planExpired) {
+        await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
+      }
       await generateMealPlan(patient.id, today, regenEnd);
     } catch (e) {
       console.error("[profile] meal plan regeneration failed:", e);

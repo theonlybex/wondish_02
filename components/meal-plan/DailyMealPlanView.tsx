@@ -231,23 +231,18 @@ export default function DailyMealPlanView({
     setSettingStart(true);
     setProfileIncomplete(false);
     try {
+      const today = new Date();
       const res = await fetch("/api/meal-plan/start-date", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startDate: format(new Date(), "yyyy-MM-dd") }),
+        body: JSON.stringify({ startDate: format(today, "yyyy-MM-dd") }),
       });
+      if (res.status === 422) { setProfileIncomplete(true); return; }
       const data = await res.json();
       const newStartDate = new Date(data.startDate);
       setStartDate(newStartDate);
-
-      const startStr = format(newStartDate, "yyyy-MM-dd");
-      const endStr   = format(addDays(newStartDate, 6), "yyyy-MM-dd");
-      const genRes = await fetch("/api/meal-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startDate: startStr, endDate: endStr }),
-      });
-      const mRes = await fetch(`/api/meal-plan?date=${format(new Date(), "yyyy-MM-dd")}`);
+      setDate(today);
+      const mRes = await fetch(`/api/meal-plan?date=${format(today, "yyyy-MM-dd")}`);
       const mData = await mRes.json();
       setMenus(mData.menus ?? []);
       setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
@@ -263,8 +258,8 @@ export default function DailyMealPlanView({
     setSelectedId(null);
     setProfileIncomplete(false);
     try {
-      const startStr = format(date, "yyyy-MM-dd");
-      const endStr   = format(addDays(date, 6), "yyyy-MM-dd");
+      const startStr = format(startDate, "yyyy-MM-dd");
+      const endStr   = format(addDays(startDate, 34), "yyyy-MM-dd");
       await fetch("/api/meal-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -293,6 +288,7 @@ export default function DailyMealPlanView({
       setMenus(data.menus ?? []);
       setLoggedRecipeIds(data.loggedRecipeIds ?? []);
       setMealRatings(data.mealRatings ?? {});
+      if (data.mealPlanStartDate) setStartDate(new Date(data.mealPlanStartDate));
     } finally {
       setLoading(false);
     }
@@ -315,6 +311,9 @@ export default function DailyMealPlanView({
     setMenus((prev) => prev.map((m) => m.id === menuId ? { ...m, recipe: newRecipe } : m));
     setSelectedId(null);
   };
+
+  const planEnd = startDate ? addDays(startDate, 34) : null;
+  const isPastPlanEnd = planEnd ? date > planEnd : false;
 
   const loggedSet        = new Set(loggedRecipeIds);
   const isAllDone        = menus.length > 0 && menus.every((m) => loggedSet.has(m.recipe.id));
@@ -406,7 +405,7 @@ export default function DailyMealPlanView({
       {!startDate && (
         <div className="bg-primary/10 border border-primary/20 rounded-2xl p-6 text-center mb-6">
           <p className="text-navy font-semibold mb-2">Set your meal plan start date</p>
-          <p className="text-[#8A8D93] text-sm mb-4">We&apos;ll generate a personalized 7-day meal plan starting today.</p>
+          <p className="text-[#8A8D93] text-sm mb-4">We&apos;ll generate a personalized 35-day meal plan starting today.</p>
           <Button loading={settingStart} onClick={handleSetStartDate}>Start Meal Plan Today</Button>
         </div>
       )}
@@ -416,17 +415,33 @@ export default function DailyMealPlanView({
         <div className="text-center py-12 text-[#5a7a5d]">Loading…</div>
       ) : menus.length === 0 ? (
         <div className="text-center py-12 text-[#5a7a5d]">
-          <p>No meal plan for this day.</p>
-          {startDate && (
+          {isPastPlanEnd ? (
             <>
-              <p className="mt-2 text-sm">No meals for this day. Generate a 7-day plan from here.</p>
+              <p className="font-semibold text-[#0d1f10]">Your 35-day plan has ended.</p>
+              <p className="mt-2 text-sm">Start a new 35-day plan from today.</p>
               <Button
-                loading={regenerating}
-                onClick={handleRegenerate}
+                loading={settingStart}
+                onClick={handleSetStartDate}
                 className="mt-4 mx-auto"
               >
-                Generate meal plan
+                Start new plan
               </Button>
+            </>
+          ) : (
+            <>
+              <p>No meal plan for this day.</p>
+              {startDate && (
+                <>
+                  <p className="mt-2 text-sm">Regenerate your full 35-day plan.</p>
+                  <Button
+                    loading={regenerating}
+                    onClick={handleRegenerate}
+                    className="mt-4 mx-auto"
+                  >
+                    Generate meal plan
+                  </Button>
+                </>
+              )}
             </>
           )}
         </div>
