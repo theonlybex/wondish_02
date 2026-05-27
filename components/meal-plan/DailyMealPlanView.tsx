@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { format, addDays, subDays } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import SwapMealModal from "@/components/meal-plan/SwapMealModal";
@@ -229,6 +229,17 @@ export default function DailyMealPlanView({
   const [swapModal, setSwapModal]       = useState<{
     menuId: string; mealTypeId: string; recipeId: string; calories: number;
   } | null>(null);
+
+  // If the server didn't compute the target (missing profile fields on first render),
+  // fetch it client-side so the free calories card always appears.
+  useEffect(() => {
+    if (dailyCalorieTarget !== null) return;
+    const dateStr = format(date, "yyyy-MM-dd");
+    fetch(`/api/meal-plan?date=${dateStr}`)
+      .then((r) => r.json())
+      .then((data) => { if (data.dailyCalorieTarget != null) setDailyCalorieTarget(data.dailyCalorieTarget); })
+      .catch(() => {});
+  }, []);
 
   const handleSetStartDate = async () => {
     setSettingStart(true);
