@@ -5,6 +5,7 @@ import {
   resolveMacroProfile,
   getMacroPercentages,
   weeklyDailyCals,
+  gradualDailyCals,
   type Sex,
   type CaloricProfileInput,
   type MacroPercentages,
@@ -58,11 +59,6 @@ function pickByMotivation(
     let score = 0;
     for (const m of motivationNames) {
       if (m === "Build muscle") score += (r.protein ?? 0) * 2;
-      if (m === "Lose weight") {
-        score -= (r.fat ?? 0) * 0.8;
-        score -= (r.calories ?? 0) * 0.03;
-        score += (r.fiber ?? 0) * 2;
-      }
       if (m === "Improve energy") {
         score += (r.fiber ?? 0) * 3;
         score += (r.protein ?? 0) * 0.5;
@@ -142,7 +138,6 @@ function trackChosen(
 export async function generateMealPlan(
   patientId: string,
   startDate: Date,
-  endDate: Date
 ): Promise<number> {
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
@@ -206,6 +201,7 @@ export async function generateMealPlan(
   let baseTDEE: number = 0;
   let cbmiClass: CBMIClass = "healthy";
   let minCal: number = 2000;
+  let maintenanceFloor: number = 0; // TDEE at goal weight — floor for the gradual deficit
 
   if (patient.weight && patient.height && patient.birthday && patient.physicalActivity?.level) {
     const sex = resolveSex(patient.sexAtBirth, patient.gender?.name);
@@ -222,15 +218,39 @@ export async function generateMealPlan(
         utbwUnit:      (patient.goalWeightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs" | null,
       };
       const profile = computeAllMetrics(profileInput);
-      baseTDEE  = Math.round(profile.tdeeCBW);
-      cbmiClass = profile.cbmiClass;
-      minCal    = profile.minCaloriesValue;
+      baseTDEE         = Math.round(profile.tdeeCBW);
+      cbmiClass        = profile.cbmiClass;
+      minCal           = profile.minCaloriesValue;
+      maintenanceFloor = Math.round(profile.targetCalories);
     }
   }
 
   // Fall back to 2000 kcal / healthy class when the full caloric profile
   // cannot be computed (e.g. sexAtBirth missing).
-  if (baseTDEE === 0) { baseTDEE = 2000; minCal = 1200; }
+  if (baseTDEE === 0) { baseTDEE = 2000; minCal = 1200; maintenanceFloor = 2000; }
+
+  // Compute the plan end date dynamically:
+  // - Overweight/obese: run the gradual ramp until the maintenance floor is hit,
+  //   then add MAINTENANCE_BUFFER_DAYS at flat floor calories.
+  // - All other CBMI classes: fixed 35 days using the original weekly schedule.
+  const MAINTENANCE_BUFFER_DAYS = 35;
+  const isDeficitPlan  = cbmiClass === "overweight" || cbmiClass === "obese";
+  const effectiveFloor = Math.max(minCal, maintenanceFloor);
+
+  let rampEndDay = 35;
+  if (isDeficitPlan && baseTDEE > effectiveFloor) {
+    for (let d = 1; d <= 365; d++) {
+      if (gradualDailyCals(baseTDEE, d, cbmiClass, minCal, maintenanceFloor) <= effectiveFloor) {
+        rampEndDay = d;
+        break;
+      }
+    }
+  }
+
+  const totalExtraDays = isDeficitPlan ? rampEndDay + MAINTENANCE_BUFFER_DAYS - 1 : 34;
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + totalExtraDays);
+  endDate.setHours(23, 59, 59, 999);
 
   const healthConditionNames = patient.healthConditions.map((hc) => hc.condition.name);
   const macroProfile = resolveMacroProfile(healthConditionNames, motivationNames);
@@ -244,9 +264,7 @@ export async function generateMealPlan(
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
 
-  await prisma.menu.deleteMany({
-    where: { patientId, date: { gte: startDate, lte: endDate } },
-  });
+  await prisma.menu.deleteMany({ where: { patientId } });
 
   const menus: { patientId: string; recipeId: string; mealTypeId: string; date: Date }[] = [];
 
@@ -279,10 +297,11 @@ export async function generateMealPlan(
     if (dayIndex % 7 === 0) weekUsedIds.clear();
     dayIndex++;
 
-    // Apply the slow calorie deficit: weeks 1-2 subtract 300 kcal, weeks 3-5
-    // subtract 400 kcal (for overweight). Symmetric surplus for underweight.
-    const weekNumber  = Math.ceil(dayIndex / 7);
-    const weekCals    = weeklyDailyCals(baseTDEE, cbmiClass, weekNumber, minCal);
+    // Overweight/obese: gradual cumulative deficit that ramps weekly.
+    // All other CBMI classes: original flat weekly schedule.
+    const weekCals    = isDeficitPlan
+      ? gradualDailyCals(baseTDEE, dayIndex, cbmiClass, minCal, maintenanceFloor)
+      : weeklyDailyCals(baseTDEE, cbmiClass, Math.ceil(dayIndex / 7), minCal);
     const caloriePlan = computeMealCalories(weekCals);
 
     let dayCalories = 0;
@@ -308,9 +327,12 @@ export async function generateMealPlan(
           ? [mealType.id, lunchMealType.id]
           : [mealType.id];
 
-      // Cap dinner total so it never exceeds lunch (spec: lunch is the biggest
-      // meal). Applies an upper bound when selecting dinner's first recipe.
-      const dinnerCalCap = isDinner && lunchTotalCalories > 0
+      // Cap dinner so it doesn't exceed lunch (spec: lunch is the biggest meal).
+      // Only enforce when lunch was well-served (≥ 85% of its target); if lunch
+      // under-performed, using its actual calories as the cap would cascade and
+      // starve dinner too — use dinner's own target as the floor instead.
+      const lunchTarget = caloriePlan["lunch"] ?? 0;
+      const dinnerCalCap = isDinner && lunchTotalCalories > 0 && lunchTotalCalories >= lunchTarget * 0.85
         ? lunchTotalCalories - 1
         : null;
 
@@ -325,7 +347,6 @@ export async function generateMealPlan(
         calMin?: number,
         calMax?: number
       ): Promise<RecipeCandidate[]> => {
-        const usedFilter = weekUsedIds.size > 0 ? { id: { notIn: Array.from(weekUsedIds) } } : {};
         const calFilter  = calMin != null && calMax != null
           ? { calories: { gte: Math.round(calMin), lte: Math.round(calMax) } }
           : {};
@@ -336,19 +357,25 @@ export async function generateMealPlan(
           ...(dailyFamilies.size   > 0 ? [buildFamilyFilter(dailyFamilies)]     : []),
           ...(mealSubFamilies.size > 0 ? [buildSubFamilyFilter(mealSubFamilies)] : []),
         ];
-        return prisma.recipe.findMany({
-          where: {
-            mealTypeId: { in: eligibleMealTypeIds },
-            isPublic: true,
-            ...contentFilter,
-            ...usedFilter,
-            ...bannedFilter,
-            ...calFilter,
-            ...dishFilter,
-            ...(andFilters.length > 0 ? { AND: andFilters } : {}),
-          },
-          select: recipeSelect,
-        });
+        const baseWhere = {
+          mealTypeId: { in: eligibleMealTypeIds },
+          isPublic: true,
+          ...contentFilter,
+          ...bannedFilter,
+          ...calFilter,
+          ...dishFilter,
+          ...(andFilters.length > 0 ? { AND: andFilters } : {}),
+        };
+        // First attempt: exclude recipes already used this week
+        if (weekUsedIds.size > 0) {
+          const results = await prisma.recipe.findMany({
+            where: { ...baseWhere, id: { notIn: Array.from(weekUsedIds) } },
+            select: recipeSelect,
+          });
+          if (results.length > 0) return results;
+        }
+        // Fallback: allow recipe reuse when the weekly pool is exhausted
+        return prisma.recipe.findMany({ where: baseWhere, select: recipeSelect });
       };
 
       const addRecipe = (recipe: RecipeCandidate) => {
@@ -424,21 +451,25 @@ export async function generateMealPlan(
       const MAX_EXTRA = 4;
       while (dayCalories < weekCals * 0.9 && extraCount < MAX_EXTRA) {
         const calGap          = weekCals - dayCalories;
-        const extraUsedFilter = weekUsedIds.size > 0 ? { id: { notIn: Array.from(weekUsedIds) } } : {};
         const extraFamilyFilter = buildFamilyFilter(dailyFamilies);
         const extraAndFilters = Object.keys(extraFamilyFilter).length > 0 ? [extraFamilyFilter] : [];
-        const extraCandidates = await prisma.recipe.findMany({
-          where: {
-            mealTypeId: snackMealType.id,
-            isPublic: true,
-            calories: { gte: Math.round(calGap * 0.25), lte: Math.round(calGap) },
-            ...hasContentFilter,
-            ...extraUsedFilter,
-            ...bannedFilter,
-            ...(extraAndFilters.length > 0 ? { AND: extraAndFilters } : {}),
-          },
-          select: recipeSelect,
-        });
+        const extraBaseWhere = {
+          mealTypeId: snackMealType.id,
+          isPublic: true,
+          calories: { gte: Math.round(calGap * 0.25), lte: Math.round(calGap) },
+          ...hasContentFilter,
+          ...bannedFilter,
+          ...(extraAndFilters.length > 0 ? { AND: extraAndFilters } : {}),
+        };
+        let extraCandidates = weekUsedIds.size > 0
+          ? await prisma.recipe.findMany({
+              where: { ...extraBaseWhere, id: { notIn: Array.from(weekUsedIds) } },
+              select: recipeSelect,
+            })
+          : [];
+        if (extraCandidates.length === 0) {
+          extraCandidates = await prisma.recipe.findMany({ where: extraBaseWhere, select: recipeSelect });
+        }
         if (extraCandidates.length === 0) break;
         const extra = pickByMotivation(extraCandidates, motivationNames, affinityMap, seenIngredientNames, macroTarget);
         const extraCals = extra.calories ?? 0;

@@ -13,6 +13,7 @@ interface DailyMealPlanViewProps {
   mealPlanStartDate?: string | null;
   initialLoggedRecipeIds?: string[];
   initialMealRatings?: Record<string, number>;
+  initialDailyCalorieTarget?: number | null;
 }
 
 function parseLocalDate(dateStr: string): Date {
@@ -212,6 +213,7 @@ export default function DailyMealPlanView({
   mealPlanStartDate,
   initialLoggedRecipeIds = [],
   initialMealRatings = {},
+  initialDailyCalorieTarget = null,
 }: DailyMealPlanViewProps) {
   const [date, setDate]                 = useState(() => parseLocalDate(initialDate));
   const [menus, setMenus]               = useState(initialMenus);
@@ -223,6 +225,7 @@ export default function DailyMealPlanView({
   const [selectedId, setSelectedId]     = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [profileIncomplete, setProfileIncomplete] = useState(false);
+  const [dailyCalorieTarget, setDailyCalorieTarget] = useState<number | null>(initialDailyCalorieTarget);
   const [swapModal, setSwapModal]       = useState<{
     menuId: string; mealTypeId: string; recipeId: string; calories: number;
   } | null>(null);
@@ -247,6 +250,7 @@ export default function DailyMealPlanView({
       setMenus(mData.menus ?? []);
       setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
       setMealRatings(mData.mealRatings ?? {});
+      setDailyCalorieTarget(mData.dailyCalorieTarget ?? null);
     } finally {
       setSettingStart(false);
     }
@@ -259,11 +263,10 @@ export default function DailyMealPlanView({
     setProfileIncomplete(false);
     try {
       const startStr = format(startDate, "yyyy-MM-dd");
-      const endStr   = format(addDays(startDate, 34), "yyyy-MM-dd");
       await fetch("/api/meal-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startDate: startStr, endDate: endStr }),
+        body: JSON.stringify({ startDate: startStr }),
       });
       const dateStr = format(date, "yyyy-MM-dd");
       const res = await fetch(`/api/meal-plan?date=${dateStr}`);
@@ -271,6 +274,7 @@ export default function DailyMealPlanView({
       setMenus(data.menus ?? []);
       setLoggedRecipeIds(data.loggedRecipeIds ?? []);
       setMealRatings(data.mealRatings ?? {});
+      setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
     } finally {
       setRegenerating(false);
     }
@@ -289,6 +293,7 @@ export default function DailyMealPlanView({
       setLoggedRecipeIds(data.loggedRecipeIds ?? []);
       setMealRatings(data.mealRatings ?? {});
       if (data.mealPlanStartDate) setStartDate(new Date(data.mealPlanStartDate));
+      setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
     } finally {
       setLoading(false);
     }
@@ -312,7 +317,7 @@ export default function DailyMealPlanView({
     setSelectedId(null);
   };
 
-  const planEnd = startDate ? addDays(startDate, 34) : null;
+  const planEnd = startDate ? addDays(startDate, 90) : null;
   const isPastPlanEnd = planEnd ? date > planEnd : false;
 
   const loggedSet        = new Set(loggedRecipeIds);
@@ -328,7 +333,9 @@ export default function DailyMealPlanView({
   const consumedProtein  = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.protein  ?? 0), 0);
   const consumedCarbs    = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.carbs    ?? 0), 0);
   const consumedFat      = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.fat      ?? 0), 0);
-  const calPct  = totalCalories > 0 ? Math.min(100, (completedCalories / totalCalories) * 100) : 0;
+  const budgetCalories = dailyCalorieTarget ?? totalCalories;
+  const freeCalories   = dailyCalorieTarget ? Math.max(0, dailyCalorieTarget - totalCalories) : 0;
+  const calPct  = budgetCalories > 0 ? Math.min(100, (completedCalories / budgetCalories) * 100) : 0;
   const protPct = totalProtein  > 0 ? Math.min(100, (consumedProtein   / totalProtein)  * 100) : 0;
   const carbPct = totalCarbs    > 0 ? Math.min(100, (consumedCarbs     / totalCarbs)    * 100) : 0;
   const fatPct  = totalFat      > 0 ? Math.min(100, (consumedFat       / totalFat)      * 100) : 0;
@@ -573,6 +580,26 @@ export default function DailyMealPlanView({
             })}
           </div>
 
+          {/* Free calories card */}
+          {freeCalories > 0 && (
+            <div className="mt-3 border-2 border-dashed border-[#c8e6cc] rounded-xl px-4 py-3 flex items-center gap-3 bg-[#f4faf5]">
+              <div className="w-8 h-8 rounded-full bg-white border border-[#c8e6cc] flex items-center justify-center text-sm font-bold text-primary shrink-0">
+                +
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-forest">
+                  {Math.round(freeCalories)} kcal free
+                </p>
+                <p className="text-[10px] text-[#5a7a5d] mt-0.5">
+                  Use on any snack you like — not tracked
+                </p>
+              </div>
+              <span className="text-[10px] font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full shrink-0">
+                Flex
+              </span>
+            </div>
+          )}
+
         </div>
       )}
 
@@ -607,7 +634,7 @@ export default function DailyMealPlanView({
               </span>
               <span className="text-xl font-bold mx-1" style={{ color: "#C8D4C8" }}>/</span>
               <span className="text-xl font-bold tabular-nums" style={{ color: "#0d1f10" }}>
-                {Math.round(totalCalories)}
+                {Math.round(budgetCalories)}
               </span>
               <span className="text-sm font-medium ml-1.5" style={{ color: "#C8D4C8" }}>kcal</span>
             </div>

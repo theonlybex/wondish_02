@@ -2,7 +2,6 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { generateMealPlan } from "@/lib/meal-plan";
-import { addDays } from "date-fns";
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -18,11 +17,11 @@ export async function POST(req: NextRequest) {
 
   const start = new Date(startDate);
   start.setHours(0, 0, 0, 0);
-  const end = addDays(start, 34);
-  end.setHours(23, 59, 59, 999);
 
+  // Wipe all existing menus before generating a fresh plan.
+  await prisma.menu.deleteMany({ where: { patientId: patient.id } });
   await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: start } });
-  const count = await generateMealPlan(patient.id, start, end);
+  const count = await generateMealPlan(patient.id, start);
 
   return NextResponse.json({ ok: true, count, startDate: start.toISOString() });
 }

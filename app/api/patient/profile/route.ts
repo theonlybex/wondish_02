@@ -2,7 +2,6 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { generateMealPlan } from "@/lib/meal-plan";
-import { addDays } from "date-fns";
 import { convertWeight, convertHeight, calcCBMI } from "@/lib/caloric-engine";
 
 async function getOrCreateAccount(userId: string) {
@@ -81,7 +80,7 @@ export async function PATCH(req: NextRequest) {
   const {
     firstName, lastName, birthday, sexAtBirth, height, heightUnit,
     heightFt, heightIn,
-    weight, weightUnit, physicalActivityId, goalWeight, goalWeightUnit, weeklyGoal,
+    weight, weightUnit, physicalActivityId, goalWeight, goalWeightUnit,
     motivationIds, healthConditionIds, foodPreferenceIds, foodToAvoidIds, foodAllergyIds,
   } = body;
 
@@ -132,7 +131,6 @@ export async function PATCH(req: NextRequest) {
       physicalActivityId: physicalActivityId || null,
       goalWeight: goalWeight ? parseFloat(goalWeight) : null,
       goalWeightUnit: goalWeightUnit ?? "lbs",
-      weeklyGoal: weeklyGoal ? parseFloat(weeklyGoal) : null,
       profileCompleted: isProfileComplete,
     },
     update: {
@@ -148,7 +146,6 @@ export async function PATCH(req: NextRequest) {
       physicalActivityId: physicalActivityId || null,
       goalWeight: goalWeight ? parseFloat(goalWeight) : undefined,
       goalWeightUnit: goalWeightUnit ?? "lbs",
-      weeklyGoal: weeklyGoal ? parseFloat(weeklyGoal) : undefined,
       ...(isProfileComplete ? { profileCompleted: true } : {}),
     },
   });
@@ -179,7 +176,6 @@ export async function PATCH(req: NextRequest) {
   // Detect whether any meal-plan-affecting fields changed
   const sorted = (arr: string[]) => JSON.stringify([...arr].sort());
   const mealPlanFieldsChanged = existing != null && (
-    existing.weeklyGoal        !== (weeklyGoal        ? parseFloat(weeklyGoal)        : null) ||
     existing.physicalActivityId !== (physicalActivityId || null) ||
     existing.weight             !== (weight            ? parseFloat(weight)            : null) ||
     existing.sexAtBirth         !== (sexAtBirth        || null) ||
@@ -193,31 +189,13 @@ export async function PATCH(req: NextRequest) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  if (!patient.mealPlanStartDate) {
-    // First save: generate the full 35-day plan per spec.
-    const planEnd = addDays(today, 34);
-    planEnd.setHours(23, 59, 59, 999);
+  if (!patient.mealPlanStartDate || mealPlanFieldsChanged) {
+    // First save or profile changed: generate a fresh plan from today.
     try {
       await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
-      await generateMealPlan(patient.id, today, planEnd);
+      await generateMealPlan(patient.id, today);
     } catch (e) {
       console.error("[profile] meal plan generation failed:", e);
-    }
-  } else if (mealPlanFieldsChanged) {
-    // Profile changed: regenerate from today to the end of the original 35-day window.
-    // If the plan has expired, reset the start date to today and generate a fresh 35 days.
-    const originalEnd = addDays(new Date(patient.mealPlanStartDate), 34);
-    originalEnd.setHours(23, 59, 59, 999);
-    const planExpired = originalEnd <= today;
-    const regenEnd = planExpired ? addDays(today, 34) : originalEnd;
-    regenEnd.setHours(23, 59, 59, 999);
-    try {
-      if (planExpired) {
-        await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
-      }
-      await generateMealPlan(patient.id, today, regenEnd);
-    } catch (e) {
-      console.error("[profile] meal plan regeneration failed:", e);
     }
   }
 

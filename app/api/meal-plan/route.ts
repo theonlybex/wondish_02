@@ -3,6 +3,51 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { generateMealPlan } from "@/lib/meal-plan";
 import { addDays } from "date-fns";
+import { computeAllMetrics, gradualDailyCals, type CaloricProfileInput } from "@/lib/caloric-engine";
+
+function computeDailyTarget(
+  patient: {
+    mealPlanStartDate: Date | null;
+    weight: number | null; weightUnit: string | null;
+    goalWeight: number | null; goalWeightUnit: string | null;
+    height: number | null; heightUnit: string | null;
+    sexAtBirth: string | null; birthday: Date | null;
+    physicalActivity: { level: number } | null;
+  },
+  targetDate: Date,
+): number | null {
+  if (!patient.mealPlanStartDate || !patient.weight || !patient.height || !patient.birthday || !patient.physicalActivity?.level) return null;
+  const s = (patient.sexAtBirth ?? "").toLowerCase();
+  const sex = s === "male" ? "male" as const : s === "female" ? "female" as const : null;
+  if (!sex) return null;
+
+  const pi: CaloricProfileInput = {
+    sex,
+    birthday:     new Date(patient.birthday),
+    heightValue:  patient.height,
+    heightUnit:   patient.heightUnit === "in" ? "in" : "cm",
+    cbwValue:     patient.weight,
+    cbwUnit:      (patient.weightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs",
+    activityLevel: patient.physicalActivity.level,
+    utbwValue:    patient.goalWeight,
+    utbwUnit:     (patient.goalWeightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs" | null,
+  };
+  const profile  = computeAllMetrics(pi);
+  const planStart = new Date(patient.mealPlanStartDate);
+  planStart.setHours(0, 0, 0, 0);
+  const tgt = new Date(targetDate);
+  tgt.setHours(0, 0, 0, 0);
+  const dayNumber = Math.round((tgt.getTime() - planStart.getTime()) / 86400000) + 1;
+  if (dayNumber < 1) return null;
+
+  return gradualDailyCals(
+    Math.round(profile.tdeeCBW),
+    dayNumber,
+    profile.cbmiClass,
+    profile.minCaloriesValue,
+    Math.round(profile.targetCalories),
+  );
+}
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -11,7 +56,17 @@ export async function GET(req: NextRequest) {
   const account = await prisma.account.findUnique({ where: { clerkId: userId } });
   if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
 
-  const patient = await prisma.patient.findUnique({ where: { accountId: account.id } });
+  const patient = await prisma.patient.findUnique({
+    where: { accountId: account.id },
+    select: {
+      id: true, mealPlanStartDate: true,
+      weight: true, weightUnit: true,
+      goalWeight: true, goalWeightUnit: true,
+      height: true, heightUnit: true,
+      sexAtBirth: true, birthday: true,
+      physicalActivity: { select: { level: true } },
+    },
+  });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
   const { searchParams } = new URL(req.url);
@@ -63,7 +118,9 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ menus, mealPlanStartDate: patient.mealPlanStartDate, loggedRecipeIds, mealRatings });
+  const dailyCalorieTarget = !weekStartParam ? computeDailyTarget(patient, startDate) : null;
+
+  return NextResponse.json({ menus, mealPlanStartDate: patient.mealPlanStartDate, loggedRecipeIds, mealRatings, dailyCalorieTarget });
 }
 
 export async function POST(req: NextRequest) {
@@ -88,19 +145,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Profile not complete" }, { status: 422 });
   }
 
-  const { startDate, endDate } = await req.json();
+  const { startDate } = await req.json();
   const start = new Date(startDate);
-  const end   = new Date(endDate);
 
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-    return NextResponse.json({ error: "Invalid date range" }, { status: 400 });
-  }
-  const daysDiff = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-  if (daysDiff < 0 || daysDiff > 35) {
-    return NextResponse.json({ error: "Date range must be between 1 and 35 days" }, { status: 400 });
+  if (isNaN(start.getTime())) {
+    return NextResponse.json({ error: "Invalid date" }, { status: 400 });
   }
 
-  const count = await generateMealPlan(patient.id, start, end);
+  const count = await generateMealPlan(patient.id, start);
 
   return NextResponse.json({ ok: true, count });
 }

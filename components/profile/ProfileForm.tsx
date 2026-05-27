@@ -405,21 +405,6 @@ export default function ProfileForm({
               />
             </div>
           </div>
-          <Select
-            label="Weekly Goal"
-            value={form.weeklyGoal}
-            onChange={(e) => setForm((f) => ({ ...f, weeklyGoal: e.target.value }))}
-            options={[
-              { value: "0.25", label: "Lose 0.25 kg/week" },
-              { value: "0.5", label: "Lose 0.5 kg/week" },
-              { value: "0.75", label: "Lose 0.75 kg/week" },
-              { value: "1", label: "Lose 1 kg/week" },
-              { value: "0", label: "Maintain weight" },
-              { value: "-0.25", label: "Gain 0.25 kg/week" },
-              { value: "-0.5", label: "Gain 0.5 kg/week" },
-            ]}
-            placeholder="Select weekly goal"
-          />
         </div>
         <MultiSelectChips
           label="Motivations"

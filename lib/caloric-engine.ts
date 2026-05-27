@@ -428,7 +428,7 @@ export function computeAllMetrics(input: CaloricProfileInput): CaloricProfile {
 // Weekly deficit/surplus applied to TDEE based on BMI class.
 // Overweight → subtract; underweight → add; healthy → no change.
 // Index is 1-based week number. Weeks beyond 5 use the week-5 value.
-const DEFICIT_BY_WEEK = [0, 300, 300, 400, 400, 400] as const;
+const DEFICIT_BY_WEEK = [0, 300, 300, 300, 400, 400] as const;
 
 /**
  * Returns the kcal adjustment for a given week of the 35-day plan.
@@ -455,6 +455,94 @@ export function weeklyDailyCals(
 ): number {
   const adjustment = slowDeficitForWeek(cbmiClass, weekNumber);
   return Math.max(Math.round(tdeeCBW - adjustment), minCal);
+}
+
+// ─── Gradual Cumulative Deficit Schedule ──────────────────────────────────────
+// Each week ramps the deficit linearly within the week, picking up where the
+// previous week left off. Weeks 1–3 each add 300 kcal/day; week 4+ each add 400.
+//
+// Example (TDEE = 3000):
+//   Day 1  → deficit ≈  43 kcal  →  ~2957 kcal
+//   Day 7  → deficit = 300 kcal  →   2700 kcal
+//   Day 8  → deficit ≈ 343 kcal  →  ~2657 kcal
+//   Day 14 → deficit = 600 kcal  →   2400 kcal
+//   Day 28 → deficit =1300 kcal  →   1700 kcal
+
+/**
+ * Raw deficit magnitude for a given 1-indexed plan day.
+ * Grows linearly within each week, cumulating across weeks.
+ */
+export function gradualDailyDeficit(dayNumber: number): number {
+  const weekIndex  = Math.floor((dayNumber - 1) / 7); // 0-based week
+  const dayInWeek  = ((dayNumber - 1) % 7) + 1;       // 1–7
+
+  const increment          = weekIndex < 3 ? 300 : 400;
+  const deficitAtWeekStart = weekIndex < 3
+    ? weekIndex * 300
+    : 900 + (weekIndex - 3) * 400;
+
+  return deficitAtWeekStart + (dayInWeek / 7) * increment;
+}
+
+/**
+ * Daily calorie target using the gradual cumulative deficit schedule.
+ * Clamps to max(minCal, maintenanceFloor) — the TDEE at the patient's goal weight.
+ */
+export function gradualDailyCals(
+  tdeeCBW: number,
+  dayNumber: number,
+  cbmiClass: CBMIClass,
+  minCal: number,
+  maintenanceFloor: number,
+): number {
+  const floor = Math.max(minCal, maintenanceFloor);
+  if (cbmiClass === "overweight" || cbmiClass === "obese") {
+    return Math.max(Math.round(tdeeCBW - gradualDailyDeficit(dayNumber)), floor);
+  }
+  if (cbmiClass === "underweight") {
+    return Math.round(tdeeCBW + gradualDailyDeficit(dayNumber));
+  }
+  return Math.round(tdeeCBW);
+}
+
+/**
+ * Estimate the number of days to reach a weight-loss goal using the gradual
+ * cumulative deficit schedule, given TDEE at current weight and TDEE at goal
+ * weight (maintenanceFloor). Returns 0 if no weight loss is needed/possible.
+ */
+export function estimateDaysToGoalWeight(
+  tdeeCBW: number,
+  maintenanceFloor: number,
+  weightToLoseKg: number,
+  cbmiClass: CBMIClass,
+  minCal: number,
+): number {
+  if (cbmiClass !== "overweight" && cbmiClass !== "obese") return 0;
+  if (weightToLoseKg <= 0) return 0;
+
+  const totalKcalNeeded = weightToLoseKg * 7700;
+  const effectiveFloor  = Math.max(minCal, maintenanceFloor);
+  if (tdeeCBW <= effectiveFloor) return 0;
+
+  let totalDeficit = 0;
+
+  for (let day = 1; day <= 3650; day++) {
+    const dailyCals  = gradualDailyCals(tdeeCBW, day, cbmiClass, minCal, maintenanceFloor);
+    const dayDeficit = tdeeCBW - dailyCals;
+    if (dayDeficit <= 0) return 3650;
+
+    totalDeficit += dayDeficit;
+    if (totalDeficit >= totalKcalNeeded) return day;
+
+    // Once ramp hits the floor, compute remaining days analytically
+    if (dailyCals <= effectiveFloor) {
+      const steadyDeficit = tdeeCBW - effectiveFloor;
+      const remainingKcal = totalKcalNeeded - totalDeficit;
+      return day + Math.ceil(remainingKcal / steadyDeficit);
+    }
+  }
+
+  return 3650;
 }
 
 // ─── Macro Profiles ───────────────────────────────────────────────────────────

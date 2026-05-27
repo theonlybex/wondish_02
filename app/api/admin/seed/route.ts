@@ -77,7 +77,6 @@ export async function POST() {
 
     await prisma.motivation.createMany({
       data: [
-        { name: "Lose weight" },
         { name: "Build muscle" },
         { name: "Improve energy" },
         { name: "Manage a health condition" },

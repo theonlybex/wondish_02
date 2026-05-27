@@ -48,7 +48,7 @@ export default async function WeeklyPlanPage() {
       if (!patient.mealPlanStartDate) {
         await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
       }
-      await generateMealPlan(patient.id, today, addDays(today, 34));
+      await generateMealPlan(patient.id, today);
       menus = await prisma.menu.findMany({
         where: { patient: { account: { clerkId: userId } }, date: { gte: weekStart, lte: weekEnd } },
         include: menuInclude,

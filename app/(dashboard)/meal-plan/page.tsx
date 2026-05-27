@@ -1,9 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { format, addDays } from "date-fns";
+import { format } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import { generateMealPlan } from "@/lib/meal-plan";
+import { computeAllMetrics, gradualDailyCals, type CaloricProfileInput } from "@/lib/caloric-engine";
 import DailyMealPlanView from "@/components/meal-plan/DailyMealPlanView";
 import Link from "next/link";
 
@@ -42,7 +43,14 @@ export default async function MealPlanPage() {
     }),
     prisma.patient.findFirst({
       where: { account: { clerkId: userId } },
-      select: { id: true, mealPlanStartDate: true, profileCompleted: true },
+      select: {
+        id: true, mealPlanStartDate: true, profileCompleted: true,
+        weight: true, weightUnit: true,
+        goalWeight: true, goalWeightUnit: true,
+        height: true, heightUnit: true,
+        sexAtBirth: true, birthday: true,
+        physicalActivity: { select: { level: true } },
+      },
     }),
   ]);
 
@@ -53,7 +61,7 @@ export default async function MealPlanPage() {
       if (!patient.mealPlanStartDate) {
         await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
       }
-      await generateMealPlan(patient.id, today, addDays(today, 34));
+      await generateMealPlan(patient.id, today);
       finalMenus = await prisma.menu.findMany({
         where: { patient: { account: { clerkId: userId } }, date: { gte: today, lte: todayEnd } },
         include: {
@@ -78,6 +86,41 @@ export default async function MealPlanPage() {
   const initialMealRatings: Record<string, number> = {};
   for (const m of activeMeals) {
     if (m.recipeId && m.rating != null) initialMealRatings[m.recipeId] = m.rating;
+  }
+
+  let initialDailyCalorieTarget: number | null = null;
+  if (
+    patient?.mealPlanStartDate && patient.weight && patient.height &&
+    patient.birthday && patient.physicalActivity?.level
+  ) {
+    const s = (patient.sexAtBirth ?? "").toLowerCase();
+    const sex = s === "male" ? "male" as const : s === "female" ? "female" as const : null;
+    if (sex) {
+      const pi: CaloricProfileInput = {
+        sex,
+        birthday:     new Date(patient.birthday),
+        heightValue:  patient.height,
+        heightUnit:   patient.heightUnit === "in" ? "in" : "cm",
+        cbwValue:     patient.weight,
+        cbwUnit:      (patient.weightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs",
+        activityLevel: patient.physicalActivity.level,
+        utbwValue:    patient.goalWeight,
+        utbwUnit:     (patient.goalWeightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs" | null,
+      };
+      const profile = computeAllMetrics(pi);
+      const planStart = new Date(patient.mealPlanStartDate);
+      planStart.setHours(0, 0, 0, 0);
+      const dayNumber = Math.round((today.getTime() - planStart.getTime()) / 86400000) + 1;
+      if (dayNumber >= 1) {
+        initialDailyCalorieTarget = gradualDailyCals(
+          Math.round(profile.tdeeCBW),
+          dayNumber,
+          profile.cbmiClass,
+          profile.minCaloriesValue,
+          Math.round(profile.targetCalories),
+        );
+      }
+    }
   }
 
   return (
@@ -120,6 +163,7 @@ export default async function MealPlanPage() {
           mealPlanStartDate={patient?.mealPlanStartDate?.toISOString() ?? null}
           initialLoggedRecipeIds={loggedRecipeIds}
           initialMealRatings={initialMealRatings}
+          initialDailyCalorieTarget={initialDailyCalorieTarget}
         />
       </div>
     </div>
