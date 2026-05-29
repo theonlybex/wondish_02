@@ -17,7 +17,7 @@ export default async function PricingSection({ isLoggedIn = false }: { isLoggedI
   const premiumFeatures = [t("premiumF1"), t("premiumF2"), t("premiumF3"), t("premiumF4"), t("premiumF5"), t("premiumF6"), t("premiumF7"), t("premiumF8"), t("premiumF9"), t("premiumF10")];
 
   return (
-    <section className="bg-[#F8F7FA] py-24 px-5 sm:px-8">
+    <section id="pricing" className="bg-[#F8F7FA] py-24 px-5 sm:px-8">
       <div className="max-w-6xl mx-auto">
         <div className="text-center max-w-xl mx-auto mb-14">
           <p className="text-primary text-sm font-semibold uppercase tracking-widest mb-4">{t("eyebrow")}</p>

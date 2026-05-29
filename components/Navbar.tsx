@@ -6,11 +6,29 @@ import { useAuth, useClerk } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
 import LanguageSwitcher from "./LanguageSwitcher";
 
+const navLinks = [
+  { label: "Features", href: "#features" },
+  { label: "How It Works", href: "#how-it-works" },
+  { label: "Menu", href: "#menu" },
+  { label: "Pricing", href: "#pricing" },
+];
+
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const { isSignedIn } = useAuth();
   const { signOut } = useClerk();
   const t = useTranslations("navbar");
+
+  const handleAnchorClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (href.startsWith("#")) {
+      e.preventDefault();
+      const el = document.querySelector(href);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth" });
+      }
+      setOpen(false);
+    }
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-forest-deeper/95 backdrop-blur-md border-b border-white/[0.07]">
@@ -27,12 +45,16 @@ export default function Navbar() {
 
           {/* Center nav */}
           <nav className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
-            <Link href="/dishes" className="text-white/60 hover:text-white px-4 py-2 rounded-lg hover:bg-white/[0.06] transition-all duration-150 text-sm font-medium">
-              {t("dishes")}
-            </Link>
-            <Link href="/pricing" className="text-white/60 hover:text-white px-4 py-2 rounded-lg hover:bg-white/[0.06] transition-all duration-150 text-sm font-medium">
-              Plans
-            </Link>
+            {navLinks.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                onClick={(e) => handleAnchorClick(e, link.href)}
+                className="text-white/60 hover:text-white px-4 py-2 rounded-lg hover:bg-white/[0.06] transition-all duration-150 text-sm font-medium"
+              >
+                {link.label}
+              </a>
+            ))}
           </nav>
 
           {/* Right actions */}
@@ -40,7 +62,7 @@ export default function Navbar() {
             <LanguageSwitcher />
             {isSignedIn ? (
               <>
-                <Link href="/overview" className="bg-primary hover:bg-primary-dark text-forest-deeper px-4 py-2 rounded-lg transition-all duration-150 text-sm font-semibold shadow-lg shadow-primary/20">
+                <Link href="/overview" className="bg-primary hover:bg-primary-dark text-forest-deeper px-5 py-2 rounded-full transition-all duration-150 text-sm font-semibold shadow-lg shadow-primary/20">
                   {t("dashboard")}
                 </Link>
                 <button
@@ -51,14 +73,9 @@ export default function Navbar() {
                 </button>
               </>
             ) : (
-              <>
-                <Link href="/login" className="text-white hover:text-white/80 px-4 py-2 rounded-lg hover:bg-white/[0.06] transition-all duration-150 text-sm font-medium">
-                  {t("login")}
-                </Link>
-                <Link href="/register" className="bg-primary hover:bg-primary-dark text-forest-deeper px-4 py-2 rounded-lg transition-all duration-150 text-sm font-semibold shadow-lg shadow-primary/20">
-                  {t("getStarted")}
-                </Link>
-              </>
+              <Link href="/register" className="bg-primary hover:bg-primary-dark text-forest-deeper px-5 py-2 rounded-full transition-all duration-150 text-sm font-semibold shadow-lg shadow-primary/20">
+                {t("getStarted")}
+              </Link>
             )}
           </div>
 
@@ -81,16 +98,20 @@ export default function Navbar() {
       {open && (
         <div className="md:hidden border-t border-white/[0.06] bg-forest-deeper">
           <div className="max-w-6xl mx-auto px-5 py-4 flex flex-col gap-1">
-            <Link href="/dishes" onClick={() => setOpen(false)} className="text-white/60 hover:text-white px-3 py-2.5 rounded-lg hover:bg-white/[0.06] text-sm font-medium">
-              {t("dishes")}
-            </Link>
-            <Link href="/pricing" onClick={() => setOpen(false)} className="text-white/60 hover:text-white px-3 py-2.5 rounded-lg hover:bg-white/[0.06] text-sm font-medium">
-              Plans
-            </Link>
+            {navLinks.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                onClick={(e) => handleAnchorClick(e, link.href)}
+                className="text-white/60 hover:text-white px-3 py-2.5 rounded-lg hover:bg-white/[0.06] text-sm font-medium"
+              >
+                {link.label}
+              </a>
+            ))}
             <div className="border-t border-white/[0.06] mt-2 pt-2 flex flex-col gap-2">
               {isSignedIn ? (
                 <>
-                  <Link href="/overview" onClick={() => setOpen(false)} className="bg-primary text-forest-deeper px-3 py-2.5 rounded-lg text-sm font-semibold text-center">
+                  <Link href="/overview" onClick={() => setOpen(false)} className="bg-primary text-forest-deeper px-3 py-2.5 rounded-full text-sm font-semibold text-center">
                     {t("dashboard")}
                   </Link>
                   <button
@@ -101,14 +122,9 @@ export default function Navbar() {
                   </button>
                 </>
               ) : (
-                <>
-                  <Link href="/login" onClick={() => setOpen(false)} className="text-white hover:text-white/80 px-3 py-2.5 rounded-lg hover:bg-white/[0.06] text-sm font-medium">
-                    {t("login")}
-                  </Link>
-                  <Link href="/register" onClick={() => setOpen(false)} className="bg-primary hover:bg-primary-dark text-forest-deeper px-3 py-2.5 rounded-lg text-sm font-semibold text-center">
-                    {t("getStarted")}
-                  </Link>
-                </>
+                <Link href="/register" onClick={() => setOpen(false)} className="bg-primary hover:bg-primary-dark text-forest-deeper px-3 py-2.5 rounded-full text-sm font-semibold text-center">
+                  {t("getStarted")}
+                </Link>
               )}
               <div className="pt-1">
                 <LanguageSwitcher />

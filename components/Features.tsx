@@ -77,7 +77,7 @@ export default async function Features() {
   const [featured, ...rest] = features;
 
   return (
-    <section className="bg-white py-24 px-5 sm:px-8">
+    <section id="features" className="bg-white py-24 px-5 sm:px-8">
       <div className="max-w-6xl mx-auto">
         <div className="max-w-2xl mb-16">
           <p className="text-primary text-sm font-semibold uppercase tracking-widest mb-4">{t("eyebrow")}</p>

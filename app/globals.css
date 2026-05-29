@@ -22,6 +22,10 @@
   * {
     @apply border-0 box-border;
   }
+
+  [id] {
+    scroll-margin-top: 5rem;
+  }
 }
 
 @layer utilities {

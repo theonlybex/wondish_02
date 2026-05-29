@@ -1,4 +1,5 @@
 import Hero from "@/components/Hero";
+import Features from "@/components/Features";
 import CustomizationLayers from "@/components/CustomizationLayers";
 import DishTinderPromo from "@/components/DishTinderPromo";
 import PredictionTeaser from "@/components/PredictionTeaser";
@@ -11,9 +12,10 @@ export default function HomePage() {
   return (
     <>
       <Hero />
-      <DishesPreview />
+      <Features />
       <DishTinderPromo />
       <HowItWorks />
+      <DishesPreview />
       <PredictionTeaser />
       <CustomizationLayers />
       <PricingSection />

@@ -9,7 +9,7 @@ export default async function DishesPreview() {
   const row2 = [...dishes.slice(Math.floor(dishes.length / 2)), ...dishes, ...dishes.slice(0, Math.floor(dishes.length / 2)), ...dishes];
 
   return (
-    <section className="bg-white py-24 overflow-hidden">
+    <section id="menu" className="bg-white py-24 overflow-hidden">
       <style>{`
         @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
         .marquee-row { display: flex; width: max-content; gap: 16px; }
