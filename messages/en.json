@@ -9,15 +9,17 @@
   },
   "hero": {
     "badge": "Rated 4.9/5 by 10,000+ members",
-    "headline1": "You eat.",
-    "headline2": "We take care of the rest.",
-    "subheadline": "AI-powered meal planner built around the best ingredients.",
+    "eyebrow": "AI-Powered Meal Planning",
+    "headline1": "Eat smarter.",
+    "headline2": "Live better.",
+    "subheadline": "AI-powered meal plans built from your body, your goals, and the ingredients you already have. Personalized nutrition, simplified.",
     "scroll": "scroll",
     "assembled": "assembled",
     "statsRecipes": "Recipes",
     "statsMembers": "Members",
     "statsPerMonth": "Per month",
-    "getStarted": "Get started",
+    "getStarted": "Get Started",
+    "seeHowItWorks": "See How It Works",
     "browseDishes": "Browse dishes"
   },
   "socialProof": {

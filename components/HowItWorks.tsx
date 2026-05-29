@@ -75,6 +75,7 @@ const CONN_DELAYS = ["0s", "0.6s", "1.2s", "1.8s"];
 export default function HowItWorks() {
   return (
     <section
+      id="how-it-works"
       style={{
         background: "#ffffff",
       }}
