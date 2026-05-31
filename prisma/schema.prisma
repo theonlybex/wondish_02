@@ -142,6 +142,13 @@ model Patient {
   weeklyGoal         Float? // kg per week
   mealPlanStartDate  DateTime?
 
+  // Meal-plan reliability (Phase A)
+  activePlanVersion    Int            @default(0)
+  mealPlanStatus       MealPlanStatus @default(IDLE)
+  mealPlanStale        Boolean        @default(false)
+  mealPlanGenStartedAt DateTime?
+  mealPlanError        String?
+
   foodPreferences   PatientFoodPreference[]
   foodToAvoid       PatientFoodToAvoid[]
   foodAllergies     PatientFoodAllergy[]
@@ -395,16 +402,26 @@ model Ethnic {
 
 // ─── Meal Planning ────────────────────────────────────────────────────────────
 
+enum MealPlanStatus {
+  IDLE
+  GENERATING
+  READY
+  FAILED
+}
+
 model Menu {
-  id         String    @id @default(cuid())
-  patientId  String
-  patient    Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  recipeId   String
-  recipe     Recipe    @relation(fields: [recipeId], references: [id])
-  mealTypeId String?
-  mealType   MealType? @relation(fields: [mealTypeId], references: [id])
-  date       DateTime
-  createdAt  DateTime  @default(now())
+  id          String    @id @default(cuid())
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recipeId    String
+  recipe      Recipe    @relation(fields: [recipeId], references: [id])
+  mealTypeId  String?
+  mealType    MealType? @relation(fields: [mealTypeId], references: [id])
+  date        DateTime
+  planVersion Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@index([patientId, planVersion, date])
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
