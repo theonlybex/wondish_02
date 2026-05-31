@@ -17,9 +17,15 @@ export default async function GroceryListPage() {
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
+  const planPatient = await prisma.patient.findFirst({
+    where: { account: { clerkId: userId } },
+    select: { activePlanVersion: true },
+  });
+
   const menus = await prisma.menu.findMany({
     where: {
       patient: { account: { clerkId: userId } },
+      planVersion: planPatient?.activePlanVersion ?? 0,
       date: { gte: weekStart, lte: weekEnd },
     },
     include: {

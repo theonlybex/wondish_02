@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { generateMealPlan } from "@/lib/meal-plan";
+import { regeneratePlan, MealPlanBusyError } from "@/lib/meal-plan-runner";
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -18,10 +18,14 @@ export async function POST(req: NextRequest) {
   const start = new Date(startDate);
   start.setHours(0, 0, 0, 0);
 
-  // Wipe all existing menus before generating a fresh plan.
-  await prisma.menu.deleteMany({ where: { patientId: patient.id } });
-  await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: start } });
-  const count = await generateMealPlan(patient.id, start);
-
-  return NextResponse.json({ ok: true, count, startDate: start.toISOString() });
+  // Atomic blue/green regenerate — no unguarded wipe.
+  try {
+    const count = await regeneratePlan(patient.id, start);
+    return NextResponse.json({ ok: true, count, startDate: start.toISOString() });
+  } catch (err) {
+    if (err instanceof MealPlanBusyError) {
+      return NextResponse.json({ error: "A plan is already being generated." }, { status: 409 });
+    }
+    throw err;
+  }
 }

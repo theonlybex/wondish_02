@@ -18,10 +18,16 @@ export default async function JournalPage() {
   const todayEnd = new Date(today);
   todayEnd.setHours(23, 59, 59, 999);
 
+  const planPatient = await prisma.patient.findFirst({
+    where: { account: { clerkId: userId } },
+    select: { activePlanVersion: true },
+  });
+
   const [menus, journalEntry] = await Promise.all([
     prisma.menu.findMany({
       where: {
         patient: { account: { clerkId: userId } },
+        planVersion: planPatient?.activePlanVersion ?? 0,
         date: { gte: today, lte: todayEnd },
       },
       include: { recipe: true, mealType: true },

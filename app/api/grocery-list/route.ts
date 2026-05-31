@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   endDate.setHours(23, 59, 59, 999);
 
   const menus = await prisma.menu.findMany({
-    where: { patientId: patient.id, date: { gte: startDate, lte: endDate } },
+    where: { patientId: patient.id, planVersion: patient.activePlanVersion, date: { gte: startDate, lte: endDate } },
     include: { recipe: { include: { ingredients: { include: { ingredient: true } } } } },
   });
 

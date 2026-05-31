@@ -135,10 +135,15 @@ function trackChosen(
   if (recipe.subFamily) mealSubFamilies.add(recipe.subFamily);
 }
 
-export async function generateMealPlan(
+export type MenuRow = { patientId: string; recipeId: string; mealTypeId: string; date: Date; planVersion: number };
+
+// Pure builder: computes the menu rows for a plan. Does NOT touch the menu table.
+// Persistence + version flip is handled by the orchestrator (meal-plan-runner).
+export async function buildMealPlanMenus(
   patientId: string,
   startDate: Date,
-): Promise<number> {
+  planVersion: number,
+): Promise<MenuRow[]> {
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
     include: {
@@ -264,9 +269,7 @@ export async function generateMealPlan(
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
 
-  await prisma.menu.deleteMany({ where: { patientId } });
-
-  const menus: { patientId: string; recipeId: string; mealTypeId: string; date: Date }[] = [];
+  const menus: MenuRow[] = [];
 
   const hasContentFilter = {
     ingredients: { some: {} },
@@ -382,7 +385,7 @@ export async function generateMealPlan(
         trackChosen(recipe, dailyFamilies, mealSubFamilies, weekUsedIds);
         mealCalories += recipe.calories ?? 0;
         dayCalories  += recipe.calories ?? 0;
-        menus.push({ patientId, recipeId: recipe.id, mealTypeId: mealType.id, date: new Date(current) });
+        menus.push({ patientId, recipeId: recipe.id, mealTypeId: mealType.id, date: new Date(current), planVersion });
       };
 
       const pick = (pool: RecipeCandidate[]) =>
@@ -478,15 +481,12 @@ export async function generateMealPlan(
         extraCount++;
         weekUsedIds.add(extra.id);
         if (extra.family && !isBeverageExempt(extra)) dailyFamilies.add(extra.family);
-        menus.push({ patientId, recipeId: extra.id, mealTypeId: snackMealType.id, date: new Date(current) });
+        menus.push({ patientId, recipeId: extra.id, mealTypeId: snackMealType.id, date: new Date(current), planVersion });
       }
     }
 
     current.setDate(current.getDate() + 1);
   }
 
-  if (menus.length > 0) {
-    await prisma.menu.createMany({ data: menus });
-  }
-  return menus.length;
+  return menus;
 }

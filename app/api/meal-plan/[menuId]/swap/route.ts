@@ -28,7 +28,7 @@ export async function PATCH(
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
   const menu = await prisma.menu.findFirst({
-    where: { id: params.menuId, patientId: patient.id },
+    where: { id: params.menuId, patientId: patient.id, planVersion: patient.activePlanVersion },
   });
   if (!menu) return NextResponse.json({ error: "Menu not found" }, { status: 404 });
 
@@ -89,9 +89,10 @@ export async function PATCH(
 
   const sameDayMenus = await prisma.menu.findMany({
     where: {
-      patientId: patient.id,
-      id:        { not: params.menuId },
-      date:      { gte: dayStart, lte: dayEnd },
+      patientId:   patient.id,
+      planVersion: patient.activePlanVersion,
+      id:          { not: params.menuId },
+      date:        { gte: dayStart, lte: dayEnd },
     },
     include: {
       recipe: {
