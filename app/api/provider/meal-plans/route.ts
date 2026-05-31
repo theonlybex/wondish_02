@@ -31,5 +31,7 @@ export async function GET(req: NextRequest) {
     orderBy: [{ patient: { account: { firstName: "asc" } } }, { mealType: { name: "asc" } }],
   });
 
-  return NextResponse.json({ menus });
+  // Only the active plan version per patient (blue/green: ignore in-flight versions).
+  const activeMenus = menus.filter((m) => m.planVersion === m.patient.activePlanVersion);
+  return NextResponse.json({ menus: activeMenus });
 }

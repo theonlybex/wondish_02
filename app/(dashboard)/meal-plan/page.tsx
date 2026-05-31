@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { format } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
-import { generateMealPlan } from "@/lib/meal-plan";
 import { computeAllMetrics, gradualDailyCals, type CaloricProfileInput } from "@/lib/caloric-engine";
 import DailyMealPlanView from "@/components/meal-plan/DailyMealPlanView";
 import Link from "next/link";
@@ -45,6 +44,7 @@ export default async function MealPlanPage() {
       where: { account: { clerkId: userId } },
       select: {
         id: true, mealPlanStartDate: true, profileCompleted: true,
+        activePlanVersion: true, mealPlanStatus: true, mealPlanStale: true,
         weight: true, weightUnit: true,
         goalWeight: true, goalWeightUnit: true,
         height: true, heightUnit: true,
@@ -54,32 +54,10 @@ export default async function MealPlanPage() {
     }),
   ]);
 
-  // Auto-generate a fresh 35-day plan when no meals exist for today
-  let finalMenus = menus;
-  if (menus.length === 0 && patient?.id && patient.profileCompleted) {
-    try {
-      if (!patient.mealPlanStartDate) {
-        await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
-      }
-      await generateMealPlan(patient.id, today);
-      finalMenus = await prisma.menu.findMany({
-        where: { patient: { account: { clerkId: userId } }, date: { gte: today, lte: todayEnd } },
-        include: {
-          recipe: {
-            include: {
-              mealType: true,
-              dishType: true,
-              ingredients: { include: { ingredient: true } },
-            },
-          },
-          mealType: true,
-        },
-        orderBy: { mealType: { name: "asc" } },
-      });
-    } catch {
-      // Profile incomplete or generation error — show empty state
-    }
-  }
+  // Show only the active plan version. First-time generation is triggered
+  // client-side by DailyMealPlanView (Strategy B) — the page never generates.
+  const activeVersion = patient?.activePlanVersion ?? 0;
+  const finalMenus = menus.filter((m) => m.planVersion === activeVersion);
 
   const activeMeals = (todayJournal?.meals ?? []).filter((m) => !m.skipped && m.recipeId);
   const loggedRecipeIds = activeMeals.map((m) => m.recipeId as string);
@@ -164,6 +142,7 @@ export default async function MealPlanPage() {
           initialLoggedRecipeIds={loggedRecipeIds}
           initialMealRatings={initialMealRatings}
           initialDailyCalorieTarget={initialDailyCalorieTarget}
+          initialStale={patient?.mealPlanStale ?? false}
         />
       </div>
     </div>

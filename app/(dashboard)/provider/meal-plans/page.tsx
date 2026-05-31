@@ -28,9 +28,12 @@ export default async function ProviderMealPlansPage() {
     orderBy: [{ mealType: { name: "asc" } }],
   });
 
+  // Only the active plan version per patient (blue/green: ignore in-flight versions).
+  const activeMenus = menus.filter((m) => m.planVersion === m.patient.activePlanVersion);
+
   // Group by patient
   const byPatient: Record<string, { name: string; email: string; menus: typeof menus }> = {};
-  for (const menu of menus) {
+  for (const menu of activeMenus) {
     const key = menu.patientId;
     if (!byPatient[key]) {
       byPatient[key] = {

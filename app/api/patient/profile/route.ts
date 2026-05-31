@@ -1,7 +1,6 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { generateMealPlan } from "@/lib/meal-plan";
 import { convertWeight, convertHeight, calcCBMI } from "@/lib/caloric-engine";
 
 async function getOrCreateAccount(userId: string) {
@@ -186,17 +185,11 @@ export async function PATCH(req: NextRequest) {
     sorted(existing.healthConditions.map((c) => c.conditionId))   !== sorted(healthConditionIds ?? [])
   );
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  if (!patient.mealPlanStartDate || mealPlanFieldsChanged) {
-    // First save or profile changed: generate a fresh plan from today.
-    try {
-      await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
-      await generateMealPlan(patient.id, today);
-    } catch (e) {
-      console.error("[profile] meal plan generation failed:", e);
-    }
+  // Strategy B: the profile save NEVER generates. If a plan already exists and a
+  // plan-affecting field changed, mark it stale so the meal-plan page can offer a
+  // Regenerate button. First-ever generation happens on the meal-plan page.
+  if (patient.mealPlanStartDate && mealPlanFieldsChanged) {
+    await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStale: true } });
   }
 
   return NextResponse.json({ ok: true, patientId: patient.id });

@@ -18,8 +18,15 @@ function bmiColor(bmi: number): string {
 }
 
 function bmiPercent(bmi: number): number {
-  // Map BMI 10–45 → 0%–100%
-  return Math.min(100, Math.max(0, ((bmi - 10) / 35) * 100));
+  // Zone-based mapping so healthy sits in the visual center:
+  // Underweight (<18.5) → 0–20%
+  // Healthy (18.5–25)   → 20–60%
+  // Overweight (25–30)  → 60–80%
+  // Obese (30+)         → 80–100%
+  if (bmi < 18.5) return Math.max(0, ((bmi - 10) / 8.5) * 20);
+  if (bmi < 25)   return 20 + ((bmi - 18.5) / 6.5) * 40;
+  if (bmi < 30)   return 60 + ((bmi - 25) / 5) * 20;
+  return Math.min(100, 80 + ((bmi - 30) / 15) * 20);
 }
 
 function fmt(n: number | null | undefined, decimals = 1): string {
@@ -163,9 +170,10 @@ export default function CaloricProfileCard() {
             </span>
           </div>
           {/* Gauge bar */}
-          <div className="relative h-2 rounded-full overflow-hidden bg-gradient-to-r from-[#60A5FA] via-[#34D399] via-[60%] to-[#F87171]">
+          <div className="relative h-2 my-1.5">
+            <div className="absolute inset-0 rounded-full" style={{ background: "linear-gradient(to right, #60A5FA 0%, #34D399 20%, #34D399 60%, #FBBF24 60%, #FBBF24 80%, #F87171 80%)" }} />
             <div
-              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-white shadow-md transition-all duration-700"
+              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full border-2 border-white shadow-md transition-all duration-700 z-10"
               style={{ left: `${bmiPct}%`, backgroundColor: bmiCol }}
             />
           </div>
@@ -209,8 +217,8 @@ export default function CaloricProfileCard() {
           delay="340ms"
         />
         <MetricTile
-          label="Activity Level"
-          value={`×${profile.activityMultiplier}`}
+          label="Body Fat"
+          value={`${fmt(profile.bodyFatPct)}%`}
           delay="380ms"
         />
       </div>
@@ -238,6 +246,16 @@ export default function CaloricProfileCard() {
           <span className="text-[10px] text-[#9EA8A0]">{fmt(profile.cbwKg)} kg</span>
           <span className="text-[10px] text-[#9EA8A0]">{fmt(profile.tbwKg)} kg</span>
         </div>
+      </div>
+
+      {/* Glossary */}
+      <div className="cp-a mt-3 pt-3 border-t border-[#F0F0F2] flex flex-col gap-1" style={{ animationDelay: "460ms" }}>
+        <p className="text-[10px] text-[#BFCBBF] leading-relaxed">
+          <span className="font-semibold text-[#9EA8A0]">BMR</span> — Basal Metabolic Rate: calories your body burns at complete rest to sustain basic functions.
+        </p>
+        <p className="text-[10px] text-[#BFCBBF] leading-relaxed">
+          <span className="font-semibold text-[#9EA8A0]">TDEE</span> — Total Daily Energy Expenditure: your BMR adjusted for activity level, representing total daily calorie burn.
+        </p>
       </div>
       </div>
     </div>

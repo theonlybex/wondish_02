@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { startOfWeek, addDays, format } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
-import { generateMealPlan } from "@/lib/meal-plan";
 import Link from "next/link";
 import WeeklyMealPlanGrid from "@/components/meal-plan/WeeklyMealPlanGrid";
 
@@ -32,32 +31,20 @@ export default async function WeeklyPlanPage() {
 
   const patient = await prisma.patient.findFirst({
     where: { account: { clerkId: userId } },
-    select: { id: true, mealPlanStartDate: true, profileCompleted: true },
+    select: { id: true, mealPlanStartDate: true, profileCompleted: true, activePlanVersion: true },
   });
 
-  let menus = await prisma.menu.findMany({
-    where: { patient: { account: { clerkId: userId } }, date: { gte: weekStart, lte: weekEnd } },
+  // Show only the active plan version. First-time generation is triggered from
+  // the daily meal-plan view (Strategy B) — this page never generates.
+  const menus = await prisma.menu.findMany({
+    where: {
+      patient: { account: { clerkId: userId } },
+      planVersion: patient?.activePlanVersion ?? 0,
+      date: { gte: weekStart, lte: weekEnd },
+    },
     include: menuInclude,
     orderBy: [{ date: "asc" }, { mealType: { name: "asc" } }],
   });
-
-  if (menus.length === 0 && patient?.id && patient.profileCompleted) {
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (!patient.mealPlanStartDate) {
-        await prisma.patient.update({ where: { id: patient.id }, data: { mealPlanStartDate: today } });
-      }
-      await generateMealPlan(patient.id, today);
-      menus = await prisma.menu.findMany({
-        where: { patient: { account: { clerkId: userId } }, date: { gte: weekStart, lte: weekEnd } },
-        include: menuInclude,
-        orderBy: [{ date: "asc" }, { mealType: { name: "asc" } }],
-      });
-    } catch {
-      // Profile incomplete or generation error — show empty grid
-    }
-  }
 
   const weekLabel = (() => {
     const s = weekStart;

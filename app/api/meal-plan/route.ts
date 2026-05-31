@@ -1,9 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { generateMealPlan } from "@/lib/meal-plan";
+import { regeneratePlan, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
 import { addDays } from "date-fns";
 import { computeAllMetrics, gradualDailyCals, type CaloricProfileInput } from "@/lib/caloric-engine";
+
+export const maxDuration = 60;
 
 function computeDailyTarget(
   patient: {
@@ -59,7 +61,7 @@ export async function GET(req: NextRequest) {
   const patient = await prisma.patient.findUnique({
     where: { accountId: account.id },
     select: {
-      id: true, mealPlanStartDate: true,
+      id: true, mealPlanStartDate: true, activePlanVersion: true,
       weight: true, weightUnit: true,
       goalWeight: true, goalWeightUnit: true,
       height: true, heightUnit: true,
@@ -95,7 +97,7 @@ export async function GET(req: NextRequest) {
   }
 
   const menus = await prisma.menu.findMany({
-    where: { patientId: patient.id, date: { gte: startDate, lte: endDate } },
+    where: { patientId: patient.id, planVersion: patient.activePlanVersion, date: { gte: startDate, lte: endDate } },
     include: {
       recipe: { include: { mealType: true, dishType: true, ethnic: true, ingredients: { include: { ingredient: true } } } },
       mealType: true,
@@ -152,7 +154,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid date" }, { status: 400 });
   }
 
-  const count = await generateMealPlan(patient.id, start);
-
-  return NextResponse.json({ ok: true, count });
+  try {
+    const count = await regeneratePlan(patient.id, start);
+    return NextResponse.json({ ok: true, count });
+  } catch (err) {
+    if (err instanceof MealPlanBusyError) {
+      return NextResponse.json({ error: "A plan is already being generated." }, { status: 409 });
+    }
+    if (err instanceof EmptyPlanError) {
+      return NextResponse.json(
+        { error: "No meals matched your current profile, so your existing plan was kept." },
+        { status: 422 }
+      );
+    }
+    throw err;
+  }
 }
