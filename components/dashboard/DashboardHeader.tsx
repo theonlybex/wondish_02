@@ -103,10 +103,18 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
         <span className="w-5 h-0.5 bg-[#25293C] block rounded-full" />
       </button>
 
+      <div className="hidden lg:flex flex-col justify-center">
+        <p className="text-[9px] tracking-[0.28em] uppercase font-mono leading-none mb-0.5" style={{ color: "#7DB87D" }}>
+          {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+        </p>
+        <p className="text-sm font-bold text-[#0d1f10] leading-tight">
+          Welcome back, {name?.split(" ")[0]}.
+        </p>
+      </div>
+
       <div className="flex-1" />
 
       <div className="flex items-center gap-3">
-        <span className="text-[#B0B3BB] text-xs hidden sm:block">{name?.split(" ")[0]}</span>
         {plan === "ADMIN" ? (
           <Link href="/membership" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200/80 text-amber-700 hover:bg-amber-100 transition-colors">
             <span className="text-[10px]">★</span>{t("adminBadge")}

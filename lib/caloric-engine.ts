@@ -201,6 +201,18 @@ export function calcBMR(
   return 66 + 13.7 * weightKg + 5 * heightCm - 6.8 * age;
 }
 
+// ─── Body Fat Percentage (Deurenberg Formula) ────────────────────────────────
+
+/**
+ * Estimates body fat % using the Deurenberg formula:
+ * BF% = (1.20 × BMI) + (0.23 × age) - (10.8 × sexFactor) - 5.4
+ * sexFactor: male = 1, female = 0
+ */
+export function calcBodyFatPct(cbmi: number, age: number, sex: Sex): number {
+  const sexFactor = sex === "male" ? 1 : 0;
+  return 1.20 * cbmi + 0.23 * age - 10.8 * sexFactor - 5.4;
+}
+
 // ─── Activity Multiplier ────────────────────────────────────────────────────
 // Per the Wondish spec, only 4 activity levels are supported.
 
@@ -300,6 +312,7 @@ export interface CaloricProfile {
 
   // TDEE
   activityMultiplier: number;
+  bodyFatPct: number;
   tdeeCBW: number;
   tdeeIBW: number;
   tdeeWTBW: number;
@@ -364,6 +377,9 @@ export function computeAllMetrics(input: CaloricProfileInput): CaloricProfile {
   // 10. Activity Multiplier
   const am = getActivityMultiplier(activityLevel);
 
+  // 10b. Body Fat %
+  const bodyFatPct = calcBodyFatPct(cbmi, age, sex);
+
   // 11. TDEE
   const tdeeCBW = calcTDEE(bmrCBW, am);
   const tdeeIBW = calcTDEE(bmrIBW, am);
@@ -410,6 +426,7 @@ export function computeAllMetrics(input: CaloricProfileInput): CaloricProfile {
     bmrUTBW,
 
     activityMultiplier: am,
+    bodyFatPct,
     tdeeCBW,
     tdeeIBW,
     tdeeWTBW,

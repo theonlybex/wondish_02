@@ -1,0 +1,121 @@
+  First: the actual root cause of the current bug
+
+  Your profile save (app/api/patient/profile/route.ts:196) does this:
+
+  generateMealPlan(patient.id, today).catch(...)   // fired WITHOUT await
+  return NextResponse.json({ ok: true })            // returns immediately
+
+  On Vercel (serverless), the moment you return the response, the function is frozen/killed. That fire-and-forget promise is not guaranteed to finish — sometimes it runs (warm lambda),      
+  sometimes it dies mid-loop. That's your "it saves but still has bugs."
+
+  It's worse than flaky, because generateMealPlan starts with:
+
+  await prisma.menu.deleteMany({ where: { patientId } })   // delete first
+  ...hundreds of sequential queries...
+  await prisma.menu.createMany({ data: menus })            // create last
+
+  If the lambda is killed between the delete and the create, the user is left with no meal plan at all. Delete-before-create with no transaction is a data-loss window. This is the single    
+  most important thing to fix, regardless of which UX strategy you pick.
+
+  A secondary problem: generation is hundreds of sequential round-trips to Neon (per day × per meal × multiple queryRecipes calls). For a 70-day deficit plan that's easily 10–60+ seconds —  
+  far too long to ever run inside a request.
+
+  ---
+  The UX decision: A vs. B
+
+  Strategy A (apply all profile/journal changes to the existing plan, on open) requires a reconciliation engine — diffing the new restrictions against every existing meal, surgically        
+  swapping only the violators while preserving the rest, recomputing calorie ramps mid-week. That's the hardest possible version of this. It's also non-deterministic and blocks page load.   
+
+  Strategy B (Regenerate button) is dramatically simpler and actually serves your real goal better — "user keeps following the plan generated at the beginning" is automatically true if the  
+  plan never changes unless they ask.
+
+  Recommendation: Strategy B, with one addition — a staleness flag. Best of both worlds without the reconciliation complexity:
+
+  1. Profile/journal save just saves. It never triggers generation. (Removes the stuck-button class of bugs entirely.)
+  2. When a save changes a plan-affecting field (you already compute mealPlanFieldsChanged at route.ts:178), instead of generating, set a new mealPlanStale = true flag on the patient.       
+  3. The meal-plan page shows a non-blocking banner: "Your profile changed — Regenerate to apply the updates." The current plan keeps working untouched.
+  4. Regenerate is the only thing that runs the generator, and it runs as a background job (below), not inline.
+
+  This gives users control, predictability (no surprise swaps mid-week), and it composes perfectly with a durable job queue. Reserve your "We're checking everything for you…" screen for two 
+  moments: the first-ever generation, and while a regenerate job is running — driven by real job status, not a guess.
+
+  ---
+  The architecture that makes it "a watch" — durable, scalable, fast
+
+  1. Decouple generation into a durable job (the core fix)
+
+  Add a MealPlanJob table in Postgres: id, patientId, status (PENDING/RUNNING/DONE/FAILED), attempts, startDate, createdAt, finishedAt, error. The flow becomes:
+
+  - Regenerate click → insert a PENDING job, return immediately with the job id.
+  - A worker picks it up and runs generateMealPlan.
+  - UI polls job status (your loading screen) → shows the plan when DONE, a retry on FAILED.
+
+  For the worker trigger on your Vercel + Neon stack, two good options:
+  - QStash (Upstash) — HTTP message queue built for serverless: you enqueue, it calls your worker route, with built-in retries, backoff, and dedup. Cleanest fit, minimal infra.
+  - Vercel Cron + the job table — a cron route runs every minute, claims pending jobs, executes them. Zero new vendor, slightly more DIY.
+
+  Either way, never run generation inside the user's request again. (@vercel/functions waitUntil() is a stopgap that's better than bare fire-and-forget, but it has no retry and no durability
+  — don't rely on it as the real answer.)
+
+  2. Make generation atomic (protect the data)
+
+  Generate the whole plan in memory, then delete-old + insert-new in a single prisma.$transaction. A crash then leaves the old plan intact instead of wiping the user planless. Even better:  
+  write the new plan under a planVersion, then atomically flip the active version and delete the old — that gives you instant rollback and lets the user keep following the current plan until
+  the new one is fully ready. This same fix is needed in both /api/meal-plan POST and /api/meal-plan/start-date (both currently delete-then-generate unguarded).
+
+  3. Locking + idempotency (no double-runs at scale)
+
+  - Before enqueuing, reject if a job is already PENDING/RUNNING for that patient (or use a Postgres advisory lock keyed on patientId). Stops a double-click or two devices from generating   
+  twice and corrupting menus.
+  - Idempotency key on the job so a queue retry re-runs safely instead of duplicating.
+
+  4. Make the generator itself fast
+
+  Right now it issues hundreds of small queries. Your recipe catalog is a bounded, slow-changing dataset — so:
+  - Load the eligible recipe pool once (all public recipes with the fields you score on) into memory at the start of a run, then do all filtering/family-tracking/picking in JS. That
+  collapses hundreds of Neon round-trips into ~1–2 queries and turns generation from tens of seconds into well under a second of compute.
+  - Keep the single bulk createMany, inside the atomic swap.
+
+  This alone removes DB latency as the bottleneck and makes the job finish fast enough that the "just a second" screen is honest.
+
+  5. Caching
+
+  - Reference data (meal/dish types, food lists) and the recipe catalog are read-heavy and rarely change → cache with unstable_cache + revalidateTag, invalidated when an admin edits recipes.
+  Huge DB-load reduction when many users generate at once.
+  - Per-user plan reads (/api/meal-plan GET) → cache per user/day, invalidated on regenerate.
+  - Static/public content → HTTP cache headers.
+
+  6. Connection management (the real "many users" risk)
+
+  Neon + Prisma with a Pool per cold start will exhaust connections under load. Use Neon's pooled (PgBouncer) connection string for the app and a direct URL only for migrations. Without     
+  this, "lots of users at once" = connection errors no matter how good the queue is.
+
+  7. Self-healing + observability (the "never needs attention" part)
+
+  - Auto-retry failed jobs with backoff (QStash native, or attempts column + cron).
+  - A sweeper cron that resets jobs stuck in RUNNING past a heartbeat timeout back to PENDING (handles lambda deaths).
+  - Sentry on the worker so failures are visible, with the job id in every log line.
+
+  8. Rate-limit the expensive action
+
+  Regenerate is costly, so cap it: reject if the user regenerated in the last N minutes or already has a pending job — trivial once the job table exists. (Ties into the serverless
+  rate-limiting gap from the earlier scan.)
+
+  ---
+  Suggested order of attack (phased)
+
+  1. Stop the bleeding: make generation atomic (transactional delete+create). Removes data-loss risk immediately, even before the queue.
+  2. Decouple: add the MealPlanJob table + worker (QStash or cron) + status polling. Profile save stops generating.
+  3. Switch UX to Strategy B: add mealPlanStale, the banner, and the Regenerate button wired to the job.
+  4. Speed: load the recipe pool once; generation drops to sub-second.
+  5. Scale hardening: Neon pooled connections, reference-data caching, locking/idempotency, rate limit.
+  6. Resilience: retries, stuck-job sweeper, Sentry.
+
+  After step 4 you'll have a system where the save button never hangs, the plan never half-generates, regeneration is explicit and fast, and it holds up under concurrent load — the watch    
+  that keeps ticking.
+
+  ---
+  Two offers, since this is exactly the cross-session context that got lost from "yesterday":
+
+  - I can save this strategy + the root-cause to memory so it survives into the next session.
+  - When you're ready to build, I can turn the phased plan into a formal written implementation plan (via the writing-plans workflow) and we execute it step by step.

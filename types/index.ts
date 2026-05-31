@@ -202,6 +202,7 @@ export interface CaloricProfileDTO {
 
   // TDEE
   activityMultiplier: number;
+  bodyFatPct: number;
   tdeeCBW: number;
   tdeeIBW: number;
   tdeeWTBW: number;

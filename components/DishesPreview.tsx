@@ -1,49 +1,125 @@
 import Link from "next/link";
-import DishCard from "./DishCard";
 import { dishes } from "@/data/dishes";
 import { getTranslations } from "next-intl/server";
+import { getRecipeEmoji } from "@/lib/recipeEmoji";
+import type { MealTypeKey } from "@/types";
+
+const mealTypeTag: Record<MealTypeKey, { bg: string; color: string; label: string }> = {
+  breakfast: { bg: "rgba(255,159,67,0.12)",  color: "#FF9F43", label: "Breakfast" },
+  lunch:     { bg: "rgba(74,222,128,0.12)",  color: "#4ade80", label: "Lunch" },
+  dinner:    { bg: "rgba(0,207,232,0.12)",   color: "#00CFE8", label: "Dinner" },
+  snack:     { bg: "rgba(234,84,85,0.12)",   color: "#EA5455", label: "Snack" },
+};
+
+const cardBgs = [
+  "linear-gradient(145deg,#263b2a,#152718)",
+  "linear-gradient(145deg,#2a2015,#1a1510)",
+  "linear-gradient(145deg,#132028,#0a1518)",
+  "linear-gradient(145deg,#152718,#0d1a10)",
+  "linear-gradient(145deg,#2a2515,#1a1810)",
+  "linear-gradient(145deg,#263b2a,#1e3422)",
+];
 
 export default async function DishesPreview() {
   const t = await getTranslations("dishesPreview");
-  const row1 = [...dishes, ...dishes];
-  const row2 = [...dishes.slice(Math.floor(dishes.length / 2)), ...dishes, ...dishes.slice(0, Math.floor(dishes.length / 2)), ...dishes];
+  const track = [...dishes, ...dishes];
 
   return (
-    <section id="menu" className="bg-white py-24 overflow-hidden">
+    <section id="menu" className="py-28 overflow-hidden" style={{ background: "#0d1a10" }}>
       <style>{`
-        @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .marquee-row { display: flex; width: max-content; gap: 16px; }
-        .marquee-row-1 { animation: marquee 40s linear infinite; }
-        .marquee-row-2 { animation: marquee 28s linear infinite; }
+        @keyframes tray-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+        .tray-track { display: flex; gap: 20px; width: max-content; animation: tray-scroll 40s linear infinite; }
+        .tray-wrap:hover .tray-track { animation-play-state: paused; }
+        .tray-card:hover { transform: translateY(-6px) scale(1.02); border-color: rgba(74,222,128,0.2) !important; box-shadow: 0 20px 50px rgba(0,0,0,0.4); }
       `}</style>
-      <div className="px-5 sm:px-8 max-w-6xl mx-auto mb-12">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
-          <div className="max-w-xl">
-            <p className="text-primary text-sm font-semibold uppercase tracking-widest mb-4">{t("eyebrow")}</p>
-            <h2 className="text-4xl sm:text-5xl font-bold text-[#25293C] leading-tight">{t("headline")}</h2>
-          </div>
-          <Link href="/dishes" className="inline-flex items-center gap-2 text-primary hover:text-primary-dark font-semibold text-sm transition-colors shrink-0">
-            {t("viewAll")}
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </Link>
+
+      <div className="px-6 max-w-6xl mx-auto mb-12 flex items-end justify-between">
+        <div>
+          <p className="text-[11px] font-bold tracking-[0.25em] uppercase mb-4" style={{ color: "#4ade80" }}>
+            {t("eyebrow")}
+          </p>
+          <h2 className="text-4xl sm:text-5xl font-extrabold leading-tight" style={{ color: "#f0fdf4", letterSpacing: "-0.03em" }}>
+            {t("headline")}
+          </h2>
         </div>
+        <Link
+          href="/dishes"
+          className="text-sm font-semibold shrink-0 transition-opacity hover:opacity-70"
+          style={{ color: "#4ade80" }}
+        >
+          {t("viewAll")} →
+        </Link>
       </div>
-      <div className="marquee-wrap flex flex-col gap-4">
-        <div className="overflow-hidden">
-          <div className="marquee-row marquee-row-1">
-            {row1.map((dish, i) => (
-              <div key={`r1-${dish.id}-${i}`} className="w-64 flex-shrink-0"><DishCard dish={dish} compact /></div>
-            ))}
-          </div>
-        </div>
-        <div className="overflow-hidden">
-          <div className="marquee-row marquee-row-2">
-            {row2.map((dish, i) => (
-              <div key={`r2-${dish.id}-${i}`} className="w-64 flex-shrink-0"><DishCard dish={dish} compact /></div>
-            ))}
-          </div>
+
+      <div className="tray-wrap relative overflow-hidden" style={{ padding: "8px 0 32px" }}>
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 w-32 z-10"
+          style={{ background: "linear-gradient(to right, #0d1a10, transparent)" }}
+        />
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 w-32 z-10"
+          style={{ background: "linear-gradient(to left, #0d1a10, transparent)" }}
+        />
+
+        <div className="tray-track">
+          {track.map((dish, i) => {
+            const tag = mealTypeTag[dish.mealType];
+            const emoji = dish.emoji || getRecipeEmoji(dish.name, dish.tags, dish.mealType);
+            const totalTime = dish.prepTime + dish.cookTime;
+            const bg = cardBgs[i % cardBgs.length];
+            return (
+              <div
+                key={`${dish.id}-${i}`}
+                aria-hidden={i >= dishes.length ? true : undefined}
+                className="tray-card flex-none w-[280px] rounded-[20px] overflow-hidden transition-all duration-300"
+                style={{ background: bg, border: "1px solid rgba(74,222,128,0.06)" }}
+              >
+                <div
+                  className="aspect-square flex items-center justify-center text-[64px] relative"
+                  style={{ background: bg }}
+                >
+                  {emoji}
+                  <div
+                    className="absolute bottom-0 left-0 right-0 h-1/2"
+                    style={{ background: "linear-gradient(to top, #0d1a10, transparent)" }}
+                  />
+                </div>
+                <div className="p-5">
+                  <span
+                    className="inline-block text-[10px] font-bold tracking-[0.15em] uppercase px-2.5 py-1 rounded-full mb-2.5"
+                    style={{ background: tag.bg, color: tag.color }}
+                  >
+                    {tag.label}
+                  </span>
+                  <h4 className="text-base font-bold mb-1.5 leading-snug" style={{ color: "#f0fdf4" }}>
+                    {dish.name}
+                  </h4>
+                  <p
+                    className="text-[13px] leading-relaxed line-clamp-1"
+                    style={{ color: "rgba(240,253,244,0.28)" }}
+                  >
+                    {dish.description}
+                  </p>
+                  <div
+                    className="flex gap-4 mt-3.5 pt-3.5"
+                    style={{ borderTop: "1px solid rgba(74,222,128,0.06)" }}
+                  >
+                    <span className="text-xs font-medium" style={{ color: "rgba(240,253,244,0.45)" }}>
+                      <strong style={{ color: "#f0fdf4" }}>{dish.calories}</strong> kcal
+                    </span>
+                    <span className="text-xs font-medium" style={{ color: "rgba(240,253,244,0.45)" }}>
+                      <strong style={{ color: "#f0fdf4" }}>{dish.protein}g</strong> protein
+                    </span>
+                    {totalTime > 0 && (
+                      <span className="text-xs font-medium" style={{ color: "rgba(240,253,244,0.45)" }}>
+                        <strong style={{ color: "#f0fdf4" }}>{totalTime}</strong> min
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>
