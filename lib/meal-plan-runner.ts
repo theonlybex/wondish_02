@@ -9,6 +9,15 @@ export class MealPlanBusyError extends Error {
   }
 }
 
+// Thrown when generation produced zero menus — we refuse to replace a working
+// plan with nothing, so the current plan is kept and this is surfaced instead.
+export class EmptyPlanError extends Error {
+  constructor() {
+    super("EMPTY_PLAN");
+    this.name = "EmptyPlanError";
+  }
+}
+
 // A GENERATING run older than this is considered dead and may be re-claimed.
 const STUCK_AFTER_MS = 3 * 60 * 1000;
 
@@ -44,11 +53,16 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
     });
     const nextVersion = (patient?.activePlanVersion ?? 0) + 1;
 
-    // 2 + 3. Build and insert the new version (still invisible to reads).
+    // 2. Build the next version's menus in memory.
     const rows = await buildMealPlanMenus(patientId, startDate, nextVersion);
-    if (rows.length > 0) {
-      await prisma.menu.createMany({ data: rows });
-    }
+
+    // Guard: never flip to an empty plan. If the builder produced nothing
+    // (e.g. an over-restrictive profile vs the recipe catalog), keep the current
+    // plan active by NOT flipping the version — the caller is told it failed.
+    if (rows.length === 0) throw new EmptyPlanError();
+
+    // 3. Insert the new version (still invisible to version-scoped reads).
+    await prisma.menu.createMany({ data: rows });
 
     // 4. Atomic flip — the moment version-scoped reads start seeing the new plan.
     const start = new Date(startDate);
@@ -71,10 +85,16 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
 
     return rows.length;
   } catch (err) {
+    const message =
+      err instanceof EmptyPlanError
+        ? "No meals matched your current profile, so your existing plan was kept."
+        : err instanceof Error
+        ? err.message
+        : String(err);
     await prisma.patient
       .update({
         where: { id: patientId },
-        data: { mealPlanStatus: "FAILED", mealPlanError: err instanceof Error ? err.message : String(err) },
+        data: { mealPlanStatus: "FAILED", mealPlanError: message },
       })
       .catch(() => {});
     throw err;

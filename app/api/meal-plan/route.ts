@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { regeneratePlan, MealPlanBusyError } from "@/lib/meal-plan-runner";
+import { regeneratePlan, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
 import { addDays } from "date-fns";
 import { computeAllMetrics, gradualDailyCals, type CaloricProfileInput } from "@/lib/caloric-engine";
 
@@ -160,6 +160,12 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     if (err instanceof MealPlanBusyError) {
       return NextResponse.json({ error: "A plan is already being generated." }, { status: 409 });
+    }
+    if (err instanceof EmptyPlanError) {
+      return NextResponse.json(
+        { error: "No meals matched your current profile, so your existing plan was kept." },
+        { status: 422 }
+      );
     }
     throw err;
   }

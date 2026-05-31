@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { regeneratePlan, MealPlanBusyError } from "@/lib/meal-plan-runner";
+import { regeneratePlan, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -53,6 +53,12 @@ export async function POST() {
   } catch (err) {
     if (err instanceof MealPlanBusyError) {
       return NextResponse.json({ error: "A plan is already being generated." }, { status: 409 });
+    }
+    if (err instanceof EmptyPlanError) {
+      return NextResponse.json(
+        { error: "No meals matched your current profile, so your existing plan was kept. Try relaxing some restrictions." },
+        { status: 422 }
+      );
     }
     console.error("[regenerate]", err);
     return NextResponse.json({ error: "Generation failed." }, { status: 500 });
