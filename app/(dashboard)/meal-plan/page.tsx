@@ -142,6 +142,7 @@ export default async function MealPlanPage() {
           initialLoggedRecipeIds={loggedRecipeIds}
           initialMealRatings={initialMealRatings}
           initialDailyCalorieTarget={initialDailyCalorieTarget}
+          initialStale={patient?.mealPlanStale ?? false}
         />
       </div>
     </div>

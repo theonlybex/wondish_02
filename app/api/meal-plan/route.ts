@@ -5,6 +5,8 @@ import { regeneratePlan, MealPlanBusyError } from "@/lib/meal-plan-runner";
 import { addDays } from "date-fns";
 import { computeAllMetrics, gradualDailyCals, type CaloricProfileInput } from "@/lib/caloric-engine";
 
+export const maxDuration = 60;
+
 function computeDailyTarget(
   patient: {
     mealPlanStartDate: Date | null;

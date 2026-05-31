@@ -14,6 +14,7 @@ interface DailyMealPlanViewProps {
   initialLoggedRecipeIds?: string[];
   initialMealRatings?: Record<string, number>;
   initialDailyCalorieTarget?: number | null;
+  initialStale?: boolean;
 }
 
 function parseLocalDate(dateStr: string): Date {
@@ -214,6 +215,7 @@ export default function DailyMealPlanView({
   initialLoggedRecipeIds = [],
   initialMealRatings = {},
   initialDailyCalorieTarget = null,
+  initialStale = false,
 }: DailyMealPlanViewProps) {
   const [date, setDate]                 = useState(() => parseLocalDate(initialDate));
   const [menus, setMenus]               = useState(initialMenus);
@@ -226,6 +228,7 @@ export default function DailyMealPlanView({
   const [regenerating, setRegenerating] = useState(false);
   const [profileIncomplete, setProfileIncomplete] = useState(false);
   const [dailyCalorieTarget, setDailyCalorieTarget] = useState<number | null>(initialDailyCalorieTarget);
+  const [stale, setStale] = useState(initialStale);
   const [swapModal, setSwapModal]       = useState<{
     menuId: string; mealTypeId: string; recipeId: string; calories: number;
   } | null>(null);
@@ -286,6 +289,7 @@ export default function DailyMealPlanView({
       setLoggedRecipeIds(data.loggedRecipeIds ?? []);
       setMealRatings(data.mealRatings ?? {});
       setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
+      setStale(false);
     } finally {
       setRegenerating(false);
     }
@@ -371,6 +375,13 @@ export default function DailyMealPlanView({
         <div className="bg-error/10 border border-error/20 rounded-2xl p-4 mb-4 text-sm text-error">
           Complete your health profile before generating a meal plan.{" "}
           <a href="/profile" className="underline font-semibold">Go to Profile →</a>
+        </div>
+      )}
+
+      {stale && startDate && (
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-4 text-sm">
+          <span className="flex-1 text-amber-800">Your profile changed — regenerate to apply it to your meal plan.</span>
+          <Button size="sm" loading={regenerating} onClick={handleRegenerate}>Regenerate</Button>
         </div>
       )}
 
