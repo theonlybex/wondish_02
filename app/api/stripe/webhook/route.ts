@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { stripe as getStripe } from "@/lib/stripe";
 import { prisma } from "@/lib/db";
+import { redis } from "@/lib/redis";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,16 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[webhook] signature verification failed", err);
     return NextResponse.json({ error: "Invalid signature." }, { status: 400 });
+  }
+
+  // Idempotency: claim this event id so Stripe retries don't double-process.
+  // Claim before handling; release on failure so a retry can re-run.
+  const idempKey = `stripe:evt:${event.id}`;
+  if (redis) {
+    const claimed = await redis.set(idempKey, "1", { nx: true, ex: 60 * 60 * 24 });
+    if (claimed === null) {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
   }
 
   try {
@@ -150,6 +161,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true });
   } catch (err) {
     console.error("[webhook] processing error", err);
+    // Release the idempotency claim so Stripe's retry can re-process this event.
+    if (redis) await redis.del(idempKey).catch(() => {});
     return NextResponse.json({ error: "Webhook handler failed." }, { status: 500 });
   }
 }

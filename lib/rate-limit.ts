@@ -1,5 +1,5 @@
 import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
+import { redis } from "@/lib/redis";
 
 // Shared rate limiting. When Upstash env vars are present (production), limits
 // are enforced across all serverless instances via Redis. Otherwise we fall
@@ -7,11 +7,6 @@ import { Redis } from "@upstash/redis";
 // on every cold start, so it is NOT effective in serverless production.
 
 type RateLimitResult = { success: boolean };
-
-const hasUpstash =
-  !!process.env.UPSTASH_REDIS_REST_URL && !!process.env.UPSTASH_REDIS_REST_TOKEN;
-
-const redis = hasUpstash ? Redis.fromEnv() : null;
 
 // One Ratelimit instance per (name, limit, window) config, reused across calls.
 const limiters = new Map<string, Ratelimit>();
