@@ -23,6 +23,7 @@
     "@neondatabase/serverless": "^1.1.0",
     "@prisma/adapter-neon": "^5.14.0",
     "@prisma/client": "^5.14.0",
+    "@sentry/nextjs": "^10.55.0",
     "@stripe/stripe-js": "^3.5.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",

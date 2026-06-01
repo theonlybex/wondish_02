@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import "./globals.css";
 
 export default function GlobalError({
@@ -11,8 +12,8 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Last-resort boundary: the root layout itself failed. Surface for logging
-    // (wire to Sentry here once observability lands).
+    // Last-resort boundary: the root layout itself failed.
+    Sentry.captureException(error);
     console.error("Global error:", error);
   }, [error]);
 

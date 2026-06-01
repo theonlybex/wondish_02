@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { stripe as getStripe } from "@/lib/stripe";
 import { prisma } from "@/lib/db";
 import { redis } from "@/lib/redis";
+import * as Sentry from "@sentry/nextjs";
 
 export const runtime = "nodejs";
 
@@ -160,6 +161,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ received: true });
   } catch (err) {
+    Sentry.captureException(err, { tags: { area: "stripe-webhook", eventType: event.type } });
     console.error("[webhook] processing error", err);
     // Release the idempotency claim so Stripe's retry can re-process this event.
     if (redis) await redis.del(idempKey).catch(() => {});

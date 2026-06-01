@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { buildMealPlanMenus } from "@/lib/meal-plan";
+import * as Sentry from "@sentry/nextjs";
 
 // Thrown when a generation is already in flight for this patient.
 export class MealPlanBusyError extends Error {
@@ -97,6 +98,10 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
         data: { mealPlanStatus: "FAILED", mealPlanError: message },
       })
       .catch(() => {});
+    // EmptyPlanError is an expected business outcome, not an incident.
+    if (!(err instanceof EmptyPlanError)) {
+      Sentry.captureException(err, { tags: { area: "meal-plan-runner" }, extra: { patientId } });
+    }
     throw err;
   }
 }

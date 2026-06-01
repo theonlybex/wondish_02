@@ -1,4 +1,5 @@
 const createNextIntlPlugin = require('next-intl/plugin');
+const { withSentryConfig } = require('@sentry/nextjs');
 
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts');
 
@@ -23,6 +24,8 @@ const securityHeaders = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  // Required on Next 14 so instrumentation.ts / sentry configs are loaded.
+  experimental: { instrumentationHook: true },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'images.unsplash.com' },
@@ -35,4 +38,11 @@ const nextConfig = {
   },
 };
 
-module.exports = withNextIntl(nextConfig);
+module.exports = withSentryConfig(withNextIntl(nextConfig), {
+  // Build-time options. Source maps upload only runs when SENTRY_AUTH_TOKEN is
+  // set; otherwise the build proceeds normally without uploading.
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+});
