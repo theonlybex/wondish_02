@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
 
 export const runtime = "nodejs";
@@ -11,6 +12,16 @@ const MIN_INTERVAL_MS = 2 * 60 * 1000; // anti-spam: 1 regenerate / 2 min
 export async function POST() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Per-user endpoint guard (shared via Upstash): caps repeated hits even when
+  // they fail before the per-row 2-min window / claim-lock would apply.
+  const { success } = await rateLimit("regenerate", userId, 10, 60);
+  if (!success) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a moment before regenerating again." },
+      { status: 429 }
+    );
+  }
 
   const account = await prisma.account.findUnique({
     where: { clerkId: userId },

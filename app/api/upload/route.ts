@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { uploadFile } from "@/lib/s3";
+import { rateLimit } from "@/lib/rate-limit";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_SIZE_BYTES = 5 * 1024 * 1024;
@@ -8,6 +9,15 @@ const MAX_SIZE_BYTES = 5 * 1024 * 1024;
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+
+  // Per-user: max 30 uploads / 60s (shared across instances via Upstash).
+  const { success } = await rateLimit("upload", userId, 30, 60);
+  if (!success) {
+    return NextResponse.json(
+      { error: "Too many uploads. Please wait a moment and try again." },
+      { status: 429 }
+    );
+  }
 
   try {
     const formData = await req.formData();

@@ -24,6 +24,8 @@
     "@prisma/adapter-neon": "^5.14.0",
     "@prisma/client": "^5.14.0",
     "@stripe/stripe-js": "^3.5.0",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.36.0",
