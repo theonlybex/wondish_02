@@ -9,10 +9,6 @@ const isPublicRoute = createRouteMatcher([
   "/dishes(.*)",
   "/terms(.*)",
   "/privacy(.*)",
-  "/api/auth/register",
-  "/api/auth/forgot-password",
-  "/api/auth/reset-password",
-  "/api/auth/verify-email(.*)",
   "/api/stripe/webhook",
   "/api/taste/public-dishes",
 ]);
