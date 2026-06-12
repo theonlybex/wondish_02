@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wondish — A Private Membership in Better Health</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..500&family=Hanken+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      /* ── Quiet-luxury palette ───────────────────── */
+      --bone:        #F5F1E8;
+      --bone-2:      #ECE6D8;
+      --cream:       #FBF9F3;
+      --ink:         #1B231D;
+      --ink-soft:    #5C625A;
+      --ink-faint:   #8E938A;
+      --forest:      #1A3025;
+      --forest-2:    #122019;
+      --forest-deep: #0C1611;
+      --emerald:     #2E5D3F;
+      --gold:        #B2945B;
+      --gold-soft:   #C9B488;
+      --gold-faint:  rgba(178,148,91,0.18);
+      --line:        rgba(27,35,29,0.12);
+      --line-light:  rgba(245,241,232,0.14);
+
+      --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+      --sans:  'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    html { scroll-behavior: smooth; background: var(--bone); }
+    body {
+      font-family: var(--sans);
+      background: var(--bone);
+      color: var(--ink);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1.6;
+    }
+
+    /* ── Film grain overlay (texture = luxury) ─────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      pointer-events: none;
+      opacity: 0.035;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 0 32px; }
+
+    /* ── Shared type ───────────────────────────────── */
+    .overline {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
+      color: var(--gold);
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .overline::before {
+      content: '';
+      width: 28px; height: 1px;
+      background: var(--gold);
+      opacity: 0.6;
+    }
+    .display {
+      font-family: var(--serif);
+      font-weight: 380;
+      letter-spacing: -0.02em;
+      line-height: 1.02;
+      font-optical-sizing: auto;
+    }
+    .ital { font-style: italic; font-weight: 340; color: var(--emerald); }
+
+    /* ── Reveal ────────────────────────────────────── */
+    .reveal { opacity: 0; transform: translateY(34px); transition: opacity 1.1s cubic-bezier(.19,1,.22,1), transform 1.1s cubic-bezier(.19,1,.22,1); }
+    .reveal.in { opacity: 1; transform: none; }
+    .d1 { transition-delay: .08s; } .d2 { transition-delay: .16s; }
+    .d3 { transition-delay: .24s; } .d4 { transition-delay: .32s; } .d5 { transition-delay: .40s; }
+
+    /* ── Nav ───────────────────────────────────────── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 22px 32px;
+      background: rgba(245,241,232,0.72);
+      backdrop-filter: blur(18px) saturate(140%);
+      -webkit-backdrop-filter: blur(18px) saturate(140%);
+      border-bottom: 1px solid var(--line);
+    }
+    .logo { font-family: var(--serif); font-size: 23px; font-weight: 500; letter-spacing: -0.01em; color: var(--ink); }
+    .logo .dot { color: var(--gold); }
+    .nav-links { display: flex; gap: 38px; list-style: none; }
+    .nav-links a { text-decoration: none; color: var(--ink-soft); font-size: 13.5px; font-weight: 500; transition: color .3s; }
+    .nav-links a:hover { color: var(--ink); }
+    .nav-right { display: flex; align-items: center; gap: 24px; }
+    .nav-sign { font-size: 13.5px; font-weight: 500; color: var(--ink-soft); text-decoration: none; transition: color .3s; }
+    .nav-sign:hover { color: var(--ink); }
+    .btn {
+      font-family: var(--sans);
+      cursor: pointer; border: none;
+      transition: transform .35s cubic-bezier(.19,1,.22,1), background .3s, color .3s, box-shadow .3s;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 9px;
+    }
+    .btn-dark {
+      background: var(--ink); color: var(--bone);
+      padding: 12px 26px; border-radius: 100px;
+      font-size: 13px; font-weight: 600; letter-spacing: 0.01em;
+    }
+    .btn-dark:hover { background: var(--emerald); transform: translateY(-2px); box-shadow: 0 14px 30px rgba(27,35,29,0.22); }
+
+    /* ── Hero ──────────────────────────────────────── */
+    .hero { padding: 190px 32px 110px; position: relative; overflow: hidden; }
+    .hero::after {
+      content: ''; position: absolute; top: -10%; right: -8%;
+      width: 620px; height: 620px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(46,93,63,0.10) 0%, transparent 66%);
+      pointer-events: none;
+    }
+    .hero-grid {
+      max-width: 1180px; margin: 0 auto;
+      display: grid; grid-template-columns: 1.08fr 0.92fr; gap: 70px; align-items: center;
+    }
+    .hero h1 {
+      font-size: clamp(46px, 6vw, 86px);
+      margin: 26px 0 28px;
+    }
+    .hero-sub {
+      font-size: 18px; color: var(--ink-soft); max-width: 440px;
+      line-height: 1.7; margin-bottom: 40px;
+    }
+    .hero-actions { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+    .btn-gold {
+      background: var(--ink); color: var(--bone);
+      padding: 17px 36px; border-radius: 100px;
+      font-size: 14px; font-weight: 600;
+      position: relative;
+    }
+    .btn-gold:hover { background: var(--emerald); transform: translateY(-2px); box-shadow: 0 16px 38px rgba(27,35,29,0.25); }
+    .btn-ghost {
+      color: var(--ink); font-size: 14px; font-weight: 600;
+      padding: 17px 4px; border-bottom: 1px solid var(--line); border-radius: 0;
+    }
+    .btn-ghost:hover { border-color: var(--ink); transform: translateX(3px); }
+
+    .hero-trust { margin-top: 46px; display: flex; align-items: center; gap: 16px; }
+    .avatars { display: flex; }
+    .avatars span {
+      width: 34px; height: 34px; border-radius: 50%;
+      border: 2px solid var(--bone); margin-left: -10px;
+      background: linear-gradient(145deg, var(--emerald), var(--forest-2));
+    }
+    .avatars span:first-child { margin-left: 0; }
+    .avatars span:nth-child(2) { background: linear-gradient(145deg, var(--gold-soft), var(--gold)); }
+    .avatars span:nth-child(3) { background: linear-gradient(145deg, #6b8f73, var(--emerald)); }
+    .avatars span:nth-child(4) { background: linear-gradient(145deg, #c9b488, #8a6f3e); }
+    .hero-trust p { font-size: 13px; color: var(--ink-soft); line-height: 1.4; }
+    .hero-trust strong { color: var(--ink); font-weight: 600; }
+
+    /* ── Membership card visual ────────────────────── */
+    .card-stage { position: relative; display: flex; justify-content: center; perspective: 1400px; }
+    .member-card {
+      width: 100%; max-width: 410px; aspect-ratio: 1.586/1;
+      border-radius: 22px;
+      background:
+        radial-gradient(120% 140% at 85% 10%, rgba(178,148,91,0.22) 0%, transparent 45%),
+        linear-gradient(155deg, var(--forest) 0%, var(--forest-2) 55%, var(--forest-deep) 100%);
+      border: 1px solid rgba(178,148,91,0.28);
+      box-shadow: 0 50px 90px -30px rgba(12,22,17,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+      padding: 30px 32px; position: relative; overflow: hidden;
+      color: var(--bone);
+      animation: float 7s ease-in-out infinite;
+    }
+    .member-card::before {
+      content: ''; position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: 0.05; pointer-events: none;
+    }
+    @keyframes float {
+      0%,100% { transform: translateY(0) rotateX(0) rotateY(0); }
+      50% { transform: translateY(-14px) rotateX(2deg) rotateY(-2deg); }
+    }
+    .card-top { display: flex; align-items: flex-start; justify-content: space-between; }
+    .card-logo { font-family: var(--serif); font-size: 22px; font-weight: 500; }
+    .card-logo .dot { color: var(--gold-soft); }
+    .card-chip {
+      width: 44px; height: 32px; border-radius: 6px;
+      background: linear-gradient(135deg, var(--gold-soft), var(--gold) 60%, #8a6f3e);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
+      position: relative;
+    }
+    .card-chip::after {
+      content: ''; position: absolute; inset: 8px 10px;
+      border: 1px solid rgba(12,22,17,0.25); border-radius: 2px;
+    }
+    .card-number {
+      position: absolute; left: 32px; bottom: 78px;
+      font-size: 16px; letter-spacing: 0.18em; color: rgba(245,241,232,0.55); font-weight: 400;
+    }
+    .card-bottom {
+      position: absolute; left: 32px; right: 32px; bottom: 28px;
+      display: flex; align-items: flex-end; justify-content: space-between;
+    }
+    .card-bottom .lbl { font-size: 8.5px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold-soft); margin-bottom: 5px; }
+    .card-bottom .val { font-size: 14px; font-weight: 500; letter-spacing: 0.04em; }
+    .card-tier {
+      font-family: var(--serif); font-style: italic; font-size: 15px;
+      color: var(--gold-soft);
+    }
+    .card-float-tag {
+      position: absolute; top: 24px; right: -14px;
+      background: var(--cream); color: var(--ink);
+      padding: 9px 16px; border-radius: 100px;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+      box-shadow: 0 18px 40px -12px rgba(27,35,29,0.3);
+      display: flex; align-items: center; gap: 7px;
+      animation: float 7s ease-in-out infinite; animation-delay: .5s;
+    }
+    .card-float-tag .g { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); }
+
+    /* ── Logo / trust strip ────────────────────────── */
+    .marquee-strip {
+      border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+      padding: 26px 0; overflow: hidden;
+    }
+    .strip-inner {
+      display: flex; align-items: center; gap: 64px; width: max-content;
+      animation: slide 32s linear infinite;
+    }
+    @keyframes slide { to { transform: translateX(-50%); } }
+    .strip-inner span {
+      font-family: var(--serif); font-size: 19px; font-weight: 400;
+      color: var(--ink-faint); letter-spacing: 0.02em; white-space: nowrap;
+    }
+
+    /* ── Stats band ────────────────────────────────── */
+    .stats { padding: 96px 0; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+    .stat { padding-right: 24px; border-right: 1px solid var(--line); }
+    .stat:last-child { border-right: none; }
+    .stat .n { font-family: var(--serif); font-size: clamp(40px, 4.4vw, 58px); font-weight: 360; line-height: 1; letter-spacing: -0.02em; }
+    .stat .n em { font-style: italic; color: var(--gold); }
+    .stat .t { margin-top: 12px; font-size: 13.5px; color: var(--ink-soft); max-width: 160px; line-height: 1.5; }
+
+    /* ── Manifesto (dark) ──────────────────────────── */
+    .manifesto {
+      background: var(--forest-deep); color: var(--bone);
+      padding: 150px 32px; position: relative; overflow: hidden;
+    }
+    .manifesto::before {
+      content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      width: 900px; height: 900px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(46,93,63,0.18) 0%, transparent 60%);
+    }
+    .manifesto .wrap { position: relative; text-align: center; }
+    .manifesto .overline { color: var(--gold-soft); }
+    .manifesto .overline::before { background: var(--gold-soft); }
+    .manifesto h2 {
+      font-family: var(--serif); font-weight: 340;
+      font-size: clamp(32px, 4.5vw, 62px); line-height: 1.12; letter-spacing: -0.02em;
+      max-width: 16ch; margin: 28px auto 0;
+    }
+    .manifesto h2 em { font-style: italic; color: var(--gold-soft); }
+    .manifesto p { margin: 34px auto 0; max-width: 520px; color: rgba(245,241,232,0.6); font-size: 16.5px; line-height: 1.8; }
+
+    /* ── How it works ──────────────────────────────── */
+    .how { padding: 130px 0; }
+    .section-head { max-width: 620px; margin-bottom: 76px; }
+    .section-head h2 { font-family: var(--serif); font-weight: 350; font-size: clamp(32px, 4vw, 54px); line-height: 1.08; letter-spacing: -0.02em; margin-top: 22px; }
+    .section-head h2 em { font-style: italic; color: var(--emerald); }
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .step {
+      border-top: 1px solid var(--ink); padding-top: 26px; position: relative;
+    }
+    .step .idx { font-family: var(--serif); font-size: 14px; color: var(--gold); font-style: italic; margin-bottom: 30px; display: block; }
+    .step h3 { font-family: var(--serif); font-weight: 420; font-size: 26px; letter-spacing: -0.01em; margin-bottom: 12px; }
+    .step p { font-size: 14.5px; color: var(--ink-soft); line-height: 1.7; max-width: 280px; }
+
+    /* ── The membership (editorial split) ──────────── */
+    .members { padding: 40px 0 130px; }
+    .members-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
+      padding: 70px 0; border-top: 1px solid var(--line);
+    }
+    .members-row:last-child { border-bottom: 1px solid var(--line); }
+    .members-visual {
+      aspect-ratio: 4/3.2; border-radius: 18px; overflow: hidden; position: relative;
+      border: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .mv-1 { background: linear-gradient(150deg, #e7e0cf, var(--bone-2)); }
+    .mv-2 { background: linear-gradient(150deg, var(--forest), var(--forest-deep)); }
+    .mv-emoji { font-size: 88px; filter: saturate(0.85); }
+    .members-row.flip .members-visual { order: 2; }
+    .members-text .tag { font-size: 11px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--gold); font-weight: 600; }
+    .members-text h3 { font-family: var(--serif); font-weight: 360; font-size: clamp(28px, 3.4vw, 44px); line-height: 1.1; letter-spacing: -0.02em; margin: 18px 0 18px; }
+    .members-text h3 em { font-style: italic; color: var(--emerald); }
+    .members-text p { color: var(--ink-soft); font-size: 16px; line-height: 1.75; max-width: 440px; margin-bottom: 22px; }
+    .feat { list-style: none; display: flex; flex-direction: column; gap: 13px; }
+    .feat li { display: flex; align-items: center; gap: 13px; font-size: 14.5px; color: var(--ink); }
+    .feat .ck { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--gold); color: var(--gold); display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+
+    /* ── Testimonial (luxury pull-quote) ───────────── */
+    .testi { background: var(--bone-2); padding: 140px 32px; }
+    .testi .wrap { max-width: 920px; text-align: center; }
+    .stars { color: var(--gold); letter-spacing: 4px; font-size: 15px; margin-bottom: 34px; }
+    .testi blockquote {
+      font-family: var(--serif); font-weight: 330; font-style: italic;
+      font-size: clamp(26px, 3.4vw, 44px); line-height: 1.3; letter-spacing: -0.01em;
+      color: var(--ink);
+    }
+    .testi blockquote em { font-style: normal; color: var(--emerald); }
+    .testi .cite { margin-top: 38px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+    .testi .cite .a { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(145deg, var(--gold-soft), var(--gold)); }
+    .testi .cite .who { text-align: left; }
+    .testi .cite .who b { font-weight: 600; font-size: 14.5px; display: block; }
+    .testi .cite .who span { font-size: 13px; color: var(--ink-soft); }
+
+    /* ── Pricing / membership tiers ────────────────── */
+    .pricing { padding: 130px 0; }
+    .price-head { text-align: center; max-width: 560px; margin: 0 auto 70px; }
+    .price-head h2 { font-family: var(--serif); font-weight: 350; font-size: clamp(32px, 4vw, 54px); line-height: 1.08; letter-spacing: -0.02em; margin-top: 20px; }
+    .price-head p { margin-top: 18px; color: var(--ink-soft); font-size: 16px; }
+    .tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 880px; margin: 0 auto; }
+    .tier {
+      border-radius: 20px; padding: 44px 40px; display: flex; flex-direction: column;
+    }
+    .tier-free { background: var(--cream); border: 1px solid var(--line); }
+    .tier-member {
+      background: linear-gradient(160deg, var(--forest) 0%, var(--forest-deep) 100%);
+      color: var(--bone); border: 1px solid rgba(178,148,91,0.35); position: relative; overflow: hidden;
+    }
+    .tier-member::before {
+      content: ''; position: absolute; top: -40%; right: -20%;
+      width: 320px; height: 320px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(178,148,91,0.16) 0%, transparent 65%);
+    }
+    .tier .ribbon {
+      position: absolute; top: 22px; right: 22px; z-index: 2;
+      font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600;
+      color: var(--ink); background: var(--gold-soft); padding: 6px 13px; border-radius: 100px;
+    }
+    .tier h3 { font-family: var(--serif); font-weight: 440; font-size: 25px; margin-bottom: 6px; position: relative; }
+    .tier .tagline { font-size: 14px; color: var(--ink-soft); margin-bottom: 28px; position: relative; }
+    .tier-member .tagline { color: rgba(245,241,232,0.55); }
+    .tier .price { position: relative; margin-bottom: 30px; }
+    .tier .price .amt { font-family: var(--serif); font-size: 50px; font-weight: 350; letter-spacing: -0.02em; }
+    .tier .price .per { font-size: 14px; color: var(--ink-soft); margin-left: 6px; }
+    .tier-member .price .per { color: rgba(245,241,232,0.5); }
+    .tier ul { list-style: none; display: flex; flex-direction: column; gap: 13px; margin-bottom: 34px; position: relative; flex: 1; }
+    .tier li { display: flex; align-items: flex-start; gap: 11px; font-size: 14.5px; line-height: 1.5; }
+    .tier-free li { color: var(--ink-soft); }
+    .tier-member li { color: rgba(245,241,232,0.82); }
+    .tier li .ck { color: var(--gold); flex-shrink: 0; margin-top: 1px; }
+    .tier-cta {
+      text-align: center; padding: 15px; border-radius: 100px; font-size: 14px; font-weight: 600;
+      text-decoration: none; transition: transform .3s, background .3s, box-shadow .3s; position: relative;
+    }
+    .cta-free { border: 1px solid var(--ink); color: var(--ink); }
+    .cta-free:hover { background: var(--ink); color: var(--bone); }
+    .cta-member { background: var(--gold); color: var(--forest-deep); }
+    .cta-member:hover { background: var(--gold-soft); transform: translateY(-2px); box-shadow: 0 14px 34px rgba(178,148,91,0.4); }
+    .price-foot { text-align: center; margin-top: 34px; font-size: 13.5px; color: var(--ink-faint); }
+
+    /* ── Final CTA ─────────────────────────────────── */
+    .final {
+      background: var(--forest-deep); color: var(--bone);
+      padding: 160px 32px; text-align: center; position: relative; overflow: hidden;
+    }
+    .final::before {
+      content: ''; position: absolute; bottom: -30%; left: 50%; transform: translateX(-50%);
+      width: 1000px; height: 700px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(178,148,91,0.12) 0%, transparent 62%);
+    }
+    .final .wrap { position: relative; }
+    .final .overline { color: var(--gold-soft); }
+    .final .overline::before { background: var(--gold-soft); }
+    .final h2 { font-family: var(--serif); font-weight: 330; font-size: clamp(40px, 6vw, 84px); line-height: 1.02; letter-spacing: -0.02em; margin: 28px 0 22px; }
+    .final h2 em { font-style: italic; color: var(--gold-soft); }
+    .final p { color: rgba(245,241,232,0.6); font-size: 17px; max-width: 460px; margin: 0 auto 44px; line-height: 1.7; }
+    .btn-final { background: var(--gold); color: var(--forest-deep); padding: 18px 42px; border-radius: 100px; font-size: 15px; font-weight: 600; }
+    .btn-final:hover { background: var(--gold-soft); transform: translateY(-2px); box-shadow: 0 18px 44px rgba(178,148,91,0.32); }
+    .final small { display: block; margin-top: 22px; font-size: 12.5px; color: rgba(245,241,232,0.4); letter-spacing: 0.04em; }
+
+    /* ── Footer ────────────────────────────────────── */
+    footer { background: var(--forest-deep); color: var(--bone); padding: 0 32px 56px; border-top: 1px solid var(--line-light); }
+    .foot-inner { max-width: 1180px; margin: 0 auto; padding-top: 56px; display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 40px; }
+    .foot-brand .logo { color: var(--bone); }
+    .foot-brand p { margin-top: 14px; max-width: 260px; font-size: 13.5px; color: rgba(245,241,232,0.45); line-height: 1.7; }
+    .foot-col h4 { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold-soft); margin-bottom: 18px; }
+    .foot-col ul { list-style: none; display: flex; flex-direction: column; gap: 11px; }
+    .foot-col a { text-decoration: none; font-size: 13.5px; color: rgba(245,241,232,0.55); transition: color .3s; }
+    .foot-col a:hover { color: var(--bone); }
+    .foot-bottom { max-width: 1180px; margin: 48px auto 0; padding-top: 24px; border-top: 1px solid var(--line-light); font-size: 12.5px; color: rgba(245,241,232,0.4); display: flex; justify-content: space-between; }
+
+    /* ── Responsive ────────────────────────────────── */
+    @media (max-width: 900px) {
+      .nav-links { display: none; }
+      .hero-grid { grid-template-columns: 1fr; gap: 60px; }
+      .card-stage { order: -1; }
+      .stats-grid { grid-template-columns: 1fr 1fr; gap: 40px 24px; }
+      .stat:nth-child(2) { border-right: none; }
+      .steps { grid-template-columns: 1fr; gap: 40px; }
+      .members-row, .members-row.flip { grid-template-columns: 1fr; gap: 36px; }
+      .members-row.flip .members-visual { order: 0; }
+      .tiers { grid-template-columns: 1fr; }
+      .foot-inner { grid-template-columns: 1fr 1fr; }
+      .foot-bottom { flex-direction: column; gap: 10px; }
+    }
+    @media (max-width: 560px) {
+      .wrap, .hero, .manifesto, .testi, .final, footer { padding-left: 22px; padding-right: 22px; }
+      .stats-grid { grid-template-columns: 1fr; }
+      .stat { border-right: none; border-bottom: 1px solid var(--line); padding-bottom: 24px; }
+      .stat:last-child { border-bottom: none; }
+      .foot-inner { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══ Nav ═══ -->
+  <nav>
+    <div class="logo">won<span class="dot">·</span>dish</div>
+    <ul class="nav-links">
+      <li><a href="#how">The Method</a></li>
+      <li><a href="#membership">Membership</a></li>
+      <li><a href="#pricing">Join</a></li>
+    </ul>
+    <div class="nav-right">
+      <a href="#" class="nav-sign">Sign in</a>
+      <a href="#pricing" class="btn btn-dark">Request Invitation</a>
+    </div>
+  </nav>
+
+  <!-- ═══ Hero ═══ -->
+  <section class="hero">
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <span class="overline reveal in">By Invitation · Est. 2026</span>
+        <h1 class="display reveal in d1">The quiet luxury<br />of eating <span class="ital">well.</span></h1>
+        <p class="hero-sub reveal in d2">Wondish engineers your nutrition around your body, your goals, and a standard most never reach. Personal. Precise. Quietly transformative.</p>
+        <div class="hero-actions reveal in d3">
+          <a href="#pricing" class="btn btn-gold">Request an Invitation</a>
+          <a href="#how" class="btn btn-ghost">See how it works →</a>
+        </div>
+        <div class="hero-trust reveal in d4">
+          <div class="avatars"><span></span><span></span><span></span><span></span></div>
+          <p>Joined by <strong>12,000 members</strong><br />across 40 countries.</p>
+        </div>
+      </div>
+
+      <div class="card-stage reveal in d3">
+        <div class="member-card">
+          <div class="card-float-tag"><span class="g"></span> Member since 2026</div>
+          <div class="card-top">
+            <div class="card-logo">won<span class="dot">·</span>dish</div>
+            <div class="card-chip"></div>
+          </div>
+          <div class="card-number">0041 · 8829 · 1175</div>
+          <div class="card-bottom">
+            <div>
+              <div class="lbl">Member</div>
+              <div class="val">A. MORENO</div>
+            </div>
+            <div class="card-tier">Signature</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Trust strip ═══ -->
+  <div class="marquee-strip">
+    <div class="strip-inner">
+      <span>Featured in VOGUE</span><span>·</span>
+      <span>Backed by Nutrition Science</span><span>·</span>
+      <span>As seen in MONOCLE</span><span>·</span>
+      <span>Reviewed by Registered Dietitians</span><span>·</span>
+      <span>500+ Curated Dishes</span><span>·</span>
+      <span>Featured in VOGUE</span><span>·</span>
+      <span>Backed by Nutrition Science</span><span>·</span>
+      <span>As seen in MONOCLE</span><span>·</span>
+      <span>Reviewed by Registered Dietitians</span><span>·</span>
+      <span>500+ Curated Dishes</span><span>·</span>
+    </div>
+  </div>
+
+  <!-- ═══ Stats ═══ -->
+  <section class="stats">
+    <div class="wrap">
+      <div class="stats-grid">
+        <div class="stat reveal"><div class="n">500<em>+</em></div><div class="t">Dishes curated for taste, not just macros.</div></div>
+        <div class="stat reveal d1"><div class="n">6</div><div class="t">Layers of personalization, built around you.</div></div>
+        <div class="stat reveal d2"><div class="n">35<em>-day</em></div><div class="t">Living plans that adapt as you progress.</div></div>
+        <div class="stat reveal d3"><div class="n">98<em>%</em></div><div class="t">Of members renew after their first season.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Manifesto ═══ -->
+  <section class="manifesto">
+    <div class="wrap">
+      <span class="overline reveal">Our Standard</span>
+      <h2 class="reveal d1">Most apps hand everyone the <em>same</em> plan.<br />We don't believe in average.</h2>
+      <p class="reveal d2">Your body is not a template. Wondish reads your goals, your kitchen, and your life — then builds a plan as singular as you are. No fads. No guesswork. Just care, engineered.</p>
+    </div>
+  </section>
+
+  <!-- ═══ How it works ═══ -->
+  <section class="how" id="how">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="overline">The Method</span>
+        <h2>Three quiet steps to a <em>life</em> that fits you.</h2>
+      </div>
+      <div class="steps">
+        <div class="step reveal">
+          <span class="idx">i.</span>
+          <h3>Tell us about you</h3>
+          <p>Your goals, your timeline, your tastes, the things you'd never eat. A few honest minutes — nothing more.</p>
+        </div>
+        <div class="step reveal d1">
+          <span class="idx">ii.</span>
+          <h3>We engineer your plan</h3>
+          <p>A five-stage nutrition pipeline computes your exact needs and composes meals you'll genuinely love.</p>
+        </div>
+        <div class="step reveal d2">
+          <span class="idx">iii.</span>
+          <h3>You simply live well</h3>
+          <p>Your plan arrives, adapts, and improves the longer you stay. You just show up and feel the difference.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Membership ═══ -->
+  <section class="members" id="membership">
+    <div class="wrap">
+      <div class="members-row reveal">
+        <div class="members-visual mv-1"><div class="mv-emoji">🥂</div></div>
+        <div class="members-text">
+          <span class="tag">Precision Nutrition</span>
+          <h3>Down to the <em>calorie</em>, never to a number on a scale.</h3>
+          <p>Using your metabolism and how you actually live, we compute your exact daily needs — then divide them into meals that feel like indulgence, not restriction.</p>
+          <ul class="feat">
+            <li><span class="ck">✓</span> Metabolic, science-based calorie engine</li>
+            <li><span class="ck">✓</span> Per-meal budgets you never have to count</li>
+            <li><span class="ck">✓</span> Safe, sustainable, never extreme</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="members-row flip reveal">
+        <div class="members-visual mv-2"><div class="mv-emoji">🍽️</div></div>
+        <div class="members-text">
+          <span class="tag">The Private Menu</span>
+          <h3>A table set <em>only</em> for you.</h3>
+          <p>Allergies, conditions, and the foods you simply won't touch are woven into one quiet safety layer. What's left is a menu of dishes designed around your life — never repeated, never boring.</p>
+          <ul class="feat">
+            <li><span class="ck">✓</span> Allergy & condition-aware, every meal</li>
+            <li><span class="ck">✓</span> Mains, sides & desserts — full days, not fragments</li>
+            <li><span class="ck">✓</span> Weekly variety, zero repetition</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Testimonial ═══ -->
+  <section class="testi">
+    <div class="wrap reveal">
+      <div class="stars">★ ★ ★ ★ ★</div>
+      <blockquote>"I've paid for trainers, chefs, and three apps I forgot to cancel. Wondish is the <em>first</em> thing that made eating well feel effortless — and, honestly, like a privilege."</blockquote>
+      <div class="cite">
+        <div class="a"></div>
+        <div class="who"><b>Alexandra Moreno</b><span>Member · London</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Pricing ═══ -->
+  <section class="pricing" id="pricing">
+    <div class="wrap">
+      <div class="price-head reveal">
+        <span class="overline" style="justify-content:center;">Membership</span>
+        <h2>Begin as a guest.<br />Stay as a member.</h2>
+        <p>Try the experience for free. When you're ready for the full table, the door is open.</p>
+      </div>
+
+      <div class="tiers">
+        <div class="tier tier-free reveal">
+          <h3>Guest</h3>
+          <p class="tagline">A taste of the method.</p>
+          <div class="price"><span class="amt">Free</span><span class="per">forever</span></div>
+          <ul>
+            <li><span class="ck">✓</span> Personalized calorie & goal engine</li>
+            <li><span class="ck">✓</span> Daily plan preview</li>
+            <li><span class="ck">✓</span> Progress & habit tracking</li>
+            <li><span class="ck">✓</span> Curated dish library</li>
+          </ul>
+          <a href="#" class="tier-cta cta-free">Start free</a>
+        </div>
+
+        <div class="tier tier-member reveal d1">
+          <span class="ribbon">By Invitation</span>
+          <h3>Signature</h3>
+          <p class="tagline">The full Wondish experience.</p>
+          <div class="price"><span class="amt">$19</span><span class="per">/ month · cancel anytime</span></div>
+          <ul>
+            <li><span class="ck">✓</span> Everything in Guest, elevated</li>
+            <li><span class="ck">✓</span> Full 35-day living meal plans</li>
+            <li><span class="ck">✓</span> Plan around your own ingredients</li>
+            <li><span class="ck">✓</span> Advanced macro & micronutrient analytics</li>
+            <li><span class="ck">✓</span> Adapts continuously as you progress</li>
+            <li><span class="ck">✓</span> Priority member support</li>
+          </ul>
+          <a href="#" class="tier-cta cta-member">Request your invitation</a>
+        </div>
+      </div>
+      <p class="price-foot">No commitment. Cancel in one tap. Your data stays yours, always.</p>
+    </div>
+  </section>
+
+  <!-- ═══ Final CTA ═══ -->
+  <section class="final">
+    <div class="wrap">
+      <span class="overline" style="justify-content:center;">A Standard Worth Keeping</span>
+      <h2>Your table is <em>waiting.</em></h2>
+      <p>Join the few who decided their health deserved to be designed, not guessed.</p>
+      <a href="#pricing" class="btn btn-final">Request an Invitation</a>
+      <small>Free to begin · No card required</small>
+    </div>
+  </section>
+
+  <!-- ═══ Footer ═══ -->
+  <footer>
+    <div class="foot-inner">
+      <div class="foot-brand">
+        <div class="logo">won<span class="dot">·</span>dish</div>
+        <p>Personalized nutrition, engineered with care. For your health, your preferences, and the way you actually live.</p>
+      </div>
+      <div class="foot-col">
+        <h4>Experience</h4>
+        <ul><li><a href="#">The Method</a></li><li><a href="#">Membership</a></li><li><a href="#">The Menu</a></li><li><a href="#">Pricing</a></li></ul>
+      </div>
+      <div class="foot-col">
+        <h4>House</h4>
+        <ul><li><a href="#">About</a></li><li><a href="#">Journal</a></li><li><a href="#">Careers</a></li><li><a href="#">Contact</a></li></ul>
+      </div>
+      <div class="foot-col">
+        <h4>Legal</h4>
+        <ul><li><a href="#">Privacy</a></li><li><a href="#">Terms</a></li><li><a href="#">Your data</a></li></ul>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Wondish. Eat with intention.</span>
+      <span>Crafted for the well-kept few.</span>
+    </div>
+  </footer>
+
+  <script>
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    document.querySelectorAll('.reveal:not(.in)').forEach((el) => io.observe(el));
+
+    // Subtle card tilt on pointer
+    const card = document.querySelector('.member-card');
+    const stage = document.querySelector('.card-stage');
+    if (card && stage && window.matchMedia('(pointer:fine)').matches) {
+      stage.addEventListener('mousemove', (e) => {
+        const r = stage.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width - 0.5;
+        const y = (e.clientY - r.top) / r.height - 0.5;
+        card.style.animation = 'none';
+        card.style.transform = `rotateY(${x * 10}deg) rotateX(${ -y * 10}deg) translateY(-6px)`;
+      });
+      stage.addEventListener('mouseleave', () => {
+        card.style.transform = '';
+        card.style.animation = '';
+      });
+    }
+  </script>
+
+</body>
+</html>

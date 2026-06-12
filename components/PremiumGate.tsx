@@ -13,7 +13,7 @@ export default function PremiumGate() {
 
         {/* Heading */}
         <h2 className="text-2xl font-bold text-navy mb-3">Premium Feature</h2>
-        <p className="text-[#8A8D93] text-sm leading-relaxed mb-8">
+        <p className="text-[#848181] text-sm leading-relaxed mb-8">
           This feature is available on the Premium plan. Upgrade to unlock the full Wondish experience.
         </p>
 
@@ -44,7 +44,7 @@ export default function PremiumGate() {
         >
           Upgrade to Premium — $15/mo
         </Link>
-        <p className="text-xs text-[#8A8D93] mt-3">Cancel anytime. Secure billing via Stripe.</p>
+        <p className="text-xs text-[#848181] mt-3">Cancel anytime. Secure billing via Stripe.</p>
       </div>
     </div>
   );

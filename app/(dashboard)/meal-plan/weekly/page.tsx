@@ -81,8 +81,8 @@ export default async function WeeklyPlanPage() {
       <div className="wp mb-8" style={{ animationDelay: "0ms" }}>
         <Link
           href="/meal-plan"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold mb-5 hover:text-[#0d1f10] transition-colors"
-          style={{ color: "#ADBDAD" }}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold mb-5 hover:text-[#1E1A1A] transition-colors"
+          style={{ color: "#ABA6A6" }}
         >
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
             <path d="M13 8H3M7 4l-4 4 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -93,15 +93,15 @@ export default async function WeeklyPlanPage() {
         <div className="flex items-end justify-between">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <p className="text-3xl font-bold text-[#0d1f10]">Weekly Plan</p>
+              <p className="text-3xl font-bold text-[#1E1A1A]">Weekly Plan</p>
               <span
                 className="text-[9px] font-bold tracking-[0.18em] uppercase px-2.5 py-1 rounded-full"
-                style={{ background: "rgba(74,222,128,0.1)", color: "#4ade80" }}
+                style={{ background: "rgba(129,37,73,0.1)", color: "#812549" }}
               >
                 Week {weekNumber}
               </span>
             </div>
-            <p className="text-sm font-medium" style={{ color: "#9EA8A0" }}>{weekLabel}</p>
+            <p className="text-sm font-medium" style={{ color: "#848181" }}>{weekLabel}</p>
           </div>
 
           <div className="flex gap-1 mb-0.5">
@@ -113,19 +113,19 @@ export default async function WeeklyPlanPage() {
                   key={i}
                   className="w-8 h-8 rounded-lg flex flex-col items-center justify-center"
                   style={{
-                    background: isToday ? "rgba(74,222,128,0.15)" : "transparent",
-                    border: isToday ? "1px solid rgba(74,222,128,0.3)" : "1px solid transparent",
+                    background: isToday ? "rgba(129,37,73,0.15)" : "transparent",
+                    border: isToday ? "1px solid rgba(129,37,73,0.3)" : "1px solid transparent",
                   }}
                 >
                   <span
                     className="text-[8px] font-bold uppercase leading-none"
-                    style={{ color: isToday ? "#4ade80" : "#ADBDAD" }}
+                    style={{ color: isToday ? "#812549" : "#ABA6A6" }}
                   >
                     {d}
                   </span>
                   <span
                     className="text-[10px] font-bold leading-none mt-0.5"
-                    style={{ color: isToday ? "#4ade80" : "#C8D4C8" }}
+                    style={{ color: isToday ? "#812549" : "#CCC6C6" }}
                   >
                     {dayDate.getDate()}
                   </span>
@@ -142,7 +142,7 @@ export default async function WeeklyPlanPage() {
         style={{
           animationDelay: "120ms",
           background: "#fff",
-          boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+          boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
         }}
       >
         <WeeklyMealPlanGrid

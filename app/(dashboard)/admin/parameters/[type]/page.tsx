@@ -72,14 +72,14 @@ export default async function ParametersPage({
       <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
         <p
           className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
-          style={{ color: "#7DB87D" }}
+          style={{ color: "#B75E78" }}
         >
           Admin · Parameters
         </p>
-        <h1 className="text-3xl font-bold text-[#0d1f10]">{label}</h1>
+        <h1 className="text-3xl font-bold text-[#1E1A1A]">{label}</h1>
         <div className="flex items-center gap-3 mt-4">
           <div className="h-px w-12 bg-primary/40" />
-          <p className="text-xs" style={{ color: "#9EA8A0" }}>
+          <p className="text-xs" style={{ color: "#848181" }}>
             {items.length} {items.length === 1 ? "entry" : "entries"} · Manage reference data tables
           </p>
         </div>
@@ -95,13 +95,13 @@ export default async function ParametersPage({
             style={
               params.type === t
                 ? {
-                    background: "#4ade80",
-                    color: "#0a1509",
-                    boxShadow: "0 2px 8px rgba(74,222,128,0.3)",
+                    background: "#812549",
+                    color: "#ffffff",
+                    boxShadow: "0 2px 8px rgba(129,37,73,0.3)",
                   }
                 : {
-                    background: "#F0F4F0",
-                    color: "#8A8D93",
+                    background: "#F5F1DD",
+                    color: "#848181",
                   }
             }
           >

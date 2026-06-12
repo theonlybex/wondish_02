@@ -36,21 +36,21 @@ export default function DatePicker({
   return (
     <div className="flex flex-col gap-1.5 relative" ref={ref}>
       {label && (
-        <label className="text-sm font-medium text-[#25293C]">{label}</label>
+        <label className="text-sm font-medium text-[#1E1A1A]">{label}</label>
       )}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8E7EA] bg-white text-sm text-left focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+        className="w-full px-3.5 py-2.5 rounded-xl border border-[#EAE4CA] bg-white text-sm text-left focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
       >
         {value ? (
-          <span className="text-[#25293C]">{format(value, "PPP")}</span>
+          <span className="text-[#1E1A1A]">{format(value, "PPP")}</span>
         ) : (
           <span className="text-[#A8A4B5]">{placeholder}</span>
         )}
       </button>
       {open && (
-        <div className="absolute top-full left-0 z-50 mt-1 bg-white border border-[#E8E7EA] rounded-2xl shadow-xl p-2">
+        <div className="absolute top-full left-0 z-50 mt-1 bg-white border border-[#EAE4CA] rounded-2xl shadow-xl p-2">
           <DayPicker
             mode="single"
             selected={value}

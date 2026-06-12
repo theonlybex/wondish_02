@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
+import BrandLogo from "@/components/BrandLogo";
 
 export default function DashboardSidebar({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
@@ -27,14 +28,11 @@ export default function DashboardSidebar({ isAdmin }: { isAdmin: boolean }) {
   ];
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 w-64 flex flex-col border-r border-white/[0.06]" style={{ background: "linear-gradient(180deg, #0d1f10 0%, #111e13 60%, #0d1f10 100%)" }}>
+    <aside className="fixed inset-y-0 left-0 z-30 w-64 flex flex-col border-r border-white/[0.06]" style={{ background: "linear-gradient(180deg, #5F1C35 0%, #3D1122 60%, #5F1C35 100%)" }}>
       {/* Logo */}
       <div className="h-16 flex items-center px-6 border-b border-white/[0.06]">
-        <Link href="/overview" className="flex items-center group">
-          <span className="text-xl font-bold tracking-tight leading-none">
-            <span className="text-white">won</span>
-            <span className="text-primary">dish</span>
-          </span>
+        <Link href="/overview" className="flex items-center group text-white" aria-label="Wondish overview">
+          <BrandLogo className="h-5 w-auto" />
         </Link>
       </div>
 
@@ -48,12 +46,12 @@ export default function DashboardSidebar({ isAdmin }: { isAdmin: boolean }) {
                 href={href}
                 className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
                   active
-                    ? "bg-primary/15 text-primary"
+                    ? "bg-white/[0.12] text-white"
                     : "text-white/50 hover:text-white/90 hover:bg-white/[0.05]"
                 }`}
               >
                 {active && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-primary rounded-r-full" />
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#FDC221] rounded-r-full" />
                 )}
                 <span className="text-base w-5 text-center leading-none">{icon}</span>
                 {label}
@@ -75,12 +73,12 @@ export default function DashboardSidebar({ isAdmin }: { isAdmin: boolean }) {
                     href={href}
                     className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
                       active
-                        ? "bg-primary/15 text-primary"
+                        ? "bg-white/[0.12] text-white"
                         : "text-white/50 hover:text-white/90 hover:bg-white/[0.05]"
                     }`}
                   >
                     {active && (
-                      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-primary rounded-r-full" />
+                      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#FDC221] rounded-r-full" />
                     )}
                     <span className="text-base w-5 text-center leading-none">{icon}</span>
                     {label}

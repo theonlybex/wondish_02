@@ -2,11 +2,16 @@ import Link from "next/link";
 import CheckoutButton from "./CheckoutButton";
 import { getTranslations } from "next-intl/server";
 
-function Check({ color = "text-success" }: { color?: string }) {
+function Check({ dark = false }: { dark?: boolean }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className={`mt-0.5 flex-shrink-0 ${color}`}>
-      <path d="M3 8l4 4 6-7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <span
+      className="w-[21px] h-[21px] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+      style={dark ? { background: "rgba(255,255,255,0.18)", color: "#fff" } : { background: "#F5F1DD", color: "#5F1C35" }}
+    >
+      <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+        <path d="M3 8l4 4 6-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
   );
 }
 
@@ -17,69 +22,88 @@ export default async function PricingSection({ isLoggedIn = false }: { isLoggedI
   const premiumFeatures = [t("premiumF1"), t("premiumF2"), t("premiumF3"), t("premiumF4"), t("premiumF5"), t("premiumF6"), t("premiumF7"), t("premiumF8"), t("premiumF9"), t("premiumF10")];
 
   return (
-    <section id="pricing" className="bg-[#F8F7FA] py-24 px-5 sm:px-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="text-center max-w-xl mx-auto mb-14">
-          <p className="text-primary text-sm font-semibold uppercase tracking-widest mb-4">{t("eyebrow")}</p>
-          <h2 className="text-4xl sm:text-5xl font-bold text-[#25293C] leading-tight mb-4">{t("headline")}</h2>
-          <p className="text-[#8A8D93] text-lg">{t("subheadline")}</p>
+    <section id="pricing" className="pb-24">
+      <div className="max-w-[1180px] mx-auto px-7">
+        <div className="reveal max-w-[640px] mx-auto text-center">
+          <span
+            className="inline-flex items-center justify-center gap-[9px] text-xs font-bold uppercase tracking-[0.14em]"
+            style={{ color: "#812549" }}
+          >
+            <span className="w-[22px] h-0.5 rounded-sm" style={{ background: "#FDC221" }} />
+            {t("eyebrow")}
+          </span>
+          <h2
+            className="font-extrabold mt-4 mb-4"
+            style={{ fontSize: "clamp(32px, 4.4vw, 52px)", letterSpacing: "-0.02em", lineHeight: 1.05 }}
+          >
+            {t("headline")}
+          </h2>
+          <p className="text-lg" style={{ color: "#4F4A4A" }}>{t("subheadline")}</p>
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
-          <div className="bg-white border border-[#E8E7EA] rounded-2xl p-8 flex flex-col">
-            <div className="mb-6">
-              <h3 className="text-[#25293C] font-bold text-xl mb-1">{t("freeName")}</h3>
-              <p className="text-[#8A8D93] text-sm">{t("freeTagline")}</p>
+        <div className="grid sm:grid-cols-2 gap-5 max-w-[880px] mx-auto mt-[54px]">
+          {/* Free */}
+          <div className="reveal bg-white rounded-[28px] py-[38px] px-[34px] border flex flex-col" style={{ borderColor: "#EAE4CA" }}>
+            <div className="text-[15px] font-bold uppercase tracking-[0.1em]" style={{ color: "#812549" }}>
+              {t("freeName")}
             </div>
-            <div className="mb-8">
-              <span className="text-4xl font-bold text-[#25293C]">{t("freePrice")}</span>
-              <span className="text-[#8A8D93] text-sm ml-2">{t("perMonth")}</span>
+            <div className="font-extrabold mt-3.5" style={{ fontSize: 52, letterSpacing: "-0.02em", lineHeight: 1.05 }}>
+              {t("freePrice")}
+              <span className="text-[17px] font-semibold ml-1" style={{ color: "#848181", letterSpacing: 0 }}>{t("perMonth")}</span>
             </div>
-            <ul className="space-y-3 mb-8 flex-1">
+            <p className="text-[15px] mb-6 mt-2" style={{ color: "#4F4A4A" }}>{t("freeTagline")}</p>
+            <ul className="flex flex-col gap-[13px] mb-[30px] flex-1">
               {freeFeatures.map((f) => (
-                <li key={f} className="flex items-start gap-3 text-sm text-[#8A8D93]">
+                <li key={f} className="flex items-start gap-[11px] text-[14.5px]" style={{ color: "#4F4A4A" }}>
                   <Check />
                   {f}
                 </li>
               ))}
             </ul>
-            {isLoggedIn ? (
-              <Link href="/dashboard" className="w-full text-center py-3 rounded-xl font-semibold text-sm border border-[#E8E7EA] text-[#25293C] hover:bg-[#F8F7FA] transition-all duration-150">
-                {t("freeCtaLoggedIn")}
-              </Link>
-            ) : (
-              <Link href="/register" className="w-full text-center py-3 rounded-xl font-semibold text-sm border border-[#E8E7EA] text-[#25293C] hover:bg-[#F8F7FA] transition-all duration-150">
-                {t("freeCta")}
-              </Link>
-            )}
+            <Link
+              href={isLoggedIn ? "/overview" : "/register"}
+              className="w-full text-center px-7 py-[15px] rounded-full font-semibold text-[15px] border transition-all hover:-translate-y-0.5 hover:text-white hover:bg-[#B75E78] hover:border-[#B75E78]"
+              style={{ color: "#812549", borderColor: "#812549" }}
+            >
+              {isLoggedIn ? t("freeCtaLoggedIn") : t("freeCta")}
+            </Link>
           </div>
 
-          <div className="relative bg-navy rounded-2xl p-8 flex flex-col overflow-hidden">
-            <div className="absolute top-0 right-0 w-48 h-48 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
-            <div className="mb-6 relative">
-              <h3 className="text-white font-bold text-xl mb-1">{t("premiumName")}</h3>
-              <p className="text-white/50 text-sm">{t("premiumTagline")}</p>
+          {/* Premium */}
+          <div
+            className="reveal d1 relative rounded-[28px] py-[38px] px-[34px] flex flex-col text-white"
+            style={{ background: "linear-gradient(165deg, #812549, #5F1C35)" }}
+          >
+            <span
+              className="absolute top-6 right-6 text-xs font-bold px-3.5 py-1.5 rounded-full"
+              style={{ background: "#FDC221", color: "#4a2c05" }}
+            >
+              {t("mostPopular")}
+            </span>
+            <div className="text-[15px] font-bold uppercase tracking-[0.1em]" style={{ color: "#FDC221" }}>
+              {t("premiumName")}
             </div>
-            <div className="mb-8 relative">
-              <span className="text-4xl font-bold text-white">{t("premiumPrice")}</span>
-              <span className="text-white/40 text-sm ml-2">{t("perMonth")}</span>
-              <p className="text-white/40 text-xs mt-1">{t("premiumCancelAnytime")}</p>
+            <div className="font-extrabold mt-3.5" style={{ fontSize: 52, letterSpacing: "-0.02em", lineHeight: 1.05 }}>
+              {t("premiumPrice")}
+              <span className="text-[17px] font-semibold ml-1" style={{ color: "rgba(255,255,255,0.7)", letterSpacing: 0 }}>{t("perMonth")}</span>
             </div>
-            <ul className="space-y-3 mb-8 flex-1 relative">
+            <p className="text-[15px] mb-1 mt-2" style={{ color: "rgba(255,255,255,0.8)" }}>{t("premiumTagline")}</p>
+            <p className="text-xs mb-6" style={{ color: "rgba(255,255,255,0.6)" }}>{t("premiumCancelAnytime")}</p>
+            <ul className="flex flex-col gap-[13px] mb-[30px] flex-1">
               {premiumFeatures.map((f) => (
-                <li key={f} className="flex items-start gap-3 text-sm text-white/70">
-                  <Check color="text-primary" />
+                <li key={f} className="flex items-start gap-[11px] text-[14.5px]" style={{ color: "rgba(255,255,255,0.9)" }}>
+                  <Check dark />
                   {f}
                 </li>
               ))}
             </ul>
-            <CheckoutButton className="relative w-full text-center py-3 rounded-xl font-semibold text-sm bg-primary hover:bg-primary-dark disabled:opacity-60 disabled:cursor-not-allowed text-white transition-all duration-150 shadow-xl shadow-primary/30">
+            <CheckoutButton className="w-full text-center px-7 py-[15px] rounded-full font-semibold text-[15px] bg-[#00B9A6] hover:bg-[#75C6BC] disabled:opacity-60 disabled:cursor-not-allowed text-black transition-all hover:-translate-y-0.5">
               {t("premiumCta")}
             </CheckoutButton>
           </div>
         </div>
 
-        <p className="text-center text-[#8A8D93] text-sm mt-8">{t("footer")}</p>
+        <p className="text-center text-sm mt-8" style={{ color: "#848181" }}>{t("footer")}</p>
       </div>
     </section>
   );

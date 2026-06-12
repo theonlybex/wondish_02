@@ -119,29 +119,25 @@ export default async function TasteProfilePage({
       `}</style>
 
       {/* Header */}
-      <div className="ov flex items-start justify-between mb-8" style={{ animationDelay: "0ms" }}>
-        <div>
-          <p
-            className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
-            style={{ color: "#7DB87D" }}
-          >
-            Taste Profile
-          </p>
-          <h1 className="text-3xl font-bold text-[#0d1f10]">Taste Profile</h1>
-          <div className="flex items-center gap-3 mt-4">
-            <div className="h-px w-12 bg-primary/40" />
-            <p className="text-xs" style={{ color: "#9EA8A0" }}>
-              Built from dishes you&apos;d try and meals you&apos;ve rated
-            </p>
-          </div>
-        </div>
-        <a
-          href="/taste?discover=1"
-          className="mt-8 inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-4 py-2.5 rounded-xl text-sm font-bold transition-colors flex-shrink-0"
-          style={{ boxShadow: "0 4px 16px rgba(74,222,128,0.2)" }}
+      <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
+        <p
+          className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
+          style={{ color: "#B75E78" }}
         >
-          Rate More
-        </a>
+          Taste Profile
+        </p>
+        <h1 className="text-3xl font-bold text-[#1E1A1A]">Taste Profile</h1>
+        <div className="flex items-center gap-3 mt-4">
+          <div className="h-px w-12 bg-primary/40" />
+          <p className="text-xs" style={{ color: "#848181" }}>
+            Built from dishes you&apos;d try and meals you&apos;ve rated
+          </p>
+        </div>
+      </div>
+
+      {/* Dish swiper */}
+      <div className="ov mb-8" style={{ animationDelay: "40ms" }}>
+        <DishTinder isDiscover />
       </div>
 
       {/* Stats bar */}
@@ -149,19 +145,19 @@ export default async function TasteProfilePage({
         className="ov bg-white rounded-2xl overflow-hidden mb-6"
         style={{
           animationDelay: "70ms",
-          boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+          boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
         }}
       >
-        <div className="grid grid-cols-3" style={{ background: "#FAFCFA" }}>
+        <div className="grid grid-cols-3" style={{ background: "#F9F7ED" }}>
           {[
-            { label: "Dishes Rated", value: totalDishes, color: "#0d1f10" },
-            { label: "Would Try", value: totalWouldTry, color: "#4ade80" },
+            { label: "Dishes Rated", value: totalDishes, color: "#1E1A1A" },
+            { label: "Would Try", value: totalWouldTry, color: "#812549" },
             { label: "Would Skip", value: totalWouldSkip, color: "#EA5455" },
           ].map((s, i) => (
-            <div key={s.label} className={`px-6 py-5 ${i > 0 ? "border-l border-[#E8E7EA]" : ""}`}>
+            <div key={s.label} className={`px-6 py-5 ${i > 0 ? "border-l border-[#EAE4CA]" : ""}`}>
               <p
                 className="text-[9px] tracking-[0.22em] uppercase font-bold mb-2"
-                style={{ color: "#ADBDAD" }}
+                style={{ color: "#ABA6A6" }}
               >
                 {s.label}
               </p>
@@ -182,41 +178,41 @@ export default async function TasteProfilePage({
           className="ov bg-white rounded-2xl p-6 mb-6"
           style={{
             animationDelay: "140ms",
-            boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+            boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
           }}
         >
           <div className="flex items-center justify-between mb-5">
             <div>
               <p
                 className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1"
-                style={{ color: "#ADBDAD" }}
+                style={{ color: "#ABA6A6" }}
               >
                 Affinity Map
               </p>
-              <h2 className="text-base font-bold text-[#0d1f10]">Ingredients You Love</h2>
+              <h2 className="text-base font-bold text-[#1E1A1A]">Ingredients You Love</h2>
             </div>
             <span className="text-2xl">🧠</span>
           </div>
           <div className="space-y-3">
             {ingredientAffinity.map(({ name, percent }) => (
               <div key={name} className="flex items-center gap-3">
-                <span className="text-sm text-[#0d1f10] font-medium w-36 truncate">{name}</span>
-                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#F0F4F0" }}>
+                <span className="text-sm text-[#1E1A1A] font-medium w-36 truncate">{name}</span>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#F5F1DD" }}>
                   <div
                     className="h-full rounded-full"
-                    style={{ width: `${percent}%`, background: "linear-gradient(90deg, #4ade80, #22c55e)" }}
+                    style={{ width: `${percent}%`, background: "linear-gradient(90deg, #812549, #5F1C35)" }}
                   />
                 </div>
                 <span
                   className="text-xs font-bold w-10 text-right tabular-nums"
-                  style={{ color: "#4ade80" }}
+                  style={{ color: "#812549" }}
                 >
                   {percent}%
                 </span>
               </div>
             ))}
           </div>
-          <p className="text-[10px] mt-4" style={{ color: "#ADBDAD" }}>
+          <p className="text-[10px] mt-4" style={{ color: "#ABA6A6" }}>
             Higher % = appears in more of your liked dishes. Your meal plan prioritises these ingredients.
           </p>
         </div>
@@ -227,14 +223,14 @@ export default async function TasteProfilePage({
         <div className="ov mb-6" style={{ animationDelay: "210ms" }}>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ADBDAD" }}>
+              <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ABA6A6" }}>
                 Dish Tinder
               </p>
-              <h2 className="text-base font-bold text-[#0d1f10]">Dishes You&apos;d Try</h2>
+              <h2 className="text-base font-bold text-[#1E1A1A]">Dishes You&apos;d Try</h2>
             </div>
             <span
               className="text-[10px] font-bold tracking-widest uppercase"
-              style={{ color: "#4ade80" }}
+              style={{ color: "#812549" }}
             >
               {tinderLiked.length} dishes
             </span>
@@ -246,29 +242,29 @@ export default async function TasteProfilePage({
                 <div
                   key={recipe.id}
                   className="bg-white rounded-2xl p-4 flex items-center gap-4"
-                  style={{ boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+                  style={{ boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
                 >
                   <div
                     className="w-0.5 h-10 rounded-full flex-shrink-0"
-                    style={{ background: "#4ade80" }}
+                    style={{ background: "#812549" }}
                   />
                   <div
                     className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-2xl"
-                    style={{ background: "rgba(74,222,128,0.08)" }}
+                    style={{ background: "rgba(129,37,73,0.08)" }}
                   >
                     {emoji}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-[#0d1f10] text-sm truncate">{recipe.name}</p>
+                    <p className="font-semibold text-[#1E1A1A] text-sm truncate">{recipe.name}</p>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       {recipe.mealType?.name && (
-                        <span className="text-[10px]" style={{ color: "#ADBDAD" }}>{recipe.mealType.name}</span>
+                        <span className="text-[10px]" style={{ color: "#ABA6A6" }}>{recipe.mealType.name}</span>
                       )}
                       {recipe.ethnic?.name && (
-                        <span className="text-[10px]" style={{ color: "#4ade80" }}>· {recipe.ethnic.name}</span>
+                        <span className="text-[10px]" style={{ color: "#812549" }}>· {recipe.ethnic.name}</span>
                       )}
                       {recipe.calories && (
-                        <span className="text-[10px]" style={{ color: "#ADBDAD" }}>· {recipe.calories} kcal</span>
+                        <span className="text-[10px]" style={{ color: "#ABA6A6" }}>· {recipe.calories} kcal</span>
                       )}
                     </div>
                   </div>
@@ -284,12 +280,12 @@ export default async function TasteProfilePage({
         <div className="ov mb-6" style={{ animationDelay: "270ms" }}>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ADBDAD" }}>
+              <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ABA6A6" }}>
                 From Your Journal
               </p>
-              <h2 className="text-base font-bold text-[#0d1f10]">Meals You Loved</h2>
+              <h2 className="text-base font-bold text-[#1E1A1A]">Meals You Loved</h2>
             </div>
-            <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#4ade80" }}>
+            <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#812549" }}>
               {journalLiked.length} meals
             </span>
           </div>
@@ -301,29 +297,29 @@ export default async function TasteProfilePage({
                 <div
                   key={r.id}
                   className="bg-white rounded-2xl p-4 flex items-center gap-4"
-                  style={{ boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+                  style={{ boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
                 >
-                  <div className="w-0.5 h-10 rounded-full flex-shrink-0" style={{ background: "#4ade80" }} />
+                  <div className="w-0.5 h-10 rounded-full flex-shrink-0" style={{ background: "#812549" }} />
                   <div
                     className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-2xl"
-                    style={{ background: "rgba(74,222,128,0.08)" }}
+                    style={{ background: "rgba(129,37,73,0.08)" }}
                   >
                     {emoji}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-[#0d1f10] text-sm truncate">{r.name}</p>
+                    <p className="font-semibold text-[#1E1A1A] text-sm truncate">{r.name}</p>
                     <div className="flex items-center gap-2 mt-1">
                       {r.calories && (
-                        <span className="text-[10px]" style={{ color: "#ADBDAD" }}>{r.calories} kcal</span>
+                        <span className="text-[10px]" style={{ color: "#ABA6A6" }}>{r.calories} kcal</span>
                       )}
                       {r.mealType?.name && (
-                        <span className="text-[10px]" style={{ color: "#ADBDAD" }}>· {r.mealType.name}</span>
+                        <span className="text-[10px]" style={{ color: "#ABA6A6" }}>· {r.mealType.name}</span>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-0.5 flex-shrink-0">
                     {Array.from({ length: Math.min(stats?.likes ?? 0, 5) }).map((_, i) => (
-                      <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: "#4ade80" }} />
+                      <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: "#812549" }} />
                     ))}
                   </div>
                 </div>
@@ -338,10 +334,10 @@ export default async function TasteProfilePage({
         <div className="ov mb-6" style={{ animationDelay: "330ms" }}>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ADBDAD" }}>
+              <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ABA6A6" }}>
                 Excluded
               </p>
-              <h2 className="text-base font-bold text-[#0d1f10]">Not Your Thing</h2>
+              <h2 className="text-base font-bold text-[#1E1A1A]">Not Your Thing</h2>
             </div>
             <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#EA5455" }}>
               {tinderDisliked.length + journalDisliked.length} dishes
@@ -354,7 +350,7 @@ export default async function TasteProfilePage({
                 <div
                   key={r.id}
                   className="bg-white rounded-2xl p-4 flex items-center gap-4 opacity-60"
-                  style={{ boxShadow: "0 1px 3px rgba(13,31,16,0.05), 0 0 0 1px rgba(13,31,16,0.03)" }}
+                  style={{ boxShadow: "0 1px 3px rgba(30,26,26,0.05), 0 0 0 1px rgba(30,26,26,0.03)" }}
                 >
                   <div className="w-0.5 h-10 rounded-full flex-shrink-0" style={{ background: "#EA5455" }} />
                   <div
@@ -366,12 +362,12 @@ export default async function TasteProfilePage({
                   <div className="flex-1 min-w-0">
                     <p
                       className="font-semibold text-sm truncate line-through"
-                      style={{ color: "#0d1f10", textDecorationColor: "#EA5455" }}
+                      style={{ color: "#1E1A1A", textDecorationColor: "#EA5455" }}
                     >
                       {r.name}
                     </p>
                     {r.mealType?.name && (
-                      <p className="text-[10px] mt-1" style={{ color: "#ADBDAD" }}>
+                      <p className="text-[10px] mt-1" style={{ color: "#ABA6A6" }}>
                         {r.mealType.name}
                       </p>
                     )}
@@ -388,13 +384,13 @@ export default async function TasteProfilePage({
         className="ov relative rounded-2xl p-8 overflow-hidden text-center"
         style={{
           animationDelay: "390ms",
-          background: "linear-gradient(140deg, #0a1509 0%, #162a18 60%, #0d1f10 100%)",
-          boxShadow: "0 8px 32px rgba(13,31,16,0.25)",
+          background: "linear-gradient(140deg, #5F1C35 0%, #812549 60%, #5F1C35 100%)",
+          boxShadow: "0 8px 32px rgba(30,26,26,0.25)",
         }}
       >
         <div
           className="absolute top-0 right-0 w-64 h-64 rounded-full pointer-events-none"
-          style={{ background: "radial-gradient(circle, rgba(74,222,128,0.08) 0%, transparent 65%)", transform: "translate(30%, -30%)" }}
+          style={{ background: "radial-gradient(circle, rgba(129,37,73,0.08) 0%, transparent 65%)", transform: "translate(30%, -30%)" }}
         />
         <div className="relative">
           <p className="text-white font-bold mb-2">Your taste profile improves your meal plan</p>
@@ -403,8 +399,8 @@ export default async function TasteProfilePage({
           </p>
           <a
             href="/taste?discover=1"
-            className="inline-flex items-center gap-2 mt-6 bg-primary hover:bg-primary-dark text-[#0a1509] px-6 py-3 rounded-xl text-sm font-bold transition-colors"
-            style={{ boxShadow: "0 4px 20px rgba(74,222,128,0.25)" }}
+            className="inline-flex items-center gap-2 mt-6 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-sm font-bold transition-colors"
+            style={{ boxShadow: "0 4px 20px rgba(129,37,73,0.25)" }}
           >
             Rate More Dishes
           </a>

@@ -67,20 +67,20 @@ export default async function PricingPage({
       {/* FAQ */}
       <section className="bg-white py-24 px-5 sm:px-8">
         <div className="max-w-2xl mx-auto">
-          <h2 className="text-3xl font-bold text-[#25293C] mb-10 text-center">
+          <h2 className="text-3xl font-bold text-[#1E1A1A] mb-10 text-center">
             Frequently asked questions
           </h2>
           <dl className="space-y-6">
             {faqs.map(({ q, a }) => (
-              <div key={q} className="border-b border-[#E8E7EA] pb-6 last:border-0">
-                <dt className="text-[#25293C] font-semibold mb-2">{q}</dt>
-                <dd className="text-[#8A8D93] text-sm leading-relaxed">{a}</dd>
+              <div key={q} className="border-b border-[#EAE4CA] pb-6 last:border-0">
+                <dt className="text-[#1E1A1A] font-semibold mb-2">{q}</dt>
+                <dd className="text-[#848181] text-sm leading-relaxed">{a}</dd>
               </div>
             ))}
           </dl>
 
           <div className="mt-12 text-center">
-            <p className="text-[#8A8D93] text-sm mb-4">Still have questions?</p>
+            <p className="text-[#848181] text-sm mb-4">Still have questions?</p>
             <Link
               href="mailto:support@wondish.io"
               className="text-primary hover:text-primary-dark font-semibold text-sm"

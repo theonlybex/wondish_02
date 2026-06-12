@@ -29,7 +29,7 @@ function randomCode() {
 }
 
 const fieldClass =
-  "w-full bg-[#FAFCFA] border border-[#E8E7EA] rounded-xl px-4 py-2.5 text-sm text-[#0d1f10] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors";
+  "w-full bg-[#F9F7ED] border border-[#EAE4CA] rounded-xl px-4 py-2.5 text-sm text-[#1E1A1A] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors";
 
 const labelClass =
   "block text-[9px] tracking-[0.22em] uppercase font-bold mb-2";
@@ -96,13 +96,13 @@ export default function AdminCouponsPage() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
-          <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3" style={{ color: "#7DB87D" }}>
+          <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3" style={{ color: "#B75E78" }}>
             Admin
           </p>
-          <h1 className="text-3xl font-bold text-[#0d1f10]">Coupons</h1>
+          <h1 className="text-3xl font-bold text-[#1E1A1A]">Coupons</h1>
           <div className="flex items-center gap-3 mt-4">
             <div className="h-px w-12 bg-primary/40" />
-            <p className="text-xs" style={{ color: "#9EA8A0" }}>
+            <p className="text-xs" style={{ color: "#848181" }}>
               Create and manage coupon codes for admin or premium access
             </p>
           </div>
@@ -113,28 +113,28 @@ export default function AdminCouponsPage() {
           className="ov bg-white rounded-2xl p-7 mb-6"
           style={{
             animationDelay: "70ms",
-            boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+            boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
           }}
         >
-          <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-6" style={{ color: "#ADBDAD" }}>
+          <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-6" style={{ color: "#ABA6A6" }}>
             New Coupon
           </p>
           <form onSubmit={handleCreate} className="grid sm:grid-cols-2 gap-5">
             {/* Code */}
             <div>
-              <label className={labelClass} style={{ color: "#ADBDAD" }}>Code</label>
+              <label className={labelClass} style={{ color: "#ABA6A6" }}>Code</label>
               <div className="flex gap-2">
                 <input
                   value={form.code}
                   onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-                  className="flex-1 bg-[#FAFCFA] border border-[#E8E7EA] rounded-xl px-4 py-2.5 text-sm font-mono text-[#0d1f10] uppercase tracking-widest outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="flex-1 bg-[#F9F7ED] border border-[#EAE4CA] rounded-xl px-4 py-2.5 text-sm font-mono text-[#1E1A1A] uppercase tracking-widest outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setForm({ ...form, code: randomCode() })}
-                  className="px-3 py-2.5 text-sm border border-[#E8E7EA] rounded-xl hover:border-primary/30 hover:text-primary transition-colors"
-                  style={{ color: "#ADBDAD" }}
+                  className="px-3 py-2.5 text-sm border border-[#EAE4CA] rounded-xl hover:border-primary/30 hover:text-primary transition-colors"
+                  style={{ color: "#ABA6A6" }}
                   title="Generate new code"
                 >
                   ↺
@@ -144,7 +144,7 @@ export default function AdminCouponsPage() {
 
             {/* Type */}
             <div>
-              <label className={labelClass} style={{ color: "#ADBDAD" }}>Type</label>
+              <label className={labelClass} style={{ color: "#ABA6A6" }}>Type</label>
               <select
                 value={form.type}
                 onChange={(e) => setForm({ ...form, type: e.target.value as "ADMIN" | "PREMIUM" })}
@@ -157,7 +157,7 @@ export default function AdminCouponsPage() {
 
             {/* Max uses */}
             <div>
-              <label className={labelClass} style={{ color: "#ADBDAD" }}>Max Uses (−1 = unlimited)</label>
+              <label className={labelClass} style={{ color: "#ABA6A6" }}>Max Uses (−1 = unlimited)</label>
               <input
                 type="number"
                 value={form.maxUses}
@@ -170,7 +170,7 @@ export default function AdminCouponsPage() {
 
             {/* Expires */}
             <div>
-              <label className={labelClass} style={{ color: "#ADBDAD" }}>Expires (optional)</label>
+              <label className={labelClass} style={{ color: "#ABA6A6" }}>Expires (optional)</label>
               <input
                 type="date"
                 value={form.expiresAt}
@@ -181,7 +181,7 @@ export default function AdminCouponsPage() {
 
             {/* Note */}
             <div className="sm:col-span-2">
-              <label className={labelClass} style={{ color: "#ADBDAD" }}>Internal Note (optional)</label>
+              <label className={labelClass} style={{ color: "#ABA6A6" }}>Internal Note (optional)</label>
               <input
                 type="text"
                 value={form.note}
@@ -199,8 +199,8 @@ export default function AdminCouponsPage() {
               <button
                 type="submit"
                 disabled={creating}
-                className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-6 py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-50"
-                style={{ boxShadow: "0 4px 16px rgba(74,222,128,0.2)" }}
+                className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-50"
+                style={{ boxShadow: "0 4px 16px rgba(129,37,73,0.2)" }}
               >
                 {creating ? (
                   <>
@@ -220,44 +220,44 @@ export default function AdminCouponsPage() {
           className="ov bg-white rounded-2xl overflow-hidden"
           style={{
             animationDelay: "130ms",
-            boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+            boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
           }}
         >
-          <div className="px-6 py-4 border-b border-[#E8E7EA]" style={{ background: "#FAFCFA" }}>
-            <p className="text-[9px] tracking-[0.22em] uppercase font-bold" style={{ color: "#ADBDAD" }}>
+          <div className="px-6 py-4 border-b border-[#EAE4CA]" style={{ background: "#F9F7ED" }}>
+            <p className="text-[9px] tracking-[0.22em] uppercase font-bold" style={{ color: "#ABA6A6" }}>
               All Coupons · {coupons.length}
             </p>
           </div>
 
           {loading ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#F0F4F0" }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#F5F1DD" }}>
                 <svg className="animate-spin text-primary" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 12a9 9 0 1 1-6.219-8.56" strokeLinecap="round" />
                 </svg>
               </div>
-              <p className="text-sm" style={{ color: "#ADBDAD" }}>Loading…</p>
+              <p className="text-sm" style={{ color: "#ABA6A6" }}>Loading…</p>
             </div>
           ) : coupons.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16">
               <div className="text-4xl mb-4">🎟</div>
-              <p className="text-[#0d1f10] font-semibold mb-1">No coupons yet</p>
-              <p className="text-sm" style={{ color: "#ADBDAD" }}>Create one above to get started.</p>
+              <p className="text-[#1E1A1A] font-semibold mb-1">No coupons yet</p>
+              <p className="text-sm" style={{ color: "#ABA6A6" }}>Create one above to get started.</p>
             </div>
           ) : (
-            <div className="divide-y divide-[#F0F4F0]">
+            <div className="divide-y divide-[#F5F1DD]">
               {coupons.map((c) => (
-                <div key={c.id} className="flex items-center gap-4 px-6 py-4 hover:bg-[#FAFCFA] transition-colors">
+                <div key={c.id} className="flex items-center gap-4 px-6 py-4 hover:bg-[#F9F7ED] transition-colors">
                   {/* Status accent */}
                   <div
                     className="w-0.5 h-10 rounded-full flex-shrink-0"
-                    style={{ background: c.isActive ? "#4ade80" : "#8A8D93" }}
+                    style={{ background: c.isActive ? "#812549" : "#848181" }}
                   />
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className="font-mono font-black text-[#0d1f10] text-sm tracking-widest">
+                      <span className="font-mono font-black text-[#1E1A1A] text-sm tracking-widest">
                         {c.code}
                       </span>
                       <span
@@ -265,7 +265,7 @@ export default function AdminCouponsPage() {
                         style={
                           c.type === "ADMIN"
                             ? { background: "rgba(124,58,237,0.1)", color: "#7c3aed" }
-                            : { background: "rgba(74,222,128,0.1)", color: "#22c55e" }
+                            : { background: "rgba(129,37,73,0.1)", color: "#5F1C35" }
                         }
                       >
                         {c.type}
@@ -273,13 +273,13 @@ export default function AdminCouponsPage() {
                       {!c.isActive && (
                         <span
                           className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                          style={{ background: "#F0F4F0", color: "#8A8D93" }}
+                          style={{ background: "#F5F1DD", color: "#848181" }}
                         >
                           INACTIVE
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 flex-wrap" style={{ color: "#ADBDAD" }}>
+                    <div className="flex items-center gap-3 flex-wrap" style={{ color: "#ABA6A6" }}>
                       <span className="text-xs">
                         {c._count.redemptions}/{c.maxUses === -1 ? "∞" : c.maxUses} uses
                       </span>
@@ -299,7 +299,7 @@ export default function AdminCouponsPage() {
                     style={
                       c.isActive
                         ? { borderColor: "rgba(234,84,85,0.3)", color: "#EA5455", background: "rgba(234,84,85,0.04)" }
-                        : { borderColor: "rgba(74,222,128,0.3)", color: "#22c55e", background: "rgba(74,222,128,0.04)" }
+                        : { borderColor: "rgba(129,37,73,0.3)", color: "#5F1C35", background: "rgba(129,37,73,0.04)" }
                     }
                   >
                     {c.isActive ? "Deactivate" : "Activate"}

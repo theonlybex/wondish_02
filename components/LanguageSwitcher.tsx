@@ -56,7 +56,7 @@ export default function LanguageSwitcher() {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex items-center gap-1.5 text-white/60 hover:text-white px-3 py-2 rounded-lg hover:bg-white/[0.06] transition-all duration-150 text-sm font-medium"
+        className="flex items-center gap-1.5 text-[#4F4A4A] hover:text-[#1E1A1A] px-3 py-2 rounded-full hover:bg-black/[0.04] transition-all duration-150 text-sm font-medium"
       >
         <span>{current.flag}</span>
         <span>{current.label}</span>
@@ -66,7 +66,7 @@ export default function LanguageSwitcher() {
       </button>
 
       {open && (
-        <div role="menu" className="absolute right-0 top-11 w-28 bg-forest-deeper border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
+        <div role="menu" className="absolute right-0 top-11 w-28 bg-white border border-[#EAE4CA] rounded-xl shadow-lg overflow-hidden z-50">
           {LOCALES.map((l) => (
             <button
               key={l.code}
@@ -75,8 +75,8 @@ export default function LanguageSwitcher() {
               onClick={() => handleSelect(l.code)}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm transition-colors ${
                 l.code === locale
-                  ? "text-primary bg-primary/10"
-                  : "text-white/60 hover:text-white hover:bg-white/[0.06]"
+                  ? "text-[#812549] bg-[#812549]/10"
+                  : "text-[#4F4A4A] hover:text-[#1E1A1A] hover:bg-black/[0.04]"
               }`}
             >
               <span>{l.flag}</span>

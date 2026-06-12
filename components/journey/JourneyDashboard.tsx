@@ -72,12 +72,12 @@ export default function JourneyDashboard({ initialStats }: JourneyDashboardProps
 
       {/* Charts */}
       <div className="grid lg:grid-cols-2 gap-6">
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-6">
+        <div className="bg-white border border-[#EAE4CA] rounded-2xl p-6">
           <h3 className="font-semibold text-navy mb-4">Mood Trend</h3>
           <MoodTrendLine data={stats.dailyMoods} />
         </div>
 
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl p-6">
+        <div className="bg-white border border-[#EAE4CA] rounded-2xl p-6">
           <h3 className="font-semibold text-navy mb-4">Meal Sources</h3>
           <MealSourceDonut breakdown={stats.mealSourceBreakdown} />
         </div>

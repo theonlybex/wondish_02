@@ -11,7 +11,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
-          <label htmlFor={id} className="text-sm font-medium text-[#25293C]">
+          <label htmlFor={id} className="text-sm font-medium text-[#1E1A1A]">
             {label}
           </label>
         )}
@@ -19,10 +19,10 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           id={id}
           className={twMerge(
-            "w-full px-3.5 py-2.5 rounded-xl border bg-white text-[#25293C] text-sm placeholder:text-[#A8A4B5] outline-none transition-all",
+            "w-full px-3.5 py-2.5 rounded-xl border bg-white text-[#1E1A1A] text-sm placeholder:text-[#A8A4B5] outline-none transition-all",
             error
               ? "border-error focus:ring-2 focus:ring-error/20"
-              : "border-[#E8E7EA] focus:border-primary focus:ring-2 focus:ring-primary/20",
+              : "border-[#EAE4CA] focus:border-primary focus:ring-2 focus:ring-primary/20",
             className
           )}
           {...props}

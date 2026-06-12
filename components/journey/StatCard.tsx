@@ -8,7 +8,7 @@ interface StatCardProps {
 
 export default function StatCard({ label, value, icon, trend, subtitle }: StatCardProps) {
   return (
-    <div className="bg-white border border-[#E8E7EA] rounded-2xl p-5">
+    <div className="bg-white border border-[#EAE4CA] rounded-2xl p-5">
       <div className="flex items-center justify-between mb-3">
         <span className="text-2xl">{icon}</span>
         {trend && (
@@ -22,8 +22,8 @@ export default function StatCard({ label, value, icon, trend, subtitle }: StatCa
         )}
       </div>
       <p className="text-3xl font-bold text-navy mb-1">{value}</p>
-      <p className="text-[#8A8D93] text-xs font-medium">{label}</p>
-      {subtitle && <p className="text-[#8A8D93] text-xs mt-0.5">{subtitle}</p>}
+      <p className="text-[#848181] text-xs font-medium">{label}</p>
+      {subtitle && <p className="text-[#848181] text-xs mt-0.5">{subtitle}</p>}
     </div>
   );
 }

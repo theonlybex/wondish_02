@@ -98,7 +98,7 @@ export default function DishCheckerClient({ firstName }: Props) {
     }
   }
 
-  const shadow = "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)";
+  const shadow = "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)";
 
   return (
     <div className="h-full flex gap-5">
@@ -124,8 +124,8 @@ export default function DishCheckerClient({ firstName }: Props) {
               <div
                 className={`max-w-[78%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
                   msg.role === "user"
-                    ? "bg-[#0d1f10] text-white rounded-br-sm"
-                    : "bg-[#f4faf5] text-[#0d1f10] rounded-bl-sm"
+                    ? "bg-[#1E1A1A] text-white rounded-br-sm"
+                    : "bg-[#F9F7ED] text-[#1E1A1A] rounded-bl-sm"
                 }`}
               >
                 {msg.content ||
@@ -151,7 +151,7 @@ export default function DishCheckerClient({ firstName }: Props) {
         {/* Input bar */}
         <div
           className="flex-shrink-0 p-4 border-t"
-          style={{ borderColor: "rgba(13,31,16,0.06)" }}
+          style={{ borderColor: "rgba(30,26,26,0.06)" }}
         >
           <div className="flex gap-3 items-end">
             <textarea
@@ -162,19 +162,19 @@ export default function DishCheckerClient({ firstName }: Props) {
               placeholder="Ask Clara about any food or dish…"
               rows={1}
               disabled={isStreaming}
-              className="flex-1 resize-none rounded-xl px-4 py-3 text-sm text-[#0d1f10] bg-[#f4faf5] border border-transparent focus:outline-none focus:border-primary/30 transition-colors disabled:opacity-50"
+              className="flex-1 resize-none rounded-xl px-4 py-3 text-sm text-[#1E1A1A] bg-[#F9F7ED] border border-transparent focus:outline-none focus:border-primary/30 transition-colors disabled:opacity-50"
             />
             <button
               onClick={send}
               disabled={isStreaming || !input.trim()}
-              className="px-5 py-3 rounded-xl bg-primary text-[#0a1509] font-bold text-sm transition-colors hover:bg-primary-dark disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+              className="px-5 py-3 rounded-xl bg-primary text-white font-bold text-sm transition-colors hover:bg-primary-dark disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
             >
               Send
             </button>
           </div>
           <p
             className="text-[9px] mt-2 font-mono tracking-wide"
-            style={{ color: "#ADBDAD" }}
+            style={{ color: "#ABA6A6" }}
           >
             Enter ↵ to send · Shift+Enter for new line
           </p>
@@ -192,28 +192,28 @@ export default function DishCheckerClient({ firstName }: Props) {
           </div>
           <p
             className="text-[9px] tracking-[0.28em] uppercase font-bold mb-1"
-            style={{ color: "#7DB87D" }}
+            style={{ color: "#B75E78" }}
           >
             Your advisor
           </p>
-          <h2 className="text-lg font-bold text-[#0d1f10] mb-4">
+          <h2 className="text-lg font-bold text-[#1E1A1A] mb-4">
             Meet Clara
           </h2>
-          <p className="text-sm leading-relaxed mb-3" style={{ color: "#9EA8A0" }}>
+          <p className="text-sm leading-relaxed mb-3" style={{ color: "#848181" }}>
             Your personal AI food expert.
           </p>
-          <p className="text-sm leading-relaxed mb-3" style={{ color: "#9EA8A0" }}>
+          <p className="text-sm leading-relaxed mb-3" style={{ color: "#848181" }}>
             Clara knows your dietary preferences, allergies, health conditions,
             and goals. Ask her about any dish, ingredient, or meal you are
             thinking of having.
           </p>
-          <p className="text-sm leading-relaxed" style={{ color: "#9EA8A0" }}>
+          <p className="text-sm leading-relaxed" style={{ color: "#848181" }}>
             She will tell you if it works for you — and suggest changes if not.
           </p>
 
           <div
             className="mt-6 pt-5 border-t space-y-2.5"
-            style={{ borderColor: "rgba(13,31,16,0.06)" }}
+            style={{ borderColor: "rgba(30,26,26,0.06)" }}
           >
             {[
               "Is lamb curry ok for me?",
@@ -225,9 +225,9 @@ export default function DishCheckerClient({ firstName }: Props) {
                 onClick={() => setInput(ex)}
                 className="w-full text-left text-xs px-3 py-2 rounded-lg transition-colors"
                 style={{
-                  color: "#7DB87D",
-                  background: "rgba(74,222,128,0.06)",
-                  border: "1px solid rgba(74,222,128,0.15)",
+                  color: "#B75E78",
+                  background: "rgba(129,37,73,0.06)",
+                  border: "1px solid rgba(129,37,73,0.15)",
                 }}
               >
                 {ex}

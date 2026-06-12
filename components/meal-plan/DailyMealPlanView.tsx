@@ -32,23 +32,23 @@ const MEAL_TIMES: Record<string, string> = {
 
 function roleBadge(dishTypeName?: string | null): { label: string; bg: string; text: string } | null {
   const n = (dishTypeName ?? "").toLowerCase();
-  if (n === "complete meal")     return { label: "Complete meal", bg: "bg-[#dcfce7]", text: "text-[#15803d]" };
+  if (n === "complete meal")     return { label: "Complete meal", bg: "bg-[#F5F1DD]", text: "text-[#006658]" };
   if (n === "veggie side dish")  return { label: "Veggie side",   bg: "bg-[#d1fae5]", text: "text-[#059669]" };
   if (n === "starchy side dish") return { label: "Starchy side",  bg: "bg-[#fef3c7]", text: "text-[#b45309]" };
   if (n === "fruity side dish")  return { label: "Fruity side",   bg: "bg-[#fef9c3]", text: "text-[#a16207]" };
   if (n === "dessert")           return { label: "Dessert",        bg: "bg-[#fce7f3]", text: "text-[#be185d]" };
   if (n === "beverage")          return { label: "Beverage",       bg: "bg-[#eff6ff]", text: "text-[#1d4ed8]" };
   if (n === "main dish" || n === "main course" || n === "side dish" || n === "salad" || n === "soup")
-    return { label: "Main", bg: "bg-[#dcfce7]", text: "text-[#15803d]" };
+    return { label: "Main", bg: "bg-[#F5F1DD]", text: "text-[#006658]" };
   return null;
 }
 
 function CaloriePill({ total, completed }: { total: number; completed: number }) {
   return (
-    <div className="flex items-center gap-1.5 bg-white border border-[#c8e6cc] rounded-full px-3 py-1.5">
+    <div className="flex items-center gap-1.5 bg-white border border-[#EAE4CA] rounded-full px-3 py-1.5">
       <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
       <span className="text-[10px] font-bold text-forest">{Math.round(completed)}</span>
-      <span className="text-[10px] text-[#5a7a5d]">/ {Math.round(total)} kcal</span>
+      <span className="text-[10px] text-[#848181]">/ {Math.round(total)} kcal</span>
     </div>
   );
 }
@@ -79,7 +79,7 @@ function InlineDishExpand({
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
       className="overflow-hidden"
     >
-      <div className="pt-3 mt-2 border-t border-[#e8f5e9]">
+      <div className="pt-3 mt-2 border-t border-[#F5F1DD]">
         {/* Tags */}
         {(r.ethnic?.name || r.dishType?.name) && (
           <div className="flex flex-wrap gap-1 mb-3">
@@ -89,7 +89,7 @@ function InlineDishExpand({
               </span>
             )}
             {r.dishType?.name && (
-              <span className="text-[9px] font-semibold bg-[#F0EFF4] text-[#8A8D93] px-2 py-0.5 rounded-full">
+              <span className="text-[9px] font-semibold bg-[#F0EFF4] text-[#848181] px-2 py-0.5 rounded-full">
                 {r.dishType.name}
               </span>
             )}
@@ -103,13 +103,13 @@ function InlineDishExpand({
             { label: "Cook",   value: (r.cookTime  ?? 0) > 0 ? `${r.cookTime}m`   : "—" },
             { label: "Serves", value: (r.servings  ?? 0) > 0 ? String(r.servings) : "—" },
           ].map(({ label, value }) => (
-            <div key={label} className="bg-[#f4faf5] border border-[#c8e6cc] rounded-lg px-2.5 py-1.5 text-center min-w-[52px]">
+            <div key={label} className="bg-[#F9F7ED] border border-[#EAE4CA] rounded-lg px-2.5 py-1.5 text-center min-w-[52px]">
               <p className="font-bold text-forest text-xs">{value}</p>
-              <p className="text-[9px] text-[#86a98a] mt-0.5">{label}</p>
+              <p className="text-[9px] text-[#9C9494] mt-0.5">{label}</p>
             </div>
           ))}
           <button
-            className="ml-auto text-[10px] font-semibold px-3 py-1.5 rounded-lg border border-[#c8e6cc] text-[#5a7a5d] hover:bg-[#f0fdf4] transition-colors"
+            className="ml-auto text-[10px] font-semibold px-3 py-1.5 rounded-lg border border-[#EAE4CA] text-[#848181] hover:bg-[#ffffff] transition-colors"
             onClick={(e) => { e.stopPropagation(); onSwap(menu.id, menu.mealTypeId ?? "", r.id, r.calories ?? 0); }}
           >
             Swap ↔
@@ -122,7 +122,7 @@ function InlineDishExpand({
             { label: "Cal",     value: r.calories?.toString(),             sub: "kcal",    color: "bg-[#FFF3E0] text-[#b45309]" },
             { label: "Protein", value: r.protein ? `${r.protein}g` : null, sub: "protein", color: "bg-primary/10 text-primary"   },
             { label: "Carbs",   value: r.carbs   ? `${r.carbs}g`   : null, sub: "carbs",   color: "bg-success/10 text-success"   },
-            { label: "Fat",     value: r.fat     ? `${r.fat}g`     : null, sub: "fat",     color: "bg-[#F3F2FF] text-[#8A8D93]"  },
+            { label: "Fat",     value: r.fat     ? `${r.fat}g`     : null, sub: "fat",     color: "bg-[#F3F2FF] text-[#848181]"  },
           ].map(({ label, value, sub, color }) =>
             value ? (
               <div key={label} className={`${color} rounded-xl p-2 text-center`}>
@@ -136,7 +136,7 @@ function InlineDishExpand({
         {/* Ingredients */}
         {r.ingredients?.length > 0 && (
           <div className="mb-3">
-            <p className="text-[9px] font-bold text-[#8A8D93] uppercase tracking-widest mb-2">Ingredients</p>
+            <p className="text-[9px] font-bold text-[#848181] uppercase tracking-widest mb-2">Ingredients</p>
             <ul className="space-y-1.5">
               {r.ingredients.map((ri) => (
                 <li key={ri.ingredientId} className="flex items-center justify-between">
@@ -145,7 +145,7 @@ function InlineDishExpand({
                     {ri.ingredient.name}
                   </span>
                   {ri.quantity && (
-                    <span className="text-[10px] text-[#8A8D93]">
+                    <span className="text-[10px] text-[#848181]">
                       {ri.quantity}{(ri.unit ?? ri.ingredient.unit) ? ` ${ri.unit ?? ri.ingredient.unit}` : ""}
                     </span>
                   )}
@@ -158,7 +158,7 @@ function InlineDishExpand({
         {/* Steps */}
         {steps.length > 0 && (
           <div className="mb-3">
-            <p className="text-[9px] font-bold text-[#8A8D93] uppercase tracking-widest mb-2">Steps</p>
+            <p className="text-[9px] font-bold text-[#848181] uppercase tracking-widest mb-2">Steps</p>
             <ol className="space-y-2">
               {steps.map((step, i) => (
                 <li key={i} className="flex gap-2.5">
@@ -176,7 +176,7 @@ function InlineDishExpand({
         {r.tags?.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-3">
             {r.tags.map((tag) => (
-              <span key={tag} className="text-[9px] font-medium text-[#8A8D93] bg-[#F7F6FB] px-2 py-0.5 rounded-full">
+              <span key={tag} className="text-[9px] font-medium text-[#848181] bg-[#F7F6FB] px-2 py-0.5 rounded-full">
                 #{tag}
               </span>
             ))}
@@ -389,12 +389,12 @@ export default function DailyMealPlanView({
       <div className="flex items-center mb-6">
         <button
           onClick={() => navigate("prev")}
-          className="w-9 h-9 rounded-xl border border-[#c8e6cc] flex items-center justify-center hover:bg-[#f0fdf4] transition-colors text-forest shrink-0"
+          className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#ffffff] transition-colors text-forest shrink-0"
         >‹</button>
         <p className="flex-1 text-center font-semibold text-forest text-lg">{format(date, "EEEE, MMMM d")}</p>
         <button
           onClick={() => navigate("next")}
-          className="w-9 h-9 rounded-xl border border-[#c8e6cc] flex items-center justify-center hover:bg-[#f0fdf4] transition-colors text-forest shrink-0"
+          className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#ffffff] transition-colors text-forest shrink-0"
         >›</button>
       </div>
 
@@ -403,8 +403,8 @@ export default function DailyMealPlanView({
         <div
           className={`flex items-center gap-3 rounded-2xl px-4 py-3 mb-5 text-sm font-medium transition-all ${
             isAllDone
-              ? "bg-[#dcfce7] border border-[#86efac] text-[#1e3422]"
-              : "bg-[#f4faf5] border border-[#c8e6cc] text-[#5a7a5d]"
+              ? "bg-[#F5F1DD] border border-[#EAE4CA] text-[#5F1C35]"
+              : "bg-[#F9F7ED] border border-[#EAE4CA] text-[#848181]"
           }`}
         >
           <div className="flex-1">
@@ -422,7 +422,7 @@ export default function DailyMealPlanView({
               {menus.map((m) => (
                 <div
                   key={m.id}
-                  className={`w-2 h-2 rounded-full ${loggedSet.has(m.recipe.id) ? "bg-primary" : "bg-[#c8e6cc]"}`}
+                  className={`w-2 h-2 rounded-full ${loggedSet.has(m.recipe.id) ? "bg-primary" : "bg-[#EAE4CA]"}`}
                 />
               ))}
             </div>
@@ -434,19 +434,19 @@ export default function DailyMealPlanView({
       {!startDate && (
         <div className="bg-primary/10 border border-primary/20 rounded-2xl p-6 text-center mb-6">
           <p className="text-navy font-semibold mb-2">Set your meal plan start date</p>
-          <p className="text-[#8A8D93] text-sm mb-4">We&apos;ll generate a personalized 35-day meal plan starting today.</p>
+          <p className="text-[#848181] text-sm mb-4">We&apos;ll generate a personalized 35-day meal plan starting today.</p>
           <Button loading={settingStart} onClick={handleSetStartDate}>Start Meal Plan Today</Button>
         </div>
       )}
 
       {/* Main content */}
       {loading ? (
-        <div className="text-center py-12 text-[#5a7a5d]">Loading…</div>
+        <div className="text-center py-12 text-[#848181]">Loading…</div>
       ) : menus.length === 0 ? (
-        <div className="text-center py-12 text-[#5a7a5d]">
+        <div className="text-center py-12 text-[#848181]">
           {isPastPlanEnd ? (
             <>
-              <p className="font-semibold text-[#0d1f10]">Your 35-day plan has ended.</p>
+              <p className="font-semibold text-[#1E1A1A]">Your 35-day plan has ended.</p>
               <p className="mt-2 text-sm">Start a new 35-day plan from today.</p>
               <Button
                 loading={settingStart}
@@ -478,7 +478,7 @@ export default function DailyMealPlanView({
         <div>
           {/* Timeline */}
           <div
-            className="grid gap-0 bg-[#f4faf5] rounded-2xl p-4"
+            className="grid gap-0 bg-[#F9F7ED] rounded-2xl p-4"
             style={{ gridTemplateColumns: "40px 24px 1fr" }}
           >
             {mealGroups.map((group, idx) => {
@@ -487,17 +487,17 @@ export default function DailyMealPlanView({
                 <React.Fragment key={group.name}>
                   {/* Time label */}
                   <div className="text-right pr-1 pt-[10px]">
-                    <span className="text-[9px] font-semibold text-[#86a98a]">{group.time}</span>
+                    <span className="text-[9px] font-semibold text-[#9C9494]">{group.time}</span>
                   </div>
 
                   {/* Spine */}
                   <div className="flex flex-col items-center">
                     <div
                       className="mt-[10px] w-2.5 h-2.5 rounded-full bg-primary border-2 border-white shrink-0 z-10"
-                      style={{ boxShadow: "0 0 0 1px #4ade80" }}
+                      style={{ boxShadow: "0 0 0 1px #812549" }}
                     />
                     {!isLast && (
-                      <div className="flex-1 w-0.5 bg-gradient-to-b from-primary to-[#86efac]" />
+                      <div className="flex-1 w-0.5 bg-gradient-to-b from-primary to-[#B75E78]" />
                     )}
                   </div>
 
@@ -506,14 +506,14 @@ export default function DailyMealPlanView({
                     <div
                       className={
                         group.isLunch
-                          ? "bg-white border-[1.5px] border-primary rounded-xl overflow-hidden shadow-[0_2px_14px_rgba(74,222,128,.12)]"
-                          : "bg-white border border-[#c8e6cc] rounded-xl overflow-hidden"
+                          ? "bg-white border-[1.5px] border-primary rounded-xl overflow-hidden shadow-[0_2px_14px_rgba(129,37,73,.12)]"
+                          : "bg-white border border-[#EAE4CA] rounded-xl overflow-hidden"
                       }
                     >
                       {/* Card header */}
                       <div
-                        className={`flex items-center justify-between px-3.5 py-2.5 border-b border-[#e8f5e9] ${
-                          group.isLunch ? "bg-[#f0fdf4]" : ""
+                        className={`flex items-center justify-between px-3.5 py-2.5 border-b border-[#F5F1DD] ${
+                          group.isLunch ? "bg-[#ffffff]" : ""
                         }`}
                       >
                         <div className="flex items-center gap-2">
@@ -521,12 +521,12 @@ export default function DailyMealPlanView({
                             {group.name}
                           </span>
                           {group.isLunch && (
-                            <span className="text-[8px] font-bold bg-primary text-forest px-1.5 py-0.5 rounded-full">
+                            <span className="text-[8px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full">
                               Biggest meal
                             </span>
                           )}
                         </div>
-                        <span className="text-[9px] text-[#5a7a5d]">
+                        <span className="text-[9px] text-[#848181]">
                           {Math.round(group.dishes.reduce((s, m) => s + (m.recipe.calories ?? 0), 0))} kcal
                         </span>
                       </div>
@@ -540,12 +540,12 @@ export default function DailyMealPlanView({
                           const isSelected  = selectedId === menu.id;
                           return (
                             <React.Fragment key={menu.id}>
-                              {dIdx > 0 && <div className="h-px bg-[#e8f5e9] my-2" />}
+                              {dIdx > 0 && <div className="h-px bg-[#F5F1DD] my-2" />}
 
                               {/* Dish row */}
                               <div
                                 className={`flex items-center justify-between gap-2 cursor-pointer rounded-lg transition-colors ${
-                                  isSelected ? "-mx-1.5 px-1.5 py-0.5 bg-[#f0fdf4]" : ""
+                                  isSelected ? "-mx-1.5 px-1.5 py-0.5 bg-[#ffffff]" : ""
                                 }`}
                                 onClick={() => setSelectedId(isSelected ? null : menu.id)}
                               >
@@ -554,7 +554,7 @@ export default function DailyMealPlanView({
                                     {menu.recipe.name}
                                     {isCompleted && <span className="ml-1.5 text-primary text-[9px] font-bold">✓</span>}
                                   </p>
-                                  <p className="text-[9px] text-[#5a7a5d] mt-0.5">
+                                  <p className="text-[9px] text-[#848181] mt-0.5">
                                     {[
                                       menu.recipe.calories ? `${menu.recipe.calories} kcal` : null,
                                       menu.recipe.protein  ? `${menu.recipe.protein}g protein` : null,
@@ -568,7 +568,7 @@ export default function DailyMealPlanView({
                                     </span>
                                   )}
                                   <span
-                                    className="text-[#86a98a] text-[11px] transition-transform duration-200 select-none"
+                                    className="text-[#9C9494] text-[11px] transition-transform duration-200 select-none"
                                     style={{ display: "inline-block", transform: isSelected ? "rotate(90deg)" : "rotate(0deg)" }}
                                   >
                                     ›
@@ -604,15 +604,15 @@ export default function DailyMealPlanView({
 
           {/* Free calories card */}
           {freeCalories > 0 && (
-            <div className="mt-3 border-2 border-dashed border-[#c8e6cc] rounded-xl px-4 py-3 flex items-center gap-3 bg-[#f4faf5]">
-              <div className="w-8 h-8 rounded-full bg-white border border-[#c8e6cc] flex items-center justify-center text-sm font-bold text-primary shrink-0">
+            <div className="mt-3 border-2 border-dashed border-[#EAE4CA] rounded-xl px-4 py-3 flex items-center gap-3 bg-[#F9F7ED]">
+              <div className="w-8 h-8 rounded-full bg-white border border-[#EAE4CA] flex items-center justify-center text-sm font-bold text-primary shrink-0">
                 +
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-forest">
                   {Math.round(freeCalories)} kcal free
                 </p>
-                <p className="text-[10px] text-[#5a7a5d] mt-0.5">
+                <p className="text-[10px] text-[#848181] mt-0.5">
                   Use on any snack you like — not tracked
                 </p>
               </div>
@@ -644,21 +644,21 @@ export default function DailyMealPlanView({
             className="rounded-2xl p-5"
             style={{
               background: "#fff",
-              boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+              boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
             }}
           >
-            <p className="text-[9px] tracking-[0.22em] uppercase font-bold text-center mb-2" style={{ color: "#ADBDAD" }}>
+            <p className="text-[9px] tracking-[0.22em] uppercase font-bold text-center mb-2" style={{ color: "#ABA6A6" }}>
               Today&apos;s calories
             </p>
             <div className="text-center mb-5">
-              <span className="text-5xl font-black tracking-tight tabular-nums leading-none" style={{ color: "#4ade80" }}>
+              <span className="text-5xl font-black tracking-tight tabular-nums leading-none" style={{ color: "#812549" }}>
                 {Math.round(completedCalories)}
               </span>
-              <span className="text-xl font-bold mx-1" style={{ color: "#C8D4C8" }}>/</span>
-              <span className="text-xl font-bold tabular-nums" style={{ color: "#0d1f10" }}>
+              <span className="text-xl font-bold mx-1" style={{ color: "#CCC6C6" }}>/</span>
+              <span className="text-xl font-bold tabular-nums" style={{ color: "#1E1A1A" }}>
                 {Math.round(budgetCalories)}
               </span>
-              <span className="text-sm font-medium ml-1.5" style={{ color: "#C8D4C8" }}>kcal</span>
+              <span className="text-sm font-medium ml-1.5" style={{ color: "#CCC6C6" }}>kcal</span>
             </div>
 
             <div className="space-y-3 mb-5">
@@ -668,10 +668,10 @@ export default function DailyMealPlanView({
                 { label: "Fat",     consumed: Math.round(consumedFat),     total: Math.round(totalFat),     color: "#a78bfa" },
               ].map(({ label, consumed, total, color }) => (
                 <div key={label} className="flex items-center justify-between">
-                  <p className="text-[9px] tracking-[0.18em] uppercase font-bold" style={{ color: "#ADBDAD" }}>{label}</p>
-                  <p className="tabular-nums leading-none" style={{ color: "#0d1f10" }}>
+                  <p className="text-[9px] tracking-[0.18em] uppercase font-bold" style={{ color: "#ABA6A6" }}>{label}</p>
+                  <p className="tabular-nums leading-none" style={{ color: "#1E1A1A" }}>
                     <span className="text-lg font-bold" style={{ color }}>{consumed}</span>
-                    <span className="text-xs font-medium mx-0.5" style={{ color: "#C8D4C8" }}>/</span>
+                    <span className="text-xs font-medium mx-0.5" style={{ color: "#CCC6C6" }}>/</span>
                     <span className="text-base font-bold">{total}</span>
                     <span className="text-xs font-medium ml-0.5" style={{ color }}>g</span>
                   </p>
@@ -681,20 +681,20 @@ export default function DailyMealPlanView({
 
             <div className="space-y-2.5">
               {[
-                { label: "Cal",     pct: calPct,  color: "#4ade80" },
+                { label: "Cal",     pct: calPct,  color: "#812549" },
                 { label: "Protein", pct: protPct, color: "#60a5fa" },
                 { label: "Carbs",   pct: carbPct, color: "#fb923c" },
                 { label: "Fat",     pct: fatPct,  color: "#a78bfa" },
               ].map(({ label, pct, color }, i) => (
                 <div key={label} className="flex items-center gap-2">
-                  <p className="text-[9px] w-11 font-bold uppercase tracking-wide flex-shrink-0" style={{ color: "#ADBDAD" }}>{label}</p>
-                  <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#F0F4F0" }}>
+                  <p className="text-[9px] w-11 font-bold uppercase tracking-wide flex-shrink-0" style={{ color: "#ABA6A6" }}>{label}</p>
+                  <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#F5F1DD" }}>
                     <div
                       className="mp-bar h-full rounded-full"
                       style={{ width: `${pct}%`, background: color, animationDelay: `${200 + i * 60}ms` }}
                     />
                   </div>
-                  <p className="text-[9px] font-bold w-7 text-right tabular-nums flex-shrink-0" style={{ color: "#ADBDAD" }}>
+                  <p className="text-[9px] font-bold w-7 text-right tabular-nums flex-shrink-0" style={{ color: "#ABA6A6" }}>
                     {Math.round(pct)}%
                   </p>
                 </div>

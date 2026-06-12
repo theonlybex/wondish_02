@@ -25,7 +25,7 @@ export default async function NewRecipePage() {
     <div className="max-w-2xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-navy">New Recipe</h1>
-        <p className="text-[#8A8D93] text-sm mt-1">Add a recipe to the meal plan pool</p>
+        <p className="text-[#848181] text-sm mt-1">Add a recipe to the meal plan pool</p>
       </div>
       <RecipeForm
         mode="create"

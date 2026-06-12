@@ -9,33 +9,34 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Wondish wellness palette — crimson primary on cream surfaces
         primary: {
-          DEFAULT: "#4ade80",
-          light: "#86efac",
-          dark: "#22c55e",
+          DEFAULT: "#812549",
+          light: "#B75E78",
+          dark: "#5F1C35",
         },
         forest: {
-          DEFAULT: "#1e3422",
-          dark: "#152718",
-          deeper: "#0d1a10",
-          surface: "#263b2a",
+          DEFAULT: "#5F1C35",
+          dark: "#4A152A",
+          deeper: "#3D1122",
+          surface: "#71203F",
         },
         // keep navy alias pointing to forest so dashboard components don't break
         navy: {
-          DEFAULT: "#1e3422",
-          dark: "#152718",
-          deeper: "#0d1a10",
-          surface: "#263b2a",
+          DEFAULT: "#5F1C35",
+          dark: "#4A152A",
+          deeper: "#3D1122",
+          surface: "#71203F",
         },
-        surface: "#f4faf5",
-        success: "#28C76F",
-        warning: "#FF9F43",
+        surface: "#F9F7ED",
+        success: "#00B9A6",
+        warning: "#FDC221",
         error: "#EA5455",
-        info: "#00CFE8",
+        info: "#00B9A6",
       },
       fontFamily: {
         sans: [
-          "Public Sans",
+          "Inter",
           "-apple-system",
           "BlinkMacSystemFont",
           "Segoe UI",
@@ -61,7 +62,7 @@ const config: Config = {
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
         "hero-pattern":
-          "linear-gradient(135deg, #1e3422 0%, #0d1a10 50%, #152718 100%)",
+          "linear-gradient(135deg, #812549 0%, #5F1C35 50%, #71203F 100%)",
       },
     },
   },

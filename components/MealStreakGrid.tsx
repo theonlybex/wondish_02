@@ -16,9 +16,9 @@ interface MealStreakGridProps {
 }
 
 const COLORS: Record<DayStatus, string> = {
-  full: "#22c55e",
-  partial: "#86efac",
-  none: "#E8E7EA",
+  full: "#5F1C35",
+  partial: "#B75E78",
+  none: "#EAE4CA",
   empty: "#F0EEF4",
   future: "#F8F7FA",
 };
@@ -74,7 +74,7 @@ export default function MealStreakGrid({ days, totalCompleted, firstDay }: MealS
     cells.push(
       <div key={`month-${ci}`} className="text-center">
         {monthLabels.has(ci) && (
-          <span className="text-[9px] text-[#8A8D93] select-none leading-none">
+          <span className="text-[9px] text-[#848181] select-none leading-none">
             {monthLabels.get(ci)}
           </span>
         )}
@@ -86,7 +86,7 @@ export default function MealStreakGrid({ days, totalCompleted, firstDay }: MealS
   for (let rowIdx = 0; rowIdx < 7; rowIdx++) {
     cells.push(
       <div key={`lbl-${rowIdx}`} className="flex items-center justify-end pr-0.5">
-        <span className="text-[9px] text-[#8A8D93] select-none leading-none">
+        <span className="text-[9px] text-[#848181] select-none leading-none">
           {ROW_LABELS[rowIdx]}
         </span>
       </div>
@@ -107,12 +107,12 @@ export default function MealStreakGrid({ days, totalCompleted, firstDay }: MealS
 
   return (
     <div className="bg-white h-full flex flex-col">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-[#F0F4F0] flex-shrink-0">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-[#F5F1DD] flex-shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="w-1 h-4 rounded-full" style={{ background: "#22c55e" }} />
-          <h2 className="text-[#0d1f10] text-sm font-bold">Meal Plan Activity</h2>
+          <div className="w-1 h-4 rounded-full" style={{ background: "#5F1C35" }} />
+          <h2 className="text-[#1E1A1A] text-sm font-bold">Meal Plan Activity</h2>
         </div>
-        <span className="text-[9px] tracking-[0.2em] uppercase font-bold" style={{ color: "#ADBDAD" }}>
+        <span className="text-[9px] tracking-[0.2em] uppercase font-bold" style={{ color: "#ABA6A6" }}>
           {totalCompleted} day{totalCompleted !== 1 ? "s" : ""} completed
         </span>
       </div>
@@ -132,7 +132,7 @@ export default function MealStreakGrid({ days, totalCompleted, firstDay }: MealS
 
       {/* Legend */}
       <div className="flex items-center gap-2 mt-3 justify-end">
-        <span className="text-[#8A8D93] text-[10px] select-none">Less</span>
+        <span className="text-[#848181] text-[10px] select-none">Less</span>
         {(["empty", "partial", "full"] as DayStatus[]).map((s) => (
           <div
             key={s}
@@ -140,7 +140,7 @@ export default function MealStreakGrid({ days, totalCompleted, firstDay }: MealS
             style={{ backgroundColor: COLORS[s] }}
           />
         ))}
-        <span className="text-[#8A8D93] text-[10px] select-none">More</span>
+        <span className="text-[#848181] text-[10px] select-none">More</span>
       </div>
       </div>
     </div>

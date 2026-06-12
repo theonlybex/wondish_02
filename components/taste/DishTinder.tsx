@@ -82,7 +82,7 @@ export default function DishTinder({ isDiscover = false }: { isDiscover?: boolea
     return (
       <div className="flex flex-col items-center py-20">
         <div className="text-4xl animate-pulse mb-4">🍽</div>
-        <p className="text-[#8A8D93] text-sm">Preparing your dishes…</p>
+        <p className="text-[#848181] text-sm">Preparing your dishes…</p>
       </div>
     );
   }
@@ -92,7 +92,7 @@ export default function DishTinder({ isDiscover = false }: { isDiscover?: boolea
       <div className="text-center py-16">
         <p className="text-5xl mb-4">✅</p>
         <p className="text-navy font-semibold text-lg mb-2">You've rated all available dishes!</p>
-        <p className="text-[#8A8D93] text-sm mb-6">Check back after new recipes are added.</p>
+        <p className="text-[#848181] text-sm mb-6">Check back after new recipes are added.</p>
         <button onClick={finish} className="px-6 py-3 rounded-2xl bg-primary text-white font-semibold text-sm">
           Go to Meal Plan →
         </button>
@@ -105,11 +105,11 @@ export default function DishTinder({ isDiscover = false }: { isDiscover?: boolea
       <div className="flex flex-col items-center py-16 text-center">
         <div className="text-6xl mb-4">🎉</div>
         <h2 className="text-2xl font-bold text-navy mb-2">Preferences saved!</h2>
-        <p className="text-[#8A8D93] text-sm mb-1">
+        <p className="text-[#848181] text-sm mb-1">
           You liked <span className="text-primary font-semibold">{likedCount}</span> out of{" "}
           <span className="font-semibold">{dishes.length}</span> dishes.
         </p>
-        <p className="text-[#8A8D93] text-xs mb-8 max-w-xs">
+        <p className="text-[#848181] text-xs mb-8 max-w-xs">
           Your meal plan will now prioritise ingredients from the dishes you'd try.
         </p>
         <button
@@ -143,13 +143,13 @@ export default function DishTinder({ isDiscover = false }: { isDiscover?: boolea
             style={{ width: `${progress}%` }}
           />
         </div>
-        <span className="text-xs text-[#8A8D93] shrink-0">
+        <span className="text-xs text-[#848181] shrink-0">
           {index + 1} / {dishes.length}
         </span>
       </div>
 
       {/* Dish Card */}
-      <div className="bg-white border border-[#E8E7EA] rounded-3xl overflow-hidden shadow-lg">
+      <div className="bg-white border border-[#EAE4CA] rounded-3xl overflow-hidden shadow-lg">
         {/* Hero */}
         <div className="bg-gradient-to-br from-primary/10 to-primary/5 px-8 pt-10 pb-6 text-center">
           <span className="text-8xl leading-none">{emoji}</span>
@@ -162,20 +162,20 @@ export default function DishTinder({ isDiscover = false }: { isDiscover?: boolea
               </span>
             )}
             {dish.ethnic?.name && (
-              <span className="text-[10px] font-semibold text-[#8A8D93] bg-white/80 border border-[#E8E7EA] px-2.5 py-1 rounded-full">
+              <span className="text-[10px] font-semibold text-[#848181] bg-white/80 border border-[#EAE4CA] px-2.5 py-1 rounded-full">
                 {dish.ethnic.name}
               </span>
             )}
           </div>
 
           {dish.description && (
-            <p className="text-[#8A8D93] text-xs mt-3 leading-relaxed line-clamp-2 max-w-[240px] mx-auto">
+            <p className="text-[#848181] text-xs mt-3 leading-relaxed line-clamp-2 max-w-[240px] mx-auto">
               {dish.description.split("\n")[0].replace(/^\d+\.\s*/, "")}
             </p>
           )}
 
           {dish.calories && (
-            <p className="text-[10px] text-[#8A8D93] mt-2">{dish.calories} kcal</p>
+            <p className="text-[10px] text-[#848181] mt-2">{dish.calories} kcal</p>
           )}
         </div>
 
@@ -201,14 +201,14 @@ export default function DishTinder({ isDiscover = false }: { isDiscover?: boolea
         <div className="pb-4 text-center">
           <button
             onClick={skip}
-            className="text-xs text-[#8A8D93] hover:text-navy transition-colors px-4 py-2"
+            className="text-xs text-[#848181] hover:text-navy transition-colors px-4 py-2"
           >
             Skip this dish →
           </button>
         </div>
       </div>
 
-      <p className="text-[#8A8D93] text-xs text-center mt-6">
+      <p className="text-[#848181] text-xs text-center mt-6">
         Choose whether you'd try each dish so we can personalise your meal plan even more
       </p>
     </div>

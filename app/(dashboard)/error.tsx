@@ -31,7 +31,7 @@ export default function DashboardError({
       <div className="mt-8 flex items-center gap-3">
         <button
           onClick={() => reset()}
-          className="bg-primary hover:bg-primary-dark text-forest-deeper px-6 py-2.5 rounded-full transition-all duration-150 text-sm font-semibold shadow-lg shadow-primary/20"
+          className="bg-primary hover:bg-primary-dark text-white px-6 py-2.5 rounded-full transition-all duration-150 text-sm font-semibold shadow-lg shadow-primary/20"
         >
           Try again
         </button>

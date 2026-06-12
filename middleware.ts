@@ -10,7 +10,6 @@ const isPublicRoute = createRouteMatcher([
   "/terms(.*)",
   "/privacy(.*)",
   "/api/stripe/webhook",
-  "/api/taste/public-dishes",
   "/api/health",
 ]);
 

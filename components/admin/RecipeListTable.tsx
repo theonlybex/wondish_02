@@ -30,24 +30,24 @@ export default function RecipeListTable({ recipes }: RecipeListTableProps) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-[#E8E7EA]">
-            <th className="text-left py-3 px-4 text-[#8A8D93] font-semibold">Recipe</th>
-            <th className="text-left py-3 px-4 text-[#8A8D93] font-semibold hidden md:table-cell">Meal Type</th>
-            <th className="text-left py-3 px-4 text-[#8A8D93] font-semibold hidden lg:table-cell">Calories</th>
-            <th className="text-left py-3 px-4 text-[#8A8D93] font-semibold hidden lg:table-cell">Protein</th>
+          <tr className="border-b border-[#EAE4CA]">
+            <th className="text-left py-3 px-4 text-[#848181] font-semibold">Recipe</th>
+            <th className="text-left py-3 px-4 text-[#848181] font-semibold hidden md:table-cell">Meal Type</th>
+            <th className="text-left py-3 px-4 text-[#848181] font-semibold hidden lg:table-cell">Calories</th>
+            <th className="text-left py-3 px-4 text-[#848181] font-semibold hidden lg:table-cell">Protein</th>
             <th className="py-3 px-4" />
           </tr>
         </thead>
         <tbody>
           {items.map((recipe) => (
-            <tr key={recipe.id} className="border-b border-[#E8E7EA] hover:bg-[#FAFAFA]">
+            <tr key={recipe.id} className="border-b border-[#EAE4CA] hover:bg-[#FAFAFA]">
               <td className="py-3 px-4">
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">{recipe.emoji ?? getRecipeEmoji(recipe.name, recipe.tags)}</span>
                   <div>
                     <p className="font-medium text-navy">{recipe.name}</p>
                     {recipe.description && (
-                      <p className="text-[#8A8D93] text-xs line-clamp-1">{recipe.description}</p>
+                      <p className="text-[#848181] text-xs line-clamp-1">{recipe.description}</p>
                     )}
                   </div>
                 </div>
@@ -56,13 +56,13 @@ export default function RecipeListTable({ recipes }: RecipeListTableProps) {
                 {recipe.mealType ? (
                   <Badge variant="primary">{recipe.mealType.name}</Badge>
                 ) : (
-                  <span className="text-[#8A8D93]">—</span>
+                  <span className="text-[#848181]">—</span>
                 )}
               </td>
-              <td className="py-3 px-4 hidden lg:table-cell text-[#8A8D93]">
+              <td className="py-3 px-4 hidden lg:table-cell text-[#848181]">
                 {recipe.calories ? `${recipe.calories} kcal` : "—"}
               </td>
-              <td className="py-3 px-4 hidden lg:table-cell text-[#8A8D93]">
+              <td className="py-3 px-4 hidden lg:table-cell text-[#848181]">
                 {recipe.protein ? `${recipe.protein}g` : "—"}
               </td>
               <td className="py-3 px-4">
@@ -86,7 +86,7 @@ export default function RecipeListTable({ recipes }: RecipeListTableProps) {
       </table>
 
       {items.length === 0 && (
-        <div className="text-center py-12 text-[#8A8D93]">No recipes found.</div>
+        <div className="text-center py-12 text-[#848181]">No recipes found.</div>
       )}
     </div>
   );

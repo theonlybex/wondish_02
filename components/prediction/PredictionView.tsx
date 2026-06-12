@@ -66,13 +66,13 @@ export default function PredictionView({
         <style>{ANIM}</style>
 
         <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
-          <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3" style={{ color: "#7DB87D" }}>
+          <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3" style={{ color: "#B75E78" }}>
             Prediction
           </p>
-          <h1 className="text-3xl font-bold text-[#0d1f10]">Prediction</h1>
+          <h1 className="text-3xl font-bold text-[#1E1A1A]">Prediction</h1>
           <div className="flex items-center gap-3 mt-4">
             <div className="h-px w-12 bg-primary/40" />
-            <p className="text-xs" style={{ color: "#9EA8A0" }}>Based on your profile and weekly goal</p>
+            <p className="text-xs" style={{ color: "#848181" }}>Based on your profile and weekly goal</p>
           </div>
         </div>
 
@@ -80,7 +80,7 @@ export default function PredictionView({
           className="ov flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl mb-6"
           style={{
             animationDelay: "80ms",
-            boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+            boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
           }}
         >
           <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-5">
@@ -89,14 +89,14 @@ export default function PredictionView({
               <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold text-[#0d1f10] mb-2">Profile incomplete</h2>
-          <p className="text-sm max-w-xs mb-6" style={{ color: "#ADBDAD" }}>
+          <h2 className="text-xl font-bold text-[#1E1A1A] mb-2">Profile incomplete</h2>
+          <p className="text-sm max-w-xs mb-6" style={{ color: "#ABA6A6" }}>
             Fill in your current weight, goal weight, and weekly goal in your profile to see your prediction.
           </p>
           <Link
             href="/profile"
-            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-[#0a1509] px-6 py-3 rounded-xl text-sm font-bold transition-colors"
-            style={{ boxShadow: "0 4px 16px rgba(74,222,128,0.2)" }}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-sm font-bold transition-colors"
+            style={{ boxShadow: "0 4px 16px rgba(129,37,73,0.2)" }}
           >
             Complete My Profile
           </Link>
@@ -107,13 +107,13 @@ export default function PredictionView({
             className="ov relative rounded-2xl p-8 overflow-hidden"
             style={{
               animationDelay: "140ms",
-              background: "linear-gradient(140deg, #0a1509 0%, #162a18 60%, #0d1f10 100%)",
-              boxShadow: "0 8px 32px rgba(13,31,16,0.25)",
+              background: "linear-gradient(140deg, #5F1C35 0%, #812549 60%, #5F1C35 100%)",
+              boxShadow: "0 8px 32px rgba(30,26,26,0.25)",
             }}
           >
             <div
               className="absolute top-0 right-0 w-72 h-72 rounded-full pointer-events-none"
-              style={{ background: "radial-gradient(circle, rgba(74,222,128,0.10) 0%, transparent 65%)", transform: "translate(35%, -35%)" }}
+              style={{ background: "radial-gradient(circle, rgba(129,37,73,0.10) 0%, transparent 65%)", transform: "translate(35%, -35%)" }}
             />
             <div className="relative flex flex-col sm:flex-row items-center gap-6">
               <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
@@ -131,8 +131,8 @@ export default function PredictionView({
               </div>
               <Link
                 href="/pricing"
-                className="flex-shrink-0 bg-primary hover:bg-primary-dark text-[#0a1509] px-6 py-3 rounded-xl text-sm font-bold transition-colors whitespace-nowrap"
-                style={{ boxShadow: "0 4px 20px rgba(74,222,128,0.25)" }}
+                className="flex-shrink-0 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-sm font-bold transition-colors whitespace-nowrap"
+                style={{ boxShadow: "0 4px 20px rgba(129,37,73,0.25)" }}
               >
                 Get Premium
               </Link>
@@ -156,13 +156,13 @@ export default function PredictionView({
       <style>{ANIM}</style>
 
       <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
-        <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3" style={{ color: "#7DB87D" }}>
+        <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3" style={{ color: "#B75E78" }}>
           Prediction
         </p>
-        <h1 className="text-3xl font-bold text-[#0d1f10]">Prediction</h1>
+        <h1 className="text-3xl font-bold text-[#1E1A1A]">Prediction</h1>
         <div className="flex items-center gap-3 mt-4">
           <div className="h-px w-12 bg-primary/40" />
-          <p className="text-xs" style={{ color: "#9EA8A0" }}>Based on your profile and weekly goal</p>
+          <p className="text-xs" style={{ color: "#848181" }}>Based on your profile and weekly goal</p>
         </div>
       </div>
 
@@ -171,20 +171,20 @@ export default function PredictionView({
         className="ov relative rounded-2xl overflow-hidden mb-4 text-center"
         style={{
           animationDelay: "80ms",
-          background: "linear-gradient(140deg, #0a1509 0%, #162a18 60%, #0d1f10 100%)",
-          boxShadow: "0 8px 32px rgba(13,31,16,0.25)",
+          background: "linear-gradient(140deg, #5F1C35 0%, #812549 60%, #5F1C35 100%)",
+          boxShadow: "0 8px 32px rgba(30,26,26,0.25)",
         }}
       >
         <div
           className="absolute top-0 right-0 w-80 h-80 rounded-full pointer-events-none"
-          style={{ background: "radial-gradient(circle, rgba(74,222,128,0.12) 0%, transparent 65%)", transform: "translate(35%, -35%)" }}
+          style={{ background: "radial-gradient(circle, rgba(129,37,73,0.12) 0%, transparent 65%)", transform: "translate(35%, -35%)" }}
         />
         <div
           className="absolute bottom-0 left-0 w-48 h-48 rounded-full pointer-events-none"
-          style={{ background: "radial-gradient(circle, rgba(74,222,128,0.06) 0%, transparent 70%)", transform: "translate(-30%, 30%)" }}
+          style={{ background: "radial-gradient(circle, rgba(129,37,73,0.06) 0%, transparent 70%)", transform: "translate(-30%, 30%)" }}
         />
         <div className="relative px-8 py-12">
-          <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-6" style={{ color: "rgba(74,222,128,0.5)" }}>
+          <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-6" style={{ color: "rgba(129,37,73,0.5)" }}>
             Your goal is within reach
           </p>
           <div className="flex items-end justify-center gap-3 mb-1">
@@ -208,26 +208,26 @@ export default function PredictionView({
         className="ov bg-white rounded-2xl overflow-hidden mb-3"
         style={{
           animationDelay: "140ms",
-          boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+          boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
         }}
       >
         <div className="grid grid-cols-3">
           {statCards.map((s, i) => (
-            <div key={s.label} className={`px-5 py-5 ${i > 0 ? "border-l border-[#E8E7EA]" : ""}`}>
+            <div key={s.label} className={`px-5 py-5 ${i > 0 ? "border-l border-[#EAE4CA]" : ""}`}>
               <p
                 className="text-[9px] tracking-[0.22em] uppercase font-bold mb-2"
-                style={{ color: "#ADBDAD" }}
+                style={{ color: "#ABA6A6" }}
               >
                 {s.label}
               </p>
               <div className="flex items-baseline gap-1">
                 <span
                   className="font-black tabular-nums leading-none"
-                  style={{ fontSize: "1.75rem", color: s.accent ? "#4ade80" : "#0d1f10" }}
+                  style={{ fontSize: "1.75rem", color: s.accent ? "#812549" : "#1E1A1A" }}
                 >
                   {s.value}
                 </span>
-                <span className="text-sm font-medium" style={{ color: "#C8D4C8" }}>
+                <span className="text-sm font-medium" style={{ color: "#CCC6C6" }}>
                   {s.suffix}
                 </span>
               </div>
@@ -236,20 +236,20 @@ export default function PredictionView({
         </div>
 
         {/* Pace row */}
-        <div className="border-t border-[#E8E7EA] px-5 py-4 flex items-center justify-between">
+        <div className="border-t border-[#EAE4CA] px-5 py-4 flex items-center justify-between">
           <div>
-            <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ADBDAD" }}>
+            <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ABA6A6" }}>
               Weekly pace
             </p>
-            <p className="text-sm font-bold text-[#0d1f10]">
+            <p className="text-sm font-bold text-[#1E1A1A]">
               {weeklyGoal} {weightUnit}/week
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ADBDAD" }}>
+            <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ABA6A6" }}>
               That&apos;s roughly
             </p>
-            <p className="text-sm font-bold text-[#0d1f10]">{Math.ceil(days / 7)} weeks</p>
+            <p className="text-sm font-bold text-[#1E1A1A]">{Math.ceil(days / 7)} weeks</p>
           </div>
         </div>
       </div>
@@ -263,13 +263,13 @@ export default function PredictionView({
           className="ov relative rounded-2xl p-8 overflow-hidden"
           style={{
             animationDelay: "200ms",
-            background: "linear-gradient(140deg, #0a1509 0%, #162a18 60%, #0d1f10 100%)",
-            boxShadow: "0 8px 32px rgba(13,31,16,0.25)",
+            background: "linear-gradient(140deg, #5F1C35 0%, #812549 60%, #5F1C35 100%)",
+            boxShadow: "0 8px 32px rgba(30,26,26,0.25)",
           }}
         >
           <div
             className="absolute top-0 right-0 w-72 h-72 rounded-full pointer-events-none"
-            style={{ background: "radial-gradient(circle, rgba(74,222,128,0.10) 0%, transparent 65%)", transform: "translate(35%, -35%)" }}
+            style={{ background: "radial-gradient(circle, rgba(129,37,73,0.10) 0%, transparent 65%)", transform: "translate(35%, -35%)" }}
           />
           <div className="relative flex flex-col sm:flex-row items-center gap-6">
             <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
@@ -287,8 +287,8 @@ export default function PredictionView({
             </div>
             <Link
               href="/pricing"
-              className="flex-shrink-0 bg-primary hover:bg-primary-dark text-[#0a1509] px-6 py-3 rounded-xl text-sm font-bold transition-colors whitespace-nowrap"
-              style={{ boxShadow: "0 4px 20px rgba(74,222,128,0.25)" }}
+              className="flex-shrink-0 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-sm font-bold transition-colors whitespace-nowrap"
+              style={{ boxShadow: "0 4px 20px rgba(129,37,73,0.25)" }}
             >
               Get Premium
             </Link>

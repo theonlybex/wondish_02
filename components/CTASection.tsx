@@ -7,40 +7,53 @@ export default async function CTASection() {
   // statHighlight must appear verbatim inside stat for correct rendering
   const statParts = t("stat").split(t("statHighlight"));
 
-  const trustBadges = [
-    { icon: (<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" strokeLinecap="round" strokeLinejoin="round"/></svg>), label: t("secureBilling") },
-    { icon: (<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round"/></svg>), label: t("cancelAnytime") },
-    { icon: (<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" strokeLinecap="round" strokeLinejoin="round"/></svg>), label: t("setupIn3min") },
-  ];
+  const trustBadges = [t("secureBilling"), t("cancelAnytime"), t("setupIn3min")];
 
   return (
-    <section className="relative py-24 px-5 sm:px-8 overflow-hidden" style={{ background: "linear-gradient(135deg, #0d1a10 0%, #0f172a 50%, #0a1628 100%)" }}>
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[200px] rounded-full blur-[100px] pointer-events-none" style={{ background: "rgba(74, 222, 128, 0.12)" }} />
-      <div className="absolute bottom-0 left-1/4 w-64 h-64 rounded-full blur-[80px] pointer-events-none" style={{ background: "rgba(74, 222, 128, 0.07)" }} />
-      <div className="absolute bottom-0 right-1/4 w-48 h-48 rounded-full blur-[80px] pointer-events-none" style={{ background: "rgba(99, 102, 241, 0.08)" }} />
-
-      <div className="relative max-w-3xl mx-auto text-center">
-        <p className="text-[#4ade80] text-sm font-semibold uppercase tracking-widest mb-4">{t("eyebrow")}</p>
-        <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight mb-4">{t("headline")}</h2>
-        <p className="text-white/40 text-base mb-2">
-          {statParts[0]}<span className="text-white/70 font-semibold">{t("statHighlight")}</span>{statParts[1] ?? ""}
+    <section
+      className="relative text-center py-24 px-7 overflow-hidden"
+      style={{ background: "radial-gradient(ellipse 70% 90% at 50% 0%, #F5F1DD, #F9F7ED 70%)" }}
+    >
+      <div className="reveal max-w-[1180px] mx-auto">
+        <span
+          className="inline-flex items-center justify-center gap-[9px] text-xs font-bold uppercase tracking-[0.14em]"
+          style={{ color: "#812549" }}
+        >
+          <span className="w-[22px] h-0.5 rounded-sm" style={{ background: "#FDC221" }} />
+          {t("eyebrow")}
+        </span>
+        <h2
+          className="font-extrabold max-w-[760px] mx-auto mt-4 mb-[18px]"
+          style={{ fontSize: "clamp(36px, 5.5vw, 68px)", letterSpacing: "-0.02em", lineHeight: 1.05 }}
+        >
+          {t("headline")}
+        </h2>
+        <p className="text-base mb-2" style={{ color: "#4F4A4A" }}>
+          {statParts[0]}
+          <span className="font-bold" style={{ color: "#1E1A1A" }}>{t("statHighlight")}</span>
+          {statParts[1] ?? ""}
         </p>
-        <p className="text-white/40 text-lg mb-10 max-w-xl mx-auto">{t("subheadline")}</p>
-        <div className="flex justify-center mb-8">
-          <Link href="/register" className="inline-flex items-center justify-center gap-2 bg-[#4ade80] hover:bg-[#22c55e] text-[#0d1a10] px-8 py-4 rounded-xl font-semibold text-base transition-colors shadow-xl shadow-[#4ade80]/25">
-            {t("getStarted")}
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+        <p className="text-[19px] max-w-[480px] mx-auto mb-8" style={{ color: "#4F4A4A" }}>
+          {t("subheadline")}
+        </p>
+        <div className="flex flex-wrap justify-center items-center gap-3.5">
+          <Link
+            href="/register"
+            className="inline-flex items-center gap-2 px-7 py-[15px] rounded-full font-semibold text-[15px] text-white transition-all hover:-translate-y-0.5"
+            style={{ background: "#812549" }}
+          >
+            {t("getStarted")} →
+          </Link>
+          <Link
+            href="/dishes"
+            className="inline-flex items-center gap-2 px-7 py-[15px] rounded-full font-semibold text-[15px] border transition-all hover:-translate-y-0.5 hover:text-white hover:bg-[#B75E78] hover:border-[#B75E78]"
+            style={{ color: "#812549", borderColor: "#812549" }}
+          >
+            {t("browseMenu")}
           </Link>
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-5">
-          {trustBadges.map(({ icon, label }) => (
-            <div key={label} className="flex items-center gap-2 text-white/30">
-              <span className="text-[#4ade80]">{icon}</span>
-              <span className="text-sm">{label}</span>
-            </div>
-          ))}
+        <div className="mt-[18px] text-[13px]" style={{ color: "#848181" }}>
+          {trustBadges.join(" · ")}
         </div>
       </div>
     </section>

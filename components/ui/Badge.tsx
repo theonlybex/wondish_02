@@ -9,7 +9,7 @@ const variants = {
   warning: "bg-warning/10 text-warning",
   error: "bg-error/10 text-error",
   info: "bg-info/10 text-info",
-  neutral: "bg-[#F3F2FF] text-[#8A8D93]",
+  neutral: "bg-[#F3F2FF] text-[#848181]",
 };
 
 export default function Badge({ children, variant = "neutral" }: BadgeProps) {

@@ -33,7 +33,7 @@ export default function GlobalError({
           )}
           <button
             onClick={() => reset()}
-            className="mt-8 bg-primary hover:bg-primary-dark text-forest-deeper px-6 py-2.5 rounded-full transition-all duration-150 text-sm font-semibold shadow-lg shadow-primary/20"
+            className="mt-8 bg-primary hover:bg-primary-dark text-white px-6 py-2.5 rounded-full transition-all duration-150 text-sm font-semibold shadow-lg shadow-primary/20"
           >
             Try again
           </button>

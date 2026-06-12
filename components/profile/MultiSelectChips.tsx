@@ -28,7 +28,7 @@ export default function MultiSelectChips({
 
   return (
     <div>
-      <p className="text-sm font-medium text-[#25293C] mb-2">{label}</p>
+      <p className="text-sm font-medium text-[#1E1A1A] mb-2">{label}</p>
       <div className="flex flex-wrap gap-2">
         {options.map((opt) => {
           const active = selected.includes(opt.id);
@@ -40,7 +40,7 @@ export default function MultiSelectChips({
               className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
                 active
                   ? "bg-primary text-white shadow-sm shadow-primary/30"
-                  : "bg-[#F3F2FF] text-[#8A8D93] hover:bg-primary/10 hover:text-primary"
+                  : "bg-[#F3F2FF] text-[#848181] hover:bg-primary/10 hover:text-primary"
               }`}
             >
               {opt.name}

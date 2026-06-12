@@ -5,7 +5,7 @@ import { CaloricProfileDTO } from "@/types";
 
 const BMI_ZONES = [
   { label: "Underweight", max: 18.5, color: "#60A5FA" },
-  { label: "Healthy", max: 25, color: "#34D399" },
+  { label: "Healthy", max: 25, color: "#00B9A6" },
   { label: "Overweight", max: 30, color: "#FBBF24" },
   { label: "Obese", max: 50, color: "#F87171" },
 ];
@@ -74,8 +74,8 @@ export default function CaloricProfileCard() {
   if (error || !profile) {
     return (
       <div className="bg-white h-full p-5">
-        <h3 className="font-semibold text-[#25293C] mb-2">Caloric Profile</h3>
-        <p className="text-sm text-[#9EA8A0]">
+        <h3 className="font-semibold text-[#1E1A1A] mb-2">Caloric Profile</h3>
+        <p className="text-sm text-[#848181]">
           {error || "Complete your profile to see your caloric analysis."}
         </p>
       </div>
@@ -118,9 +118,9 @@ export default function CaloricProfileCard() {
         .cp-ring { animation: cp-ring 1.2s cubic-bezier(0.22, 1, 0.36, 1) both 0.3s; }
       `}</style>
 
-      <div className="flex items-center gap-2.5 px-5 py-3 border-b border-[#F0F4F0] flex-shrink-0">
-        <div className="w-1 h-4 rounded-full" style={{ background: "#7DB87D" }} />
-        <h3 className="text-[#0d1f10] text-sm font-bold">Caloric Profile</h3>
+      <div className="flex items-center gap-2.5 px-5 py-3 border-b border-[#F5F1DD] flex-shrink-0">
+        <div className="w-1 h-4 rounded-full" style={{ background: "#B75E78" }} />
+        <h3 className="text-[#1E1A1A] text-sm font-bold">Caloric Profile</h3>
       </div>
 
       <div className="p-5 flex-1 overflow-auto">
@@ -140,7 +140,7 @@ export default function CaloricProfileCard() {
               <circle
                 cx="60" cy="60" r="54"
                 fill="none"
-                stroke="#7DB87D"
+                stroke="#B75E78"
                 strokeWidth="8"
                 strokeLinecap="round"
                 strokeDasharray={circumference}
@@ -149,18 +149,18 @@ export default function CaloricProfileCard() {
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-xl font-bold text-[#25293C]">
+              <span className="text-xl font-bold text-[#1E1A1A]">
                 {Math.round(profile.dailyCalories)}
               </span>
-              <span className="text-[10px] text-[#9EA8A0] uppercase tracking-wider">kcal/day</span>
+              <span className="text-[10px] text-[#848181] uppercase tracking-wider">kcal/day</span>
             </div>
           </div>
-          <p className="text-xs text-[#9EA8A0] mt-1.5">Daily Target</p>
+          <p className="text-xs text-[#848181] mt-1.5">Daily Target</p>
         </div>
 
         {/* BMI gauge */}
         <div className="cp-a flex-1 min-w-[180px]" style={{ animationDelay: "120ms" }}>
-          <p className="text-xs text-[#9EA8A0] mb-1.5 uppercase tracking-wider">Body Mass Index</p>
+          <p className="text-xs text-[#848181] mb-1.5 uppercase tracking-wider">Body Mass Index</p>
           <div className="flex items-baseline gap-2 mb-3">
             <span className="text-2xl font-bold" style={{ color: bmiCol }}>
               {fmt(profile.cbmi)}
@@ -171,7 +171,7 @@ export default function CaloricProfileCard() {
           </div>
           {/* Gauge bar */}
           <div className="relative h-2 my-1.5">
-            <div className="absolute inset-0 rounded-full" style={{ background: "linear-gradient(to right, #60A5FA 0%, #34D399 20%, #34D399 60%, #FBBF24 60%, #FBBF24 80%, #F87171 80%)" }} />
+            <div className="absolute inset-0 rounded-full" style={{ background: "linear-gradient(to right, #60A5FA 0%, #00B9A6 20%, #00B9A6 60%, #FBBF24 60%, #FBBF24 80%, #F87171 80%)" }} />
             <div
               className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full border-2 border-white shadow-md transition-all duration-700 z-10"
               style={{ left: `${bmiPct}%`, backgroundColor: bmiCol }}
@@ -226,8 +226,8 @@ export default function CaloricProfileCard() {
       {/* Weight journey bar */}
       <div className="cp-a" style={{ animationDelay: "420ms" }}>
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-xs text-[#9EA8A0]">Weight Journey</span>
-          <span className="text-xs font-medium text-[#25293C]">{journeyLabel}</span>
+          <span className="text-xs text-[#848181]">Weight Journey</span>
+          <span className="text-xs font-medium text-[#1E1A1A]">{journeyLabel}</span>
         </div>
         <div className="h-2 rounded-full bg-[#F0F0F2] overflow-hidden">
           <div
@@ -235,26 +235,26 @@ export default function CaloricProfileCard() {
             style={{
               width: `${isLosing || isGaining ? Math.max(5, 100 - (totalDelta / profile.cbwKg) * 100) : progressPct}%`,
               background: isLosing
-                ? "linear-gradient(90deg, #7DB87D, #5CA05C)"
+                ? "linear-gradient(90deg, #B75E78, #812549)"
                 : isGaining
                 ? "linear-gradient(90deg, #60A5FA, #3B82F6)"
-                : "linear-gradient(90deg, #34D399, #10B981)",
+                : "linear-gradient(90deg, #00B9A6, #10B981)",
             }}
           />
         </div>
         <div className="flex justify-between mt-1">
-          <span className="text-[10px] text-[#9EA8A0]">{fmt(profile.cbwKg)} kg</span>
-          <span className="text-[10px] text-[#9EA8A0]">{fmt(profile.tbwKg)} kg</span>
+          <span className="text-[10px] text-[#848181]">{fmt(profile.cbwKg)} kg</span>
+          <span className="text-[10px] text-[#848181]">{fmt(profile.tbwKg)} kg</span>
         </div>
       </div>
 
       {/* Glossary */}
       <div className="cp-a mt-3 pt-3 border-t border-[#F0F0F2] flex flex-col gap-1" style={{ animationDelay: "460ms" }}>
-        <p className="text-[10px] text-[#BFCBBF] leading-relaxed">
-          <span className="font-semibold text-[#9EA8A0]">BMR</span> — Basal Metabolic Rate: calories your body burns at complete rest to sustain basic functions.
+        <p className="text-[10px] text-[#CCC6C6] leading-relaxed">
+          <span className="font-semibold text-[#848181]">BMR</span> — Basal Metabolic Rate: calories your body burns at complete rest to sustain basic functions.
         </p>
-        <p className="text-[10px] text-[#BFCBBF] leading-relaxed">
-          <span className="font-semibold text-[#9EA8A0]">TDEE</span> — Total Daily Energy Expenditure: your BMR adjusted for activity level, representing total daily calorie burn.
+        <p className="text-[10px] text-[#CCC6C6] leading-relaxed">
+          <span className="font-semibold text-[#848181]">TDEE</span> — Total Daily Energy Expenditure: your BMR adjusted for activity level, representing total daily calorie burn.
         </p>
       </div>
       </div>
@@ -286,15 +286,15 @@ function MetricTile({
         background: accent ? "rgba(125,184,125,0.06)" : "#FAFAFA",
       }}
     >
-      <p className="text-[10px] uppercase tracking-wider text-[#9EA8A0] mb-0.5">{label}</p>
+      <p className="text-[10px] uppercase tracking-wider text-[#848181] mb-0.5">{label}</p>
       <div className="flex items-baseline gap-1">
         <span
           className="text-lg font-bold"
-          style={{ color: accent ? "#5CA05C" : "#25293C" }}
+          style={{ color: accent ? "#812549" : "#1E1A1A" }}
         >
           {value}
         </span>
-        {sub && <span className="text-[10px] text-[#9EA8A0]">{sub}</span>}
+        {sub && <span className="text-[10px] text-[#848181]">{sub}</span>}
       </div>
     </div>
   );

@@ -156,15 +156,15 @@ export default function JournalCalendar() {
     return (
       <div className="mx-auto pb-8" style={{ maxWidth: "1120px" }}>
         <div className="animate-pulse space-y-4">
-          <div className="h-6 w-48 bg-[#E2EAE2] rounded" />
-          <div className="h-4 w-64 bg-[#F0F4F0] rounded" />
+          <div className="h-6 w-48 bg-[#EAE4CA] rounded" />
+          <div className="h-4 w-64 bg-[#F5F1DD] rounded" />
           <div className="flex gap-6 mt-6">
             <div className="flex-1 grid grid-cols-7 gap-1">
               {Array.from({ length: 35 }).map((_, i) => (
-                <div key={i} className="aspect-square bg-[#F0F4F0] rounded-lg" />
+                <div key={i} className="aspect-square bg-[#F5F1DD] rounded-lg" />
               ))}
             </div>
-            <div className="w-[340px] h-64 bg-[#F0F4F0] rounded-2xl flex-shrink-0 hidden lg:block" />
+            <div className="w-[340px] h-64 bg-[#F5F1DD] rounded-2xl flex-shrink-0 hidden lg:block" />
           </div>
         </div>
       </div>
@@ -174,7 +174,7 @@ export default function JournalCalendar() {
   if (error || !data) {
     return (
       <div className="mx-auto pb-8" style={{ maxWidth: "1120px" }}>
-        <p className="text-sm" style={{ color: "#9EA8A0" }}>
+        <p className="text-sm" style={{ color: "#848181" }}>
           {error || "No meal plan data available."}
         </p>
       </div>
@@ -202,16 +202,16 @@ export default function JournalCalendar() {
       <div className="mb-8">
         <p
           className="text-[9px] tracking-[0.28em] uppercase font-mono mb-2"
-          style={{ color: "#7DB87D" }}
+          style={{ color: "#B75E78" }}
         >
           {parseLocalDate(data.planStartDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
           {" — "}
           {parseLocalDate(data.planEndDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
         </p>
-        <h1 className="text-3xl font-bold" style={{ color: "#0d1f10" }}>
+        <h1 className="text-3xl font-bold" style={{ color: "#1E1A1A" }}>
           Journal
         </h1>
-        <p className="text-xs mt-1.5" style={{ color: "#9EA8A0" }}>
+        <p className="text-xs mt-1.5" style={{ color: "#848181" }}>
           Tap a day to view your log
         </p>
       </div>
@@ -226,7 +226,7 @@ export default function JournalCalendar() {
               <div
                 key={d}
                 className="text-center text-[10px] font-bold uppercase tracking-wider py-1"
-                style={{ color: "#ADBDAD" }}
+                style={{ color: "#ABA6A6" }}
               >
                 {d}
               </div>
@@ -242,7 +242,7 @@ export default function JournalCalendar() {
                   <div className="pt-4 pb-2 first:pt-0">
                     <span
                       className="text-xs font-bold tracking-wide"
-                      style={{ color: "#0d1f10" }}
+                      style={{ color: "#1E1A1A" }}
                     >
                       {monthHeaders.get(weekIdx)}
                     </span>
@@ -267,19 +267,19 @@ export default function JournalCalendar() {
                         className="relative aspect-square rounded-lg transition-all duration-200"
                         style={{
                           background: selected
-                            ? "#4ade80"
+                            ? "#812549"
                             : day.inRange
                               ? "#ffffff"
                               : "transparent",
                           border: today && !selected
-                            ? "1.5px solid #4ade80"
+                            ? "1.5px solid #812549"
                             : day.inRange
-                              ? "1px solid #F0F4F0"
+                              ? "1px solid #F5F1DD"
                               : "1px solid transparent",
                           opacity: !day.inRange ? 0.25 : future ? 0.4 : 1,
                           cursor: clickable ? "pointer" : "default",
                           boxShadow: selected
-                            ? "0 2px 8px rgba(74,222,128,0.25)"
+                            ? "0 2px 8px rgba(129,37,73,0.25)"
                             : "none",
                         }}
                       >
@@ -287,7 +287,7 @@ export default function JournalCalendar() {
                         <span
                           className="absolute top-1 right-1.5 text-[10px] font-medium leading-none"
                           style={{
-                            color: selected ? "#ffffff" : "#0d1f10",
+                            color: selected ? "#ffffff" : "#1E1A1A",
                           }}
                         >
                           {day.date.getDate()}
@@ -297,7 +297,7 @@ export default function JournalCalendar() {
                         {hasDayData && !selected && (
                           <span
                             className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
-                            style={{ background: "#4ade80" }}
+                            style={{ background: "#812549" }}
                           />
                         )}
                       </button>
@@ -333,11 +333,11 @@ export default function JournalCalendar() {
                 className="rounded-2xl px-5 py-10 text-center"
                 style={{
                   background: "#ffffff",
-                  border: "1px solid #F0F4F0",
-                  boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+                  border: "1px solid #F5F1DD",
+                  boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
                 }}
               >
-                <p className="text-xs" style={{ color: "#ADBDAD" }}>
+                <p className="text-xs" style={{ color: "#ABA6A6" }}>
                   Select a day to view details
                 </p>
               </motion.div>
@@ -399,25 +399,25 @@ function DayDetailCard({
       className="rounded-2xl overflow-hidden"
       style={{
         background: "#ffffff",
-        border: "1px solid #F0F4F0",
-        boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+        border: "1px solid #F5F1DD",
+        boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
       }}
     >
       {/* Card header */}
       <div
         className="flex items-center justify-between px-5 py-3.5"
-        style={{ borderBottom: "1px solid #F0F4F0" }}
+        style={{ borderBottom: "1px solid #F5F1DD" }}
       >
         <div className="flex items-center gap-2.5">
-          <div className="w-1 h-4 rounded-full" style={{ background: "#4ade80" }} />
-          <span className="text-sm font-bold" style={{ color: "#0d1f10" }}>
+          <div className="w-1 h-4 rounded-full" style={{ background: "#812549" }} />
+          <span className="text-sm font-bold" style={{ color: "#1E1A1A" }}>
             {dateLabel}
           </span>
         </div>
         {hasAny && (
           <span
             className="text-[9px] font-bold tracking-[0.18em] uppercase px-2.5 py-1 rounded-full"
-            style={{ background: "rgba(74,222,128,0.1)", color: "#4ade80" }}
+            style={{ background: "rgba(129,37,73,0.1)", color: "#812549" }}
           >
             Logged
           </span>
@@ -427,19 +427,19 @@ function DayDetailCard({
       {!hasAny ? (
         /* Empty state */
         <div className="px-5 py-10 text-center">
-          <p className="text-sm" style={{ color: "#9EA8A0" }}>
+          <p className="text-sm" style={{ color: "#848181" }}>
             No entry for this day
           </p>
           <Link
             href="/journal"
             className="inline-block mt-3 text-xs font-bold transition-colors"
-            style={{ color: "#4ade80" }}
+            style={{ color: "#812549" }}
           >
             Log an entry →
           </Link>
         </div>
       ) : (
-        <div className="divide-y" style={{ borderColor: "#F0F4F0" }}>
+        <div className="divide-y" style={{ borderColor: "#F5F1DD" }}>
           {/* 1 — Caloric Profile */}
           {entry.dailyCalorieTarget && (
             <CaloricSection
@@ -486,7 +486,7 @@ function CaloricSection({
     <div className="px-5 py-4">
       <p
         className="text-[9px] font-bold tracking-[0.2em] uppercase mb-3"
-        style={{ color: "#ADBDAD" }}
+        style={{ color: "#ABA6A6" }}
       >
         Caloric Profile
       </p>
@@ -500,7 +500,7 @@ function CaloricSection({
               cy="32"
               r="28"
               fill="none"
-              stroke="#7DB87D"
+              stroke="#B75E78"
               strokeWidth="4"
               strokeLinecap="round"
               strokeDasharray={circumference}
@@ -508,10 +508,10 @@ function CaloricSection({
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-sm font-bold" style={{ color: "#25293C" }}>
+            <span className="text-sm font-bold" style={{ color: "#1E1A1A" }}>
               {Math.round(dailyTarget)}
             </span>
-            <span className="text-[7px] uppercase tracking-wider" style={{ color: "#9EA8A0" }}>
+            <span className="text-[7px] uppercase tracking-wider" style={{ color: "#848181" }}>
               kcal
             </span>
           </div>
@@ -521,30 +521,30 @@ function CaloricSection({
         <div className="flex gap-5 text-xs">
           {weight != null && (
             <div>
-              <p className="text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "#ADBDAD" }}>
+              <p className="text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "#ABA6A6" }}>
                 Weight
               </p>
-              <p className="font-bold" style={{ color: "#25293C" }}>
-                {weight.toFixed(1)} <span style={{ color: "#9EA8A0" }}>kg</span>
+              <p className="font-bold" style={{ color: "#1E1A1A" }}>
+                {weight.toFixed(1)} <span style={{ color: "#848181" }}>kg</span>
               </p>
             </div>
           )}
           {profile?.tbwKg && (
             <div>
-              <p className="text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "#ADBDAD" }}>
+              <p className="text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "#ABA6A6" }}>
                 Target
               </p>
-              <p className="font-bold" style={{ color: "#7DB87D" }}>
-                {profile.tbwKg.toFixed(1)} <span style={{ color: "#9EA8A0" }}>kg</span>
+              <p className="font-bold" style={{ color: "#B75E78" }}>
+                {profile.tbwKg.toFixed(1)} <span style={{ color: "#848181" }}>kg</span>
               </p>
             </div>
           )}
           {profile?.cbmi && (
             <div>
-              <p className="text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "#ADBDAD" }}>
+              <p className="text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "#ABA6A6" }}>
                 BMI
               </p>
-              <p className="font-bold" style={{ color: "#25293C" }}>
+              <p className="font-bold" style={{ color: "#1E1A1A" }}>
                 {profile.cbmi.toFixed(1)}
               </p>
             </div>
@@ -563,11 +563,11 @@ function MealsSection({ meals }: { meals: DayEntry["meals"] }) {
       <div className="px-5 py-4">
         <p
           className="text-[9px] font-bold tracking-[0.2em] uppercase mb-2"
-          style={{ color: "#ADBDAD" }}
+          style={{ color: "#ABA6A6" }}
         >
           Completed Meals
         </p>
-        <p className="text-xs" style={{ color: "#C8D4C8" }}>
+        <p className="text-xs" style={{ color: "#CCC6C6" }}>
           No rated meals this day
         </p>
       </div>
@@ -578,7 +578,7 @@ function MealsSection({ meals }: { meals: DayEntry["meals"] }) {
     <div className="px-5 py-4">
       <p
         className="text-[9px] font-bold tracking-[0.2em] uppercase mb-3"
-        style={{ color: "#ADBDAD" }}
+        style={{ color: "#ABA6A6" }}
       >
         Completed Meals
       </p>
@@ -592,20 +592,20 @@ function MealsSection({ meals }: { meals: DayEntry["meals"] }) {
             {/* Like / Dislike icon */}
             <span
               className="text-sm flex-shrink-0"
-              style={{ color: meal.rating > 0 ? "#4ade80" : "#EA5455" }}
+              style={{ color: meal.rating > 0 ? "#812549" : "#EA5455" }}
             >
               {meal.rating > 0 ? "👍" : "👎"}
             </span>
             <div className="min-w-0 flex-1">
               <p
                 className="text-[9px] font-bold uppercase tracking-wide"
-                style={{ color: "#ADBDAD" }}
+                style={{ color: "#ABA6A6" }}
               >
                 {meal.mealType}
               </p>
               <p
                 className="text-xs font-medium truncate"
-                style={{ color: "#25293C" }}
+                style={{ color: "#1E1A1A" }}
               >
                 {meal.recipeName}
               </p>
@@ -639,7 +639,7 @@ function JournalSection({
     <div className="px-5 py-4">
       <p
         className="text-[9px] font-bold tracking-[0.2em] uppercase mb-3"
-        style={{ color: "#ADBDAD" }}
+        style={{ color: "#ABA6A6" }}
       >
         Daily Journal
       </p>
@@ -656,7 +656,7 @@ function JournalSection({
             className="rounded-xl px-3 py-2.5"
             style={{ background: "#FAFAFA" }}
           >
-            <p className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "#ADBDAD" }}>
+            <p className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "#ABA6A6" }}>
               Energy
             </p>
             <div className="flex items-end gap-0.5 mb-0.5">
@@ -667,12 +667,12 @@ function JournalSection({
                   style={{
                     height: `${bar * 4 + 4}px`,
                     background:
-                      bar <= ENERGY_MAP[energyLevel].bars ? "#7DB87D" : "#E2EAE2",
+                      bar <= ENERGY_MAP[energyLevel].bars ? "#B75E78" : "#EAE4CA",
                   }}
                 />
               ))}
             </div>
-            <p className="text-[10px] font-medium" style={{ color: "#25293C" }}>
+            <p className="text-[10px] font-medium" style={{ color: "#1E1A1A" }}>
               {ENERGY_MAP[energyLevel].label}
             </p>
           </div>
@@ -693,12 +693,12 @@ function JournalSection({
             className="rounded-xl px-3 py-2.5"
             style={{ background: "#FAFAFA" }}
           >
-            <p className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "#ADBDAD" }}>
+            <p className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "#ABA6A6" }}>
               Weight
             </p>
-            <p className="text-sm font-bold" style={{ color: "#25293C" }}>
+            <p className="text-sm font-bold" style={{ color: "#1E1A1A" }}>
               {weight.toFixed(1)}
-              <span className="text-[10px] font-normal ml-0.5" style={{ color: "#9EA8A0" }}>
+              <span className="text-[10px] font-normal ml-0.5" style={{ color: "#848181" }}>
                 kg
               </span>
             </p>
@@ -709,10 +709,10 @@ function JournalSection({
       {/* Notes */}
       {notes && (
         <div className="mt-3 px-3 py-2.5 rounded-xl" style={{ background: "#FAFAFA" }}>
-          <p className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "#ADBDAD" }}>
+          <p className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "#ABA6A6" }}>
             Notes
           </p>
-          <p className="text-xs leading-relaxed" style={{ color: "#25293C" }}>
+          <p className="text-xs leading-relaxed" style={{ color: "#1E1A1A" }}>
             {notes}
           </p>
         </div>
@@ -726,11 +726,11 @@ function JournalSection({
 function MetricChip({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
     <div className="rounded-xl px-3 py-2.5" style={{ background: "#FAFAFA" }}>
-      <p className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "#ADBDAD" }}>
+      <p className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "#ABA6A6" }}>
         {label}
       </p>
       <p className="text-lg leading-none">{value}</p>
-      <p className="text-[10px] font-medium mt-0.5" style={{ color: "#25293C" }}>
+      <p className="text-[10px] font-medium mt-0.5" style={{ color: "#1E1A1A" }}>
         {sub}
       </p>
     </div>

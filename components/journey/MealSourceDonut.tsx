@@ -8,7 +8,7 @@ interface MealSourceDonutProps {
 }
 
 const COLORS = {
-  Cooked: "#28C76F",
+  Cooked: "#00B9A6",
   Skipped: "#EA5455",
   "Ready-to-eat": "#FF9F43",
   Restaurant: "#7367F0",
@@ -24,7 +24,7 @@ export default function MealSourceDonut({ breakdown }: MealSourceDonutProps) {
 
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-48 text-[#8A8D93] text-sm">
+      <div className="flex items-center justify-center h-48 text-[#848181] text-sm">
         No meal data yet
       </div>
     );
@@ -45,19 +45,19 @@ export default function MealSourceDonut({ breakdown }: MealSourceDonutProps) {
           {data.map((entry) => (
             <Cell
               key={entry.name}
-              fill={COLORS[entry.name as keyof typeof COLORS] ?? "#E8E7EA"}
+              fill={COLORS[entry.name as keyof typeof COLORS] ?? "#EAE4CA"}
             />
           ))}
         </Pie>
         <Tooltip
           formatter={(value) => [`${value} meals`, ""]}
-          contentStyle={{ borderRadius: "12px", border: "1px solid #E8E7EA" }}
+          contentStyle={{ borderRadius: "12px", border: "1px solid #EAE4CA" }}
         />
         <Legend
           iconType="circle"
           iconSize={8}
           formatter={(value) => (
-            <span className="text-xs text-[#8A8D93]">{value}</span>
+            <span className="text-xs text-[#848181]">{value}</span>
           )}
         />
       </PieChart>

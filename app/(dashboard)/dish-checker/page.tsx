@@ -26,12 +26,12 @@ export default async function DishCheckerPage() {
       <div className="dc flex-shrink-0 mb-6" style={{ animationDelay: "0ms" }}>
         <p
           className="text-[9px] tracking-[0.28em] uppercase font-mono mb-2"
-          style={{ color: "#7DB87D" }}
+          style={{ color: "#B75E78" }}
         >
           Premium · AI Advisor
         </p>
-        <h1 className="text-3xl font-bold text-[#0d1f10]">Clara</h1>
-        <p className="text-xs mt-1.5" style={{ color: "#9EA8A0" }}>
+        <h1 className="text-3xl font-bold text-[#1E1A1A]">Clara</h1>
+        <p className="text-xs mt-1.5" style={{ color: "#848181" }}>
           Your personal AI food advisor
         </p>
       </div>

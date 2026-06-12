@@ -43,9 +43,9 @@ export default function CouponRedeem() {
   }
 
   return (
-    <div className="bg-[#F8F7FA] border border-[#E8E7EA] rounded-2xl p-6">
-      <h3 className="text-[#25293C] font-semibold text-base mb-1">Redeem a coupon</h3>
-      <p className="text-[#8A8D93] text-sm mb-4">
+    <div className="bg-[#F8F7FA] border border-[#EAE4CA] rounded-2xl p-6">
+      <h3 className="text-[#1E1A1A] font-semibold text-base mb-1">Redeem a coupon</h3>
+      <p className="text-[#848181] text-sm mb-4">
         Have a coupon code? Enter it below to unlock access.
       </p>
 
@@ -55,7 +55,7 @@ export default function CouponRedeem() {
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           placeholder="ENTER CODE"
-          className="flex-1 bg-white border border-[#E8E7EA] rounded-xl px-4 py-2.5 text-sm font-mono text-[#25293C] placeholder:text-[#C0C0C4] focus:outline-none focus:border-primary/50 uppercase tracking-widest"
+          className="flex-1 bg-white border border-[#EAE4CA] rounded-xl px-4 py-2.5 text-sm font-mono text-[#1E1A1A] placeholder:text-[#C0C0C4] focus:outline-none focus:border-primary/50 uppercase tracking-widest"
           disabled={loading}
         />
         <button

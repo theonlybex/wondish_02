@@ -5,60 +5,60 @@ import { getRecipeEmoji } from "@/lib/recipeEmoji";
 import type { MealTypeKey } from "@/types";
 
 const mealTypeTag: Record<MealTypeKey, { bg: string; color: string; label: string }> = {
-  breakfast: { bg: "rgba(255,159,67,0.12)",  color: "#FF9F43", label: "Breakfast" },
-  lunch:     { bg: "rgba(74,222,128,0.12)",  color: "#4ade80", label: "Lunch" },
-  dinner:    { bg: "rgba(0,207,232,0.12)",   color: "#00CFE8", label: "Dinner" },
-  snack:     { bg: "rgba(234,84,85,0.12)",   color: "#EA5455", label: "Snack" },
+  breakfast: { bg: "#FFE9AE", color: "#DEA402", label: "Breakfast" },
+  lunch:     { bg: "#F5F1DD", color: "#5F1C35", label: "Lunch" },
+  dinner:    { bg: "#8DCEBD", color: "#2b6472", label: "Dinner" },
+  snack:     { bg: "#E0A2AA", color: "#5F1C35", label: "Snack" },
 };
-
-const cardBgs = [
-  "linear-gradient(145deg,#263b2a,#152718)",
-  "linear-gradient(145deg,#2a2015,#1a1510)",
-  "linear-gradient(145deg,#132028,#0a1518)",
-  "linear-gradient(145deg,#152718,#0d1a10)",
-  "linear-gradient(145deg,#2a2515,#1a1810)",
-  "linear-gradient(145deg,#263b2a,#1e3422)",
-];
 
 export default async function DishesPreview() {
   const t = await getTranslations("dishesPreview");
   const track = [...dishes, ...dishes];
 
   return (
-    <section id="menu" className="py-28 overflow-hidden" style={{ background: "#0d1a10" }}>
+    <section id="menu" className="pb-24 overflow-hidden">
       <style>{`
         @keyframes tray-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .tray-track { display: flex; gap: 20px; width: max-content; animation: tray-scroll 40s linear infinite; }
+        .tray-track { display: flex; gap: 18px; width: max-content; animation: tray-scroll 40s linear infinite; }
         .tray-wrap:hover .tray-track { animation-play-state: paused; }
-        .tray-card:hover { transform: translateY(-6px) scale(1.02); border-color: rgba(74,222,128,0.2) !important; box-shadow: 0 20px 50px rgba(0,0,0,0.4); }
+        .tray-card:hover { transform: translateY(-6px); box-shadow: 0 16px 40px rgba(30,26,26,0.1); }
       `}</style>
 
-      <div className="px-6 max-w-6xl mx-auto mb-12 flex items-end justify-between">
-        <div>
-          <p className="text-[11px] font-bold tracking-[0.25em] uppercase mb-4" style={{ color: "#4ade80" }}>
+      <div className="reveal max-w-[1180px] mx-auto px-7 mb-12">
+        <div className="max-w-[640px] mx-auto text-center">
+          <span
+            className="inline-flex items-center justify-center gap-[9px] text-xs font-bold uppercase tracking-[0.14em]"
+            style={{ color: "#812549" }}
+          >
+            <span className="w-[22px] h-0.5 rounded-sm" style={{ background: "#FDC221" }} />
             {t("eyebrow")}
-          </p>
-          <h2 className="text-4xl sm:text-5xl font-extrabold leading-tight" style={{ color: "#f0fdf4", letterSpacing: "-0.03em" }}>
+          </span>
+          <h2
+            className="font-extrabold mt-4 mb-4"
+            style={{ fontSize: "clamp(32px, 4.4vw, 52px)", letterSpacing: "-0.02em", lineHeight: 1.05 }}
+          >
             {t("headline")}
           </h2>
+          <p className="text-lg" style={{ color: "#4F4A4A" }}>{t("subheadline")}</p>
+          <Link
+            href="/dishes"
+            className="inline-block mt-4 text-sm font-semibold transition-opacity hover:opacity-70"
+            style={{ color: "#812549" }}
+          >
+            {t("viewAll")} →
+          </Link>
         </div>
-        <Link
-          href="/dishes"
-          className="text-sm font-semibold shrink-0 transition-opacity hover:opacity-70"
-          style={{ color: "#4ade80" }}
-        >
-          {t("viewAll")} →
-        </Link>
       </div>
 
+      {/* Spinning food tray — continuous marquee of dishes */}
       <div className="tray-wrap relative overflow-hidden" style={{ padding: "8px 0 32px" }}>
         <div
           className="pointer-events-none absolute inset-y-0 left-0 w-32 z-10"
-          style={{ background: "linear-gradient(to right, #0d1a10, transparent)" }}
+          style={{ background: "linear-gradient(to right, #F9F7ED, transparent)" }}
         />
         <div
           className="pointer-events-none absolute inset-y-0 right-0 w-32 z-10"
-          style={{ background: "linear-gradient(to left, #0d1a10, transparent)" }}
+          style={{ background: "linear-gradient(to left, #F9F7ED, transparent)" }}
         />
 
         <div className="tray-track">
@@ -66,53 +66,42 @@ export default async function DishesPreview() {
             const tag = mealTypeTag[dish.mealType];
             const emoji = dish.emoji || getRecipeEmoji(dish.name, dish.tags, dish.mealType);
             const totalTime = dish.prepTime + dish.cookTime;
-            const bg = cardBgs[i % cardBgs.length];
             return (
               <div
                 key={`${dish.id}-${i}`}
                 aria-hidden={i >= dishes.length ? true : undefined}
-                className="tray-card flex-none w-[280px] rounded-[20px] overflow-hidden transition-all duration-300"
-                style={{ background: bg, border: "1px solid rgba(74,222,128,0.06)" }}
+                className="tray-card flex-none w-[280px] rounded-3xl overflow-hidden bg-white border transition-all duration-300"
+                style={{ borderColor: "#EAE4CA" }}
               >
                 <div
-                  className="aspect-square flex items-center justify-center text-[64px] relative"
-                  style={{ background: bg }}
+                  className="aspect-square flex items-center justify-center text-[64px]"
+                  style={{ background: "linear-gradient(160deg, #fff, #f4efe5)" }}
                 >
                   {emoji}
-                  <div
-                    className="absolute bottom-0 left-0 right-0 h-1/2"
-                    style={{ background: "linear-gradient(to top, #0d1a10, transparent)" }}
-                  />
                 </div>
                 <div className="p-5">
                   <span
-                    className="inline-block text-[10px] font-bold tracking-[0.15em] uppercase px-2.5 py-1 rounded-full mb-2.5"
+                    className="inline-block text-[11px] font-bold tracking-[0.08em] uppercase px-2.5 py-1 rounded-full mb-2.5"
                     style={{ background: tag.bg, color: tag.color }}
                   >
                     {tag.label}
                   </span>
-                  <h4 className="text-base font-bold mb-1.5 leading-snug" style={{ color: "#f0fdf4" }}>
+                  <h4 className="text-[17px] font-bold mb-1 leading-snug" style={{ color: "#1E1A1A", letterSpacing: "-0.02em" }}>
                     {dish.name}
                   </h4>
-                  <p
-                    className="text-[13px] leading-relaxed line-clamp-1"
-                    style={{ color: "rgba(240,253,244,0.28)" }}
-                  >
+                  <p className="text-[13px] leading-relaxed line-clamp-1" style={{ color: "#848181" }}>
                     {dish.description}
                   </p>
-                  <div
-                    className="flex gap-4 mt-3.5 pt-3.5"
-                    style={{ borderTop: "1px solid rgba(74,222,128,0.06)" }}
-                  >
-                    <span className="text-xs font-medium" style={{ color: "rgba(240,253,244,0.45)" }}>
-                      <strong style={{ color: "#f0fdf4" }}>{dish.calories}</strong> kcal
+                  <div className="flex gap-3.5 mt-3.5 pt-3.5 border-t" style={{ borderColor: "#EAE4CA" }}>
+                    <span className="text-[12.5px]" style={{ color: "#4F4A4A" }}>
+                      <strong style={{ color: "#1E1A1A" }}>{dish.calories}</strong> kcal
                     </span>
-                    <span className="text-xs font-medium" style={{ color: "rgba(240,253,244,0.45)" }}>
-                      <strong style={{ color: "#f0fdf4" }}>{dish.protein}g</strong> protein
+                    <span className="text-[12.5px]" style={{ color: "#4F4A4A" }}>
+                      <strong style={{ color: "#1E1A1A" }}>{dish.protein}g</strong> protein
                     </span>
                     {totalTime > 0 && (
-                      <span className="text-xs font-medium" style={{ color: "rgba(240,253,244,0.45)" }}>
-                        <strong style={{ color: "#f0fdf4" }}>{totalTime}</strong> min
+                      <span className="text-[12.5px]" style={{ color: "#4F4A4A" }}>
+                        <strong style={{ color: "#1E1A1A" }}>{totalTime}</strong> min
                       </span>
                     )}
                   </div>

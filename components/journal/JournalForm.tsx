@@ -200,7 +200,7 @@ export default function JournalForm({
         <div className="space-y-5">
           {/* Mood */}
           <div>
-            <p className="text-sm font-medium text-[#25293C] mb-2">Mood</p>
+            <p className="text-sm font-medium text-[#1E1A1A] mb-2">Mood</p>
             <div className="flex gap-3">
               {MOOD_OPTIONS.map((opt) => (
                 <button
@@ -210,11 +210,11 @@ export default function JournalForm({
                   className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl border transition-all text-2xl ${
                     mood === opt.value
                       ? "border-primary bg-primary/10"
-                      : "border-[#E8E7EA] hover:border-primary/30"
+                      : "border-[#EAE4CA] hover:border-primary/30"
                   }`}
                 >
                   {opt.emoji}
-                  <span className="text-xs text-[#8A8D93]">{opt.label}</span>
+                  <span className="text-xs text-[#848181]">{opt.label}</span>
                 </button>
               ))}
             </div>
@@ -222,7 +222,7 @@ export default function JournalForm({
 
           {/* Energy */}
           <div>
-            <p className="text-sm font-medium text-[#25293C] mb-2">Energy Level</p>
+            <p className="text-sm font-medium text-[#1E1A1A] mb-2">Energy Level</p>
             <div className="flex flex-wrap gap-2">
               {ENERGY_OPTIONS.map((opt) => (
                 <button
@@ -232,7 +232,7 @@ export default function JournalForm({
                   className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
                     energyLevel === opt.value
                       ? "bg-primary text-white"
-                      : "bg-[#F3F2FF] text-[#8A8D93] hover:bg-primary/10"
+                      : "bg-[#F3F2FF] text-[#848181] hover:bg-primary/10"
                   }`}
                 >
                   {opt.label}
@@ -243,7 +243,7 @@ export default function JournalForm({
 
           {/* Activity */}
           <div>
-            <p className="text-sm font-medium text-[#25293C] mb-2">Activity Level</p>
+            <p className="text-sm font-medium text-[#1E1A1A] mb-2">Activity Level</p>
             <div className="flex flex-wrap gap-2">
               {ACTIVITY_OPTIONS.map((opt) => (
                 <button
@@ -253,7 +253,7 @@ export default function JournalForm({
                   className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
                     activityLevel === opt.value
                       ? "bg-primary text-white"
-                      : "bg-[#F3F2FF] text-[#8A8D93] hover:bg-primary/10"
+                      : "bg-[#F3F2FF] text-[#848181] hover:bg-primary/10"
                   }`}
                 >
                   {opt.label}
@@ -264,7 +264,7 @@ export default function JournalForm({
 
           {/* Weight */}
           <div>
-            <label className="text-sm font-medium text-[#25293C] block mb-1.5">
+            <label className="text-sm font-medium text-[#1E1A1A] block mb-1.5">
               Weight (kg)
             </label>
             <input
@@ -273,19 +273,19 @@ export default function JournalForm({
               step="0.1"
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
-              className="w-32 px-3.5 py-2.5 rounded-xl border border-[#E8E7EA] bg-white text-sm text-[#25293C] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+              className="w-32 px-3.5 py-2.5 rounded-xl border border-[#EAE4CA] bg-white text-sm text-[#1E1A1A] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
               placeholder="70.5"
             />
           </div>
 
           {/* Notes */}
           <div>
-            <label className="text-sm font-medium text-[#25293C] block mb-1.5">Notes</label>
+            <label className="text-sm font-medium text-[#1E1A1A] block mb-1.5">Notes</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8E7EA] bg-white text-sm text-[#25293C] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all resize-none"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-[#EAE4CA] bg-white text-sm text-[#1E1A1A] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all resize-none"
               placeholder="How was your day?"
             />
           </div>

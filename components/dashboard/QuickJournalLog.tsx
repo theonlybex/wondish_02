@@ -113,15 +113,15 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
       >
         <div
           className="w-12 h-12 rounded-full flex items-center justify-center text-xl"
-          style={{ background: "rgba(74,222,128,0.12)", color: "#4ade80" }}
+          style={{ background: "rgba(129,37,73,0.12)", color: "#812549" }}
         >
           ✓
         </div>
-        <p className="text-sm font-bold text-[#0d1f10]">Entry saved!</p>
+        <p className="text-sm font-bold text-[#1E1A1A]">Entry saved!</p>
         <Link
           href="/journal"
           className="text-[10px] tracking-[0.2em] uppercase font-bold transition-colors"
-          style={{ color: "#4ade80" }}
+          style={{ color: "#812549" }}
         >
           Full Journal →
         </Link>
@@ -147,13 +147,13 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
             style={{
               width: i === stepIndex ? 18 : 6,
               height: 6,
-              background: i < stepIndex ? "#4ade80" : i === stepIndex ? "#0d1f10" : "#E2EAE2",
+              background: i < stepIndex ? "#812549" : i === stepIndex ? "#1E1A1A" : "#EAE4CA",
             }}
           />
         ))}
         <span
           className="ml-auto text-[9px] tracking-[0.2em] uppercase font-bold"
-          style={{ color: "#ADBDAD" }}
+          style={{ color: "#ABA6A6" }}
         >
           {stepIndex + 1}/{STEPS.length}
         </span>
@@ -172,7 +172,7 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
         >
           <p
             className="text-base font-bold mb-4 leading-snug"
-            style={{ color: "#0d1f10" }}
+            style={{ color: "#1E1A1A" }}
           >
             {STEP_QUESTIONS[currentStep]}
           </p>
@@ -187,15 +187,15 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
                   onClick={() => handleSelect(setMood, opt.value, mood)}
                   className="flex-1 flex flex-col items-center gap-1 py-3 rounded-xl border-2 transition-all text-2xl cursor-pointer"
                   style={{
-                    borderColor: mood === opt.value ? "#4ade80" : "#F0F4F0",
-                    background: mood === opt.value ? "rgba(74,222,128,0.08)" : "#fff",
+                    borderColor: mood === opt.value ? "#812549" : "#F5F1DD",
+                    background: mood === opt.value ? "rgba(129,37,73,0.08)" : "#fff",
                     transform: mood === opt.value ? "scale(1.06)" : "scale(1)",
                   }}
                 >
                   {opt.emoji}
                   <span
                     className="text-[9px] font-bold tracking-wide uppercase"
-                    style={{ color: mood === opt.value ? "#0d1f10" : "#ADBDAD" }}
+                    style={{ color: mood === opt.value ? "#1E1A1A" : "#ABA6A6" }}
                   >
                     {opt.label}
                   </span>
@@ -214,10 +214,10 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
                   value={weight}
                   onChange={(e) => setWeight(e.target.value)}
                   autoFocus
-                  className="flex-1 px-4 py-3 rounded-xl border-2 border-[#F0F4F0] bg-white text-lg text-[#0d1f10] font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all"
+                  className="flex-1 px-4 py-3 rounded-xl border-2 border-[#F5F1DD] bg-white text-lg text-[#1E1A1A] font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all"
                   placeholder={weightUnit === "lbs" ? "150" : "70"}
                 />
-                <div className="flex flex-col rounded-xl overflow-hidden border-2 border-[#F0F4F0]">
+                <div className="flex flex-col rounded-xl overflow-hidden border-2 border-[#F5F1DD]">
                   {(["lbs", "kg"] as const).map((u) => (
                     <button
                       key={u}
@@ -225,8 +225,8 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
                       onClick={() => setWeightUnit(u)}
                       className="px-3 py-2 text-xs font-bold transition-colors"
                       style={{
-                        background: weightUnit === u ? "#0d1f10" : "#fff",
-                        color: weightUnit === u ? "#fff" : "#ADBDAD",
+                        background: weightUnit === u ? "#1E1A1A" : "#fff",
+                        color: weightUnit === u ? "#fff" : "#ABA6A6",
                       }}
                     >
                       {u}
@@ -246,19 +246,19 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
                   onClick={() => handleSelect(setEnergyLevel, opt.value, energyLevel)}
                   className="flex items-center gap-2.5 px-3.5 py-3 rounded-xl border-2 transition-all cursor-pointer"
                   style={{
-                    borderColor: energyLevel === opt.value ? "#60a5fa" : "#F0F4F0",
+                    borderColor: energyLevel === opt.value ? "#60a5fa" : "#F5F1DD",
                     background: energyLevel === opt.value ? "rgba(96,165,250,0.08)" : "#fff",
                   }}
                 >
                   <span
                     className="text-base font-black tabular-nums leading-none"
-                    style={{ color: energyLevel === opt.value ? "#60a5fa" : "#C8D4C8" }}
+                    style={{ color: energyLevel === opt.value ? "#60a5fa" : "#CCC6C6" }}
                   >
                     {opt.icon}
                   </span>
                   <span
                     className="text-xs font-bold"
-                    style={{ color: energyLevel === opt.value ? "#0d1f10" : "#9EA8A0" }}
+                    style={{ color: energyLevel === opt.value ? "#1E1A1A" : "#848181" }}
                   >
                     {opt.label}
                   </span>
@@ -276,14 +276,14 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
                   onClick={() => handleSelect(setActivityLevel, opt.value, activityLevel)}
                   className="flex items-center gap-2.5 px-3.5 py-3 rounded-xl border-2 transition-all cursor-pointer"
                   style={{
-                    borderColor: activityLevel === opt.value ? "#fb923c" : "#F0F4F0",
+                    borderColor: activityLevel === opt.value ? "#fb923c" : "#F5F1DD",
                     background: activityLevel === opt.value ? "rgba(251,146,60,0.08)" : "#fff",
                   }}
                 >
                   <span className="text-lg">{opt.emoji}</span>
                   <span
                     className="text-xs font-bold"
-                    style={{ color: activityLevel === opt.value ? "#0d1f10" : "#9EA8A0" }}
+                    style={{ color: activityLevel === opt.value ? "#1E1A1A" : "#848181" }}
                   >
                     {opt.label}
                   </span>
@@ -298,7 +298,7 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               autoFocus
-              className="w-full px-4 py-3 rounded-xl border-2 border-[#F0F4F0] bg-white text-sm text-[#0d1f10] outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all resize-none"
+              className="w-full px-4 py-3 rounded-xl border-2 border-[#F5F1DD] bg-white text-sm text-[#1E1A1A] outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all resize-none"
               placeholder="How was your day…"
             />
           )}
@@ -311,8 +311,8 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
           <button
             type="button"
             onClick={() => advance(-1)}
-            className="px-3.5 py-2 rounded-xl border-2 border-[#F0F4F0] text-xs font-bold transition-colors hover:border-[#C8D4C8]"
-            style={{ color: "#9EA8A0" }}
+            className="px-3.5 py-2 rounded-xl border-2 border-[#F5F1DD] text-xs font-bold transition-colors hover:border-[#CCC6C6]"
+            style={{ color: "#848181" }}
           >
             ← Back
           </button>
@@ -323,7 +323,7 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
             type="button"
             onClick={() => advance(1)}
             className="ml-auto px-4 py-2 rounded-xl text-xs font-bold transition-all"
-            style={{ background: "#F0F4F0", color: "#9EA8A0" }}
+            style={{ background: "#F5F1DD", color: "#848181" }}
           >
             Skip →
           </button>
@@ -335,8 +335,8 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
             className="ml-auto inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all"
             style={
               hasData && !saving
-                ? { background: "#0d1f10", color: "#4ade80", cursor: "pointer" }
-                : { background: "#F0F4F0", color: "#C8D4C8", cursor: "not-allowed" }
+                ? { background: "#1E1A1A", color: "#812549", cursor: "pointer" }
+                : { background: "#F5F1DD", color: "#CCC6C6", cursor: "not-allowed" }
             }
           >
             {saving ? (

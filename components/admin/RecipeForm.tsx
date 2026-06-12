@@ -191,12 +191,12 @@ export default function RecipeForm({ recipe, refData, mode }: RecipeFormProps) {
       </div>
 
       <div>
-        <label className="text-sm font-medium text-[#25293C] block mb-1.5">Description</label>
+        <label className="text-sm font-medium text-[#1E1A1A] block mb-1.5">Description</label>
         <textarea
           value={form.description}
           onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
           rows={3}
-          className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8E7EA] bg-white text-sm text-[#25293C] placeholder:text-[#A8A4B5] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all resize-none"
+          className="w-full px-3.5 py-2.5 rounded-xl border border-[#EAE4CA] bg-white text-sm text-[#1E1A1A] placeholder:text-[#A8A4B5] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all resize-none"
           placeholder="Brief description..."
         />
       </div>

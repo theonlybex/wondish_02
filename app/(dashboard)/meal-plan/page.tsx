@@ -114,20 +114,20 @@ export default async function MealPlanPage() {
       {/* ── Header ─────────────────────────────────────────────── */}
       <div className="mp flex items-start justify-between mb-8" style={{ animationDelay: "0ms" }}>
         <div>
-          <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-2" style={{ color: "#7DB87D" }}>
+          <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-2" style={{ color: "#B75E78" }}>
             {today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
           </p>
-          <h1 className="text-3xl font-bold text-[#0d1f10]">Meal Plan</h1>
-          <p className="text-xs mt-1.5" style={{ color: "#9EA8A0" }}>Your personalised daily menu</p>
+          <h1 className="text-3xl font-bold text-[#1E1A1A]">Meal Plan</h1>
+          <p className="text-xs mt-1.5" style={{ color: "#848181" }}>Your personalised daily menu</p>
         </div>
         <Link
           href="/meal-plan/weekly"
           className="mp text-xs font-semibold px-4 py-2 rounded-xl border transition-colors mt-1"
           style={{
             animationDelay: "80ms",
-            color: "#4ade80",
-            borderColor: "rgba(74,222,128,0.25)",
-            background: "rgba(74,222,128,0.06)",
+            color: "#812549",
+            borderColor: "rgba(129,37,73,0.25)",
+            background: "rgba(129,37,73,0.06)",
           }}
         >
           Weekly view →

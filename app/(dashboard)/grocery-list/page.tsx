@@ -81,18 +81,18 @@ export default async function GroceryListPage() {
       `}</style>
 
       <div className="gl mb-8" style={{ animationDelay: "0ms" }}>
-        <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-2" style={{ color: "#7DB87D" }}>
+        <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-2" style={{ color: "#B75E78" }}>
           {weekLabel}
         </p>
         <div className="flex items-end justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-[#0d1f10]">Grocery List</h1>
-            <p className="text-xs mt-1.5" style={{ color: "#9EA8A0" }}>Ingredients for this week&apos;s meal plan</p>
+            <h1 className="text-3xl font-bold text-[#1E1A1A]">Grocery List</h1>
+            <p className="text-xs mt-1.5" style={{ color: "#848181" }}>Ingredients for this week&apos;s meal plan</p>
           </div>
           {items.length > 0 && (
             <span
               className="text-[9px] font-bold tracking-[0.18em] uppercase px-2.5 py-1 rounded-full mb-1"
-              style={{ background: "rgba(74,222,128,0.1)", color: "#4ade80" }}
+              style={{ background: "rgba(129,37,73,0.1)", color: "#812549" }}
             >
               {items.length} items
             </span>

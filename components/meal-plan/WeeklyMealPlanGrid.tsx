@@ -54,7 +54,7 @@ export default function WeeklyMealPlanGrid({
       <div className="flex items-center gap-4 mb-6">
         <button
           onClick={() => navigate("prev")}
-          className="w-9 h-9 rounded-xl border border-[#E8E7EA] flex items-center justify-center hover:bg-[#F3F2FF] transition-colors text-navy"
+          className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#F3F2FF] transition-colors text-navy"
         >
           ‹
         </button>
@@ -63,26 +63,26 @@ export default function WeeklyMealPlanGrid({
         </p>
         <button
           onClick={() => navigate("next")}
-          className="w-9 h-9 rounded-xl border border-[#E8E7EA] flex items-center justify-center hover:bg-[#F3F2FF] transition-colors text-navy"
+          className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#F3F2FF] transition-colors text-navy"
         >
           ›
         </button>
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-[#8A8D93]">Loading…</div>
+        <div className="text-center py-12 text-[#848181]">Loading…</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse min-w-[700px]">
             <thead>
               <tr>
-                <th className="w-24 text-left py-2 px-3 text-[#8A8D93] text-xs font-semibold uppercase tracking-wide">
+                <th className="w-24 text-left py-2 px-3 text-[#848181] text-xs font-semibold uppercase tracking-wide">
                   Meal
                 </th>
                 {days.map((day) => (
                   <th
                     key={day.toISOString()}
-                    className="text-center py-2 px-2 text-xs font-semibold text-[#8A8D93] uppercase"
+                    className="text-center py-2 px-2 text-xs font-semibold text-[#848181] uppercase"
                   >
                     <span className="block">{format(day, "EEE")}</span>
                     <span className="block text-navy font-bold text-sm">{format(day, "d")}</span>
@@ -92,8 +92,8 @@ export default function WeeklyMealPlanGrid({
             </thead>
             <tbody>
               {mealTypeOrder.map((mtName) => (
-                <tr key={mtName} className="border-t border-[#E8E7EA]">
-                  <td className="py-3 px-3 text-xs font-semibold text-[#8A8D93] uppercase tracking-wide align-top">
+                <tr key={mtName} className="border-t border-[#EAE4CA]">
+                  <td className="py-3 px-3 text-xs font-semibold text-[#848181] uppercase tracking-wide align-top">
                     {mtName}
                   </td>
                   {days.map((day) => {
@@ -123,7 +123,7 @@ export default function WeeklyMealPlanGrid({
               ))}
               {mealTypeOrder.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-[#8A8D93] text-sm">
+                  <td colSpan={8} className="text-center py-12 text-[#848181] text-sm">
                     No meal plan for this week.
                   </td>
                 </tr>

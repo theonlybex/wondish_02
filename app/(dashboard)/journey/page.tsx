@@ -2,9 +2,10 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { subDays } from "date-fns";
 import { prisma } from "@/lib/db";
-import { getAccount } from "@/lib/queries";
+import { getAccount, getPredictionProfileInput } from "@/lib/queries";
 import { computeJourneyStats } from "@/lib/journey";
 import JourneyDashboard from "@/components/journey/JourneyDashboard";
+import PredictionWhatIf from "@/components/journey/PredictionWhatIf";
 
 export const metadata = { title: "Journey" };
 
@@ -20,14 +21,17 @@ export default async function JourneyPage() {
   to.setHours(23, 59, 59, 999);
   from.setHours(0, 0, 0, 0);
 
-  const entries = await prisma.journalEntry.findMany({
-    where: {
-      patient: { account: { clerkId: userId } },
-      date: { gte: from, lte: to },
-    },
-    include: { meals: true },
-    orderBy: { date: "asc" },
-  });
+  const [entries, predictionInput] = await Promise.all([
+    prisma.journalEntry.findMany({
+      where: {
+        patient: { account: { clerkId: userId } },
+        date: { gte: from, lte: to },
+      },
+      include: { meals: true },
+      orderBy: { date: "asc" },
+    }),
+    getPredictionProfileInput(userId),
+  ]);
 
   const stats = computeJourneyStats(entries);
 
@@ -44,17 +48,17 @@ export default async function JourneyPage() {
       `}</style>
 
       <div className="jy mb-8" style={{ animationDelay: "0ms" }}>
-        <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-2" style={{ color: "#7DB87D" }}>
+        <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-2" style={{ color: "#B75E78" }}>
           {rangeLabel}
         </p>
         <div className="flex items-end justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-[#0d1f10]">Journey</h1>
-            <p className="text-xs mt-1.5" style={{ color: "#9EA8A0" }}>Your health progress over the last 30 days</p>
+            <h1 className="text-3xl font-bold text-[#1E1A1A]">Journey</h1>
+            <p className="text-xs mt-1.5" style={{ color: "#848181" }}>Your health progress over the last 30 days</p>
           </div>
           <span
             className="text-[9px] font-bold tracking-[0.18em] uppercase px-2.5 py-1 rounded-full mb-1"
-            style={{ background: "rgba(74,222,128,0.1)", color: "#4ade80" }}
+            style={{ background: "rgba(129,37,73,0.1)", color: "#812549" }}
           >
             30 days
           </span>
@@ -63,6 +67,11 @@ export default async function JourneyPage() {
 
       <div className="jy" style={{ animationDelay: "120ms" }}>
         <JourneyDashboard initialStats={stats} />
+      </div>
+
+      {/* Prediction what-if card */}
+      <div className="jy mt-8 max-w-md mx-auto" style={{ animationDelay: "240ms" }}>
+        <PredictionWhatIf input={predictionInput} />
       </div>
     </div>
   );

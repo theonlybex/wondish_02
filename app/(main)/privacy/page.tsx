@@ -56,7 +56,7 @@ export default function PrivacyPage() {
           </p>
         </section>
 
-        <p className="text-[#8A8D93] text-xs">Last updated: March 2026</p>
+        <p className="text-[#848181] text-xs">Last updated: March 2026</p>
       </div>
     </div>
   );

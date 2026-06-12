@@ -40,7 +40,7 @@ export default async function EditRecipePage({
     <div className="max-w-2xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-navy">Edit Recipe</h1>
-        <p className="text-[#8A8D93] text-sm mt-1">{recipe.name}</p>
+        <p className="text-[#848181] text-sm mt-1">{recipe.name}</p>
       </div>
       <RecipeForm
         mode="edit"

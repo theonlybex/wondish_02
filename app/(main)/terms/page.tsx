@@ -14,7 +14,7 @@ export default async function TermsPage() {
     <div className="max-w-3xl mx-auto px-5 py-16">
       <h1 className="text-3xl font-bold text-navy mb-2">Terms of Service</h1>
       {terms && (
-        <p className="text-[#8A8D93] text-sm mb-8">Version {terms.version}</p>
+        <p className="text-[#848181] text-sm mb-8">Version {terms.version}</p>
       )}
 
       {terms ? (
@@ -22,7 +22,7 @@ export default async function TermsPage() {
           {terms.content}
         </div>
       ) : (
-        <p className="text-[#8A8D93]">Terms of service will be published soon.</p>
+        <p className="text-[#848181]">Terms of service will be published soon.</p>
       )}
     </div>
   );

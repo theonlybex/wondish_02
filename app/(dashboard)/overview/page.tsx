@@ -148,7 +148,7 @@ export default async function OverviewPage() {
         {gridDays.length > 0 && (
           <div
             className="rounded-2xl overflow-hidden"
-            style={{ gridArea: "streak", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+            style={{ gridArea: "streak", boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
           >
             <MealStreakGrid days={gridDays} totalCompleted={totalCompleted} firstDay={gridFirstDay} />
           </div>
@@ -157,12 +157,12 @@ export default async function OverviewPage() {
         {/* Daily Journal */}
         <div
           className="bg-white rounded-2xl overflow-hidden flex flex-col"
-          style={{ gridArea: "journal", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+          style={{ gridArea: "journal", boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
         >
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[#F0F4F0] flex-shrink-0">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-[#F5F1DD] flex-shrink-0">
             <div className="flex items-center gap-2.5">
               <div className="w-1 h-4 rounded-full" style={{ background: "#a78bfa" }} />
-              <h2 className="text-[#0d1f10] text-sm font-bold">Daily Journal</h2>
+              <h2 className="text-[#1E1A1A] text-sm font-bold">Daily Journal</h2>
             </div>
             <Link
               href="/journal"
@@ -180,7 +180,7 @@ export default async function OverviewPage() {
         {/* Caloric Profile */}
         <div
           className="rounded-2xl overflow-hidden bg-white"
-          style={{ gridArea: "caloric", boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+          style={{ gridArea: "caloric", boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
         >
           <CaloricProfileCard />
         </div>

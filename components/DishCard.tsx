@@ -23,7 +23,7 @@ interface DishCardProps {
 
 export default function DishCard({ dish, compact = false }: DishCardProps) {
   return (
-    <div className="group bg-white border border-[#E8E7EA] hover:border-primary/20 rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 flex flex-col h-full">
+    <div className="group bg-white border border-[#EAE4CA] hover:border-primary/20 rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 flex flex-col h-full">
       {/* Emoji banner */}
       <div className="w-full h-28 flex-shrink-0 bg-[#F8F7FA] flex items-center justify-center text-5xl">
         {dish.emoji || getRecipeEmoji(dish.name, dish.tags, dish.mealType)}
@@ -43,12 +43,12 @@ export default function DishCard({ dish, compact = false }: DishCardProps) {
       </div>
 
       {/* Content */}
-      <h3 className="text-[#25293C] font-semibold text-base leading-snug mb-2">
+      <h3 className="text-[#1E1A1A] font-semibold text-base leading-snug mb-2">
         {dish.name}
       </h3>
 
       {!compact && (
-        <p className="text-[#8A8D93] text-sm leading-relaxed mb-4 line-clamp-2 flex-1">
+        <p className="text-[#848181] text-sm leading-relaxed mb-4 line-clamp-2 flex-1">
           {dish.description}
         </p>
       )}
@@ -58,7 +58,7 @@ export default function DishCard({ dish, compact = false }: DishCardProps) {
         {dish.tags.slice(0, 3).map((tag) => (
           <span
             key={tag}
-            className="text-[11px] font-medium text-[#8A8D93] bg-[#F8F7FA] px-2 py-0.5 rounded-full"
+            className="text-[11px] font-medium text-[#848181] bg-[#F8F7FA] px-2 py-0.5 rounded-full"
           >
             {tag}
           </span>
@@ -66,14 +66,14 @@ export default function DishCard({ dish, compact = false }: DishCardProps) {
       </div>
 
       {/* Nutrition row */}
-      <div className="flex items-center justify-between pt-4 border-t border-[#E8E7EA] mt-auto">
+      <div className="flex items-center justify-between pt-4 border-t border-[#EAE4CA] mt-auto">
         <div className="flex items-center gap-1">
           <span className="text-primary font-bold text-sm">{dish.calories}</span>
-          <span className="text-[#8A8D93] text-xs">kcal</span>
+          <span className="text-[#848181] text-xs">kcal</span>
         </div>
-        <div className="flex items-center gap-3 text-xs text-[#8A8D93]">
+        <div className="flex items-center gap-3 text-xs text-[#848181]">
           <span>
-            <strong className="text-[#25293C]">{dish.protein}g</strong> protein
+            <strong className="text-[#1E1A1A]">{dish.protein}g</strong> protein
           </span>
           {dish.prepTime > 0 && (
             <span className="flex items-center gap-1">

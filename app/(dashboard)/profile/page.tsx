@@ -63,16 +63,16 @@ export default async function ProfilePage({
       <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
         <p
           className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
-          style={{ color: "#7DB87D" }}
+          style={{ color: "#B75E78" }}
         >
           {isOnboarding ? "Setup" : "Profile"}
         </p>
-        <h1 className="text-3xl font-bold text-[#0d1f10]">
+        <h1 className="text-3xl font-bold text-[#1E1A1A]">
           {isOnboarding ? "Complete Your Profile" : "Profile"}
         </h1>
         <div className="flex items-center gap-3 mt-4">
           <div className="h-px w-12 bg-primary/40" />
-          <p className="text-xs" style={{ color: "#9EA8A0" }}>
+          <p className="text-xs" style={{ color: "#848181" }}>
             {isOnboarding
               ? "Tell us about yourself so we can personalise your meal plan."
               : "Update your health profile and dietary preferences."}

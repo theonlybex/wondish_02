@@ -42,14 +42,14 @@ export default async function OrdersPage() {
       <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
         <p
           className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
-          style={{ color: "#7DB87D" }}
+          style={{ color: "#B75E78" }}
         >
           Orders
         </p>
-        <h1 className="text-3xl font-bold text-[#0d1f10]">Orders</h1>
+        <h1 className="text-3xl font-bold text-[#1E1A1A]">Orders</h1>
         <div className="flex items-center gap-3 mt-4">
           <div className="h-px w-12 bg-primary/40" />
-          <p className="text-xs" style={{ color: "#9EA8A0" }}>
+          <p className="text-xs" style={{ color: "#848181" }}>
             Your complete order history
           </p>
         </div>
@@ -60,7 +60,7 @@ export default async function OrdersPage() {
         style={{
           animationDelay: "80ms",
           boxShadow:
-            "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+            "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
         }}
       >
         <OrdersTable

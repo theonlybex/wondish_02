@@ -59,21 +59,21 @@ export default function SwapMealModal({
   return (
     <Modal open={open} onClose={onClose} title="Swap Meal" size="md">
       {loading ? (
-        <div className="text-center py-8 text-[#8A8D93]">Loading alternatives…</div>
+        <div className="text-center py-8 text-[#848181]">Loading alternatives…</div>
       ) : alternatives.length === 0 ? (
-        <div className="text-center py-8 text-[#8A8D93]">No alternatives available.</div>
+        <div className="text-center py-8 text-[#848181]">No alternatives available.</div>
       ) : (
         <div className="space-y-3">
           {alternatives.map((recipe) => (
             <div
               key={recipe.id}
-              className="flex items-center justify-between p-4 rounded-xl border border-[#E8E7EA] hover:border-primary/30 transition-colors"
+              className="flex items-center justify-between p-4 rounded-xl border border-[#EAE4CA] hover:border-primary/30 transition-colors"
             >
               <div className="flex items-center gap-3">
                 <span className="text-3xl">{recipe.emoji ?? "🍽"}</span>
                 <div>
                   <p className="font-medium text-navy">{recipe.name}</p>
-                  <p className="text-[#8A8D93] text-xs">
+                  <p className="text-[#848181] text-xs">
                     {recipe.calories ? `${recipe.calories} kcal` : ""}{" "}
                     {recipe.protein ? `· ${recipe.protein}g protein` : ""}
                   </p>

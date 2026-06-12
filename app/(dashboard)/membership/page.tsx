@@ -86,16 +86,16 @@ export default async function MembershipPage() {
       <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
         <p
           className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
-          style={{ color: "#7DB87D" }}
+          style={{ color: "#B75E78" }}
         >
           Membership
         </p>
-        <h1 className="text-3xl font-bold text-[#0d1f10]">
+        <h1 className="text-3xl font-bold text-[#1E1A1A]">
           Hey {firstName}, you&apos;re all set.
         </h1>
         <div className="flex items-center gap-3 mt-4">
           <div className="h-px w-12 bg-primary/40" />
-          <p className="text-xs" style={{ color: "#9EA8A0" }}>
+          <p className="text-xs" style={{ color: "#848181" }}>
             {isAdmin
               ? "Full admin access — all features unlocked."
               : "You have full access to everything Wondish has to offer."}
@@ -108,20 +108,20 @@ export default async function MembershipPage() {
         className="ov relative rounded-2xl overflow-hidden mb-6"
         style={{
           animationDelay: "70ms",
-          background: "linear-gradient(140deg, #0a1509 0%, #162a18 60%, #0d1f10 100%)",
-          boxShadow: "0 8px 32px rgba(13,31,16,0.25)",
+          background: "linear-gradient(140deg, #5F1C35 0%, #812549 60%, #5F1C35 100%)",
+          boxShadow: "0 8px 32px rgba(30,26,26,0.25)",
         }}
       >
         <div
           className="absolute top-0 right-0 w-80 h-80 rounded-full pointer-events-none"
-          style={{ background: "radial-gradient(circle, rgba(74,222,128,0.10) 0%, transparent 65%)", transform: "translate(35%, -35%)" }}
+          style={{ background: "radial-gradient(circle, rgba(129,37,73,0.10) 0%, transparent 65%)", transform: "translate(35%, -35%)" }}
         />
         <div className="relative px-8 py-8 flex items-center gap-6">
           <div className="w-14 h-14 rounded-2xl bg-primary/20 flex items-center justify-center flex-shrink-0 text-2xl">
             {isAdmin ? "🛡" : "⭐"}
           </div>
           <div className="flex-1">
-            <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-2" style={{ color: "rgba(74,222,128,0.5)" }}>
+            <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-2" style={{ color: "rgba(129,37,73,0.5)" }}>
               {isAdmin ? "Admin Access" : "Premium Member"}
             </p>
             <p className="text-white font-bold text-lg leading-snug">
@@ -134,7 +134,7 @@ export default async function MembershipPage() {
                 {isTrialing && trialEnd && (
                   <div
                     className="rounded-xl px-4 py-2 text-sm"
-                    style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(74,222,128,0.2)" }}
+                    style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(129,37,73,0.2)" }}
                   >
                     <span style={{ color: "rgba(255,255,255,0.4)" }}>Trial ends </span>
                     <span className="text-white font-semibold">
@@ -172,7 +172,7 @@ export default async function MembershipPage() {
       <div className="ov mb-6" style={{ animationDelay: "140ms" }}>
         <p
           className="text-[9px] tracking-[0.28em] uppercase font-bold mb-5"
-          style={{ color: "#ADBDAD" }}
+          style={{ color: "#ABA6A6" }}
         >
           Everything included
         </p>
@@ -182,18 +182,18 @@ export default async function MembershipPage() {
               key={b.title}
               className="bg-white rounded-2xl p-5 group cursor-default select-none relative overflow-hidden"
               style={{
-                boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)",
+                boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
                 animationDelay: `${140 + i * 30}ms`,
               }}
             >
               <div className="text-2xl mb-3">{b.icon}</div>
-              <h3 className="text-[#0d1f10] font-semibold text-sm mb-1">{b.title}</h3>
-              <p className="text-xs leading-relaxed" style={{ color: "#ADBDAD" }}>
+              <h3 className="text-[#1E1A1A] font-semibold text-sm mb-1">{b.title}</h3>
+              <p className="text-xs leading-relaxed" style={{ color: "#ABA6A6" }}>
                 {b.description}
               </p>
               <div
                 className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
-                style={{ background: "radial-gradient(ellipse at 90% 110%, rgba(74,222,128,0.06) 0%, transparent 60%)" }}
+                style={{ background: "radial-gradient(ellipse at 90% 110%, rgba(129,37,73,0.06) 0%, transparent 60%)" }}
               />
             </div>
           ))}
@@ -205,13 +205,13 @@ export default async function MembershipPage() {
         className="ov rounded-2xl p-6"
         style={{
           animationDelay: "420ms",
-          background: "#FAFCFA",
-          boxShadow: "0 0 0 1px rgba(13,31,16,0.04)",
+          background: "#F9F7ED",
+          boxShadow: "0 0 0 1px rgba(30,26,26,0.04)",
         }}
       >
         <p
           className="text-[9px] tracking-[0.28em] uppercase font-bold mb-4"
-          style={{ color: "#ADBDAD" }}
+          style={{ color: "#ABA6A6" }}
         >
           Jump right in
         </p>
@@ -224,8 +224,8 @@ export default async function MembershipPage() {
             <Link
               key={href}
               href={href}
-              className="flex items-center gap-3 bg-white hover:border-primary/30 rounded-xl px-4 py-3 text-sm font-medium text-[#0d1f10] hover:text-primary transition-colors"
-              style={{ boxShadow: "0 1px 3px rgba(13,31,16,0.07), 0 0 0 1px rgba(13,31,16,0.04)" }}
+              className="flex items-center gap-3 bg-white hover:border-primary/30 rounded-xl px-4 py-3 text-sm font-medium text-[#1E1A1A] hover:text-primary transition-colors"
+              style={{ boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
             >
               <span>{icon}</span>
               {label}

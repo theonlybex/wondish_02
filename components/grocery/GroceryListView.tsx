@@ -71,13 +71,13 @@ export default function GroceryListView({
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-[#8A8D93]">Loading…</div>
+        <div className="text-center py-12 text-[#848181]">Loading…</div>
       ) : items.length === 0 ? (
-        <div className="text-center py-12 text-[#8A8D93]">
+        <div className="text-center py-12 text-[#848181]">
           No ingredients found for this date range.
         </div>
       ) : (
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl divide-y divide-[#E8E7EA]">
+        <div className="bg-white border border-[#EAE4CA] rounded-2xl divide-y divide-[#EAE4CA]">
           {items.map((item) => (
             <label
               key={item.ingredientId}
@@ -98,7 +98,7 @@ export default function GroceryListView({
               >
                 {item.name}
               </span>
-              <span className="text-[#8A8D93] text-xs">
+              <span className="text-[#848181] text-xs">
                 {item.totalQuantity > 0
                   ? `${item.totalQuantity}${item.unit ? ` ${item.unit}` : ""}`
                   : ""}

@@ -25,10 +25,10 @@ const statusVariant: Record<
 };
 
 const statusAccent: Record<string, string> = {
-  PENDING: "#8A8D93",
+  PENDING: "#848181",
   CONFIRMED: "#00CFE8",
   PREPARING: "#FF9F43",
-  DELIVERED: "#4ade80",
+  DELIVERED: "#812549",
   CANCELED: "#EA5455",
 };
 
@@ -85,21 +85,21 @@ export default function OrdersTable({
   return (
     <div>
       {/* Stats bar */}
-      <div className="grid grid-cols-3 border-b border-[#E8E7EA]" style={{ background: "#FAFCFA" }}>
+      <div className="grid grid-cols-3 border-b border-[#EAE4CA]" style={{ background: "#F9F7ED" }}>
         {stats.map((stat, i) => (
           <div
             key={stat.label}
-            className={`px-6 py-5 ${i > 0 ? "border-l border-[#E8E7EA]" : ""}`}
+            className={`px-6 py-5 ${i > 0 ? "border-l border-[#EAE4CA]" : ""}`}
           >
             <p
               className="text-[9px] tracking-[0.22em] uppercase font-bold mb-2"
-              style={{ color: "#ADBDAD" }}
+              style={{ color: "#ABA6A6" }}
             >
               {stat.label}
             </p>
             <div className="flex items-baseline gap-1.5">
               <p
-                className="font-black tabular-nums text-[#0d1f10] leading-none"
+                className="font-black tabular-nums text-[#1E1A1A] leading-none"
                 style={{ fontSize: "1.75rem" }}
               >
                 {stat.value}
@@ -107,7 +107,7 @@ export default function OrdersTable({
               {stat.sub && (
                 <span
                   className="text-sm font-medium leading-none"
-                  style={{ color: "#C8D4C8" }}
+                  style={{ color: "#CCC6C6" }}
                 >
                   {stat.sub}
                 </span>
@@ -122,21 +122,21 @@ export default function OrdersTable({
         <div className="py-20 text-center">
           <div
             className="mx-auto w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-5"
-            style={{ background: "#F0F4F0" }}
+            style={{ background: "#F5F1DD" }}
           >
             📦
           </div>
-          <p className="text-[#0d1f10] font-semibold text-lg mb-1">
+          <p className="text-[#1E1A1A] font-semibold text-lg mb-1">
             No orders yet
           </p>
-          <p className="text-sm" style={{ color: "#ADBDAD" }}>
+          <p className="text-sm" style={{ color: "#ABA6A6" }}>
             Your order history will appear here once you place your first order.
           </p>
         </div>
       ) : (
-        <div className="divide-y divide-[#F0F4F0]">
+        <div className="divide-y divide-[#F5F1DD]">
           {orders.map((order) => {
-            const accent = statusAccent[order.status] ?? "#8A8D93";
+            const accent = statusAccent[order.status] ?? "#848181";
             const variant = statusVariant[order.status] ?? "neutral";
             const label =
               order.status.charAt(0) + order.status.slice(1).toLowerCase();
@@ -144,7 +144,7 @@ export default function OrdersTable({
             return (
               <div
                 key={order.id}
-                className="flex items-center gap-4 px-6 py-4 hover:bg-[#FAFCFA] transition-colors"
+                className="flex items-center gap-4 px-6 py-4 hover:bg-[#F9F7ED] transition-colors"
               >
                 {/* Status accent bar */}
                 <div
@@ -154,12 +154,12 @@ export default function OrdersTable({
 
                 {/* Date */}
                 <div className="w-20 flex-shrink-0">
-                  <p className="text-sm font-bold text-[#0d1f10] leading-snug">
+                  <p className="text-sm font-bold text-[#1E1A1A] leading-snug">
                     {format(new Date(order.createdAt), "MMM d")}
                   </p>
                   <p
                     className="text-[10px] font-medium leading-snug"
-                    style={{ color: "#ADBDAD" }}
+                    style={{ color: "#ABA6A6" }}
                   >
                     {format(new Date(order.createdAt), "yyyy")}
                   </p>
@@ -167,7 +167,7 @@ export default function OrdersTable({
 
                 {/* Items */}
                 <div className="flex-1 min-w-0 hidden sm:block">
-                  <p className="text-sm text-[#0d1f10] truncate leading-snug">
+                  <p className="text-sm text-[#1E1A1A] truncate leading-snug">
                     {order.items.length > 0
                       ? order.items
                           .map((it) => `${it.name} ×${it.quantity}`)
@@ -176,7 +176,7 @@ export default function OrdersTable({
                   </p>
                   <p
                     className="text-[10px] font-medium mt-0.5 leading-snug"
-                    style={{ color: "#ADBDAD" }}
+                    style={{ color: "#ABA6A6" }}
                   >
                     {order.items.length} item
                     {order.items.length !== 1 ? "s" : ""}
@@ -185,7 +185,7 @@ export default function OrdersTable({
 
                 {/* Amount */}
                 <div className="flex-shrink-0 text-right w-20">
-                  <p className="text-sm font-bold text-[#0d1f10]">
+                  <p className="text-sm font-bold text-[#1E1A1A]">
                     {order.totalAmount != null
                       ? `$${order.totalAmount.toFixed(2)}`
                       : "—"}
@@ -204,10 +204,10 @@ export default function OrdersTable({
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-6 py-4 border-t border-[#E8E7EA]">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-[#EAE4CA]">
           <p
             className="text-[10px] tracking-[0.2em] uppercase font-bold"
-            style={{ color: "#ADBDAD" }}
+            style={{ color: "#ABA6A6" }}
           >
             Page {page} / {totalPages}
           </p>

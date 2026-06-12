@@ -38,8 +38,8 @@ export default async function DishesPage() {
     <div className="min-h-screen bg-[#F8F7FA] pt-24 pb-16">
       <div className="max-w-6xl mx-auto px-5 sm:px-8">
         <div className="mb-10">
-          <h1 className="text-4xl sm:text-5xl font-bold text-[#25293C] mb-3">Our Menu</h1>
-          <p className="text-[#8A8D93] text-lg max-w-xl">
+          <h1 className="text-4xl sm:text-5xl font-bold text-[#1E1A1A] mb-3">Our Menu</h1>
+          <p className="text-[#848181] text-lg max-w-xl">
             Nutritionist-approved recipes designed for every meal and every goal.
           </p>
         </div>

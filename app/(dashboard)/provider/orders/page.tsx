@@ -46,20 +46,20 @@ export default function ProviderOrdersPage() {
     <div className="max-w-5xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-navy">Orders</h1>
-        <p className="text-[#8A8D93] text-sm mt-1">Manage user orders</p>
+        <p className="text-[#848181] text-sm mt-1">Manage user orders</p>
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-[#8A8D93]">Loading…</div>
+        <div className="text-center py-12 text-[#848181]">Loading…</div>
       ) : (
-        <div className="bg-white border border-[#E8E7EA] rounded-2xl overflow-x-auto">
+        <div className="bg-white border border-[#EAE4CA] rounded-2xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#E8E7EA]">
-                <th className="text-left py-3 px-4 text-[#8A8D93] font-semibold">Date</th>
-                <th className="text-left py-3 px-4 text-[#8A8D93] font-semibold">User</th>
-                <th className="text-left py-3 px-4 text-[#8A8D93] font-semibold hidden md:table-cell">Items</th>
-                <th className="text-left py-3 px-4 text-[#8A8D93] font-semibold">Status</th>
+              <tr className="border-b border-[#EAE4CA]">
+                <th className="text-left py-3 px-4 text-[#848181] font-semibold">Date</th>
+                <th className="text-left py-3 px-4 text-[#848181] font-semibold">User</th>
+                <th className="text-left py-3 px-4 text-[#848181] font-semibold hidden md:table-cell">Items</th>
+                <th className="text-left py-3 px-4 text-[#848181] font-semibold">Status</th>
                 <th className="py-3 px-4" />
               </tr>
             </thead>
@@ -69,15 +69,15 @@ export default function ProviderOrdersPage() {
                 const patient = o.patient as Record<string, unknown>;
                 const account = patient?.account as Record<string, unknown>;
                 return (
-                  <tr key={o.id as string} className="border-b border-[#E8E7EA] hover:bg-[#FAFAFA]">
+                  <tr key={o.id as string} className="border-b border-[#EAE4CA] hover:bg-[#FAFAFA]">
                     <td className="py-3 px-4 text-navy">
                       {format(new Date(o.createdAt as string), "MMM d")}
                     </td>
                     <td className="py-3 px-4">
                       <p className="font-medium text-navy text-xs">{`${account?.firstName} ${account?.lastName}`}</p>
-                      <p className="text-[#8A8D93] text-xs">{account?.email as string}</p>
+                      <p className="text-[#848181] text-xs">{account?.email as string}</p>
                     </td>
-                    <td className="py-3 px-4 hidden md:table-cell text-[#8A8D93] text-xs">
+                    <td className="py-3 px-4 hidden md:table-cell text-[#848181] text-xs">
                       {(o.items as { name: string; quantity: number }[])
                         ?.map((i) => `${i.name} ×${i.quantity}`)
                         .join(", ")}
@@ -93,7 +93,7 @@ export default function ProviderOrdersPage() {
                         value={o.status as string}
                         onChange={(e) => updateStatus(o.id as string, e.target.value)}
                         disabled={updatingId === o.id}
-                        className="text-xs border border-[#E8E7EA] rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary"
+                        className="text-xs border border-[#EAE4CA] rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary"
                       >
                         {STATUS_OPTIONS.map((s) => (
                           <option key={s} value={s}>
@@ -108,7 +108,7 @@ export default function ProviderOrdersPage() {
             </tbody>
           </table>
           {orders.length === 0 && (
-            <div className="text-center py-12 text-[#8A8D93]">No orders yet.</div>
+            <div className="text-center py-12 text-[#848181]">No orders yet.</div>
           )}
         </div>
       )}

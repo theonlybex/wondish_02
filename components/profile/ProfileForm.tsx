@@ -270,7 +270,7 @@ export default function ProfileForm({
                 placeholder="9"
               />
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-[#25293C]">Unit</label>
+                <label className="text-sm font-medium text-[#1E1A1A]">Unit</label>
                 <Select
                   options={[
                     { value: "cm", label: "cm" },
@@ -295,7 +295,7 @@ export default function ProfileForm({
                 placeholder="170"
               />
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-[#25293C]">Unit</label>
+                <label className="text-sm font-medium text-[#1E1A1A]">Unit</label>
                 <Select
                   options={[
                     { value: "cm", label: "cm" },
@@ -321,7 +321,7 @@ export default function ProfileForm({
               placeholder="150"
             />
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-[#25293C]">Unit</label>
+              <label className="text-sm font-medium text-[#1E1A1A]">Unit</label>
               <Select
                 options={[
                   { value: "lbs", label: "lbs" },
@@ -353,23 +353,23 @@ export default function ProfileForm({
             </p>
             <div className="grid grid-cols-3 gap-3 text-sm">
               <div>
-                <span className="text-[#9EA8A0] text-xs">BMI</span>
-                <p className="font-bold text-[#25293C]">
+                <span className="text-[#848181] text-xs">BMI</span>
+                <p className="font-bold text-[#1E1A1A]">
                   {liveProfile.cbmi.toFixed(1)}{" "}
-                  <span className="text-xs font-normal capitalize text-[#9EA8A0]">
+                  <span className="text-xs font-normal capitalize text-[#848181]">
                     ({liveProfile.cbmiClass})
                   </span>
                 </p>
               </div>
               <div>
-                <span className="text-[#9EA8A0] text-xs">Daily Calories</span>
+                <span className="text-[#848181] text-xs">Daily Calories</span>
                 <p className="font-bold text-primary">
                   {Math.round(liveProfile.dailyCalories)} kcal
                 </p>
               </div>
               <div>
-                <span className="text-[#9EA8A0] text-xs">Target Weight</span>
-                <p className="font-bold text-[#25293C]">
+                <span className="text-[#848181] text-xs">Target Weight</span>
+                <p className="font-bold text-[#1E1A1A]">
                   {liveProfile.tbwKg.toFixed(1)} kg
                 </p>
               </div>
@@ -394,7 +394,7 @@ export default function ProfileForm({
               placeholder="65"
             />
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-[#25293C]">Unit</label>
+              <label className="text-sm font-medium text-[#1E1A1A]">Unit</label>
               <Select
                 options={[
                   { value: "kg", label: "kg" },

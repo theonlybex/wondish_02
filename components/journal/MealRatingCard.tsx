@@ -32,12 +32,12 @@ export default function MealRatingCard({
   return (
     <div
       className={`bg-white border rounded-2xl p-5 transition-opacity ${
-        skipped ? "opacity-60 border-[#E8E7EA]" : "border-[#E8E7EA]"
+        skipped ? "opacity-60 border-[#EAE4CA]" : "border-[#EAE4CA]"
       }`}
     >
       <div className="flex items-center justify-between mb-3">
         <div>
-          <p className="text-xs font-semibold text-[#8A8D93] uppercase tracking-wide">
+          <p className="text-xs font-semibold text-[#848181] uppercase tracking-wide">
             {mealType}
           </p>
           {recipeName && (
@@ -51,7 +51,7 @@ export default function MealRatingCard({
             onChange={onSkipToggle}
             className="accent-error w-4 h-4"
           />
-          <span className="text-xs text-[#8A8D93]">Skip</span>
+          <span className="text-xs text-[#848181]">Skip</span>
         </label>
       </div>
 
@@ -65,7 +65,7 @@ export default function MealRatingCard({
                 type="button"
                 onClick={() => onRatingChange(star)}
                 className={`text-xl transition-colors ${
-                  star <= rating ? "text-warning" : "text-[#E8E7EA]"
+                  star <= rating ? "text-warning" : "text-[#EAE4CA]"
                 }`}
               >
                 ★
@@ -77,7 +77,7 @@ export default function MealRatingCard({
           <select
             value={preparation}
             onChange={(e) => onPreparationChange(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl border border-[#E8E7EA] text-sm text-[#25293C] bg-white outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            className="w-full px-3 py-2 rounded-xl border border-[#EAE4CA] text-sm text-[#1E1A1A] bg-white outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           >
             <option value="">Select preparation…</option>
             {PREP_OPTIONS.map((opt) => (

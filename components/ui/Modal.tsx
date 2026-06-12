@@ -46,11 +46,11 @@ export default function Modal({
         className={`relative bg-white rounded-2xl shadow-xl w-full ${sizes[size]} max-h-[90vh] overflow-y-auto`}
       >
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-[#E8E7EA]">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-[#EAE4CA]">
             <h2 className="font-semibold text-navy text-lg">{title}</h2>
             <button
               onClick={onClose}
-              className="text-[#8A8D93] hover:text-navy transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#F3F2FF]"
+              className="text-[#848181] hover:text-navy transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#F3F2FF]"
             >
               ✕
             </button>

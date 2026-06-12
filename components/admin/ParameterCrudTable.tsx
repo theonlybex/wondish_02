@@ -78,11 +78,11 @@ function BannedIngredientsPanel({ entityType, entityId }: { entityType: string; 
 
   return (
     <div className="mt-3 pl-4 border-l-2 border-primary/20">
-      <p className="text-xs font-semibold text-[#8A8D93] uppercase tracking-wide mb-2">
+      <p className="text-xs font-semibold text-[#848181] uppercase tracking-wide mb-2">
         Banned Ingredients
       </p>
       {loading ? (
-        <p className="text-xs text-[#8A8D93]">Loading…</p>
+        <p className="text-xs text-[#848181]">Loading…</p>
       ) : (
         <>
           <div className="flex flex-wrap gap-1.5 mb-2 min-h-[24px]">
@@ -101,14 +101,14 @@ function BannedIngredientsPanel({ entityType, entityId }: { entityType: string; 
                 </button>
               </span>
             ))}
-            {items.length === 0 && <span className="text-xs text-[#8A8D93]">None set</span>}
+            {items.length === 0 && <span className="text-xs text-[#848181]">None set</span>}
           </div>
           <form onSubmit={handleAdd} className="flex gap-2">
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Add ingredient to ban…"
-              className="flex-1 px-2.5 py-1 rounded-lg border border-[#E8E7EA] text-xs text-navy outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+              className="flex-1 px-2.5 py-1 rounded-lg border border-[#EAE4CA] text-xs text-navy outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
             />
             <Button type="submit" loading={adding} size="sm">Add</Button>
           </form>
@@ -185,7 +185,7 @@ function EthnicMealsPanel({ ethnicId }: { ethnicId: string }) {
 
   return (
     <div className="mt-3 pl-4 border-l-2 border-primary/20">
-      <p className="text-xs font-semibold text-[#8A8D93] uppercase tracking-wide mb-2">
+      <p className="text-xs font-semibold text-[#848181] uppercase tracking-wide mb-2">
         Meals in this cuisine ({loading ? "…" : assigned.length})
       </p>
 
@@ -195,13 +195,13 @@ function EthnicMealsPanel({ ethnicId }: { ethnicId: string }) {
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
           placeholder="Search recipes to add…"
-          className="w-full px-2.5 py-1 rounded-lg border border-[#E8E7EA] text-xs text-navy outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+          className="w-full px-2.5 py-1 rounded-lg border border-[#EAE4CA] text-xs text-navy outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
         />
         {(searching || searchResults.length > 0) && (
-          <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-[#E8E7EA] rounded-xl shadow-lg max-h-48 overflow-y-auto">
-            {searching && <p className="text-xs text-[#8A8D93] px-3 py-2">Searching…</p>}
+          <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-[#EAE4CA] rounded-xl shadow-lg max-h-48 overflow-y-auto">
+            {searching && <p className="text-xs text-[#848181] px-3 py-2">Searching…</p>}
             {!searching && searchResults.length === 0 && search.trim() && (
-              <p className="text-xs text-[#8A8D93] px-3 py-2">No results</p>
+              <p className="text-xs text-[#848181] px-3 py-2">No results</p>
             )}
             {searchResults.map((r) => (
               <div key={r.id} className="flex items-center justify-between px-3 py-2 hover:bg-[#FAFAFA] border-b border-[#F0EFF5] last:border-0">
@@ -209,7 +209,7 @@ function EthnicMealsPanel({ ethnicId }: { ethnicId: string }) {
                   <span>{r.emoji ?? "🍽"}</span>
                   <div>
                     <p className="text-xs text-navy font-medium">{r.name}</p>
-                    {r.mealType && <p className="text-[10px] text-[#8A8D93]">{r.mealType.name}</p>}
+                    {r.mealType && <p className="text-[10px] text-[#848181]">{r.mealType.name}</p>}
                   </div>
                 </div>
                 <Button size="sm" loading={addingId === r.id} onClick={() => handleAdd(r)}>
@@ -223,9 +223,9 @@ function EthnicMealsPanel({ ethnicId }: { ethnicId: string }) {
 
       {/* Assigned recipes */}
       {loading ? (
-        <p className="text-xs text-[#8A8D93]">Loading…</p>
+        <p className="text-xs text-[#848181]">Loading…</p>
       ) : assigned.length === 0 ? (
-        <p className="text-xs text-[#8A8D93]">No meals assigned yet.</p>
+        <p className="text-xs text-[#848181]">No meals assigned yet.</p>
       ) : (
         <div className="space-y-1 max-h-56 overflow-y-auto">
           {assigned.map((r) => (
@@ -234,7 +234,7 @@ function EthnicMealsPanel({ ethnicId }: { ethnicId: string }) {
                 <span className="text-base">{r.emoji ?? "🍽"}</span>
                 <div>
                   <p className="text-xs text-navy font-medium">{r.name}</p>
-                  {r.mealType && <p className="text-[10px] text-[#8A8D93]">{r.mealType.name}</p>}
+                  {r.mealType && <p className="text-[10px] text-[#848181]">{r.mealType.name}</p>}
                 </div>
               </div>
               <button
@@ -314,12 +314,12 @@ export default function ParameterCrudTable({ type, initialItems }: ParameterCrud
           onChange={(e) => setNewName(e.target.value)}
           placeholder="Add new item…"
           required
-          className="flex-1 px-3.5 py-2.5 rounded-xl border border-[#E8E7EA] bg-white text-sm text-[#25293C] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          className="flex-1 px-3.5 py-2.5 rounded-xl border border-[#EAE4CA] bg-white text-sm text-[#1E1A1A] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
         />
         <Button type="submit" loading={creating} size="sm">Add</Button>
       </form>
 
-      <div className="bg-white border border-[#E8E7EA] rounded-2xl divide-y divide-[#E8E7EA]">
+      <div className="bg-white border border-[#EAE4CA] rounded-2xl divide-y divide-[#EAE4CA]">
         {items.map((item) => (
           <div key={item.id} className="px-5 py-3 hover:bg-[#FAFAFA]">
             <div className="flex items-center gap-3">
@@ -382,7 +382,7 @@ export default function ParameterCrudTable({ type, initialItems }: ParameterCrud
           </div>
         ))}
         {items.length === 0 && (
-          <div className="text-center py-8 text-[#8A8D93] text-sm">No items yet. Add one above.</div>
+          <div className="text-center py-8 text-[#848181] text-sm">No items yet. Add one above.</div>
         )}
       </div>
     </div>

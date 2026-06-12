@@ -1,85 +1,179 @@
-"use client";
-
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import Image from "next/image";
+import { getTranslations } from "next-intl/server";
 
-export default function Hero() {
-  const t = useTranslations("hero");
+const LINE_SOFT = "#EAE4CA";
+
+export default async function Hero() {
+  const t = await getTranslations("hero");
+
+  const chips = [
+    { icon: "🎯", icBg: "#F5F1DD", title: t("chip1"), sub: t("chip1Sub"), pos: "top-[26px] -left-[26px]", delay: "0s" },
+    { icon: "📉", icBg: "#FFE9AE", title: t("chip2"), sub: t("chip2Sub"), pos: "bottom-[70px] -right-[22px]", delay: "1.4s" },
+    { icon: "🛒", icBg: "#8DCEBD", title: t("chip3"), sub: t("chip3Sub"), pos: "-bottom-4 left-[30px]", delay: "2.6s" },
+  ];
+
+  const macros = [
+    { value: "520", label: t("kcal") },
+    { value: "42g", label: t("protein") },
+    { value: "38g", label: t("carbs") },
+    { value: "18g", label: t("fat") },
+  ];
+
+  const assure = [t("assure1"), t("assure2"), t("assure3"), t("assure4")];
 
   return (
-    <div className="relative bg-[#0a1509] min-h-screen px-6 flex flex-col items-center justify-center text-center overflow-hidden">
+    <header className="relative pt-[60px] pb-0 overflow-hidden">
+      <style>{`
+        @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+      `}</style>
 
-      {/* Atmosphere — large green glow behind heading */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div
-          className="absolute left-1/2 top-[45%] -translate-x-1/2 -translate-y-1/2 w-[900px] h-[500px] rounded-full"
-          style={{ background: "radial-gradient(ellipse, rgba(74,222,128,0.12) 0%, rgba(74,222,128,0.04) 40%, transparent 70%)" }}
-        />
-        <div
-          className="absolute left-1/2 top-[45%] -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] rounded-full"
-          style={{ background: "radial-gradient(ellipse, rgba(74,222,128,0.08) 0%, transparent 65%)" }}
-        />
-        {/* Subtle corner accents */}
-        <div
-          className="absolute -top-40 -left-40 w-96 h-96 rounded-full"
-          style={{ background: "radial-gradient(circle, rgba(74,222,128,0.04) 0%, transparent 70%)" }}
-        />
-        <div
-          className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full"
-          style={{ background: "radial-gradient(circle, rgba(74,222,128,0.03) 0%, transparent 70%)" }}
-        />
+      {/* Soft color blobs */}
+      <div
+        className="absolute rounded-full pointer-events-none"
+        style={{ width: 520, height: 520, background: "#8DCEBD", top: -120, left: -160, opacity: 0.4, filter: "blur(10px)" }}
+      />
+      <div
+        className="absolute rounded-full pointer-events-none"
+        style={{ width: 380, height: 380, background: "#FFE9AE", bottom: -120, right: -120, opacity: 0.55, filter: "blur(10px)" }}
+      />
+
+      <div className="relative z-[2] max-w-[1180px] mx-auto px-7">
+        <div className="grid lg:grid-cols-[1.04fr_0.96fr] gap-12 lg:gap-12 items-center">
+          {/* Copy */}
+          <div>
+            <h1
+              className="reveal d1 font-extrabold"
+              style={{ fontSize: "clamp(42px, 6vw, 76px)", letterSpacing: "-0.02em", lineHeight: 1.05 }}
+            >
+              {t("headline1")}{" "}
+              <span className="relative italic font-semibold whitespace-nowrap" style={{ color: "#812549", zIndex: 0 }}>
+                {t("headlineSwash")}
+                <span
+                  aria-hidden="true"
+                  className="absolute left-0 -right-0.5 bottom-1 h-3.5 rounded-lg"
+                  style={{ background: "#FFE9AE", zIndex: -1, transform: "rotate(-1.2deg)" }}
+                />
+              </span>
+            </h1>
+            <p className="reveal d2 text-lg leading-relaxed max-w-[460px] mt-5 mb-8" style={{ color: "#4F4A4A" }}>
+              {t("subheadline")}
+            </p>
+            <div className="reveal d3 flex flex-wrap items-center gap-3.5">
+              <Link
+                href="/register"
+                className="inline-flex items-center gap-2 px-7 py-[15px] rounded-full font-semibold text-[15px] text-white transition-all hover:-translate-y-0.5"
+                style={{ background: "#812549" }}
+              >
+                {t("ctaPrimary")} →
+              </Link>
+              <a
+                href="#how-it-works"
+                className="inline-flex items-center gap-2 px-7 py-[15px] rounded-full font-semibold text-[15px] border transition-all hover:-translate-y-0.5 hover:text-white hover:bg-[#B75E78] hover:border-[#B75E78]"
+                style={{ color: "#812549", borderColor: "#812549" }}
+              >
+                {t("ctaSecondary")}
+              </a>
+            </div>
+          </div>
+
+          {/* Visual */}
+          <div className="reveal d2 relative max-w-[440px] w-full mx-auto lg:max-w-none">
+            {/* Floating ingredient cutouts */}
+            <div
+              className="absolute rounded-full overflow-hidden bg-white z-[1] hidden sm:block"
+              style={{ width: 78, height: 78, top: -10, right: 80, animation: "bob 6s ease-in-out infinite" }}
+            >
+              <Image src="/dish/avocado.png" alt="Fresh avocado" fill sizes="78px" className="object-cover" />
+            </div>
+            <div
+              className="absolute rounded-full overflow-hidden bg-white z-[1] hidden sm:block"
+              style={{ width: 64, height: 64, bottom: 30, left: -34, animation: "bob 7s ease-in-out 0.8s infinite" }}
+            >
+              <Image src="/dish/tomato.png" alt="Cherry tomatoes" fill sizes="64px" className="object-cover" />
+            </div>
+
+            {/* Floating chips */}
+            {chips.map((c) => (
+              <div
+                key={c.icon}
+                className={`absolute z-[3] hidden sm:flex items-center gap-3 bg-white rounded-2xl py-[11px] px-[15px] text-[13px] font-semibold border ${c.pos}`}
+                style={{ borderColor: LINE_SOFT, animation: `bob 5s ease-in-out ${c.delay} infinite` }}
+              >
+                <div className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center text-[17px]" style={{ background: c.icBg }}>
+                  {c.icon}
+                </div>
+                <div>
+                  {c.title}
+                  <small className="block text-[11px] font-semibold" style={{ color: "#848181" }}>{c.sub}</small>
+                </div>
+              </div>
+            ))}
+
+            {/* Plate card */}
+            <div
+              className="relative z-[2] bg-white rounded-[34px] p-[18px] border"
+              style={{ borderColor: LINE_SOFT, transform: "rotate(1.4deg)" }}
+            >
+              <Image
+                src="/dish/dish.png"
+                alt={t("plateName")}
+                width={800}
+                height={600}
+                priority
+                className="w-full h-auto rounded-3xl block"
+                style={{ background: "linear-gradient(160deg, #fff, #f3efe6)" }}
+              />
+              <div className="flex justify-between items-center pt-4 px-2 pb-1">
+                <div>
+                  <span className="text-xs font-semibold" style={{ color: "#812549" }}>{t("plateTag")}</span>
+                  <h4 className="text-lg font-bold" style={{ letterSpacing: "-0.02em" }}>{t("plateName")}</h4>
+                </div>
+                <span
+                  className="inline-block text-[11px] font-bold uppercase tracking-[0.08em] px-2.5 py-1 rounded-full"
+                  style={{ background: "#F5F1DD", color: "#5F1C35" }}
+                >
+                  {t("plateTime")}
+                </span>
+              </div>
+              <div className="flex gap-2 mt-3.5">
+                {macros.map((m) => (
+                  <div
+                    key={m.label}
+                    className="flex-1 rounded-[14px] py-2.5 px-3 text-center border"
+                    style={{ background: "#F9F7ED", borderColor: LINE_SOFT }}
+                  >
+                    <b className="block text-lg" style={{ color: "#1E1A1A" }}>{m.value}</b>
+                    <small className="text-[11px] font-semibold uppercase tracking-[0.06em]" style={{ color: "#848181" }}>
+                      {m.label}
+                    </small>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Content */}
-      <div className="relative z-10 flex flex-col items-center">
-
-        {/* Eyebrow */}
-        <div className="flex items-center gap-3 mb-8">
-          <div className="h-px w-10 bg-[#4ade80]/30" />
-          <span className="text-[#4ade80]/60 text-[11px] font-semibold uppercase tracking-[0.22em]">
-            {t("eyebrow")}
-          </span>
-          <div className="h-px w-10 bg-[#4ade80]/30" />
+      {/* Reassurance strip */}
+      <div
+        className="relative z-[2] mt-9 py-[22px] border-y"
+        style={{ borderColor: LINE_SOFT, background: "rgba(233,243,235,0.4)" }}
+      >
+        <div className="reveal max-w-[1180px] mx-auto px-7 flex flex-wrap gap-y-3.5 gap-x-9 justify-center items-center">
+          {assure.map((item) => (
+            <div key={item} className="flex items-center gap-2 text-sm font-semibold" style={{ color: "#4F4A4A" }}>
+              <span
+                className="w-5 h-5 rounded-full text-white flex items-center justify-center text-[11px]"
+                style={{ background: "#812549" }}
+              >
+                ✓
+              </span>
+              {item}
+            </div>
+          ))}
         </div>
-
-        {/* Headline */}
-        <h1 className="text-[clamp(3rem,8vw,6.5rem)] font-extrabold text-white leading-[1.02] tracking-tight">
-          {t("headline1")}
-          <br />
-          <span
-            className="text-[#4ade80]"
-            style={{ textShadow: "0 0 100px rgba(74,222,128,0.4), 0 0 40px rgba(74,222,128,0.15)" }}
-          >
-            {t("headline2")}
-          </span>
-        </h1>
-
-        {/* Subheadline */}
-        <p className="mt-7 text-base sm:text-lg text-white/40 max-w-lg leading-relaxed">
-          {t("subheadline")}
-        </p>
-
-        {/* CTA Buttons */}
-        <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
-          {/* Primary: Get Started */}
-          <Link
-            href="/register"
-            className="group relative inline-flex items-center gap-2 bg-[#4ade80] hover:bg-[#22c55e] text-[#0a1509] px-8 py-4 rounded-xl font-bold text-sm transition-all duration-200 shadow-lg shadow-[#4ade80]/20 hover:shadow-[#4ade80]/30"
-          >
-            <span className="absolute inset-0 rounded-xl border border-[#4ade80]/30" />
-            {t("getStarted")} →
-          </Link>
-
-          {/* Secondary: See How It Works */}
-          <Link
-            href="#how-it-works"
-            className="inline-flex items-center gap-2 bg-white/[0.04] hover:bg-white/[0.08] text-white/80 hover:text-white px-8 py-4 rounded-xl font-semibold text-sm transition-all duration-200 border border-white/[0.10] hover:border-white/[0.18]"
-          >
-            {t("seeHowItWorks")}
-          </Link>
-        </div>
-
       </div>
-    </div>
+    </header>
   );
 }

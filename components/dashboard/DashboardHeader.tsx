@@ -48,7 +48,7 @@ function CouponInput({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="px-4 pb-4 pt-1">
-      <p className="text-[#8A8D93] text-xs mb-3">{t("enterCoupon")}</p>
+      <p className="text-[#848181] text-xs mb-3">{t("enterCoupon")}</p>
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           autoFocus
@@ -57,7 +57,7 @@ function CouponInput({ onClose }: { onClose: () => void }) {
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           placeholder={t("enterCode")}
           disabled={loading}
-          className="flex-1 min-w-0 bg-[#F8F7FA] border border-[#E8E7EA] rounded-lg px-3 py-2 text-xs font-mono text-[#25293C] placeholder:text-[#C0C0C4] uppercase tracking-widest focus:outline-none focus:border-primary/50"
+          className="flex-1 min-w-0 bg-[#F8F7FA] border border-[#EAE4CA] rounded-lg px-3 py-2 text-xs font-mono text-[#1E1A1A] placeholder:text-[#C0C0C4] uppercase tracking-widest focus:outline-none focus:border-primary/50"
         />
         <button
           type="submit"
@@ -96,18 +96,18 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
   }, []);
 
   return (
-    <header className="relative z-10 h-16 bg-white/80 backdrop-blur-sm border-b border-[#E8E7EA]/80 flex items-center justify-between px-5 sm:px-8">
+    <header className="relative z-10 h-16 bg-white/80 backdrop-blur-sm border-b border-[#EAE4CA]/80 flex items-center justify-between px-5 sm:px-8">
       <button className="lg:hidden flex flex-col gap-1.5 p-1" onClick={onMenuToggle} aria-label="Toggle menu">
-        <span className="w-5 h-0.5 bg-[#25293C] block rounded-full" />
-        <span className="w-5 h-0.5 bg-[#25293C] block rounded-full" />
-        <span className="w-5 h-0.5 bg-[#25293C] block rounded-full" />
+        <span className="w-5 h-0.5 bg-[#1E1A1A] block rounded-full" />
+        <span className="w-5 h-0.5 bg-[#1E1A1A] block rounded-full" />
+        <span className="w-5 h-0.5 bg-[#1E1A1A] block rounded-full" />
       </button>
 
       <div className="hidden lg:flex flex-col justify-center">
-        <p className="text-[9px] tracking-[0.28em] uppercase font-mono leading-none mb-0.5" style={{ color: "#7DB87D" }}>
+        <p className="text-[9px] tracking-[0.28em] uppercase font-mono leading-none mb-0.5" style={{ color: "#B75E78" }}>
           {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
         </p>
-        <p className="text-sm font-bold text-[#0d1f10] leading-tight">
+        <p className="text-sm font-bold text-[#1E1A1A] leading-tight">
           Welcome back, {name?.split(" ")[0]}.
         </p>
       </div>
@@ -120,11 +120,11 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
             <span className="text-[10px]">★</span>{t("adminBadge")}
           </Link>
         ) : plan === "PREMIUM" ? (
-          <Link href="/membership" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-[#f0fdf4] border border-primary/20 text-primary hover:bg-primary/10 transition-colors">
+          <Link href="/membership" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-[#ffffff] border border-primary/20 text-primary hover:bg-primary/10 transition-colors">
             <span className="text-[10px]">✦</span>{t("premiumBadge")}
           </Link>
         ) : (
-          <Link href="/pricing" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full border border-[#E8E7EA] text-[#8A8D93] hover:border-primary/30 hover:text-primary hover:bg-primary/5 transition-colors">
+          <Link href="/pricing" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full border border-[#EAE4CA] text-[#848181] hover:border-primary/30 hover:text-primary hover:bg-primary/5 transition-colors">
             {t("upgrade")} →
           </Link>
         )}
@@ -132,15 +132,15 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
         <div ref={dropdownRef} className="relative">
           <button
             onClick={() => { setOpen((v) => !v); setShowCoupon(false); }}
-            className="px-3 py-1.5 rounded-xl bg-[#f0fdf4] border border-primary/20 text-primary font-semibold text-xs hover:border-primary/40 hover:bg-primary/10 transition-all"
+            className="px-3 py-1.5 rounded-xl bg-[#ffffff] border border-primary/20 text-primary font-semibold text-xs hover:border-primary/40 hover:bg-primary/10 transition-all"
           >
             Settings
           </button>
 
           {open && (
-            <div className="absolute right-0 top-11 w-56 bg-white border border-[#E8E7EA] rounded-2xl shadow-2xl shadow-black/10 z-50 overflow-hidden">
+            <div className="absolute right-0 top-11 w-56 bg-white border border-[#EAE4CA] rounded-2xl shadow-2xl shadow-black/10 z-50 overflow-hidden">
               <div className="px-4 py-3 border-b border-[#F0F0F2] bg-[#FAFAF9]">
-                <p className="text-[#25293C] font-semibold text-sm">Settings</p>
+                <p className="text-[#1E1A1A] font-semibold text-sm">Settings</p>
               </div>
 
               {!showCoupon ? (
@@ -171,8 +171,8 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
               ) : (
                 <>
                   <div className="px-4 pt-3 pb-1 flex items-center gap-2">
-                    <button onClick={() => setShowCoupon(false)} className="text-[#8A8D93] hover:text-[#25293C] transition-colors">←</button>
-                    <p className="text-[#25293C] font-semibold text-sm">{t("redeemCouponTitle")}</p>
+                    <button onClick={() => setShowCoupon(false)} className="text-[#848181] hover:text-[#1E1A1A] transition-colors">←</button>
+                    <p className="text-[#1E1A1A] font-semibold text-sm">{t("redeemCouponTitle")}</p>
                   </div>
                   <CouponInput onClose={() => { setOpen(false); setShowCoupon(false); }} />
                 </>

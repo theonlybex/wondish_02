@@ -21,17 +21,17 @@ export default function MealCard({ recipe, mealTypeName, onSelect, compact = fal
         className={`rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:shadow-sm transition-all ${
           isCompleted
             ? "bg-emerald-50 border border-emerald-200 hover:border-emerald-300"
-            : "bg-white border border-[#E8E7EA] hover:border-primary/40"
+            : "bg-white border border-[#EAE4CA] hover:border-primary/40"
         }`}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
       >
         <span className="text-2xl shrink-0">{recipe.emoji ?? getRecipeEmoji(recipe.name, recipe.tags, mealTypeName)}</span>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-bold text-[#8A8D93] uppercase tracking-wide">{mealTypeName}</p>
+          <p className="text-[10px] font-bold text-[#848181] uppercase tracking-wide">{mealTypeName}</p>
           <p className="font-semibold text-navy text-sm truncate">{recipe.name}</p>
           {recipe.calories && (
-            <p className="text-[10px] text-[#8A8D93] mt-0.5">{recipe.calories} kcal</p>
+            <p className="text-[10px] text-[#848181] mt-0.5">{recipe.calories} kcal</p>
           )}
         </div>
         {isCompleted && <span className="text-emerald-500 text-sm flex-shrink-0">✓</span>}
@@ -45,16 +45,16 @@ export default function MealCard({ recipe, mealTypeName, onSelect, compact = fal
       className={`rounded-2xl p-5 flex flex-col gap-3 cursor-pointer hover:shadow-md transition-all ${
         isCompleted
           ? "bg-emerald-50 border border-emerald-200 hover:border-emerald-300"
-          : "bg-white border border-[#E8E7EA] hover:border-primary/40"
+          : "bg-white border border-[#EAE4CA] hover:border-primary/40"
       }`}
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.99 }}
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-[#8A8D93] uppercase tracking-wide">{mealTypeName}</span>
+        <span className="text-xs font-semibold text-[#848181] uppercase tracking-wide">{mealTypeName}</span>
         {isCompleted
           ? <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">✓ Done</span>
-          : <span className="text-[10px] text-[#8A8D93] opacity-60">tap to expand</span>
+          : <span className="text-[10px] text-[#848181] opacity-60">tap to expand</span>
         }
       </div>
 
@@ -63,7 +63,7 @@ export default function MealCard({ recipe, mealTypeName, onSelect, compact = fal
         <div>
           <p className="font-semibold text-navy">{recipe.name}</p>
           {recipe.description && (
-            <p className="text-[#8A8D93] text-xs line-clamp-1 mt-0.5">{recipe.description}</p>
+            <p className="text-[#848181] text-xs line-clamp-1 mt-0.5">{recipe.description}</p>
           )}
         </div>
       </div>
@@ -90,7 +90,7 @@ export default function MealCard({ recipe, mealTypeName, onSelect, compact = fal
           </span>
         )}
         {recipe.fat && (
-          <span className="bg-[#F3F2FF] text-[#8A8D93] text-xs font-semibold px-2.5 py-1 rounded-full">
+          <span className="bg-[#F3F2FF] text-[#848181] text-xs font-semibold px-2.5 py-1 rounded-full">
             {recipe.fat}g fat
           </span>
         )}
