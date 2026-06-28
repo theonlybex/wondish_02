@@ -16,7 +16,7 @@ const isPublicRoute = createRouteMatcher([
 const isAuthRoute = createRouteMatcher(["/login(.*)", "/register(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId, sessionClaims } = await auth();
+  const { userId } = await auth();
   const { pathname } = req.nextUrl;
 
   // Redirect authenticated users away from landing/auth pages to their dashboard
@@ -29,14 +29,9 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (userId && !isPublicRoute(req)) {
-    const meta = sessionClaims?.metadata as { onboardingComplete?: boolean } | undefined;
-    const cookieDone = req.cookies.get("onboarding_complete")?.value === "1";
-    const onboardingComplete = cookieDone || (meta?.onboardingComplete ?? false);
-    if (!onboardingComplete && !pathname.startsWith("/profile") && !pathname.startsWith("/api/")) {
-      return NextResponse.redirect(new URL("/profile?onboarding=true", req.url));
-    }
-  }
+  // Onboarding is gated in the dashboard layout (Node runtime), which can derive
+  // completion from the actual profile data. The edge can't query the DB, so it
+  // no longer guesses from a cookie/JWT flag that could be stale.
 
   // Inject pathname so server layouts can read it
   const requestHeaders = new Headers(req.headers);

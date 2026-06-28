@@ -14,7 +14,6 @@ export default async function MealPlanPage() {
   if (!userId) redirect("/login");
   const account = await getAccount(userId);
   if (!account) redirect("/login");
-  if (!account.onboardingComplete) redirect("/profile?onboarding=true");
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

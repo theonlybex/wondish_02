@@ -11,7 +11,6 @@ export default async function DishCheckerPage() {
 
   const account = await getAccount(userId);
   if (!account) redirect("/login");
-  if (!account.onboardingComplete) redirect("/profile?onboarding=true");
 
   return (
     <div className="h-full flex flex-col">

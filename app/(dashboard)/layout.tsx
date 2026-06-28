@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
+import { isProfileComplete } from "@/lib/onboarding";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import PremiumGuard from "@/components/PremiumGuard";
@@ -22,9 +23,40 @@ export default async function DashboardLayout({
   if (!userId) redirect("/login");
 
   const account = await getAccount(userId);
+  const pathname = (await headers()).get("x-pathname") ?? "";
 
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const isPremium = hasActivePremium(account?.subscription);
+
+  // ── Onboarding gate (single source of truth) ───────────────────────────────
+  // The profile data itself decides whether onboarding is done; account.onboarding-
+  // Complete is only a cache. If the cache is stale (e.g. accounts predating the
+  // flag) we heal it from the real profile fields instead of trapping the user.
+  // /profile is exempt so users can actually finish onboarding.
+  if (!pathname.startsWith("/profile")) {
+    let onboarded = account?.onboardingComplete ?? false;
+    if (!onboarded && account) {
+      const p = await prisma.patient.findUnique({
+        where: { accountId: account.id },
+        select: {
+          birthday: true,
+          height: true,
+          heightFt: true,
+          heightIn: true,
+          weight: true,
+          physicalActivityId: true,
+        },
+      });
+      if (isProfileComplete(p)) {
+        await prisma.account.update({
+          where: { id: account.id },
+          data: { onboardingComplete: true },
+        });
+        onboarded = true;
+      }
+    }
+    if (!onboarded) redirect("/profile?onboarding=true");
+  }
 
   // New-premium onboarding: redirect to Dish Tinder only if user hasn't seen taste setup yet.
   // Cookie-gated: once taste_complete=1 is set we skip the DB query entirely on every navigation.
@@ -32,9 +64,8 @@ export default async function DashboardLayout({
     const tasteDone = cookies().get("taste_complete")?.value === "1";
 
     if (!tasteDone) {
-      const pathname = (await headers()).get("x-pathname") ?? "";
       // Skip taste redirect when user is on /profile — they need to finish onboarding first.
-      // Redirecting to /taste from here would fight the middleware's onboarding guard and loop.
+      // Redirecting to /taste from here would fight the onboarding guard and loop.
       if (pathname && pathname !== "/taste" && !pathname.startsWith("/profile")) {
         const patient = await prisma.patient.findUnique({
           where: { accountId: account.id },

@@ -14,7 +14,6 @@ export default async function JourneyPage() {
   if (!userId) redirect("/login");
   const account = await getAccount(userId);
   if (!account) redirect("/login");
-  if (!account.onboardingComplete) redirect("/profile?onboarding=true");
 
   const to = new Date();
   const from = subDays(to, 29);

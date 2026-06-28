@@ -11,7 +11,6 @@ export default async function OrdersPage() {
   if (!userId) redirect("/login");
   const account = await getAccount(userId);
   if (!account) redirect("/login");
-  if (!account.onboardingComplete) redirect("/profile?onboarding=true");
 
   const where = { patient: { account: { clerkId: userId } } };
 

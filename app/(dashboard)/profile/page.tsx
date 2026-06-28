@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
+import { isProfileComplete } from "@/lib/onboarding";
 import ProfileForm from "@/components/profile/ProfileForm";
 
 export const metadata = { title: "Profile" };
@@ -49,6 +50,19 @@ export default async function ProfilePage({
       })
     ),
   ]);
+
+  // Old accounts predate the onboarding flag. If the profile is already complete
+  // but they were forced here, heal the cached flag and return them to the
+  // dashboard instead of making them redo onboarding.
+  if (isOnboarding && (account?.onboardingComplete || isProfileComplete(patient))) {
+    if (account && !account.onboardingComplete) {
+      await prisma.account.update({
+        where: { id: account.id },
+        data: { onboardingComplete: true },
+      });
+    }
+    redirect("/overview");
+  }
 
   return (
     <div className="max-w-2xl mx-auto">

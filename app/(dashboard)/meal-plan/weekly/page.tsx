@@ -13,7 +13,6 @@ export default async function WeeklyPlanPage() {
   if (!userId) redirect("/login");
   const account = await getAccount(userId);
   if (!account) redirect("/login");
-  if (!account.onboardingComplete) redirect("/profile?onboarding=true");
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = addDays(weekStart, 6);

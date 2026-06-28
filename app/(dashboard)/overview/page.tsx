@@ -20,10 +20,6 @@ export default async function OverviewPage() {
 
   if (!account) redirect("/login");
 
-  if (!account.onboardingComplete) {
-    redirect("/profile?onboarding=true");
-  }
-
   // ── Streak grid ────────────────────────────────────────────────────────────
   const gridDays: GridDay[] = [];
   let totalCompleted = 0;

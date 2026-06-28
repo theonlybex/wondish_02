@@ -174,10 +174,9 @@ export default function ProfileForm({
       if (!res.ok) throw new Error("Failed to save profile");
 
       if (isOnboarding) {
-        // Mark onboarding complete in Clerk metadata
-        const onboardingRes = await fetch("/api/user/complete-onboarding", { method: "POST" });
-        if (!onboardingRes.ok) throw new Error("Failed to complete onboarding");
-        // Hard redirect so the browser fetches a fresh Clerk JWT with updated metadata
+        // The profile save above already set onboardingComplete in the DB — the
+        // single source of truth. Hard-navigate so the dashboard layout re-runs
+        // its onboarding gate against the fresh data.
         window.location.href = "/prediction";
       } else {
         setSaved(true);
