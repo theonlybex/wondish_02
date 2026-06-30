@@ -171,6 +171,26 @@ export interface PatientProfile {
 
 export type CBMIClassType = "underweight" | "healthy" | "overweight" | "obese";
 
+export interface WeeklyTargetPointDTO {
+  week: number;
+  progressPct: number;
+}
+
+export interface WeeklyTargetDTO {
+  direction: "lose" | "gain" | "maintain";
+  hasPlan: boolean;
+  currentWeightKg: number;
+  thisWeekTargetKg: number;
+  weeklyDeltaKg: number;
+  goalWeightKg: number;
+  anchorStartKg: number;
+  progressPct: number;
+  weekIndex: number;
+  totalWeeks: number;
+  curve: WeeklyTargetPointDTO[];
+  cbmiClass: CBMIClassType;
+}
+
 export interface CaloricProfileDTO {
   // Inputs (normalized)
   sex: "male" | "female";
@@ -215,6 +235,9 @@ export interface CaloricProfileDTO {
   // Target calories
   dailyCalories: number;
   minCaloriesValue: number;
+
+  // Weekly target projection (attached by the caloric-profile route)
+  weeklyTarget?: WeeklyTargetDTO;
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────

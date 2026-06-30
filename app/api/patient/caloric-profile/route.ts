@@ -1,7 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { computeAllMetrics, type Sex, type CaloricProfileInput } from "@/lib/caloric-engine";
+import {
+  computeAllMetrics, computeWeeklyTarget, convertWeight,
+  type Sex, type CaloricProfileInput,
+} from "@/lib/caloric-engine";
 
 /**
  * GET /api/patient/caloric-profile
@@ -11,11 +14,10 @@ export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const account = await prisma.account.findUnique({ where: { clerkId: userId } });
-  if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
-
-  const patient = await prisma.patient.findUnique({
-    where: { accountId: account.id },
+  // Single round-trip: fetch the patient directly via the Clerk id relation
+  // instead of account-then-patient (two sequential queries).
+  const patient = await prisma.patient.findFirst({
+    where: { account: { clerkId: userId } },
     include: {
       physicalActivity: true,
     },
@@ -62,5 +64,15 @@ export async function GET() {
 
   const profile = computeAllMetrics(input);
 
-  return NextResponse.json({ profile });
+  // mealPlanWeight is stored in lbs (see Patient schema); convert to kg.
+  const anchorStartKg =
+    patient.mealPlanWeight != null ? convertWeight(patient.mealPlanWeight, "lbs").kg : null;
+
+  const weeklyTarget = computeWeeklyTarget({
+    profile,
+    anchorStartKg,
+    planStartDate: patient.mealPlanStartDate ?? null,
+  });
+
+  return NextResponse.json({ profile: { ...profile, weeklyTarget } });
 }
