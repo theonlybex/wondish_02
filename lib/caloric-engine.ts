@@ -562,6 +562,152 @@ export function estimateDaysToGoalWeight(
   return 3650;
 }
 
+// ─── Weekly Target Projection ─────────────────────────────────────────────────
+// Per-week weight target derived from the gradual deficit/surplus schedule.
+// The hero "this week" target is recomputed from current weight (adapts to real
+// progress); the progress curve is the planned glide path anchored to the plan's
+// start weight + date. Pure — safe to import on the client.
+
+const KCAL_PER_KG = 7700;
+
+export interface WeeklyTargetPoint {
+  week: number;        // 1-based week index from plan start
+  progressPct: number; // 0–100 planned progress toward goal at end of that week
+}
+
+export interface WeeklyTarget {
+  direction: "lose" | "gain" | "maintain";
+  hasPlan: boolean;
+  currentWeightKg: number;
+  thisWeekTargetKg: number;   // end-of-this-week projection, clamped at goal
+  weeklyDeltaKg: number;      // signed: <0 losing, >0 gaining, 0 maintain
+  goalWeightKg: number;
+  anchorStartKg: number;      // mealPlanWeight (or current weight when no plan)
+  progressPct: number;        // achieved progress now (anchor → current), 0–100
+  weekIndex: number;          // current week number from plan start (>=1)
+  totalWeeks: number;         // re-estimated from current weight (>= weekIndex)
+  curve: WeeklyTargetPoint[]; // planned glide path, rising 0→100
+  cbmiClass: CBMIClass;
+}
+
+// Clamp a projected weight so it never overshoots the goal (either direction).
+function clampTowardGoal(w: number, startKg: number, goalKg: number): number {
+  if (startKg > goalKg) return Math.min(Math.max(w, goalKg), startKg); // losing
+  if (startKg < goalKg) return Math.max(Math.min(w, goalKg), startKg); // gaining
+  return goalKg;
+}
+
+// Cumulative kcal deficit (>0) or surplus (<0) over plan days [fromDay+1 .. fromDay+days].
+function cumulativeDeficitKcal(
+  tdee: number, fromDay: number, days: number,
+  cbmiClass: CBMIClass, minCal: number, maintenanceFloor: number,
+): number {
+  let total = 0;
+  for (let i = 1; i <= days; i++) {
+    const intake = gradualDailyCals(tdee, fromDay + i, cbmiClass, minCal, maintenanceFloor);
+    total += tdee - intake;
+  }
+  return total;
+}
+
+// Days for `startKg` to reach `goalKg`, walking the schedule from ramp day `fromDay+1`.
+function daysToGoalWalk(
+  startKg: number, goalKg: number, tdee: number, fromDay: number,
+  cbmiClass: CBMIClass, minCal: number, maintenanceFloor: number,
+): number {
+  const neededKcal = Math.abs(startKg - goalKg) * KCAL_PER_KG;
+  let total = 0;
+  for (let d = 1; d <= 3650; d++) {
+    const intake = gradualDailyCals(tdee, fromDay + d, cbmiClass, minCal, maintenanceFloor);
+    const dayDelta = Math.abs(tdee - intake);
+    if (dayDelta <= 0) return 3650;
+    total += dayDelta;
+    if (total >= neededKcal) return d;
+  }
+  return 3650;
+}
+
+export function computeWeeklyTarget(args: {
+  profile: CaloricProfile;
+  anchorStartKg: number | null;
+  planStartDate: Date | null;
+  now?: Date;
+}): WeeklyTarget {
+  const { profile } = args;
+  const now = args.now ?? new Date();
+  const goalKg = profile.tbwKg;
+  const currentKg = profile.cbwKg;
+  const cbmiClass = profile.cbmiClass;
+  const minCal = profile.minCaloriesValue;
+  const tdee = profile.tdeeCBW;
+  const maintenanceFloor = profile.tdeeUTBW ?? profile.tdeeWTBW;
+  const hasPlan = args.planStartDate != null;
+  const anchorStartKg = args.anchorStartKg ?? currentKg;
+
+  const planDay = args.planStartDate
+    ? Math.max(0, Math.floor((now.getTime() - args.planStartDate.getTime()) / 86400000))
+    : 0;
+  const weekIndex = Math.floor(planDay / 7) + 1;
+
+  const direction: WeeklyTarget["direction"] =
+    cbmiClass === "overweight" || cbmiClass === "obese" ? "lose"
+    : cbmiClass === "underweight" ? "gain"
+    : "maintain";
+
+  const span = anchorStartKg - goalKg;
+  const progressPct = span === 0 ? 100
+    : Math.min(100, Math.max(0, ((anchorStartKg - currentKg) / span) * 100));
+
+  const reachedGoal =
+    (direction === "lose" && currentKg <= goalKg) ||
+    (direction === "gain" && currentKg >= goalKg);
+
+  if (direction === "maintain" || reachedGoal) {
+    return {
+      direction,
+      hasPlan,
+      currentWeightKg: currentKg,
+      thisWeekTargetKg: direction === "maintain" ? currentKg : goalKg,
+      weeklyDeltaKg: 0,
+      goalWeightKg: goalKg,
+      anchorStartKg,
+      progressPct: reachedGoal ? 100 : progressPct,
+      weekIndex,
+      totalWeeks: weekIndex,
+      curve: [{ week: weekIndex, progressPct: reachedGoal ? 100 : progressPct }],
+      cbmiClass,
+    };
+  }
+
+  // Hero: end-of-this-week projection from current weight at the true ramp position.
+  const weekKcal = cumulativeDeficitKcal(tdee, planDay, 7, cbmiClass, minCal, maintenanceFloor);
+  const weeklyDeltaKg = -weekKcal / KCAL_PER_KG; // <0 losing, >0 gaining
+  const thisWeekTargetKg = clampTowardGoal(currentKg + weeklyDeltaKg, currentKg, goalKg);
+
+  // Adaptive horizon from current weight.
+  const daysRemaining = daysToGoalWalk(currentKg, goalKg, tdee, planDay, cbmiClass, minCal, maintenanceFloor);
+  const totalWeeks = Math.max(weekIndex, (weekIndex - 1) + Math.ceil(daysRemaining / 7));
+
+  // Planned glide path from the anchor: progress% at the end of each week.
+  const anchorSpan = anchorStartKg - goalKg;
+  const curve: WeeklyTargetPoint[] = [];
+  for (let k = 1; k <= totalWeeks; k++) {
+    const cumKcal = cumulativeDeficitKcal(tdee, 0, 7 * k, cbmiClass, minCal, maintenanceFloor);
+    const plannedKg = clampTowardGoal(anchorStartKg - cumKcal / KCAL_PER_KG, anchorStartKg, goalKg);
+    const pct = anchorSpan === 0 ? 100
+      : Math.min(100, Math.max(0, ((anchorStartKg - plannedKg) / anchorSpan) * 100));
+    curve.push({ week: k, progressPct: pct });
+  }
+
+  return {
+    direction, hasPlan,
+    currentWeightKg: currentKg,
+    thisWeekTargetKg, weeklyDeltaKg,
+    goalWeightKg: goalKg, anchorStartKg,
+    progressPct, weekIndex, totalWeeks, curve, cbmiClass,
+  };
+}
+
 // ─── Macro Profiles ───────────────────────────────────────────────────────────
 
 export type MacroProfile = "balanced" | "diabetic" | "gain_muscle";
