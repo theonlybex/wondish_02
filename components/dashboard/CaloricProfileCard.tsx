@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { CaloricProfileDTO } from "@/types";
+import type { WeeklyTargetDTO } from "@/types";
+import { kgToLbs } from "@/lib/prediction-data";
 
 const BMI_ZONES = [
   { label: "Underweight", max: 18.5, color: "#60A5FA" },
@@ -158,31 +160,8 @@ export default function CaloricProfileCard() {
           <p className="text-xs text-[#848181] mt-1.5">Daily Target</p>
         </div>
 
-        {/* BMI gauge */}
-        <div className="cp-a flex-1 min-w-[180px]" style={{ animationDelay: "120ms" }}>
-          <p className="text-xs text-[#848181] mb-1.5 uppercase tracking-wider">Body Mass Index</p>
-          <div className="flex items-baseline gap-2 mb-3">
-            <span className="text-2xl font-bold" style={{ color: bmiCol }}>
-              {fmt(profile.cbmi)}
-            </span>
-            <span className="text-xs font-medium capitalize" style={{ color: bmiCol }}>
-              {profile.cbmiClass}
-            </span>
-          </div>
-          {/* Gauge bar */}
-          <div className="relative h-2 my-1.5">
-            <div className="absolute inset-0 rounded-full" style={{ background: "linear-gradient(to right, #60A5FA 0%, #00B9A6 20%, #00B9A6 60%, #FBBF24 60%, #FBBF24 80%, #F87171 80%)" }} />
-            <div
-              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full border-2 border-white shadow-md transition-all duration-700 z-10"
-              style={{ left: `${bmiPct}%`, backgroundColor: bmiCol }}
-            />
-          </div>
-          <div className="flex justify-between mt-1">
-            {BMI_ZONES.map((z) => (
-              <span key={z.label} className="text-[9px]" style={{ color: z.color }}>{z.label}</span>
-            ))}
-          </div>
-        </div>
+        {/* This Week's Target */}
+        <WeeklyTargetPanel weeklyTarget={profile.weeklyTarget} cbmiClass={profile.cbmiClass} />
       </div>
 
       {/* Metrics grid */}
@@ -296,6 +275,83 @@ function MetricTile({
         </span>
         {sub && <span className="text-[10px] text-[#848181]">{sub}</span>}
       </div>
+    </div>
+  );
+}
+
+// ─── Weekly Target Panel ─────────────────────────────────────────────────────
+
+function WeeklyTargetPanel({
+  weeklyTarget,
+  cbmiClass,
+}: {
+  weeklyTarget?: WeeklyTargetDTO;
+  cbmiClass: string;
+}) {
+  const wrap = "cp-a flex-1 min-w-[180px]";
+  const eyebrow = "text-xs text-[#848181] mb-1.5 uppercase tracking-wider";
+
+  if (!weeklyTarget || !weeklyTarget.hasPlan) {
+    return (
+      <div className={wrap} style={{ animationDelay: "120ms" }}>
+        <p className={eyebrow}>This Week&apos;s Target</p>
+        <p className="text-sm text-[#848181] mt-2 leading-relaxed">
+          Set your plan start date to see your weekly targets.
+        </p>
+      </div>
+    );
+  }
+
+  const { direction, thisWeekTargetKg, weeklyDeltaKg, goalWeightKg, progressPct, weekIndex, totalWeeks } =
+    weeklyTarget;
+
+  if (direction === "maintain") {
+    return (
+      <div className={wrap} style={{ animationDelay: "120ms" }}>
+        <p className={eyebrow}>This Week&apos;s Target</p>
+        <p className="text-2xl font-bold text-[#00B9A6] mt-1">Maintain</p>
+        <p className="text-sm text-[#848181] mt-1">You&apos;re at a healthy weight.</p>
+        <p className="text-[10px] text-[#ABA6A6] mt-2 capitalize">{cbmiClass}</p>
+      </div>
+    );
+  }
+
+  const reached = progressPct >= 100;
+  const targetLbs = kgToLbs(thisWeekTargetKg);
+  const deltaLbs = Math.abs(kgToLbs(weeklyDeltaKg));
+  const arrow = direction === "gain" ? "▲" : "▼";
+
+  return (
+    <div className={wrap} style={{ animationDelay: "120ms" }}>
+      <p className={eyebrow}>This Week&apos;s Target</p>
+
+      {reached ? (
+        <>
+          <p className="text-2xl font-bold text-[#812549] mt-1">Goal reached</p>
+          <p className="text-sm text-[#848181] mt-1">
+            Maintain {kgToLbs(goalWeightKg).toFixed(1)} lbs
+          </p>
+        </>
+      ) : (
+        <>
+          <div className="flex items-baseline gap-2 mt-1">
+            <span className="text-2xl font-bold text-[#812549]">{targetLbs.toFixed(1)}</span>
+            <span className="text-xs font-medium text-[#CCC6C6]">lbs</span>
+            <span className="text-[11px] font-semibold text-[#B75E78]">
+              {arrow} {deltaLbs.toFixed(1)}/wk
+            </span>
+          </div>
+
+          {/* Curve area — filled in Task 4 */}
+          <div className="mt-2 h-[56px]" data-testid="weekly-curve-slot" />
+
+          <p className="text-[11px] text-[#848181] mt-1">
+            <span className="font-semibold text-[#1E1A1A]">▲ {Math.round(progressPct)}% there</span>
+            {" · "}week {weekIndex} of {totalWeeks}
+            <span className="text-[#ABA6A6] capitalize"> · {cbmiClass}</span>
+          </p>
+        </>
+      )}
     </div>
   );
 }
