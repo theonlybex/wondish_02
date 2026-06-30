@@ -620,6 +620,7 @@ function daysToGoalWalk(
   for (let d = 1; d <= 3650; d++) {
     const intake = gradualDailyCals(tdee, fromDay + d, cbmiClass, minCal, maintenanceFloor);
     const dayDelta = Math.abs(tdee - intake);
+    // No movement (e.g. a non lose/gain class) never reaches the goal — return the 10-year cap.
     if (dayDelta <= 0) return 3650;
     total += dayDelta;
     if (total >= neededKcal) return d;

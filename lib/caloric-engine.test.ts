@@ -65,6 +65,13 @@ test("gain: underweight projects upward toward goal", () => {
   assert.ok(wt.thisWeekTargetKg > wt.currentWeightKg, "target should be above current");
   assert.ok(wt.weeklyDeltaKg > 0, "delta should be positive for gain");
   assert.ok(wt.thisWeekTargetKg <= wt.goalWeightKg, "target never above goal");
+  assert.ok(wt.curve.length >= 1, "gain curve should have points");
+  for (const pt of wt.curve) {
+    assert.ok(pt.progressPct >= 0 && pt.progressPct <= 100, "gain curve bounded 0..100");
+  }
+  for (let i = 1; i < wt.curve.length; i++) {
+    assert.ok(wt.curve[i].progressPct >= wt.curve[i - 1].progressPct - 1e-6, "gain curve must rise");
+  }
 });
 
 test("maintain: healthy BMI has no weekly change", () => {
@@ -80,4 +87,6 @@ test("no plan: falls back to current as anchor, weekIndex 1, hasPlan false", () 
   assert.equal(wt.hasPlan, false);
   assert.equal(wt.weekIndex, 1);
   assert.equal(wt.anchorStartKg, wt.currentWeightKg);
+  assert.ok(wt.weeklyDeltaKg < 0, "no-plan overweight still projects a loss");
+  assert.ok(wt.thisWeekTargetKg < wt.currentWeightKg, "no-plan target below current");
 });
