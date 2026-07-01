@@ -267,6 +267,22 @@ export function minCalories(sex: Sex): number {
   return sex === "male" ? 1500 : 1200;
 }
 
+/**
+ * Maximum sustainable daily calorie deficit, scaled by how overweight the
+ * patient is (their current BMI). Rate anchors: BMI 25 → 0.5 lb/wk (gentle),
+ * BMI 35+ → 2.0 lb/wk (aggressive cap). This keeps barely-overweight plans
+ * easy and reserves deep deficits for those with the most to lose, so the
+ * weekly rate reflects severity instead of everyone bottoming out at minCal.
+ * Intake is still separately floored at minCal by the caller.
+ */
+export function maxDailyDeficit(cbmi: number): number {
+  const MIN_RATE_LB = 0.5, MAX_RATE_LB = 2.0;
+  const LOW_BMI = 25, HIGH_BMI = 35;
+  const t = Math.min(1, Math.max(0, (cbmi - LOW_BMI) / (HIGH_BMI - LOW_BMI)));
+  const weeklyLb = MIN_RATE_LB + t * (MAX_RATE_LB - MIN_RATE_LB);
+  return (weeklyLb * 0.453592 * 7700) / 7; // lb/wk → kcal/day
+}
+
 // ─── Full Caloric Profile ────────────────────────────────────────────────────
 
 export interface CaloricProfileInput {
@@ -503,28 +519,27 @@ export function gradualDailyDeficit(dayNumber: number): number {
 
 /**
  * Daily calorie target using the gradual cumulative deficit schedule.
- * Clamps to the minimum safe intake (minCal) so weight loss proceeds at a
- * standard pace (~1–2 lb/wk). The deficit still ramps in gradually and all
- * projections clamp at the goal weight, so intake never overshoots.
- *
- * NOTE: `maintenanceFloor` (TDEE at goal weight) is retained in the signature
- * for call-site compatibility but no longer raises the floor — flooring there
- * capped loss at (TDEE_current − TDEE_goal), which was far too gentle.
+ * The deficit ramps in gradually but is capped at `maxDeficit` (a severity-
+ * scaled per-day ceiling from maxDailyDeficit) so the sustained weekly rate
+ * matches how overweight the patient is instead of driving everyone down to
+ * the minimum. Intake is also floored at minCal for safety, and all
+ * projections clamp at the goal weight so intake never overshoots.
  */
 export function gradualDailyCals(
   tdeeCBW: number,
   dayNumber: number,
   cbmiClass: CBMIClass,
   minCal: number,
-  maintenanceFloor: number,
+  maxDeficit: number,
 ): number {
-  void maintenanceFloor;
-  const floor = minCal;
   if (cbmiClass === "overweight" || cbmiClass === "obese") {
+    // Floor = the deeper of (min safe calories) and (maintenance − max deficit).
+    const floor = Math.max(minCal, tdeeCBW - maxDeficit);
     return Math.max(Math.round(tdeeCBW - gradualDailyDeficit(dayNumber)), floor);
   }
   if (cbmiClass === "underweight") {
-    return Math.round(tdeeCBW + gradualDailyDeficit(dayNumber));
+    const ceiling = Math.round(tdeeCBW + maxDeficit);
+    return Math.min(Math.round(tdeeCBW + gradualDailyDeficit(dayNumber)), ceiling);
   }
   return Math.round(tdeeCBW);
 }
@@ -607,11 +622,11 @@ function clampTowardGoal(w: number, startKg: number, goalKg: number): number {
 // Cumulative kcal deficit (>0) or surplus (<0) over plan days [fromDay+1 .. fromDay+days].
 function cumulativeDeficitKcal(
   tdee: number, fromDay: number, days: number,
-  cbmiClass: CBMIClass, minCal: number, maintenanceFloor: number,
+  cbmiClass: CBMIClass, minCal: number, maxDeficit: number,
 ): number {
   let total = 0;
   for (let i = 1; i <= days; i++) {
-    const intake = gradualDailyCals(tdee, fromDay + i, cbmiClass, minCal, maintenanceFloor);
+    const intake = gradualDailyCals(tdee, fromDay + i, cbmiClass, minCal, maxDeficit);
     total += tdee - intake;
   }
   return total;
@@ -620,12 +635,12 @@ function cumulativeDeficitKcal(
 // Days for `startKg` to reach `goalKg`, walking the schedule from ramp day `fromDay+1`.
 function daysToGoalWalk(
   startKg: number, goalKg: number, tdee: number, fromDay: number,
-  cbmiClass: CBMIClass, minCal: number, maintenanceFloor: number,
+  cbmiClass: CBMIClass, minCal: number, maxDeficit: number,
 ): number {
   const neededKcal = Math.abs(startKg - goalKg) * KCAL_PER_KG;
   let total = 0;
   for (let d = 1; d <= 3650; d++) {
-    const intake = gradualDailyCals(tdee, fromDay + d, cbmiClass, minCal, maintenanceFloor);
+    const intake = gradualDailyCals(tdee, fromDay + d, cbmiClass, minCal, maxDeficit);
     const dayDelta = Math.abs(tdee - intake);
     // No movement (e.g. a non lose/gain class) never reaches the goal — return the 10-year cap.
     if (dayDelta <= 0) return 3650;
@@ -648,7 +663,9 @@ export function computeWeeklyTarget(args: {
   const cbmiClass = profile.cbmiClass;
   const minCal = profile.minCaloriesValue;
   const tdee = profile.tdeeCBW;
-  const maintenanceFloor = profile.tdeeUTBW ?? profile.tdeeWTBW;
+  // Severity-scaled per-day deficit cap — the sustained weekly rate follows how
+  // overweight the patient is (see maxDailyDeficit), not a fixed floor.
+  const maxDeficit = maxDailyDeficit(profile.cbmi);
   const hasPlan = args.planStartDate != null;
   const anchorStartKg = args.anchorStartKg ?? currentKg;
 
@@ -688,19 +705,19 @@ export function computeWeeklyTarget(args: {
   }
 
   // Hero: end-of-this-week projection from current weight at the true ramp position.
-  const weekKcal = cumulativeDeficitKcal(tdee, planDay, 7, cbmiClass, minCal, maintenanceFloor);
+  const weekKcal = cumulativeDeficitKcal(tdee, planDay, 7, cbmiClass, minCal, maxDeficit);
   const weeklyDeltaKg = -weekKcal / KCAL_PER_KG; // <0 losing, >0 gaining
   const thisWeekTargetKg = clampTowardGoal(currentKg + weeklyDeltaKg, currentKg, goalKg);
 
   // Adaptive horizon from current weight.
-  const daysRemaining = daysToGoalWalk(currentKg, goalKg, tdee, planDay, cbmiClass, minCal, maintenanceFloor);
+  const daysRemaining = daysToGoalWalk(currentKg, goalKg, tdee, planDay, cbmiClass, minCal, maxDeficit);
   const totalWeeks = Math.max(weekIndex, (weekIndex - 1) + Math.ceil(daysRemaining / 7));
 
   // Planned glide path from the anchor: progress% at the end of each week.
   const anchorSpan = anchorStartKg - goalKg;
   const curve: WeeklyTargetPoint[] = [];
   for (let k = 1; k <= totalWeeks; k++) {
-    const cumKcal = cumulativeDeficitKcal(tdee, 0, 7 * k, cbmiClass, minCal, maintenanceFloor);
+    const cumKcal = cumulativeDeficitKcal(tdee, 0, 7 * k, cbmiClass, minCal, maxDeficit);
     const plannedKg = clampTowardGoal(anchorStartKg - cumKcal / KCAL_PER_KG, anchorStartKg, goalKg);
     const pct = anchorSpan === 0 ? 100
       : Math.min(100, Math.max(0, ((anchorStartKg - plannedKg) / anchorSpan) * 100));

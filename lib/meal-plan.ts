@@ -6,6 +6,7 @@ import {
   getMacroPercentages,
   weeklyDailyCals,
   gradualDailyCals,
+  maxDailyDeficit,
   type Sex,
   type CaloricProfileInput,
   type MacroPercentages,
@@ -206,7 +207,7 @@ export async function buildMealPlanMenus(
   let baseTDEE: number = 0;
   let cbmiClass: CBMIClass = "healthy";
   let minCal: number = 2000;
-  let maintenanceFloor: number = 0; // TDEE at goal weight — floor for the gradual deficit
+  let maxDeficit: number = 0; // severity-scaled per-day deficit cap (see maxDailyDeficit)
 
   if (patient.weight && patient.height && patient.birthday && patient.physicalActivity?.level) {
     const sex = resolveSex(patient.sexAtBirth, patient.gender?.name);
@@ -223,16 +224,16 @@ export async function buildMealPlanMenus(
         utbwUnit:      (patient.goalWeightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs" | null,
       };
       const profile = computeAllMetrics(profileInput);
-      baseTDEE         = Math.round(profile.tdeeCBW);
-      cbmiClass        = profile.cbmiClass;
-      minCal           = profile.minCaloriesValue;
-      maintenanceFloor = Math.round(profile.targetCalories);
+      baseTDEE  = Math.round(profile.tdeeCBW);
+      cbmiClass = profile.cbmiClass;
+      minCal    = profile.minCaloriesValue;
+      maxDeficit = maxDailyDeficit(profile.cbmi);
     }
   }
 
   // Fall back to 2000 kcal / healthy class when the full caloric profile
   // cannot be computed (e.g. sexAtBirth missing).
-  if (baseTDEE === 0) { baseTDEE = 2000; minCal = 1200; maintenanceFloor = 2000; }
+  if (baseTDEE === 0) { baseTDEE = 2000; minCal = 1200; maxDeficit = maxDailyDeficit(22); }
 
   // Compute the plan end date dynamically:
   // - Overweight/obese: run the gradual ramp until the maintenance floor is hit,
@@ -240,14 +241,15 @@ export async function buildMealPlanMenus(
   // - All other CBMI classes: fixed 35 days using the original weekly schedule.
   const MAINTENANCE_BUFFER_DAYS = 35;
   const isDeficitPlan  = cbmiClass === "overweight" || cbmiClass === "obese";
-  // Floor the deficit ramp at minimum safe calories (see gradualDailyCals),
-  // not goal-weight maintenance, so the plan runs a standard-paced deficit.
-  const effectiveFloor = minCal;
+  // The ramp plateaus once the deficit reaches its severity-scaled cap
+  // (intake = maintenance − maxDeficit, but never below minCal). Treat that
+  // plateau as the end of the active ramp, then hold for the buffer.
+  const effectiveFloor = Math.max(minCal, baseTDEE - maxDeficit);
 
   let rampEndDay = 35;
   if (isDeficitPlan && baseTDEE > effectiveFloor) {
     for (let d = 1; d <= 365; d++) {
-      if (gradualDailyCals(baseTDEE, d, cbmiClass, minCal, maintenanceFloor) <= effectiveFloor) {
+      if (gradualDailyCals(baseTDEE, d, cbmiClass, minCal, maxDeficit) <= effectiveFloor) {
         rampEndDay = d;
         break;
       }
@@ -305,7 +307,7 @@ export async function buildMealPlanMenus(
     // Overweight/obese: gradual cumulative deficit that ramps weekly.
     // All other CBMI classes: original flat weekly schedule.
     const weekCals    = isDeficitPlan
-      ? gradualDailyCals(baseTDEE, dayIndex, cbmiClass, minCal, maintenanceFloor)
+      ? gradualDailyCals(baseTDEE, dayIndex, cbmiClass, minCal, maxDeficit)
       : weeklyDailyCals(baseTDEE, cbmiClass, Math.ceil(dayIndex / 7), minCal);
     const caloriePlan = computeMealCalories(weekCals);
 

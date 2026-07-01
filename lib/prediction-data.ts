@@ -3,6 +3,7 @@
 import {
   computeAllMetrics,
   gradualDailyCals,
+  maxDailyDeficit,
   getActivityMultiplier,
   type Sex,
 } from "./caloric-engine";
@@ -87,20 +88,19 @@ export function computePredictionEstimate(
   const weightToLoseKg =
     toKg(input.weightValue, input.weightUnit) - toKg(goalWeight, input.weightUnit);
 
-  const maintenanceFloor = Math.round(profile.targetCalories);
-  // Match the engine: the deficit floors at minimum safe calories, not
-  // goal-weight maintenance (see gradualDailyCals).
+  // A deficit is only possible if maintenance is above the minimum safe intake.
   const effectiveFloor = profile.minCaloriesValue;
   if (extraBurnPerDay <= 0 && profile.tdeeCBW <= effectiveFloor) return null;
 
-  // Day-by-day walk of the gradual deficit schedule (same as the engine's
-  // estimateDaysToGoalWeight), with the exercise delta added to each day.
+  // Day-by-day walk of the gradual deficit schedule (same schedule + severity-
+  // scaled cap the engine uses), with the exercise delta added to each day.
+  const maxDeficit = maxDailyDeficit(profile.cbmi);
   const totalKcalNeeded = weightToLoseKg * 7700;
   let days = 0;
   let totalDeficit = 0;
   for (let day = 1; day <= 3650; day++) {
     const intake = gradualDailyCals(
-      profile.tdeeCBW, day, profile.cbmiClass, profile.minCaloriesValue, maintenanceFloor,
+      profile.tdeeCBW, day, profile.cbmiClass, profile.minCaloriesValue, maxDeficit,
     );
     totalDeficit += profile.tdeeCBW + extraBurnPerDay - intake;
     if (totalDeficit >= totalKcalNeeded) {

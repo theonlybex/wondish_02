@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { regeneratePlan, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
 import { addDays } from "date-fns";
-import { computeAllMetrics, gradualDailyCals, type CaloricProfileInput } from "@/lib/caloric-engine";
+import { computeAllMetrics, gradualDailyCals, maxDailyDeficit, type CaloricProfileInput } from "@/lib/caloric-engine";
 
 export const maxDuration = 60;
 
@@ -47,7 +47,7 @@ function computeDailyTarget(
     dayNumber,
     profile.cbmiClass,
     profile.minCaloriesValue,
-    Math.round(profile.targetCalories),
+    maxDailyDeficit(profile.cbmi),
   );
 }
 

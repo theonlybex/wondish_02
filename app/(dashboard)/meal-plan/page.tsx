@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { format } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
-import { computeAllMetrics, gradualDailyCals, type CaloricProfileInput } from "@/lib/caloric-engine";
+import { computeAllMetrics, gradualDailyCals, maxDailyDeficit, type CaloricProfileInput } from "@/lib/caloric-engine";
 import DailyMealPlanView from "@/components/meal-plan/DailyMealPlanView";
 import Link from "next/link";
 
@@ -94,7 +94,7 @@ export default async function MealPlanPage() {
           dayNumber,
           profile.cbmiClass,
           profile.minCaloriesValue,
-          Math.round(profile.targetCalories),
+          maxDailyDeficit(profile.cbmi),
         );
       }
     }

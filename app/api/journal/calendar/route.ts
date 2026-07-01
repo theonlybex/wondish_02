@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import {
   computeAllMetrics,
   gradualDailyCals,
+  maxDailyDeficit,
   type Sex,
   type CaloricProfileInput,
   type CaloricProfile,
@@ -134,7 +135,7 @@ export async function GET() {
           dayNumber,
           caloricProfile.cbmiClass,
           caloricProfile.minCaloriesValue,
-          Math.round(caloricProfile.targetCalories),
+          maxDailyDeficit(caloricProfile.cbmi),
         );
       }
     }
