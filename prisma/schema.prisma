@@ -132,6 +132,7 @@ model Patient {
   mealPlanStale        Boolean        @default(false)
   mealPlanGenStartedAt DateTime?
   mealPlanError        String?
+  mealPlanWeight       Float? // current weight (lbs) when the active plan was generated — used to detect drift
 
   foodPreferences   PatientFoodPreference[]
   foodToAvoid       PatientFoodToAvoid[]
@@ -452,6 +453,8 @@ model JournalEntry {
   notes         String?
   meals         JournalMeal[]
   createdAt     DateTime      @default(now())
+
+  @@index([patientId, date])
 }
 
 model JournalMeal {
@@ -463,6 +466,8 @@ model JournalMeal {
   recipeId       String?
   skipped        Boolean      @default(false)
   rating         Float?
+
+  @@index([journalEntryId])
 }
 
 // ─── Reference Data ───────────────────────────────────────────────────────────

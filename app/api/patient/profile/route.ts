@@ -79,7 +79,7 @@ export async function PATCH(req: NextRequest) {
   const {
     firstName, lastName, birthday, sexAtBirth, height, heightUnit,
     heightFt, heightIn,
-    weight, weightUnit, physicalActivityId, goalWeight, goalWeightUnit,
+    weight, physicalActivityId, goalWeight,
     motivationIds, healthConditionIds, foodPreferenceIds, foodToAvoidIds, foodAllergyIds,
   } = body;
 
@@ -95,11 +95,13 @@ export async function PATCH(req: NextRequest) {
     },
   });
 
-  // Compute BMI using the caloric engine's unit-aware conversions
+  // Weight is always stored and displayed in lbs. The caloric engine converts
+  // lbs → kg internally at its single input boundary (convertWeight).
+  // Compute BMI using the caloric engine's unit-aware conversions.
   let bmi: number | null = null;
   if (height && weight) {
     const ht = convertHeight(parseFloat(height), heightUnit === "in" ? "in" : "cm");
-    const wt = convertWeight(parseFloat(weight), weightUnit === "lbs" ? "lbs" : "kg");
+    const wt = convertWeight(parseFloat(weight), "lbs");
     bmi = parseFloat(calcCBMI(wt.kg, ht.m2).toFixed(1));
   }
 
@@ -125,11 +127,11 @@ export async function PATCH(req: NextRequest) {
       heightFt: heightFt ? parseInt(heightFt) : null,
       heightIn: heightIn ? parseFloat(heightIn) : null,
       weight: weight ? parseFloat(weight) : null,
-      weightUnit: weightUnit ?? "lbs",
+      weightUnit: "lbs",
       bmi,
       physicalActivityId: physicalActivityId || null,
       goalWeight: goalWeight ? parseFloat(goalWeight) : null,
-      goalWeightUnit: goalWeightUnit ?? "lbs",
+      goalWeightUnit: "lbs",
       profileCompleted: isProfileComplete,
     },
     update: {
@@ -140,11 +142,11 @@ export async function PATCH(req: NextRequest) {
       heightFt: heightFt ? parseInt(heightFt) : null,
       heightIn: heightIn ? parseFloat(heightIn) : null,
       weight: weight ? parseFloat(weight) : undefined,
-      weightUnit: weightUnit ?? "lbs",
+      weightUnit: "lbs",
       bmi: bmi ?? undefined,
       physicalActivityId: physicalActivityId || null,
       goalWeight: goalWeight ? parseFloat(goalWeight) : undefined,
-      goalWeightUnit: goalWeightUnit ?? "lbs",
+      goalWeightUnit: "lbs",
       ...(isProfileComplete ? { profileCompleted: true } : {}),
     },
   });

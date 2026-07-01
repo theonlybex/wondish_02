@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { kgToLbs } from "@/lib/prediction-data";
 
 /* ─── Types ─────────────────────────────────────────────────────────────────── */
 
@@ -525,7 +526,7 @@ function CaloricSection({
                 Weight
               </p>
               <p className="font-bold" style={{ color: "#1E1A1A" }}>
-                {weight.toFixed(1)} <span style={{ color: "#848181" }}>kg</span>
+                {weight.toFixed(1)} <span style={{ color: "#848181" }}>lbs</span>
               </p>
             </div>
           )}
@@ -535,7 +536,7 @@ function CaloricSection({
                 Target
               </p>
               <p className="font-bold" style={{ color: "#B75E78" }}>
-                {profile.tbwKg.toFixed(1)} <span style={{ color: "#848181" }}>kg</span>
+                {kgToLbs(profile.tbwKg).toFixed(1)} <span style={{ color: "#848181" }}>lbs</span>
               </p>
             </div>
           )}
@@ -699,7 +700,7 @@ function JournalSection({
             <p className="text-sm font-bold" style={{ color: "#1E1A1A" }}>
               {weight.toFixed(1)}
               <span className="text-[10px] font-normal ml-0.5" style={{ color: "#848181" }}>
-                kg
+                lbs
               </span>
             </p>
           </div>

@@ -33,6 +33,10 @@ const KG_PER_LB = 0.453592;
 export const toKg = (v: number, unit: "kg" | "lbs") => (unit === "lbs" ? v * KG_PER_LB : v);
 export const fromKg = (v: number, unit: "kg" | "lbs") => (unit === "lbs" ? v / KG_PER_LB : v);
 
+// Display helper: convert an internal kg value (e.g. caloric-engine outputs that
+// only exist in kg) into lbs for the UI. Clients always see lbs.
+export const kgToLbs = (v: number) => v / KG_PER_LB;
+
 export function resolveSex(sexAtBirth: string | null | undefined): Sex | null {
   const s = (sexAtBirth ?? "").toLowerCase();
   if (s === "male") return "male";

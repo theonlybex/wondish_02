@@ -13,6 +13,7 @@ import {
   type CaloricProfileInput,
   type CaloricProfile,
 } from "@/lib/caloric-engine";
+import { kgToLbs } from "@/lib/prediction-data";
 
 interface RefData {
   genders: { id: string; name: string }[];
@@ -308,29 +309,15 @@ export default function ProfileForm({
             </div>
           )}
 
-          <div className="flex gap-2">
-            <Input
-              label="Weight"
-              type="number"
-              min="0"
-              step="0.1"
-              className="flex-1"
-              value={form.weight}
-              onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))}
-              placeholder="150"
-            />
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-[#1E1A1A]">Unit</label>
-              <Select
-                options={[
-                  { value: "lbs", label: "lbs" },
-                  { value: "kg", label: "kg" },
-                ]}
-                value={form.weightUnit}
-                onChange={(e) => setForm((f) => ({ ...f, weightUnit: e.target.value }))}
-              />
-            </div>
-          </div>
+          <Input
+            label="Weight (lbs)"
+            type="number"
+            min="0"
+            step="0.1"
+            value={form.weight}
+            onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))}
+            placeholder="150"
+          />
 
           <Select
             label="Physical Activity"
@@ -369,7 +356,7 @@ export default function ProfileForm({
               <div>
                 <span className="text-[#848181] text-xs">Target Weight</span>
                 <p className="font-bold text-[#1E1A1A]">
-                  {liveProfile.tbwKg.toFixed(1)} kg
+                  {kgToLbs(liveProfile.tbwKg).toFixed(1)} lbs
                 </p>
               </div>
             </div>
@@ -381,29 +368,15 @@ export default function ProfileForm({
       <section>
         <h2 className="text-base font-semibold text-navy mb-4">Goals</h2>
         <div className="grid sm:grid-cols-2 gap-4 mb-6">
-          <div className="flex gap-2">
-            <Input
-              label="Goal Weight"
-              type="number"
-              min="0"
-              step="0.1"
-              className="flex-1"
-              value={form.goalWeight}
-              onChange={(e) => setForm((f) => ({ ...f, goalWeight: e.target.value }))}
-              placeholder="65"
-            />
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-[#1E1A1A]">Unit</label>
-              <Select
-                options={[
-                  { value: "kg", label: "kg" },
-                  { value: "lbs", label: "lbs" },
-                ]}
-                value={form.goalWeightUnit}
-                onChange={(e) => setForm((f) => ({ ...f, goalWeightUnit: e.target.value }))}
-              />
-            </div>
-          </div>
+          <Input
+            label="Goal Weight (lbs)"
+            type="number"
+            min="0"
+            step="0.1"
+            value={form.goalWeight}
+            onChange={(e) => setForm((f) => ({ ...f, goalWeight: e.target.value }))}
+            placeholder="130"
+          />
         </div>
         <MultiSelectChips
           label="Motivations"

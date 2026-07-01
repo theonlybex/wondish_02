@@ -50,7 +50,7 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
   try {
     const patient = await prisma.patient.findUnique({
       where: { id: patientId },
-      select: { activePlanVersion: true },
+      select: { activePlanVersion: true, weight: true },
     });
     const nextVersion = (patient?.activePlanVersion ?? 0) + 1;
 
@@ -76,6 +76,9 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
         mealPlanStatus: "READY",
         mealPlanStale: false,
         mealPlanError: null,
+        // Anchor the plan to the weight it was built for, so later journal
+        // weigh-ins can detect meaningful drift and offer a regenerate.
+        mealPlanWeight: patient?.weight ?? null,
       },
     });
 

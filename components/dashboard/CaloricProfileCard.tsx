@@ -71,9 +71,9 @@ export default function CaloricProfileCard() {
   const isLosing = (profile.wtl ?? 0) > 0;
   const isGaining = (profile.wtg ?? 0) > 0;
   const journeyLabel = isLosing
-    ? `${fmt(profile.wtl, 1)} kg to lose`
+    ? `${fmt(kgToLbs(profile.wtl ?? 0), 1)} lbs to lose`
     : isGaining
-    ? `${fmt(profile.wtg, 1)} kg to gain`
+    ? `${fmt(kgToLbs(profile.wtg ?? 0), 1)} lbs to gain`
     : "At target weight";
 
   return (
@@ -152,19 +152,18 @@ export default function CaloricProfileCard() {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
         <MetricTile
           label="Current Weight"
-          value={`${fmt(profile.cbwKg)} kg`}
-          sub={`${fmt(profile.cbwLb)} lb`}
+          value={`${fmt(profile.cbwLb)} lbs`}
           delay="180ms"
         />
         <MetricTile
           label="Target Weight"
-          value={`${fmt(profile.tbwKg)} kg`}
+          value={`${fmt(kgToLbs(profile.tbwKg))} lbs`}
           accent
           delay="220ms"
         />
         <MetricTile
           label="Ideal Weight"
-          value={`${fmt(profile.ibwKg)} kg`}
+          value={`${fmt(kgToLbs(profile.ibwKg))} lbs`}
           delay="260ms"
         />
         <MetricTile
@@ -206,8 +205,8 @@ export default function CaloricProfileCard() {
           />
         </div>
         <div className="flex justify-between mt-1">
-          <span className="text-[10px] text-[#848181]">{fmt(profile.cbwKg)} kg</span>
-          <span className="text-[10px] text-[#848181]">{fmt(profile.tbwKg)} kg</span>
+          <span className="text-[10px] text-[#848181]">{fmt(profile.cbwLb)} lbs</span>
+          <span className="text-[10px] text-[#848181]">{fmt(kgToLbs(profile.tbwKg))} lbs</span>
         </div>
       </div>
 

@@ -22,11 +22,9 @@ export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const account = await prisma.account.findUnique({ where: { clerkId: userId } });
-  if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
-
-  const patient = await prisma.patient.findUnique({
-    where: { accountId: account.id },
+  // Single round-trip via the Clerk id relation (was account-then-patient).
+  const patient = await prisma.patient.findFirst({
+    where: { account: { clerkId: userId } },
     include: { physicalActivity: true },
   });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });

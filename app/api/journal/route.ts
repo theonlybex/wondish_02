@@ -1,15 +1,18 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { convertHeight, convertWeight, calcCBMI } from "@/lib/caloric-engine";
+
+// How far current weight must drift from the weight the active meal plan was
+// generated at before we flag the plan stale. Keeps daily weigh-in noise quiet.
+const WEIGHT_DRIFT_LBS = 5;
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const account = await prisma.account.findUnique({ where: { clerkId: userId } });
-  if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
-
-  const patient = await prisma.patient.findUnique({ where: { accountId: account.id } });
+  // Single round-trip via the Clerk id relation (was account-then-patient).
+  const patient = await prisma.patient.findFirst({ where: { account: { clerkId: userId } } });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
   const { searchParams } = new URL(req.url);
@@ -31,10 +34,8 @@ export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const account = await prisma.account.findUnique({ where: { clerkId: userId } });
-  if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
-
-  const patient = await prisma.patient.findUnique({ where: { accountId: account.id } });
+  // Single round-trip via the Clerk id relation (was account-then-patient).
+  const patient = await prisma.patient.findFirst({ where: { account: { clerkId: userId } } });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
   const body = await req.json();
@@ -79,6 +80,38 @@ export async function POST(req: NextRequest) {
       });
     }
   });
+
+  // Keep the account's CURRENT weight in sync with the most recent actual
+  // weigh-in. The journal is the ongoing ground truth — the latest-dated entry
+  // with a weight wins, so editing an older day never overrides a newer one.
+  const latestWeighIn = await prisma.journalEntry.findFirst({
+    where: { patientId: patient.id, weight: { not: null } },
+    orderBy: { date: "desc" },
+    select: { weight: true },
+  });
+  if (latestWeighIn?.weight != null) {
+    const currentWeight = latestWeighIn.weight; // lbs — the app's single unit
+    const data: { weight: number; weightUnit: string; bmi?: number; mealPlanStale?: boolean } = {
+      weight: currentWeight,
+      weightUnit: "lbs",
+    };
+    if (patient.height) {
+      const ht = convertHeight(patient.height, patient.heightUnit === "in" ? "in" : "cm");
+      const wt = convertWeight(currentWeight, "lbs");
+      data.bmi = parseFloat(calcCBMI(wt.kg, ht.m2).toFixed(1));
+    }
+    // Calorie targets are built from current weight. Only flag the plan stale
+    // once weight has drifted past the threshold from the weight it was built
+    // for — normal day-to-day fluctuation stays quiet.
+    if (
+      patient.mealPlanStartDate &&
+      patient.mealPlanWeight != null &&
+      Math.abs(currentWeight - patient.mealPlanWeight) >= WEIGHT_DRIFT_LBS
+    ) {
+      data.mealPlanStale = true;
+    }
+    await prisma.patient.update({ where: { id: patient.id }, data });
+  }
 
   return NextResponse.json({ ok: true });
 }

@@ -55,11 +55,9 @@ export async function GET(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const account = await prisma.account.findUnique({ where: { clerkId: userId } });
-  if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
-
-  const patient = await prisma.patient.findUnique({
-    where: { accountId: account.id },
+  // Single round-trip via the Clerk id relation (was account-then-patient).
+  const patient = await prisma.patient.findFirst({
+    where: { account: { clerkId: userId } },
     select: {
       id: true, mealPlanStartDate: true, activePlanVersion: true,
       weight: true, weightUnit: true,
@@ -131,7 +129,7 @@ export async function POST(req: NextRequest) {
 
   const account = await prisma.account.findUnique({
     where: { clerkId: userId },
-    include: { subscription: true, roles: { include: { role: true } } },
+    include: { subscription: true, roles: { include: { role: true } }, patient: true },
   });
   if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
 
@@ -140,7 +138,7 @@ export async function POST(req: NextRequest) {
   const isPremium = isAdmin || (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(sub?.status ?? ""));
   if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
-  const patient = await prisma.patient.findUnique({ where: { accountId: account.id } });
+  const patient = account.patient;
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
   if (!patient.profileCompleted) {

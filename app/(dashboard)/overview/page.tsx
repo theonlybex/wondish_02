@@ -169,7 +169,7 @@ export default async function OverviewPage() {
             </Link>
           </div>
           <div className="px-5 py-3 flex-1 overflow-auto">
-            <QuickJournalLog defaultWeightUnit="lbs" />
+            <QuickJournalLog />
           </div>
         </div>
 

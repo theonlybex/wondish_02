@@ -29,10 +29,6 @@ const ACTIVITY_OPTIONS = [
 const STEPS = ["mood", "weight", "energy", "activity", "notes"] as const;
 type Step = typeof STEPS[number];
 
-interface QuickJournalLogProps {
-  defaultWeightUnit?: string;
-}
-
 const STEP_QUESTIONS: Record<Step, string> = {
   mood: "How are you feeling?",
   weight: "What's your weight today?",
@@ -41,12 +37,11 @@ const STEP_QUESTIONS: Record<Step, string> = {
   notes: "Anything to note?",
 };
 
-export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJournalLogProps) {
+export default function QuickJournalLog() {
   const [stepIndex, setStepIndex] = useState(0);
   const [direction, setDirection] = useState(1);
   const [mood, setMood] = useState("");
   const [weight, setWeight] = useState("");
-  const [weightUnit, setWeightUnit] = useState(defaultWeightUnit);
   const [energyLevel, setEnergyLevel] = useState("");
   const [activityLevel, setActivityLevel] = useState("");
   const [notes, setNotes] = useState("");
@@ -73,12 +68,11 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
     setSaving(true);
     setError("");
     try {
-      let weightKg: string | null = null;
+      // Weight is stored in lbs — the client's single display unit.
+      let weightLbs: string | null = null;
       if (weight) {
         const w = parseFloat(weight);
-        if (!isNaN(w)) {
-          weightKg = String(weightUnit === "lbs" ? w * 0.45359237 : w);
-        }
+        if (!isNaN(w)) weightLbs = String(w);
       }
       const res = await fetch("/api/journal", {
         method: "POST",
@@ -86,7 +80,7 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
         body: JSON.stringify({
           date: format(new Date(), "yyyy-MM-dd"),
           mood: mood || null,
-          weight: weightKg,
+          weight: weightLbs,
           energyLevel: energyLevel || null,
           activityLevel: activityLevel || null,
           notes: notes || null,
@@ -215,24 +209,14 @@ export default function QuickJournalLog({ defaultWeightUnit = "lbs" }: QuickJour
                   onChange={(e) => setWeight(e.target.value)}
                   autoFocus
                   className="flex-1 px-4 py-3 rounded-xl border-2 border-[#F5F1DD] bg-white text-lg text-[#1E1A1A] font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all"
-                  placeholder={weightUnit === "lbs" ? "150" : "70"}
+                  placeholder="150"
                 />
-                <div className="flex flex-col rounded-xl overflow-hidden border-2 border-[#F5F1DD]">
-                  {(["lbs", "kg"] as const).map((u) => (
-                    <button
-                      key={u}
-                      type="button"
-                      onClick={() => setWeightUnit(u)}
-                      className="px-3 py-2 text-xs font-bold transition-colors"
-                      style={{
-                        background: weightUnit === u ? "#1E1A1A" : "#fff",
-                        color: weightUnit === u ? "#fff" : "#ABA6A6",
-                      }}
-                    >
-                      {u}
-                    </button>
-                  ))}
-                </div>
+                <span
+                  className="px-4 py-3 rounded-xl border-2 border-[#F5F1DD] text-sm font-bold"
+                  style={{ background: "#FAFAFA", color: "#848181" }}
+                >
+                  lbs
+                </span>
               </div>
             </div>
           )}

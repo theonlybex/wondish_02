@@ -59,7 +59,7 @@ export default function JourneyDashboard({ initialStats }: JourneyDashboardProps
         />
         <StatCard
           label="Avg Weight"
-          value={stats.avgWeight ? `${stats.avgWeight} kg` : "—"}
+          value={stats.avgWeight ? `${stats.avgWeight} lbs` : "—"}
           icon="⚖️"
         />
         <StatCard

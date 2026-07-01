@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
 
   const account = await prisma.account.findUnique({
     where: { clerkId: userId },
-    include: { subscription: true, roles: { include: { role: true } } },
+    include: { subscription: true, roles: { include: { role: true } }, patient: true },
   });
   if (!account) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const isPremium = isAdmin || (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(sub?.status ?? ""));
   if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
-  const patient = await prisma.patient.findUnique({ where: { accountId: account.id } });
+  const patient = account.patient;
   if (!patient) return NextResponse.json({ error: "No profile" }, { status: 404 });
 
   const { recipeId, liked } = await req.json();
@@ -40,7 +40,7 @@ export async function DELETE(req: NextRequest) {
 
   const account = await prisma.account.findUnique({
     where: { clerkId: userId },
-    include: { subscription: true, roles: { include: { role: true } } },
+    include: { subscription: true, roles: { include: { role: true } }, patient: true },
   });
   if (!account) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -49,7 +49,7 @@ export async function DELETE(req: NextRequest) {
   const isPremium = isAdmin || (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(sub?.status ?? ""));
   if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
-  const patient = await prisma.patient.findUnique({ where: { accountId: account.id } });
+  const patient = account.patient;
   if (!patient) return NextResponse.json({ error: "No profile" }, { status: 404 });
 
   const { searchParams } = new URL(req.url);

@@ -265,7 +265,7 @@ export default function JournalForm({
           {/* Weight */}
           <div>
             <label className="text-sm font-medium text-[#1E1A1A] block mb-1.5">
-              Weight (kg)
+              Weight (lbs)
             </label>
             <input
               type="number"
@@ -274,7 +274,7 @@ export default function JournalForm({
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
               className="w-32 px-3.5 py-2.5 rounded-xl border border-[#EAE4CA] bg-white text-sm text-[#1E1A1A] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-              placeholder="70.5"
+              placeholder="150"
             />
           </div>
 

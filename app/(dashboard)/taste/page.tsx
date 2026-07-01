@@ -15,10 +15,8 @@ export default async function TasteProfilePage({
   const { userId } = await auth();
   if (!userId) redirect("/login");
 
-  const account = await prisma.account.findUnique({ where: { clerkId: userId } });
-  if (!account) redirect("/login");
-
-  const patient = await prisma.patient.findUnique({ where: { accountId: account.id } });
+  // Single round-trip via the Clerk id relation (was account-then-patient).
+  const patient = await prisma.patient.findFirst({ where: { account: { clerkId: userId } } });
   if (!patient) redirect("/profile?onboarding=true");
 
   const tinderPrefs = await prisma.patientDishPreference.findMany({
