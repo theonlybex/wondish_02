@@ -342,6 +342,7 @@ function WeeklyTargetHero({
 function WeeklyTargetBand({ weeklyTarget, idealKg }: { weeklyTarget?: WeeklyTargetDTO; idealKg: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(760);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   useEffect(() => {
     const el = ref.current;
@@ -379,7 +380,20 @@ function WeeklyTargetBand({ weeklyTarget, idealKg }: { weeklyTarget?: WeeklyTarg
     maxWk === minWk ? PADX : PADX + ((week - minWk) / (maxWk - minWk)) * (w - 2 * PADX);
   const yFor = (pct: number) => H - BOT - (pct / 100) * (H - TOP - BOT);
 
-  const xy = curve.map((p, i) => ({ x: xFor(p.week), y: yFor(normProgress(p.progressPct, i)), week: p.week }));
+  const startLbs = kgToLbs(anchorStartKg);
+  const idealLbs = kgToLbs(idealKg);
+
+  // Each point carries its planned weight: interpolate start → ideal by the
+  // point's normalized height, so hovering shows the pounds at that spot.
+  const xy = curve.map((p, i) => {
+    const np = normProgress(p.progressPct, i);
+    return {
+      x: xFor(p.week),
+      y: yFor(np),
+      week: p.week,
+      lbs: startLbs + (np / 100) * (idealLbs - startLbs),
+    };
+  });
 
   // Smooth path via Catmull-Rom → cubic bezier.
   const line = (() => {
@@ -404,12 +418,27 @@ function WeeklyTargetBand({ weeklyTarget, idealKg }: { weeklyTarget?: WeeklyTarg
   const last = xy[xy.length - 1];
   const nowPt = xy.find((p) => p.week === weekIndex) ?? last;
 
-  const startLbs = kgToLbs(anchorStartKg);
-  const idealLbs = kgToLbs(idealKg);
+  const hover = hoverIdx != null ? xy[hoverIdx] : null;
+  const handleMove = (e: React.MouseEvent) => {
+    const el = ref.current;
+    if (!el || xy.length === 0) return;
+    const x = e.clientX - el.getBoundingClientRect().left;
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < xy.length; i++) {
+      const d = Math.abs(xy[i].x - x);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    setHoverIdx(best);
+  };
 
   return (
     <div className="cp-a mb-4" style={{ animationDelay: "180ms" }}>
-      <div ref={ref} className="w-full">
+      <div
+        ref={ref}
+        className="w-full relative cursor-crosshair"
+        onMouseMove={handleMove}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
         <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} aria-hidden="true" className="block">
           <defs>
             <linearGradient id="momentumFill" x1="0" y1="0" x2="0" y2="1">
@@ -446,7 +475,26 @@ function WeeklyTargetBand({ weeklyTarget, idealKg }: { weeklyTarget?: WeeklyTarg
           {/* pulsing "now" marker */}
           <circle cx={nowPt.x} cy={nowPt.y} r="5" fill="#812549" className="mc-pulse" />
           <circle cx={nowPt.x} cy={nowPt.y} r="5" fill="none" stroke="#fff" strokeWidth="1.5" />
+
+          {/* hover marker — the point under the cursor */}
+          {hover && (
+            <g>
+              <line x1={hover.x} y1={TOP} x2={hover.x} y2={baseline} stroke="#812549" strokeWidth="1" opacity="0.35" />
+              <circle cx={hover.x} cy={hover.y} r="4.5" fill="#812549" stroke="#fff" strokeWidth="1.5" />
+            </g>
+          )}
         </svg>
+
+        {/* weight tooltip for the hovered point */}
+        {hover && (
+          <div
+            className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg bg-[#1E1A1A] px-2 py-1 text-center shadow-lg"
+            style={{ left: Math.min(Math.max(hover.x, 34), w - 34), top: hover.y - 8 }}
+          >
+            <div className="text-[11px] font-bold text-white leading-tight tabular-nums">{hover.lbs.toFixed(1)} lbs</div>
+            <div className="text-[8px] uppercase tracking-wider text-white/60 leading-tight">week {hover.week}</div>
+          </div>
+        )}
       </div>
 
       {/* start / goal end labels */}
