@@ -503,7 +503,13 @@ export function gradualDailyDeficit(dayNumber: number): number {
 
 /**
  * Daily calorie target using the gradual cumulative deficit schedule.
- * Clamps to max(minCal, maintenanceFloor) — the TDEE at the patient's goal weight.
+ * Clamps to the minimum safe intake (minCal) so weight loss proceeds at a
+ * standard pace (~1–2 lb/wk). The deficit still ramps in gradually and all
+ * projections clamp at the goal weight, so intake never overshoots.
+ *
+ * NOTE: `maintenanceFloor` (TDEE at goal weight) is retained in the signature
+ * for call-site compatibility but no longer raises the floor — flooring there
+ * capped loss at (TDEE_current − TDEE_goal), which was far too gentle.
  */
 export function gradualDailyCals(
   tdeeCBW: number,
@@ -512,7 +518,8 @@ export function gradualDailyCals(
   minCal: number,
   maintenanceFloor: number,
 ): number {
-  const floor = Math.max(minCal, maintenanceFloor);
+  void maintenanceFloor;
+  const floor = minCal;
   if (cbmiClass === "overweight" || cbmiClass === "obese") {
     return Math.max(Math.round(tdeeCBW - gradualDailyDeficit(dayNumber)), floor);
   }

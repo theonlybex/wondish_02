@@ -71,9 +71,15 @@ export default function CaloricProfileCard() {
     );
   }
 
-  // Calorie ring: ratio of daily target vs TDEE for current weight
+  // Calorie ring: the daily target must reflect the actual deficit at the
+  // current point in the plan — the same schedule that drives the weekly-loss
+  // figure — not bare maintenance. Derive it from this week's deficit so the
+  // ring and the "X lbs/wk" badge tell a consistent story.
+  const weeklyDeltaKg = profile.weeklyTarget?.weeklyDeltaKg ?? 0;
+  const dailyDeficit = Math.abs(weeklyDeltaKg) * (7700 / 7); // kcal/day
+  const dailyTarget = Math.max(0, Math.round(profile.tdeeCBW - dailyDeficit));
   const calRatio = profile.tdeeCBW > 0
-    ? Math.min(1, profile.dailyCalories / profile.tdeeCBW)
+    ? Math.min(1, dailyTarget / profile.tdeeCBW)
     : 1;
   const circumference = 2 * Math.PI * 54;
   const dashOffset = circumference * (1 - calRatio);
@@ -138,7 +144,7 @@ export default function CaloricProfileCard() {
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-xl font-bold text-[#1E1A1A]">
-                {Math.round(profile.dailyCalories)}
+                {dailyTarget}
               </span>
               <span className="text-[10px] text-[#848181] uppercase tracking-wider">kcal/day</span>
             </div>

@@ -88,7 +88,9 @@ export function computePredictionEstimate(
     toKg(input.weightValue, input.weightUnit) - toKg(goalWeight, input.weightUnit);
 
   const maintenanceFloor = Math.round(profile.targetCalories);
-  const effectiveFloor = Math.max(profile.minCaloriesValue, maintenanceFloor);
+  // Match the engine: the deficit floors at minimum safe calories, not
+  // goal-weight maintenance (see gradualDailyCals).
+  const effectiveFloor = profile.minCaloriesValue;
   if (extraBurnPerDay <= 0 && profile.tdeeCBW <= effectiveFloor) return null;
 
   // Day-by-day walk of the gradual deficit schedule (same as the engine's

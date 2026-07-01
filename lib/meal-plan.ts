@@ -240,7 +240,9 @@ export async function buildMealPlanMenus(
   // - All other CBMI classes: fixed 35 days using the original weekly schedule.
   const MAINTENANCE_BUFFER_DAYS = 35;
   const isDeficitPlan  = cbmiClass === "overweight" || cbmiClass === "obese";
-  const effectiveFloor = Math.max(minCal, maintenanceFloor);
+  // Floor the deficit ramp at minimum safe calories (see gradualDailyCals),
+  // not goal-weight maintenance, so the plan runs a standard-paced deficit.
+  const effectiveFloor = minCal;
 
   let rampEndDay = 35;
   if (isDeficitPlan && baseTDEE > effectiveFloor) {
