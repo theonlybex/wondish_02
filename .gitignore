@@ -11,9 +11,6 @@ out/
 node_modules/
 npm-debug.log*
 
-# Prisma
-prisma/migrations/
-
 # Build artifacts
 dist/
 build/

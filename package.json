@@ -12,6 +12,7 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:import-recipes": "node scripts/import-recipes.mjs",
     "db:fetch-nutrition": "node scripts/fetch-nutrition.mjs"
