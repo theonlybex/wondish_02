@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CaloricProfileDTO } from "@/types";
 import type { WeeklyTargetDTO } from "@/types";
 import { kgToLbs } from "@/lib/prediction-data";
@@ -65,17 +65,6 @@ export default function CaloricProfileCard() {
   const circumference = 2 * Math.PI * 54;
   const dashOffset = circumference * (1 - calRatio);
 
-  // Weight journey progress
-  const totalDelta = Math.abs(profile.cbwKg - profile.tbwKg);
-  const progressPct = totalDelta > 0 ? 100 : 100;
-  const isLosing = (profile.wtl ?? 0) > 0;
-  const isGaining = (profile.wtg ?? 0) > 0;
-  const journeyLabel = isLosing
-    ? `${fmt(kgToLbs(profile.wtl ?? 0), 1)} lbs to lose`
-    : isGaining
-    ? `${fmt(kgToLbs(profile.wtg ?? 0), 1)} lbs to gain`
-    : "At target weight";
-
   return (
     <div className="bg-white h-full flex flex-col">
       <style>{`
@@ -111,8 +100,8 @@ export default function CaloricProfileCard() {
 
       <div className="p-5 flex-1 overflow-auto">
 
-      {/* Top row: Calorie ring + BMI gauge */}
-      <div className="flex flex-wrap gap-4 mb-4">
+      {/* Top row: Calorie ring + This Week's Target hero */}
+      <div className="flex flex-wrap items-center gap-5 mb-4">
         {/* Calorie ring */}
         <div className="cp-a flex flex-col items-center" style={{ animationDelay: "60ms" }}>
           <div className="relative w-[110px] h-[110px]">
@@ -144,9 +133,12 @@ export default function CaloricProfileCard() {
           <p className="text-xs text-[#848181] mt-1.5">Daily Target</p>
         </div>
 
-        {/* This Week's Target */}
-        <WeeklyTargetPanel weeklyTarget={profile.weeklyTarget} cbmiClass={profile.cbmiClass} />
+        {/* This Week's Target — hero text */}
+        <WeeklyTargetHero weeklyTarget={profile.weeklyTarget} cbmiClass={profile.cbmiClass} />
       </div>
+
+      {/* Full-width momentum band — the whole journey rising to goal */}
+      <WeeklyTargetBand weeklyTarget={profile.weeklyTarget} />
 
       {/* Metrics grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
@@ -183,31 +175,6 @@ export default function CaloricProfileCard() {
           value={`${fmt(profile.bodyFatPct)}%`}
           delay="380ms"
         />
-      </div>
-
-      {/* Weight journey bar */}
-      <div className="cp-a" style={{ animationDelay: "420ms" }}>
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-xs text-[#848181]">Weight Journey</span>
-          <span className="text-xs font-medium text-[#1E1A1A]">{journeyLabel}</span>
-        </div>
-        <div className="h-2 rounded-full bg-[#F0F0F2] overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-1000"
-            style={{
-              width: `${isLosing || isGaining ? Math.max(5, 100 - (totalDelta / profile.cbwKg) * 100) : progressPct}%`,
-              background: isLosing
-                ? "linear-gradient(90deg, #B75E78, #812549)"
-                : isGaining
-                ? "linear-gradient(90deg, #60A5FA, #3B82F6)"
-                : "linear-gradient(90deg, #00B9A6, #10B981)",
-            }}
-          />
-        </div>
-        <div className="flex justify-between mt-1">
-          <span className="text-[10px] text-[#848181]">{fmt(profile.cbwLb)} lbs</span>
-          <span className="text-[10px] text-[#848181]">{fmt(kgToLbs(profile.tbwKg))} lbs</span>
-        </div>
       </div>
 
       {/* Glossary */}
@@ -262,38 +229,130 @@ function MetricTile({
   );
 }
 
-// ─── Momentum Curve (rising progress %) ──────────────────────────────────────
+// ─── This Week's Target — hero text ──────────────────────────────────────────
 
-function MomentumCurve({
-  curve,
-  weekIndex,
+function WeeklyTargetHero({
+  weeklyTarget,
+  cbmiClass,
 }: {
-  curve: { week: number; progressPct: number }[];
-  weekIndex: number;
+  weeklyTarget?: WeeklyTargetDTO;
+  cbmiClass: string;
 }) {
-  const W = 180;
-  const H = 56;
-  const PAD = 6;
+  const wrap = "cp-a flex-1 min-w-[200px]";
+  const eyebrow = "text-[10px] tracking-[0.2em] uppercase font-bold text-[#ABA6A6] mb-2";
 
-  // Window to ~7 weeks centered on "now" so dots stay legible.
-  let pts = curve;
-  if (curve.length > 8) {
-    const start = Math.max(0, Math.min(weekIndex - 4, curve.length - 7));
-    pts = curve.slice(start, start + 7);
+  if (!weeklyTarget || !weeklyTarget.hasPlan) {
+    return (
+      <div className={wrap} style={{ animationDelay: "120ms" }}>
+        <p className={eyebrow}>This Week&apos;s Target</p>
+        <p className="text-sm text-[#848181] mt-1 leading-relaxed max-w-sm">
+          Set your plan start date to see your weekly targets and journey.
+        </p>
+      </div>
+    );
   }
-  if (pts.length === 0) return null;
 
-  const minWk = pts[0].week;
-  const maxWk = pts[pts.length - 1].week;
+  const {
+    direction, thisWeekTargetKg, weeklyDeltaKg, goalWeightKg,
+    progressPct, weekIndex, totalWeeks, curve,
+  } = weeklyTarget;
+
+  if (direction === "maintain") {
+    return (
+      <div className={wrap} style={{ animationDelay: "120ms" }}>
+        <p className={eyebrow}>This Week&apos;s Target</p>
+        <p className="text-4xl font-black text-[#00B9A6] leading-none">Maintain</p>
+        <p className="text-sm text-[#848181] mt-2">You&apos;re at a healthy weight — keep it steady.</p>
+      </div>
+    );
+  }
+
+  const reached = progressPct >= 100;
+  const targetLbs = kgToLbs(thisWeekTargetKg);
+  const deltaLbs = Math.abs(kgToLbs(weeklyDeltaKg));
+  const goalLbs = kgToLbs(goalWeightKg);
+  const arrow = direction === "gain" ? "▲" : "▼";
+  // Plan-only v1: "there" reflects the planned position at the current week
+  // (matches the band's "now" marker), not an actual-weight measurement.
+  const nowProgress = curve.find((c) => c.week === weekIndex)?.progressPct ?? progressPct;
+
+  return (
+    <div
+      className={wrap}
+      style={{ animationDelay: "120ms" }}
+      role="group"
+      aria-label={
+        reached
+          ? `Goal reached. Maintain ${goalLbs.toFixed(1)} pounds.`
+          : `This week's target ${targetLbs.toFixed(1)} pounds, ${Math.round(nowProgress)} percent through your plan, week ${weekIndex} of ${totalWeeks}.`
+      }
+    >
+      <p className={eyebrow}>This Week&apos;s Target</p>
+
+      {reached ? (
+        <>
+          <p className="text-4xl font-black text-[#812549] leading-none">Goal reached 🎉</p>
+          <p className="text-sm text-[#848181] mt-2">Maintain {goalLbs.toFixed(1)} lbs</p>
+        </>
+      ) : (
+        <>
+          <div className="flex items-end gap-2.5">
+            <span className="text-5xl font-black text-[#812549] leading-none tabular-nums">
+              {targetLbs.toFixed(1)}
+            </span>
+            <span className="text-base font-bold text-[#ABA6A6] mb-0.5">lbs</span>
+            <span className="inline-flex items-center text-xs font-bold text-[#B75E78] bg-[#B75E78]/10 rounded-full px-2 py-0.5 mb-1">
+              {arrow} {deltaLbs.toFixed(1)}/wk
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mt-3 text-xs">
+            <span className="font-bold text-[#812549]">▲ {Math.round(nowProgress)}% there</span>
+            <span className="text-[#D8D2D2]">•</span>
+            <span className="text-[#848181]">week {weekIndex} of {totalWeeks}</span>
+            <span className="text-[#D8D2D2]">•</span>
+            <span className="text-[#848181] capitalize">{cbmiClass}</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Full-width Momentum Band (whole-journey rising curve) ────────────────────
+
+function WeeklyTargetBand({ weeklyTarget }: { weeklyTarget?: WeeklyTargetDTO }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(760);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setW(el.clientWidth || 760);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  if (!weeklyTarget || !weeklyTarget.hasPlan || weeklyTarget.direction === "maintain") return null;
+  const { curve, weekIndex, anchorStartKg, goalWeightKg } = weeklyTarget;
+  if (!curve || curve.length < 2) return null;
+
+  const H = 94;
+  const PADX = 8;
+  const TOP = 12;
+  const BOT = 16;
+
+  const minWk = curve[0].week;
+  const maxWk = curve[curve.length - 1].week;
   const xFor = (week: number) =>
-    maxWk === minWk ? PAD : PAD + ((week - minWk) / (maxWk - minWk)) * (W - 2 * PAD);
-  const yFor = (pct: number) => H - PAD - (pct / 100) * (H - 2 * PAD);
+    maxWk === minWk ? PADX : PADX + ((week - minWk) / (maxWk - minWk)) * (w - 2 * PADX);
+  const yFor = (pct: number) => H - BOT - (pct / 100) * (H - TOP - BOT);
 
-  const xy = pts.map((p) => ({ x: xFor(p.week), y: yFor(p.progressPct), week: p.week }));
+  const xy = curve.map((p) => ({ x: xFor(p.week), y: yFor(p.progressPct), week: p.week }));
 
   // Smooth path via Catmull-Rom → cubic bezier.
   const line = (() => {
-    if (xy.length === 1) return `M ${xy[0].x} ${xy[0].y}`;
     let d = `M ${xy[0].x} ${xy[0].y}`;
     for (let i = 0; i < xy.length - 1; i++) {
       const p0 = xy[i - 1] ?? xy[i];
@@ -309,127 +368,66 @@ function MomentumCurve({
     return d;
   })();
 
-  const area = `${line} L ${xy[xy.length - 1].x} ${H - PAD} L ${xy[0].x} ${H - PAD} Z`;
+  const baseline = H - BOT;
+  const area = `${line} L ${xy[xy.length - 1].x} ${baseline} L ${xy[0].x} ${baseline} Z`;
+  const startPt = xy[0];
   const last = xy[xy.length - 1];
   const nowPt = xy.find((p) => p.week === weekIndex) ?? last;
 
+  const startLbs = kgToLbs(anchorStartKg);
+  const goalLbs = kgToLbs(goalWeightKg);
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }} aria-hidden="true">
-      <defs>
-        <linearGradient id="momentumFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#B75E78" stopOpacity="0.20" />
-          <stop offset="100%" stopColor="#B75E78" stopOpacity="0" />
-        </linearGradient>
-      </defs>
+    <div className="cp-a mb-4" style={{ animationDelay: "180ms" }}>
+      <div ref={ref} className="w-full">
+        <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} aria-hidden="true" className="block">
+          <defs>
+            <linearGradient id="momentumFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#B75E78" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#B75E78" stopOpacity="0" />
+            </linearGradient>
+          </defs>
 
-      <path d={area} fill="url(#momentumFill)" />
-      <path
-        d={line}
-        fill="none"
-        stroke="#B75E78"
-        strokeWidth="2"
-        strokeLinecap="round"
-        className="mc-draw"
-        pathLength={1}
-      />
+          {/* baseline */}
+          <line x1={startPt.x} y1={baseline} x2={last.x} y2={baseline} stroke="#F0EDE0" strokeWidth="1" />
 
-      {/* Goal flag at the top-right terminus */}
-      <g transform={`translate(${last.x}, ${last.y})`}>
-        <line x1="0" y1="0" x2="0" y2="-9" stroke="#812549" strokeWidth="1.5" />
-        <path d="M0 -9 L6 -7 L0 -5 Z" fill="#812549" />
-      </g>
+          {/* now vertical guide */}
+          <line
+            x1={nowPt.x} y1={nowPt.y} x2={nowPt.x} y2={baseline}
+            stroke="#B75E78" strokeWidth="1" strokeDasharray="2 3" opacity="0.5"
+          />
 
-      {/* Pulsing "now" dot */}
-      <circle cx={nowPt.x} cy={nowPt.y} r="3.5" fill="#812549" className="mc-pulse" />
-    </svg>
-  );
-}
+          {/* area + rising line */}
+          <path d={area} fill="url(#momentumFill)" />
+          <path
+            d={line} fill="none" stroke="#B75E78" strokeWidth="2.5"
+            strokeLinecap="round" className="mc-draw" pathLength={1}
+          />
 
-// ─── Weekly Target Panel ─────────────────────────────────────────────────────
+          {/* start marker */}
+          <circle cx={startPt.x} cy={startPt.y} r="3" fill="#fff" stroke="#B75E78" strokeWidth="1.5" />
 
-function WeeklyTargetPanel({
-  weeklyTarget,
-  cbmiClass,
-}: {
-  weeklyTarget?: WeeklyTargetDTO;
-  cbmiClass: string;
-}) {
-  const wrap = "cp-a flex-1 min-w-[180px]";
-  const eyebrow = "text-xs text-[#848181] mb-1.5 uppercase tracking-wider";
+          {/* goal flag at the top-right terminus */}
+          <g transform={`translate(${last.x}, ${last.y})`}>
+            <line x1="0" y1="0" x2="0" y2="-13" stroke="#812549" strokeWidth="1.75" />
+            <path d="M0 -13 L8 -10 L0 -7 Z" fill="#812549" />
+          </g>
 
-  if (!weeklyTarget || !weeklyTarget.hasPlan) {
-    return (
-      <div className={wrap} style={{ animationDelay: "120ms" }}>
-        <p className={eyebrow}>This Week&apos;s Target</p>
-        <p className="text-sm text-[#848181] mt-2 leading-relaxed">
-          Set your plan start date to see your weekly targets.
-        </p>
+          {/* pulsing "now" marker */}
+          <circle cx={nowPt.x} cy={nowPt.y} r="5" fill="#812549" className="mc-pulse" />
+          <circle cx={nowPt.x} cy={nowPt.y} r="5" fill="none" stroke="#fff" strokeWidth="1.5" />
+        </svg>
       </div>
-    );
-  }
 
-  const { direction, thisWeekTargetKg, weeklyDeltaKg, goalWeightKg, progressPct, weekIndex, totalWeeks } =
-    weeklyTarget;
-
-  if (direction === "maintain") {
-    return (
-      <div className={wrap} style={{ animationDelay: "120ms" }}>
-        <p className={eyebrow}>This Week&apos;s Target</p>
-        <p className="text-2xl font-bold text-[#00B9A6] mt-1">Maintain</p>
-        <p className="text-sm text-[#848181] mt-1">You&apos;re at a healthy weight.</p>
-        <p className="text-[10px] text-[#ABA6A6] mt-2 capitalize">{cbmiClass}</p>
+      {/* start / goal end labels */}
+      <div className="flex items-center justify-between mt-1 px-0.5">
+        <span className="text-[10px] font-semibold text-[#848181]">
+          {startLbs.toFixed(0)} lbs · start
+        </span>
+        <span className="text-[10px] font-semibold text-[#812549]">
+          goal · {goalLbs.toFixed(0)} lbs
+        </span>
       </div>
-    );
-  }
-
-  const reached = progressPct >= 100;
-  const targetLbs = kgToLbs(thisWeekTargetKg);
-  const deltaLbs = Math.abs(kgToLbs(weeklyDeltaKg));
-  const arrow = direction === "gain" ? "▲" : "▼";
-
-  // Hero (recompute-from-current), footer % (achieved: anchor→current) and the
-  // curve's "now" dot (planned glide path) use three different bases by design.
-  return (
-    <div
-      className={wrap}
-      style={{ animationDelay: "120ms" }}
-      role="group"
-      aria-label={
-        reached
-          ? `Goal reached. Maintain ${kgToLbs(goalWeightKg).toFixed(1)} pounds.`
-          : `This week's target ${targetLbs.toFixed(1)} pounds, ${Math.round(progressPct)} percent toward your goal, week ${weekIndex} of ${totalWeeks}.`
-      }
-    >
-      <p className={eyebrow}>This Week&apos;s Target</p>
-
-      {reached ? (
-        <>
-          <p className="text-2xl font-bold text-[#812549] mt-1">Goal reached</p>
-          <p className="text-sm text-[#848181] mt-1">
-            Maintain {kgToLbs(goalWeightKg).toFixed(1)} lbs
-          </p>
-        </>
-      ) : (
-        <>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-bold text-[#812549]">{targetLbs.toFixed(1)}</span>
-            <span className="text-xs font-medium text-[#848181]">lbs</span>
-            <span className="text-[11px] font-semibold text-[#B75E78]">
-              {arrow} {deltaLbs.toFixed(1)}/wk
-            </span>
-          </div>
-
-          <div className="mt-2">
-            <MomentumCurve curve={weeklyTarget.curve} weekIndex={weekIndex} />
-          </div>
-
-          <p className="text-[11px] text-[#848181] mt-1">
-            <span className="font-semibold text-[#1E1A1A]">▲ {Math.round(progressPct)}% there</span>
-            {" · "}week {weekIndex} of {totalWeeks}
-            <span className="text-[#848181] capitalize"> · {cbmiClass}</span>
-          </p>
-        </>
-      )}
     </div>
   );
 }
