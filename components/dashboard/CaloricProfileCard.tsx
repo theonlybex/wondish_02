@@ -5,32 +5,6 @@ import { CaloricProfileDTO } from "@/types";
 import type { WeeklyTargetDTO } from "@/types";
 import { kgToLbs } from "@/lib/prediction-data";
 
-const BMI_ZONES = [
-  { label: "Underweight", max: 18.5, color: "#60A5FA" },
-  { label: "Healthy", max: 25, color: "#00B9A6" },
-  { label: "Overweight", max: 30, color: "#FBBF24" },
-  { label: "Obese", max: 50, color: "#F87171" },
-];
-
-function bmiColor(bmi: number): string {
-  for (const z of BMI_ZONES) {
-    if (bmi < z.max) return z.color;
-  }
-  return BMI_ZONES[BMI_ZONES.length - 1].color;
-}
-
-function bmiPercent(bmi: number): number {
-  // Zone-based mapping so healthy sits in the visual center:
-  // Underweight (<18.5) → 0–20%
-  // Healthy (18.5–25)   → 20–60%
-  // Overweight (25–30)  → 60–80%
-  // Obese (30+)         → 80–100%
-  if (bmi < 18.5) return Math.max(0, ((bmi - 10) / 8.5) * 20);
-  if (bmi < 25)   return 20 + ((bmi - 18.5) / 6.5) * 40;
-  if (bmi < 30)   return 60 + ((bmi - 25) / 5) * 20;
-  return Math.min(100, 80 + ((bmi - 30) / 15) * 20);
-}
-
 function fmt(n: number | null | undefined, decimals = 1): string {
   if (n == null) return "—";
   return n.toFixed(decimals);
@@ -83,9 +57,6 @@ export default function CaloricProfileCard() {
       </div>
     );
   }
-
-  const bmiPct = bmiPercent(profile.cbmi);
-  const bmiCol = bmiColor(profile.cbmi);
 
   // Calorie ring: ratio of daily target vs TDEE for current weight
   const calRatio = profile.tdeeCBW > 0
