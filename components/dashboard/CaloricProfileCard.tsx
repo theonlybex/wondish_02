@@ -97,7 +97,7 @@ export default function CaloricProfileCard() {
           0%, 100% { opacity: 1; transform: scale(1); transform-origin: center; }
           50%      { opacity: 0.5; transform: scale(1.45); transform-origin: center; }
         }
-        .mc-draw { stroke-dasharray: 1; stroke-dashoffset: 0; animation: mc-draw-kf 0.6s ease-out both 0.2s; }
+        .mc-draw { stroke-dasharray: 1; animation: mc-draw-kf 0.3s ease-out both 0.1s; }
         .mc-pulse { animation: mc-pulse-kf 2.4s ease-in-out infinite; transform-box: fill-box; }
         @media (prefers-reduced-motion: reduce) {
           .mc-draw, .mc-pulse { animation: none; }
