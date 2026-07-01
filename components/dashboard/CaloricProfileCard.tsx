@@ -89,6 +89,19 @@ export default function CaloricProfileCard() {
         }
         .cp-a { animation: cp-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
         .cp-ring { animation: cp-ring 1.2s cubic-bezier(0.22, 1, 0.36, 1) both 0.3s; }
+        @keyframes mc-draw-kf {
+          from { stroke-dashoffset: 1; }
+          to   { stroke-dashoffset: 0; }
+        }
+        @keyframes mc-pulse-kf {
+          0%, 100% { opacity: 1; transform: scale(1); transform-origin: center; }
+          50%      { opacity: 0.5; transform: scale(1.45); transform-origin: center; }
+        }
+        .mc-draw { stroke-dasharray: 1; stroke-dashoffset: 0; animation: mc-draw-kf 0.6s ease-out both 0.2s; }
+        .mc-pulse { animation: mc-pulse-kf 2.4s ease-in-out infinite; transform-box: fill-box; }
+        @media (prefers-reduced-motion: reduce) {
+          .mc-draw, .mc-pulse { animation: none; }
+        }
       `}</style>
 
       <div className="flex items-center gap-2.5 px-5 py-3 border-b border-[#F5F1DD] flex-shrink-0">
@@ -250,6 +263,89 @@ function MetricTile({
   );
 }
 
+// ─── Momentum Curve (rising progress %) ──────────────────────────────────────
+
+function MomentumCurve({
+  curve,
+  weekIndex,
+}: {
+  curve: { week: number; progressPct: number }[];
+  weekIndex: number;
+}) {
+  const W = 180;
+  const H = 56;
+  const PAD = 6;
+
+  // Window to ~7 weeks centered on "now" so dots stay legible.
+  let pts = curve;
+  if (curve.length > 8) {
+    const start = Math.max(0, Math.min(weekIndex - 4, curve.length - 7));
+    pts = curve.slice(start, start + 7);
+  }
+  if (pts.length === 0) return null;
+
+  const minWk = pts[0].week;
+  const maxWk = pts[pts.length - 1].week;
+  const xFor = (week: number) =>
+    maxWk === minWk ? PAD : PAD + ((week - minWk) / (maxWk - minWk)) * (W - 2 * PAD);
+  const yFor = (pct: number) => H - PAD - (pct / 100) * (H - 2 * PAD);
+
+  const xy = pts.map((p) => ({ x: xFor(p.week), y: yFor(p.progressPct), week: p.week }));
+
+  // Smooth path via Catmull-Rom → cubic bezier.
+  const line = (() => {
+    if (xy.length === 1) return `M ${xy[0].x} ${xy[0].y}`;
+    let d = `M ${xy[0].x} ${xy[0].y}`;
+    for (let i = 0; i < xy.length - 1; i++) {
+      const p0 = xy[i - 1] ?? xy[i];
+      const p1 = xy[i];
+      const p2 = xy[i + 1];
+      const p3 = xy[i + 2] ?? p2;
+      const c1x = p1.x + (p2.x - p0.x) / 6;
+      const c1y = p1.y + (p2.y - p0.y) / 6;
+      const c2x = p2.x - (p3.x - p1.x) / 6;
+      const c2y = p2.y - (p3.y - p1.y) / 6;
+      d += ` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2.x} ${p2.y}`;
+    }
+    return d;
+  })();
+
+  const area = `${line} L ${xy[xy.length - 1].x} ${H - PAD} L ${xy[0].x} ${H - PAD} Z`;
+  const last = xy[xy.length - 1];
+  const nowPt = xy.find((p) => p.week === weekIndex) ?? last;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }} aria-hidden="true">
+      <defs>
+        <linearGradient id="momentumFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#B75E78" stopOpacity="0.20" />
+          <stop offset="100%" stopColor="#B75E78" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+
+      <path d={area} fill="url(#momentumFill)" />
+      <path
+        d={line}
+        fill="none"
+        stroke="#B75E78"
+        strokeWidth="2"
+        strokeLinecap="round"
+        className="mc-draw"
+        pathLength={1}
+      />
+
+      {/* Goal flag at the top-right terminus */}
+      <g transform={`translate(${last.x}, ${last.y})`}>
+        <line x1="0" y1="0" x2="0" y2="-9" stroke="#812549" strokeWidth="1.5" />
+        <path d="M0 -9 L6 -7 L0 -5 Z" fill="#812549" />
+      </g>
+
+      {/* Pulsing "now" dot */}
+      <circle cx={nowPt.x} cy={nowPt.y} r="3.5" fill="#812549" className="mc-pulse" />
+    </svg>
+  );
+}
+
 // ─── Weekly Target Panel ─────────────────────────────────────────────────────
 
 function WeeklyTargetPanel({
@@ -313,8 +409,9 @@ function WeeklyTargetPanel({
             </span>
           </div>
 
-          {/* Curve area — filled in Task 4 */}
-          <div className="mt-2 h-[56px]" data-testid="weekly-curve-slot" />
+          <div className="mt-2">
+            <MomentumCurve curve={weeklyTarget.curve} weekIndex={weekIndex} />
+          </div>
 
           <p className="text-[11px] text-[#848181] mt-1">
             <span className="font-semibold text-[#1E1A1A]">▲ {Math.round(progressPct)}% there</span>
