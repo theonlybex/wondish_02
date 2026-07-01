@@ -388,8 +388,19 @@ function WeeklyTargetPanel({
   const deltaLbs = Math.abs(kgToLbs(weeklyDeltaKg));
   const arrow = direction === "gain" ? "▲" : "▼";
 
+  // Hero (recompute-from-current), footer % (achieved: anchor→current) and the
+  // curve's "now" dot (planned glide path) use three different bases by design.
   return (
-    <div className={wrap} style={{ animationDelay: "120ms" }}>
+    <div
+      className={wrap}
+      style={{ animationDelay: "120ms" }}
+      role="group"
+      aria-label={
+        reached
+          ? `Goal reached. Maintain ${kgToLbs(goalWeightKg).toFixed(1)} pounds.`
+          : `This week's target ${targetLbs.toFixed(1)} pounds, ${Math.round(progressPct)} percent toward your goal, week ${weekIndex} of ${totalWeeks}.`
+      }
+    >
       <p className={eyebrow}>This Week&apos;s Target</p>
 
       {reached ? (
@@ -403,7 +414,7 @@ function WeeklyTargetPanel({
         <>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-bold text-[#812549]">{targetLbs.toFixed(1)}</span>
-            <span className="text-xs font-medium text-[#CCC6C6]">lbs</span>
+            <span className="text-xs font-medium text-[#848181]">lbs</span>
             <span className="text-[11px] font-semibold text-[#B75E78]">
               {arrow} {deltaLbs.toFixed(1)}/wk
             </span>
@@ -416,7 +427,7 @@ function WeeklyTargetPanel({
           <p className="text-[11px] text-[#848181] mt-1">
             <span className="font-semibold text-[#1E1A1A]">▲ {Math.round(progressPct)}% there</span>
             {" · "}week {weekIndex} of {totalWeeks}
-            <span className="text-[#ABA6A6] capitalize"> · {cbmiClass}</span>
+            <span className="text-[#848181] capitalize"> · {cbmiClass}</span>
           </p>
         </>
       )}
