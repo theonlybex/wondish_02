@@ -89,6 +89,11 @@ export default function QuickJournalLog() {
       });
       if (!res.ok) throw new Error("Failed");
       setSaved(true);
+      // Notify sibling cards (e.g. Caloric Profile) that the weigh-in changed
+      // so they can refetch live instead of waiting for a page reload.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("journal:saved"));
+      }
     } catch {
       setError("Could not save.");
     } finally {
@@ -97,6 +102,15 @@ export default function QuickJournalLog() {
   };
 
   const hasData = mood || weight || energyLevel || activityLevel || notes;
+
+  const stepFilled: Record<Step, boolean> = {
+    mood: !!mood,
+    weight: !!weight,
+    energy: !!energyLevel,
+    activity: !!activityLevel,
+    notes: !!notes,
+  };
+  const currentFilled = stepFilled[currentStep];
 
   if (saved) {
     return (
@@ -130,7 +144,7 @@ export default function QuickJournalLog() {
   };
 
   return (
-    <div>
+    <div className="flex flex-col h-full">
       {/* Progress dots */}
       <div className="flex items-center gap-1.5 mb-5">
         {STEPS.map((s, i) => (
@@ -153,7 +167,9 @@ export default function QuickJournalLog() {
         </span>
       </div>
 
-      {/* Question */}
+      {/* Question — flex-1 lets this region grow so the navigation row is
+          always pinned to the bottom of the card, regardless of step height. */}
+      <div className="flex-1 min-h-[136px] overflow-x-clip">
       <AnimatePresence mode="wait" custom={direction}>
         <motion.div
           key={currentStep}
@@ -179,7 +195,7 @@ export default function QuickJournalLog() {
                   key={opt.value}
                   type="button"
                   onClick={() => handleSelect(setMood, opt.value, mood)}
-                  className="flex-1 flex flex-col items-center gap-1 py-3 rounded-xl border-2 transition-all text-2xl cursor-pointer"
+                  className="flex-1 min-w-0 flex flex-col items-center gap-1 py-3 rounded-xl border-2 transition-all text-2xl cursor-pointer"
                   style={{
                     borderColor: mood === opt.value ? "#812549" : "#F5F1DD",
                     background: mood === opt.value ? "rgba(129,37,73,0.08)" : "#fff",
@@ -207,8 +223,14 @@ export default function QuickJournalLog() {
                   step="0.1"
                   value={weight}
                   onChange={(e) => setWeight(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      advance(1);
+                    }
+                  }}
                   autoFocus
-                  className="flex-1 px-4 py-3 rounded-xl border-2 border-[#F5F1DD] bg-white text-lg text-[#1E1A1A] font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all"
+                  className="flex-1 min-w-0 px-4 py-3 rounded-xl border-2 border-[#F5F1DD] bg-white text-lg text-[#1E1A1A] font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all"
                   placeholder="150"
                 />
                 <span
@@ -288,6 +310,7 @@ export default function QuickJournalLog() {
           )}
         </motion.div>
       </AnimatePresence>
+      </div>
 
       {/* Navigation */}
       <div className="flex items-center gap-2 mt-5">
@@ -303,14 +326,29 @@ export default function QuickJournalLog() {
         )}
 
         {!isLast ? (
-          <button
-            type="button"
-            onClick={() => advance(1)}
-            className="ml-auto px-4 py-2 rounded-xl text-xs font-bold transition-all"
-            style={{ background: "#F5F1DD", color: "#848181" }}
-          >
-            Skip →
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => advance(1)}
+              className="px-4 py-2 rounded-xl text-xs font-bold transition-all"
+              style={{ background: "#F5F1DD", color: "#848181", cursor: "pointer" }}
+            >
+              Skip →
+            </button>
+            <button
+              type="button"
+              onClick={() => advance(1)}
+              disabled={!currentFilled}
+              className="px-4 py-2 rounded-xl text-xs font-bold transition-all"
+              style={
+                currentFilled
+                  ? { background: "#812549", color: "#fff", cursor: "pointer" }
+                  : { background: "#F5F1DD", color: "#CCC6C6", cursor: "not-allowed" }
+              }
+            >
+              Next →
+            </button>
+          </div>
         ) : (
           <button
             type="button"
@@ -319,7 +357,7 @@ export default function QuickJournalLog() {
             className="ml-auto inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all"
             style={
               hasData && !saving
-                ? { background: "#1E1A1A", color: "#812549", cursor: "pointer" }
+                ? { background: "#812549", color: "#fff", cursor: "pointer" }
                 : { background: "#F5F1DD", color: "#CCC6C6", cursor: "not-allowed" }
             }
           >

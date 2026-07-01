@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CaloricProfileDTO } from "@/types";
 import type { WeeklyTargetDTO } from "@/types";
 import { kgToLbs } from "@/lib/prediction-data";
@@ -15,24 +15,37 @@ export default function CaloricProfileCard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/patient/caloric-profile");
-        if (!res.ok) {
-          const data = await res.json();
-          setError(data.error || "Could not load caloric profile");
-          return;
-        }
+  // `silent` refetches (e.g. after a journal weigh-in) update the numbers in
+  // place without flashing the loading skeleton or replaying the animations.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const res = await fetch("/api/patient/caloric-profile");
+      if (!res.ok) {
         const data = await res.json();
-        setProfile(data.profile);
-      } catch {
-        setError("Network error");
-      } finally {
-        setLoading(false);
+        setError(data.error || "Could not load caloric profile");
+        return;
       }
-    })();
+      const data = await res.json();
+      setProfile(data.profile);
+      setError("");
+    } catch {
+      setError("Network error");
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Refetch live when a Daily Journal weigh-in updates the current weight.
+  useEffect(() => {
+    const onSaved = () => load(true);
+    window.addEventListener("journal:saved", onSaved);
+    return () => window.removeEventListener("journal:saved", onSaved);
+  }, [load]);
 
   if (loading) {
     return (
@@ -137,8 +150,8 @@ export default function CaloricProfileCard() {
         <WeeklyTargetHero weeklyTarget={profile.weeklyTarget} cbmiClass={profile.cbmiClass} />
       </div>
 
-      {/* Full-width momentum band — the whole journey rising to goal */}
-      <WeeklyTargetBand weeklyTarget={profile.weeklyTarget} />
+      {/* Full-width momentum band — the whole journey rising to ideal weight */}
+      <WeeklyTargetBand weeklyTarget={profile.weeklyTarget} idealKg={profile.ibwKg} />
 
       {/* Metrics grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
@@ -320,7 +333,7 @@ function WeeklyTargetHero({
 
 // ─── Full-width Momentum Band (whole-journey rising curve) ────────────────────
 
-function WeeklyTargetBand({ weeklyTarget }: { weeklyTarget?: WeeklyTargetDTO }) {
+function WeeklyTargetBand({ weeklyTarget, idealKg }: { weeklyTarget?: WeeklyTargetDTO; idealKg: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(760);
 
@@ -335,8 +348,19 @@ function WeeklyTargetBand({ weeklyTarget }: { weeklyTarget?: WeeklyTargetDTO }) 
   }, []);
 
   if (!weeklyTarget || !weeklyTarget.hasPlan || weeklyTarget.direction === "maintain") return null;
-  const { curve, weekIndex, anchorStartKg, goalWeightKg } = weeklyTarget;
+  const { curve, weekIndex, anchorStartKg } = weeklyTarget;
   if (!curve || curve.length < 2) return null;
+
+  // The journey always spans start (0%, bottom-left) → ideal weight (100%,
+  // top-right): normalize the planned glide so it fills the full height and
+  // terminates in the top-right corner, regardless of where the plan math lands.
+  const firstP = curve[0].progressPct;
+  const lastP = curve[curve.length - 1].progressPct;
+  const pRange = lastP - firstP;
+  const normProgress = (p: number, i: number) =>
+    pRange > 0
+      ? ((p - firstP) / pRange) * 100
+      : curve.length > 1 ? (i / (curve.length - 1)) * 100 : 100;
 
   const H = 94;
   const PADX = 8;
@@ -349,7 +373,7 @@ function WeeklyTargetBand({ weeklyTarget }: { weeklyTarget?: WeeklyTargetDTO }) 
     maxWk === minWk ? PADX : PADX + ((week - minWk) / (maxWk - minWk)) * (w - 2 * PADX);
   const yFor = (pct: number) => H - BOT - (pct / 100) * (H - TOP - BOT);
 
-  const xy = curve.map((p) => ({ x: xFor(p.week), y: yFor(p.progressPct), week: p.week }));
+  const xy = curve.map((p, i) => ({ x: xFor(p.week), y: yFor(normProgress(p.progressPct, i)), week: p.week }));
 
   // Smooth path via Catmull-Rom → cubic bezier.
   const line = (() => {
@@ -375,7 +399,7 @@ function WeeklyTargetBand({ weeklyTarget }: { weeklyTarget?: WeeklyTargetDTO }) 
   const nowPt = xy.find((p) => p.week === weekIndex) ?? last;
 
   const startLbs = kgToLbs(anchorStartKg);
-  const goalLbs = kgToLbs(goalWeightKg);
+  const idealLbs = kgToLbs(idealKg);
 
   return (
     <div className="cp-a mb-4" style={{ animationDelay: "180ms" }}>
@@ -425,7 +449,7 @@ function WeeklyTargetBand({ weeklyTarget }: { weeklyTarget?: WeeklyTargetDTO }) 
           {startLbs.toFixed(0)} lbs · start
         </span>
         <span className="text-[10px] font-semibold text-[#812549]">
-          goal · {goalLbs.toFixed(0)} lbs
+          ideal · {idealLbs.toFixed(0)} lbs
         </span>
       </div>
     </div>
