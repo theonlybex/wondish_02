@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeAllMetrics, computeWeeklyTarget } from "./caloric-engine";
+import {
+  computeAllMetrics,
+  computeWeeklyTarget,
+  capWindowToDayBudget,
+  DAY_CALORIE_TOLERANCE,
+} from "./caloric-engine";
 
 const birthday = new Date("1994-01-01"); // ~age 32 at test time
 
@@ -79,6 +84,29 @@ test("maintain: healthy BMI has no weekly change", () => {
   const wt = computeWeeklyTarget({ profile: p, anchorStartKg: 60, planStartDate: twoWeeksAgo, now });
   assert.equal(wt.direction, "maintain");
   assert.equal(wt.weeklyDeltaKg, 0);
+});
+
+test("day budget: window untouched when it fits the remaining budget", () => {
+  // Day target 2000 → budget 2100; 800 already planned → 1300 remaining.
+  const w = capWindowToDayBudget(300, 900, 2000 * DAY_CALORIE_TOLERANCE, 800);
+  assert.deepEqual(w, { calMin: 300, calMax: 900 });
+});
+
+test("day budget: calMax is clamped to the remaining budget", () => {
+  // Budget 2100; 1800 already planned → only 300 left, so max 500 → 300.
+  const w = capWindowToDayBudget(100, 500, 2100, 1800);
+  assert.deepEqual(w, { calMin: 100, calMax: 300 });
+});
+
+test("day budget: pick is skipped when remaining budget is below the window minimum", () => {
+  // Budget 2100; 1800 planned → 300 left, but the step needs at least 400.
+  const w = capWindowToDayBudget(400, 700, 2100, 1800);
+  assert.equal(w, null);
+});
+
+test("day budget: pick is skipped when the budget is already exhausted", () => {
+  const w = capWindowToDayBudget(0, 500, 2100, 2200);
+  assert.equal(w, null);
 });
 
 test("no plan: falls back to current as anchor, weekIndex 1, hasPlan false", () => {

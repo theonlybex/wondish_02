@@ -733,6 +733,29 @@ export function computeWeeklyTarget(args: {
   };
 }
 
+// ─── Day-Level Calorie Budget ─────────────────────────────────────────────────
+
+// Allowed overshoot of the day's calorie target. Per-meal search windows reach
+// 135% of a meal's target, so without a day-level cap a "deficit" day could
+// assemble to ~135% of its total and erase the planned deficit entirely.
+export const DAY_CALORIE_TOLERANCE = 1.05;
+
+/**
+ * Clamp a recipe-search calorie window [calMin, calMax] to the day's remaining
+ * budget (dayBudget − caloriesAlreadyPlanned). Returns null when the remaining
+ * budget can't fit the window's minimum — the pick should be skipped.
+ */
+export function capWindowToDayBudget(
+  calMin: number,
+  calMax: number,
+  dayBudget: number,
+  caloriesAlreadyPlanned: number,
+): { calMin: number; calMax: number } | null {
+  const remaining = dayBudget - caloriesAlreadyPlanned;
+  if (remaining <= 0 || remaining < calMin) return null;
+  return { calMin, calMax: Math.min(calMax, remaining) };
+}
+
 // ─── Macro Profiles ───────────────────────────────────────────────────────────
 
 export type MacroProfile = "balanced" | "diabetic" | "gain_muscle";

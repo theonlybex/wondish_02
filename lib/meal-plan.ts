@@ -7,6 +7,8 @@ import {
   weeklyDailyCals,
   gradualDailyCals,
   maxDailyDeficit,
+  capWindowToDayBudget,
+  DAY_CALORIE_TOLERANCE,
   type Sex,
   type CaloricProfileInput,
   type MacroPercentages,
@@ -310,6 +312,9 @@ export async function buildMealPlanMenus(
       ? gradualDailyCals(baseTDEE, dayIndex, cbmiClass, minCal, maxDeficit)
       : weeklyDailyCals(baseTDEE, cbmiClass, Math.ceil(dayIndex / 7), minCal);
     const caloriePlan = computeMealCalories(weekCals);
+    // Hard ceiling for the whole day — per-meal windows reach 135% of a meal's
+    // target, so without this the assembled day can erase the planned deficit.
+    const dayBudget = weekCals * DAY_CALORIE_TOLERANCE;
 
     let dayCalories = 0;
     const dailyFamilies = new Set<string>();
@@ -354,9 +359,16 @@ export async function buildMealPlanMenus(
         calMin?: number,
         calMax?: number
       ): Promise<RecipeCandidate[]> => {
-        const calFilter  = calMin != null && calMax != null
-          ? { calories: { gte: Math.round(calMin), lte: Math.round(calMax) } }
-          : {};
+        // Clamp every bounded pick to the day's remaining calorie budget; skip
+        // the pick entirely when the budget can't fit the window's minimum.
+        // calMax-only calls filter too (previously the cap was silently dropped
+        // unless calMin was also set).
+        let calFilter = {};
+        if (calMax != null) {
+          const win = capWindowToDayBudget(calMin ?? 0, calMax, dayBudget, dayCalories);
+          if (!win) return [];
+          calFilter = { calories: { gte: Math.round(win.calMin), lte: Math.round(win.calMax) } };
+        }
         const dishFilter = dishTypeNames
           ? { dishType: { name: { in: dishTypeNames, mode: "insensitive" as const } } }
           : {};
