@@ -2,10 +2,11 @@
 // what-if card. Pure functions only — safe to import from client components.
 import {
   computeAllMetrics,
-  gradualDailyCals,
-  maxDailyDeficit,
   getActivityMultiplier,
   tdeeSlopePerKg,
+  walkDay,
+  KCAL_PER_KG,
+  type GlideWalk,
   type Sex,
 } from "./caloric-engine";
 
@@ -31,7 +32,9 @@ export interface PredictionEstimate {
   weightUnit: "kg" | "lbs";
 }
 
-const KG_PER_LB = 0.453592;
+// Same factor convertWeight() uses, so simulated weights and engine metrics
+// never disagree on the conversion.
+const KG_PER_LB = 0.45359237;
 export const toKg = (v: number, unit: "kg" | "lbs") => (unit === "lbs" ? v * KG_PER_LB : v);
 export const fromKg = (v: number, unit: "kg" | "lbs") => (unit === "lbs" ? v / KG_PER_LB : v);
 
@@ -93,24 +96,23 @@ export function computePredictionEstimate(
   const effectiveFloor = profile.minCaloriesValue;
   if (extraBurnPerDay <= 0 && profile.tdeeCBW <= effectiveFloor) return null;
 
-  // Day-by-day walk of the gradual deficit schedule (same schedule + severity-
-  // scaled cap the engine uses), with the exercise delta added to each day.
-  // TDEE and the severity cap are re-derived from the simulated weight as it
-  // falls — a constant-TDEE walk overstates the deficit more the further the
-  // weight drops, making the ETA optimistic.
-  const startKg = toKg(input.weightValue, input.weightUnit);
-  const slopePerKg = tdeeSlopePerKg(input.sex, getActivityMultiplier(input.activityLevel));
-  const totalKcalNeeded = weightToLoseKg * 7700;
+  // Day-by-day walk of the same adaptive schedule the engine uses (walkDay:
+  // TDEE + severity cap re-derived from the simulated weight as it falls),
+  // with the exercise delta added to each day's burn. The banked total feeds
+  // back into the walk, so extra exercise also lowers the simulated weight.
+  const walk: GlideWalk = {
+    startKg: toKg(input.weightValue, input.weightUnit),
+    tdeeAtStart: profile.tdeeCBW,
+    slopePerKg: tdeeSlopePerKg(input.sex, getActivityMultiplier(input.activityLevel)),
+    heightM2: profile.heightM2,
+    cbmiClass: profile.cbmiClass,
+    minCal: profile.minCaloriesValue,
+  };
+  const totalKcalNeeded = weightToLoseKg * KCAL_PER_KG;
   let days = 0;
   let totalDeficit = 0;
   for (let day = 1; day <= 3650; day++) {
-    const w = startKg - totalDeficit / 7700;
-    const tdee = profile.tdeeCBW - slopePerKg * (startKg - w);
-    const maxDeficit = maxDailyDeficit(profile.heightM2 > 0 ? w / profile.heightM2 : profile.cbmi);
-    const intake = gradualDailyCals(
-      tdee, day, profile.cbmiClass, profile.minCaloriesValue, maxDeficit,
-    );
-    totalDeficit += tdee + extraBurnPerDay - intake;
+    totalDeficit += walkDay(walk, day, totalDeficit) + extraBurnPerDay;
     if (totalDeficit >= totalKcalNeeded) {
       days = day;
       break;

@@ -419,7 +419,9 @@ export async function buildMealPlanMenus(
         const mainTarget  = target ?? 0;
         const mainCalMax  = dinnerCalCap !== null ? Math.min(mainTarget * 0.80, dinnerCalCap) : mainTarget * 0.80;
         let mainPool      = await queryRecipes(["main dish"], mainTarget * 0.40, mainCalMax);
-        if (mainPool.length === 0) mainPool = await queryRecipes(["main dish"]);
+        // Wider retry keeps a calorie cap so the pick still honors the day
+        // budget — an unbounded query here would bypass capWindowToDayBudget.
+        if (mainPool.length === 0) mainPool = await queryRecipes(["main dish"], undefined, (target ?? 800) * 1.2);
 
         if (mainPool.length > 0) {
           addRecipe(pick(mainPool));

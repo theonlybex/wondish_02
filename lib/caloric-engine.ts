@@ -184,6 +184,11 @@ export function calcUTBW(
 
 // ─── BMR (Harris-Benedict) ───────────────────────────────────────────────────
 
+// Harris-Benedict weight coefficient (kcal of BMR per kg of body weight).
+// Shared by calcBMR and tdeeSlopePerKg so the projection slope always matches
+// the BMR model the plan is built from.
+const BMR_WEIGHT_COEF: Record<Sex, number> = { male: 13.7, female: 9.6 };
+
 /**
  * Harris-Benedict BMR equation.
  * Females: 655 + (9.6 × weight_kg) + (1.8 × height_cm) - (4.7 × age)
@@ -196,9 +201,9 @@ export function calcBMR(
   sex: Sex
 ): number {
   if (sex === "female") {
-    return 655 + 9.6 * weightKg + 1.8 * heightCm - 4.7 * age;
+    return 655 + BMR_WEIGHT_COEF.female * weightKg + 1.8 * heightCm - 4.7 * age;
   }
-  return 66 + 13.7 * weightKg + 5 * heightCm - 6.8 * age;
+  return 66 + BMR_WEIGHT_COEF.male * weightKg + 5 * heightCm - 6.8 * age;
 }
 
 // ─── Body Fat Percentage (Deurenberg Formula) ────────────────────────────────
@@ -550,7 +555,7 @@ export function gradualDailyCals(
 // progress); the progress curve is the planned glide path anchored to the plan's
 // start weight + date. Pure — safe to import on the client.
 
-const KCAL_PER_KG = 7700;
+export const KCAL_PER_KG = 7700;
 
 export interface WeeklyTargetPoint {
   week: number;        // 1-based week index from plan start
@@ -586,13 +591,13 @@ function clampTowardGoal(w: number, startKg: number, goalKg: number): number {
  * weight once it drifts.
  */
 export function tdeeSlopePerKg(sex: Sex, activityMultiplier: number): number {
-  return (sex === "male" ? 13.7 : 9.6) * activityMultiplier;
+  return BMR_WEIGHT_COEF[sex] * activityMultiplier;
 }
 
 // Simulation anchor for the glide-path walks below. TDEE and the severity cap
 // are re-derived each simulated day from the walked weight — a constant-TDEE
 // walk overstates the deficit more the further the weight falls.
-interface GlideWalk {
+export interface GlideWalk {
   startKg: number;       // simulated starting weight
   tdeeAtStart: number;   // TDEE at that weight
   slopePerKg: number;    // see tdeeSlopePerKg
@@ -601,13 +606,18 @@ interface GlideWalk {
   minCal: number;
 }
 
-// TDEE and intake for one simulated day, given kcal already banked (>0 lost).
-function walkDay(walk: GlideWalk, planDay: number, bankedKcal: number) {
-  const w = walk.startKg - bankedKcal / KCAL_PER_KG;
-  const tdee = walk.tdeeAtStart - walk.slopePerKg * (walk.startKg - w);
+/**
+ * Deficit (>0, losing) or surplus (<0, gaining) for one simulated day, given
+ * kcal already banked. Shared by the weekly-target walks and the prediction
+ * ETA so every projection uses the same model.
+ */
+export function walkDay(walk: GlideWalk, planDay: number, bankedKcal: number): number {
+  const kgMoved = bankedKcal / KCAL_PER_KG;
+  const tdee = walk.tdeeAtStart - walk.slopePerKg * kgMoved;
+  const w = walk.startKg - kgMoved;
   const maxDef = maxDailyDeficit(walk.heightM2 > 0 ? w / walk.heightM2 : 0);
   const intake = gradualDailyCals(tdee, planDay, walk.cbmiClass, walk.minCal, maxDef);
-  return tdee - intake; // >0 deficit (losing), <0 surplus (gaining)
+  return tdee - intake;
 }
 
 // Cumulative kcal deficit (>0) or surplus (<0) over plan days [fromDay+1 .. fromDay+days].
@@ -704,14 +714,19 @@ export function computeWeeklyTarget(args: {
     tdeeAtStart: tdee - slopePerKg * (currentKg - anchorStartKg),
     slopePerKg, heightM2: profile.heightM2, cbmiClass, minCal,
   };
+  // One linear walk with week-boundary snapshots (re-walking from day 1 per
+  // week would be O(totalWeeks²) — ~1M walkDay calls at the 522-week cap).
   const anchorSpan = anchorStartKg - goalKg;
   const curve: WeeklyTargetPoint[] = [];
-  for (let k = 1; k <= totalWeeks; k++) {
-    const cumKcal = cumulativeDeficitKcal(anchorWalk, 0, 7 * k);
-    const plannedKg = clampTowardGoal(anchorStartKg - cumKcal / KCAL_PER_KG, anchorStartKg, goalKg);
-    const pct = anchorSpan === 0 ? 100
-      : Math.min(100, Math.max(0, ((anchorStartKg - plannedKg) / anchorSpan) * 100));
-    curve.push({ week: k, progressPct: pct });
+  let bankedKcal = 0;
+  for (let d = 1; d <= totalWeeks * 7; d++) {
+    bankedKcal += walkDay(anchorWalk, d, bankedKcal);
+    if (d % 7 === 0) {
+      const plannedKg = clampTowardGoal(anchorStartKg - bankedKcal / KCAL_PER_KG, anchorStartKg, goalKg);
+      const pct = anchorSpan === 0 ? 100
+        : Math.min(100, Math.max(0, ((anchorStartKg - plannedKg) / anchorSpan) * 100));
+      curve.push({ week: d / 7, progressPct: pct });
+    }
   }
 
   return {
