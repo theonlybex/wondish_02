@@ -5,6 +5,7 @@ import {
   gradualDailyCals,
   maxDailyDeficit,
   getActivityMultiplier,
+  tdeeSlopePerKg,
   type Sex,
 } from "./caloric-engine";
 
@@ -94,15 +95,22 @@ export function computePredictionEstimate(
 
   // Day-by-day walk of the gradual deficit schedule (same schedule + severity-
   // scaled cap the engine uses), with the exercise delta added to each day.
-  const maxDeficit = maxDailyDeficit(profile.cbmi);
+  // TDEE and the severity cap are re-derived from the simulated weight as it
+  // falls — a constant-TDEE walk overstates the deficit more the further the
+  // weight drops, making the ETA optimistic.
+  const startKg = toKg(input.weightValue, input.weightUnit);
+  const slopePerKg = tdeeSlopePerKg(input.sex, getActivityMultiplier(input.activityLevel));
   const totalKcalNeeded = weightToLoseKg * 7700;
   let days = 0;
   let totalDeficit = 0;
   for (let day = 1; day <= 3650; day++) {
+    const w = startKg - totalDeficit / 7700;
+    const tdee = profile.tdeeCBW - slopePerKg * (startKg - w);
+    const maxDeficit = maxDailyDeficit(profile.heightM2 > 0 ? w / profile.heightM2 : profile.cbmi);
     const intake = gradualDailyCals(
-      profile.tdeeCBW, day, profile.cbmiClass, profile.minCaloriesValue, maxDeficit,
+      tdee, day, profile.cbmiClass, profile.minCaloriesValue, maxDeficit,
     );
-    totalDeficit += profile.tdeeCBW + extraBurnPerDay - intake;
+    totalDeficit += tdee + extraBurnPerDay - intake;
     if (totalDeficit >= totalKcalNeeded) {
       days = day;
       break;

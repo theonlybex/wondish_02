@@ -579,34 +579,56 @@ function clampTowardGoal(w: number, startKg: number, goalKg: number): number {
   return goalKg;
 }
 
+/**
+ * How much TDEE changes per kg of body weight (Harris-Benedict weight
+ * coefficient × activity multiplier). Lets projections adapt TDEE as the
+ * simulated weight moves, mirroring how the real plan is rebuilt at the new
+ * weight once it drifts.
+ */
+export function tdeeSlopePerKg(sex: Sex, activityMultiplier: number): number {
+  return (sex === "male" ? 13.7 : 9.6) * activityMultiplier;
+}
+
+// Simulation anchor for the glide-path walks below. TDEE and the severity cap
+// are re-derived each simulated day from the walked weight — a constant-TDEE
+// walk overstates the deficit more the further the weight falls.
+interface GlideWalk {
+  startKg: number;       // simulated starting weight
+  tdeeAtStart: number;   // TDEE at that weight
+  slopePerKg: number;    // see tdeeSlopePerKg
+  heightM2: number;      // derives simulated BMI for the severity cap
+  cbmiClass: CBMIClass;
+  minCal: number;
+}
+
+// TDEE and intake for one simulated day, given kcal already banked (>0 lost).
+function walkDay(walk: GlideWalk, planDay: number, bankedKcal: number) {
+  const w = walk.startKg - bankedKcal / KCAL_PER_KG;
+  const tdee = walk.tdeeAtStart - walk.slopePerKg * (walk.startKg - w);
+  const maxDef = maxDailyDeficit(walk.heightM2 > 0 ? w / walk.heightM2 : 0);
+  const intake = gradualDailyCals(tdee, planDay, walk.cbmiClass, walk.minCal, maxDef);
+  return tdee - intake; // >0 deficit (losing), <0 surplus (gaining)
+}
+
 // Cumulative kcal deficit (>0) or surplus (<0) over plan days [fromDay+1 .. fromDay+days].
-function cumulativeDeficitKcal(
-  tdee: number, fromDay: number, days: number,
-  cbmiClass: CBMIClass, minCal: number, maxDeficit: number,
-): number {
+function cumulativeDeficitKcal(walk: GlideWalk, fromDay: number, days: number): number {
   let total = 0;
   for (let i = 1; i <= days; i++) {
-    const intake = gradualDailyCals(tdee, fromDay + i, cbmiClass, minCal, maxDeficit);
-    total += tdee - intake;
+    total += walkDay(walk, fromDay + i, total);
   }
   return total;
 }
 
-// Days for `startKg` to reach `goalKg`, walking the schedule from ramp day `fromDay+1`.
-function daysToGoalWalk(
-  startKg: number, goalKg: number, tdee: number, fromDay: number,
-  cbmiClass: CBMIClass, minCal: number, maxDeficit: number,
-): number {
-  const neededKcal = Math.abs(startKg - goalKg) * KCAL_PER_KG;
+// Days for the walk to reach `goalKg`, starting from ramp day `fromDay+1`.
+function daysToGoalWalk(walk: GlideWalk, goalKg: number, fromDay: number): number {
+  const losing = walk.startKg > goalKg;
+  const neededKcal = Math.abs(walk.startKg - goalKg) * KCAL_PER_KG;
   let total = 0;
   for (let d = 1; d <= 3650; d++) {
-    const intake = gradualDailyCals(tdee, fromDay + d, cbmiClass, minCal, maxDeficit);
-    const dayDelta = Math.abs(tdee - intake);
-    // No movement (e.g. a non lose/gain class) never reaches the goal — return the 10-year cap.
-    if (dayDelta <= 0) return 3650;
-    total += dayDelta;
-    if (total >= neededKcal) return d;
+    total += walkDay(walk, fromDay + d, total);
+    if ((losing ? total : -total) >= neededKcal) return d;
   }
+  // Never reached (including a non lose/gain class) — return the 10-year cap.
   return 3650;
 }
 
@@ -623,9 +645,7 @@ export function computeWeeklyTarget(args: {
   const cbmiClass = profile.cbmiClass;
   const minCal = profile.minCaloriesValue;
   const tdee = profile.tdeeCBW;
-  // Severity-scaled per-day deficit cap — the sustained weekly rate follows how
-  // overweight the patient is (see maxDailyDeficit), not a fixed floor.
-  const maxDeficit = maxDailyDeficit(profile.cbmi);
+  const slopePerKg = tdeeSlopePerKg(profile.sex, profile.activityMultiplier);
   const hasPlan = args.planStartDate != null;
   const anchorStartKg = args.anchorStartKg ?? currentKg;
 
@@ -665,19 +685,29 @@ export function computeWeeklyTarget(args: {
   }
 
   // Hero: end-of-this-week projection from current weight at the true ramp position.
-  const weekKcal = cumulativeDeficitKcal(tdee, planDay, 7, cbmiClass, minCal, maxDeficit);
+  const currentWalk: GlideWalk = {
+    startKg: currentKg, tdeeAtStart: tdee, slopePerKg,
+    heightM2: profile.heightM2, cbmiClass, minCal,
+  };
+  const weekKcal = cumulativeDeficitKcal(currentWalk, planDay, 7);
   const weeklyDeltaKg = -weekKcal / KCAL_PER_KG; // <0 losing, >0 gaining
   const thisWeekTargetKg = clampTowardGoal(currentKg + weeklyDeltaKg, currentKg, goalKg);
 
   // Adaptive horizon from current weight.
-  const daysRemaining = daysToGoalWalk(currentKg, goalKg, tdee, planDay, cbmiClass, minCal, maxDeficit);
+  const daysRemaining = daysToGoalWalk(currentWalk, goalKg, planDay);
   const totalWeeks = Math.max(weekIndex, (weekIndex - 1) + Math.ceil(daysRemaining / 7));
 
   // Planned glide path from the anchor: progress% at the end of each week.
+  // TDEE at the anchor weight follows the same slope the walk uses.
+  const anchorWalk: GlideWalk = {
+    startKg: anchorStartKg,
+    tdeeAtStart: tdee - slopePerKg * (currentKg - anchorStartKg),
+    slopePerKg, heightM2: profile.heightM2, cbmiClass, minCal,
+  };
   const anchorSpan = anchorStartKg - goalKg;
   const curve: WeeklyTargetPoint[] = [];
   for (let k = 1; k <= totalWeeks; k++) {
-    const cumKcal = cumulativeDeficitKcal(tdee, 0, 7 * k, cbmiClass, minCal, maxDeficit);
+    const cumKcal = cumulativeDeficitKcal(anchorWalk, 0, 7 * k);
     const plannedKg = clampTowardGoal(anchorStartKg - cumKcal / KCAL_PER_KG, anchorStartKg, goalKg);
     const pct = anchorSpan === 0 ? 100
       : Math.min(100, Math.max(0, ((anchorStartKg - plannedKg) / anchorSpan) * 100));

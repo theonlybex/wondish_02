@@ -86,6 +86,37 @@ test("maintain: healthy BMI has no weekly change", () => {
   assert.equal(wt.weeklyDeltaKg, 0);
 });
 
+// Heavily obese profile with a long journey: BMI 39 → 23.4. As simulated
+// weight falls, TDEE and the severity cap must fall with it.
+function obeseLongJourneyProfile() {
+  return computeAllMetrics({
+    sex: "female", birthday,
+    heightValue: 160, heightUnit: "cm",
+    cbwValue: 100, cbwUnit: "kg",
+    activityLevel: 2,
+    utbwValue: 60, utbwUnit: "kg",
+  });
+}
+
+test("adaptive: planned weekly progress tapers as severity drops along the journey", () => {
+  const p = obeseLongJourneyProfile();
+  const wt = computeWeeklyTarget({ profile: p, anchorStartKg: 100, planStartDate: twoWeeksAgo, now });
+
+  // Weekly progress increments, skipping the ramp-in and the clamped tail.
+  const inc: number[] = [];
+  for (let i = 1; i < wt.curve.length; i++) {
+    inc.push(wt.curve[i].progressPct - wt.curve[i - 1].progressPct);
+  }
+  let lastActive = inc.length - 1;
+  while (lastActive > 0 && wt.curve[lastActive + 1].progressPct > 99.9) lastActive--;
+  const early = (inc[4] + inc[5] + inc[6] + inc[7]) / 4;          // weeks 6–9 (post-ramp)
+  const late  = (inc[lastActive - 3] + inc[lastActive - 2] + inc[lastActive - 1] + inc[lastActive]) / 4;
+
+  // At BMI 39 the pace is ~2 lb/wk; near goal (BMI ~25) it must approach
+  // ~0.5 lb/wk. A constant-TDEE model keeps them equal.
+  assert.ok(late < early * 0.7, `late weekly progress (${late.toFixed(2)}%) should taper well below early (${early.toFixed(2)}%)`);
+});
+
 test("day budget: window untouched when it fits the remaining budget", () => {
   // Day target 2000 → budget 2100; 800 already planned → 1300 remaining.
   const w = capWindowToDayBudget(300, 900, 2000 * DAY_CALORIE_TOLERANCE, 800);
