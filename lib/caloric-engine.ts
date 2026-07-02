@@ -544,46 +544,6 @@ export function gradualDailyCals(
   return Math.round(tdeeCBW);
 }
 
-/**
- * Estimate the number of days to reach a weight-loss goal using the gradual
- * cumulative deficit schedule, given TDEE at current weight and TDEE at goal
- * weight (maintenanceFloor). Returns 0 if no weight loss is needed/possible.
- */
-export function estimateDaysToGoalWeight(
-  tdeeCBW: number,
-  maintenanceFloor: number,
-  weightToLoseKg: number,
-  cbmiClass: CBMIClass,
-  minCal: number,
-): number {
-  if (cbmiClass !== "overweight" && cbmiClass !== "obese") return 0;
-  if (weightToLoseKg <= 0) return 0;
-
-  const totalKcalNeeded = weightToLoseKg * 7700;
-  const effectiveFloor  = Math.max(minCal, maintenanceFloor);
-  if (tdeeCBW <= effectiveFloor) return 0;
-
-  let totalDeficit = 0;
-
-  for (let day = 1; day <= 3650; day++) {
-    const dailyCals  = gradualDailyCals(tdeeCBW, day, cbmiClass, minCal, maintenanceFloor);
-    const dayDeficit = tdeeCBW - dailyCals;
-    if (dayDeficit <= 0) return 3650;
-
-    totalDeficit += dayDeficit;
-    if (totalDeficit >= totalKcalNeeded) return day;
-
-    // Once ramp hits the floor, compute remaining days analytically
-    if (dailyCals <= effectiveFloor) {
-      const steadyDeficit = tdeeCBW - effectiveFloor;
-      const remainingKcal = totalKcalNeeded - totalDeficit;
-      return day + Math.ceil(remainingKcal / steadyDeficit);
-    }
-  }
-
-  return 3650;
-}
-
 // ─── Weekly Target Projection ─────────────────────────────────────────────────
 // Per-week weight target derived from the gradual deficit/surplus schedule.
 // The hero "this week" target is recomputed from current weight (adapts to real

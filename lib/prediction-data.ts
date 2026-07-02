@@ -51,12 +51,12 @@ export function resolveSex(sexAtBirth: string | null | undefined): Sex | null {
  * when no weight-loss prediction applies (healthy/underweight BMI, goal not
  * below current weight, or no achievable deficit).
  *
- * The intake schedule (gradual deficit ramp + maintenance floor) is always
+ * The intake schedule (gradual deficit ramp + severity-scaled cap) is always
  * anchored to the PROFILE's activity level — that's what the meal plan is
  * generated from. An activity-level override only changes the burn side:
- * extra exercise adds BMR × Δmultiplier of daily deficit on top. With no
- * overrides this reproduces estimateDaysToGoalWeight() exactly, so the
- * result always matches the /prediction page.
+ * extra exercise adds BMR × Δmultiplier of daily deficit on top. Both the
+ * /prediction page and the Journey what-if card call this same function, so
+ * their estimates always agree.
  */
 export function computePredictionEstimate(
   input: PredictionProfileInput,
