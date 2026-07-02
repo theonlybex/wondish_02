@@ -36,6 +36,26 @@ async function main() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // Simulate a previous run that inserted next-version rows and then crashed
+  // BEFORE the flip: those rows share the retry's planVersion, so without a
+  // purge the retry doubles the plan. The sentinel's ancient date makes it
+  // identifiable after the regenerate.
+  const sample = await prisma.menu.findFirst({
+    where: { patientId: patient.id },
+    select: { recipeId: true, mealTypeId: true },
+  });
+  if (sample) {
+    await prisma.menu.create({
+      data: {
+        patientId: patient.id,
+        recipeId: sample.recipeId,
+        mealTypeId: sample.mealTypeId,
+        planVersion: before + 1,
+        date: new Date("2001-01-01"),
+      },
+    });
+  }
+
   // 1–3: single regenerate
   const count = await regeneratePlan(patient.id, today);
   console.log(`Generated ${count} menu rows.`);
@@ -58,6 +78,11 @@ async function main() {
 
   check("status READY and not stale", after!.mealPlanStatus === "READY" && after!.mealPlanStale === false,
     `status=${after!.mealPlanStatus} stale=${after!.mealPlanStale}`);
+
+  const leftovers = await prisma.menu.count({
+    where: { patientId: patient.id, planVersion: after!.activePlanVersion, date: { lt: today } },
+  });
+  check("failed-run leftovers purged before insert", sample == null || leftovers === 0, `leftovers=${leftovers}`);
 
   // 4: concurrent claim-lock — exactly one should win, the other gets MealPlanBusyError
   const results = await Promise.allSettled([

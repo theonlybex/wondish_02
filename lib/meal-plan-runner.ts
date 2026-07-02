@@ -63,6 +63,9 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
     if (rows.length === 0) throw new EmptyPlanError();
 
     // 3. Insert the new version (still invisible to version-scoped reads).
+    // A previous run may have inserted this same version's rows and then failed
+    // before the flip; purge them first or the retry would double every meal.
+    await prisma.menu.deleteMany({ where: { patientId, planVersion: nextVersion } });
     await prisma.menu.createMany({ data: rows });
 
     // 4. Atomic flip — the moment version-scoped reads start seeing the new plan.
