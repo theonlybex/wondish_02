@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CaloricProfileDTO } from "@/types";
 import type { WeeklyTargetDTO } from "@/types";
 import { kgToLbs } from "@/lib/prediction-data";
+import { KCAL_PER_KG } from "@/lib/caloric-engine";
 
 function fmt(n: number | null | undefined, decimals = 1): string {
   if (n == null) return "—";
@@ -71,13 +72,13 @@ export default function CaloricProfileCard() {
     );
   }
 
-  // Calorie ring: the daily target must reflect the actual deficit at the
-  // current point in the plan — the same schedule that drives the weekly-loss
-  // figure — not bare maintenance. Derive it from this week's deficit so the
-  // ring and the "X lbs/wk" badge tell a consistent story.
+  // Calorie ring: the daily target must reflect the actual deficit/surplus at
+  // the current point in the plan — the same schedule that drives the weekly
+  // figure — not bare maintenance. weeklyDeltaKg is signed: negative (losing)
+  // puts the target below maintenance, positive (gaining) above it.
   const weeklyDeltaKg = profile.weeklyTarget?.weeklyDeltaKg ?? 0;
-  const dailyDeficit = Math.abs(weeklyDeltaKg) * (7700 / 7); // kcal/day
-  const dailyTarget = Math.max(0, Math.round(profile.tdeeCBW - dailyDeficit));
+  const dailyAdjustment = weeklyDeltaKg * (KCAL_PER_KG / 7); // kcal/day, signed
+  const dailyTarget = Math.max(0, Math.round(profile.tdeeCBW + dailyAdjustment));
   const calRatio = profile.tdeeCBW > 0
     ? Math.min(1, dailyTarget / profile.tdeeCBW)
     : 1;
