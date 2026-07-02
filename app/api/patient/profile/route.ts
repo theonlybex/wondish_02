@@ -179,6 +179,9 @@ export async function PATCH(req: NextRequest) {
   const mealPlanFieldsChanged = existing != null && (
     existing.physicalActivityId !== (physicalActivityId || null) ||
     existing.weight             !== (weight            ? parseFloat(weight)            : null) ||
+    existing.height             !== (height            ? parseFloat(height)            : null) ||
+    existing.heightUnit         !== (heightUnit ?? "ftin") ||
+    (existing.birthday?.getTime() ?? null) !== (birthday ? new Date(birthday).getTime() : null) ||
     existing.sexAtBirth         !== (sexAtBirth        || null) ||
     sorted(existing.motivations.map((m) => m.motivationId))      !== sorted(motivationIds      ?? []) ||
     sorted(existing.foodAllergies.map((f) => f.foodId))           !== sorted(foodAllergyIds     ?? []) ||
