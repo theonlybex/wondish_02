@@ -32,7 +32,15 @@ export default function WeeklyMealPlanGrid({
     grouped[mtName][dateKey] = menu;
   }
 
+  // Same browsing horizon as the daily view (one week ahead of today):
+  // the next calendar week is viewable, anything beyond is not.
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const maxBrowseDate = addDays(todayMidnight, 7);
+  const atForwardLimit = addWeeks(weekStart, 1) > maxBrowseDate;
+
   const navigate = async (dir: "prev" | "next") => {
+    if (dir === "next" && atForwardLimit) return;
     const newWeekStart =
       dir === "next" ? addWeeks(weekStart, 1) : subWeeks(weekStart, 1);
     setWeekStart(newWeekStart);
@@ -63,7 +71,13 @@ export default function WeeklyMealPlanGrid({
         </p>
         <button
           onClick={() => navigate("next")}
-          className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#F3F2FF] transition-colors text-navy"
+          disabled={atForwardLimit}
+          aria-disabled={atForwardLimit}
+          aria-label={atForwardLimit ? "You can browse up to one week ahead" : "Next week"}
+          title={atForwardLimit ? "You can browse up to one week ahead" : undefined}
+          className={`w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center transition-colors text-navy ${
+            atForwardLimit ? "opacity-40 cursor-not-allowed" : "hover:bg-[#F3F2FF]"
+          }`}
         >
           ›
         </button>

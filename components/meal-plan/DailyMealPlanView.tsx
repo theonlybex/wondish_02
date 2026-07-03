@@ -295,7 +295,16 @@ export default function DailyMealPlanView({
     }
   };
 
+  // Browsing horizon: the plan is generated weeks ahead, but distant days get
+  // recomputed as weight drifts — only let users browse one week forward.
+  const BROWSE_AHEAD_DAYS = 7;
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const maxBrowseDate = addDays(todayMidnight, BROWSE_AHEAD_DAYS);
+  const atForwardLimit = date >= maxBrowseDate;
+
   const navigate = async (dir: "prev" | "next") => {
+    if (dir === "next" && atForwardLimit) return;
     setSelectedId(null);
     const newDate = dir === "next" ? addDays(date, 1) : subDays(date, 1);
     const dateStr = format(newDate, "yyyy-MM-dd");
@@ -394,7 +403,13 @@ export default function DailyMealPlanView({
         <p className="flex-1 text-center font-semibold text-forest text-lg">{format(date, "EEEE, MMMM d")}</p>
         <button
           onClick={() => navigate("next")}
-          className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#ffffff] transition-colors text-forest shrink-0"
+          disabled={atForwardLimit}
+          aria-disabled={atForwardLimit}
+          aria-label={atForwardLimit ? "You can browse up to one week ahead" : "Next day"}
+          title={atForwardLimit ? "You can browse up to one week ahead" : undefined}
+          className={`w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center transition-colors text-forest shrink-0 ${
+            atForwardLimit ? "opacity-40 cursor-not-allowed" : "hover:bg-[#ffffff]"
+          }`}
         >›</button>
       </div>
 
