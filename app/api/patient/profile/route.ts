@@ -83,6 +83,28 @@ export async function PATCH(req: NextRequest) {
     motivationIds, healthConditionIds, foodPreferenceIds, foodToAvoidIds, foodAllergyIds,
   } = body;
 
+  // Boundary validation: reject unusable birthday/goalWeight values instead
+  // of persisting them into the caloric engine's inputs.
+  if (birthday) {
+    const b = new Date(birthday);
+    const ageYears = (Date.now() - b.getTime()) / (365.25 * 86400000);
+    if (Number.isNaN(b.getTime()) || ageYears < 13 || ageYears > 120) {
+      return NextResponse.json(
+        { error: "Birthday must be a valid past date (age 13–120)." },
+        { status: 422 }
+      );
+    }
+  }
+  if (goalWeight != null && goalWeight !== "") {
+    const gw = parseFloat(goalWeight);
+    if (!Number.isFinite(gw) || gw < 50 || gw > 1000) {
+      return NextResponse.json(
+        { error: "Goal weight must be between 50 and 1000 lbs." },
+        { status: 422 }
+      );
+    }
+  }
+
   // Snapshot existing patient state before update — used to detect meal-plan-affecting changes
   const existing = await prisma.patient.findUnique({
     where: { accountId: account.id },

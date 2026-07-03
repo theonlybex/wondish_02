@@ -32,7 +32,10 @@ export default async function JourneyPage() {
     getPredictionProfileInput(userId),
   ]);
 
-  const stats = computeJourneyStats(entries);
+  // Engagement is measured against every day in the window, not just the
+  // days that happen to have a journal entry.
+  const totalDays = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000));
+  const stats = computeJourneyStats(entries, totalDays);
 
   const rangeLabel = `${from.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${to.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 

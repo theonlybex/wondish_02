@@ -27,6 +27,9 @@ export async function GET(req: NextRequest) {
     orderBy: { date: "asc" },
   });
 
-  const stats = computeJourneyStats(entries);
+  // Engagement is measured against every day in the window, not just the
+  // days that happen to have a journal entry.
+  const totalDays = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000));
+  const stats = computeJourneyStats(entries, totalDays);
   return NextResponse.json({ stats, entries });
 }

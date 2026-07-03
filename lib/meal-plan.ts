@@ -4,15 +4,15 @@ import {
   computeMealCalories,
   resolveMacroProfile,
   getMacroPercentages,
-  weeklyDailyCals,
   gradualDailyCals,
   maxDailyDeficit,
+  resolvePlanDirection,
   capWindowToDayBudget,
   DAY_CALORIE_TOLERANCE,
   type Sex,
   type CaloricProfileInput,
   type MacroPercentages,
-  type CBMIClass,
+  type PlanDirection,
 } from "@/lib/caloric-engine";
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -165,10 +165,18 @@ export async function buildMealPlanMenus(
   const preferenceBanned  = patient.foodPreferences.flatMap((fp) => fp.food.bannedIngredients.map((b) => b.name));
   const motivationBanned  = patient.motivations.flatMap((pm) => pm.motivation.bannedIngredients.map((b) => b.name));
 
-  const allBannedNames = Array.from(new Set([
-    ...allergyNames, ...foodsToAvoidNames,
-    ...conditionBanned, ...preferenceBanned, ...motivationBanned,
+  // Allergy-derived names match by WORD BOUNDARY: "peanut" also bans
+  // "peanut butter" / "roasted peanuts", but "egg" does not ban "eggplant".
+  // Non-allergy sources (avoid list, conditions, preferences, motivations)
+  // keep exact-name matching — guidance, not safety-critical.
+  const exactBannedNames = Array.from(new Set([
+    ...foodsToAvoidNames, ...conditionBanned, ...preferenceBanned, ...motivationBanned,
   ]));
+  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const allergyMatchers = Array.from(new Set(allergyNames))
+    .map((name) => name.trim().toLowerCase().replace(/(?<!s)s$/, "")) // singular stem; keep "-ss" words
+    .filter((stem) => stem.length >= 2)
+    .map((stem) => new RegExp(`\\b${escapeRe(stem)}(?:s|es)?\\b`, "i"));
 
   const motivationNames = patient.motivations.map((pm) => pm.motivation.name);
 
@@ -192,10 +200,12 @@ export async function buildMealPlanMenus(
   }
 
   // ── Caloric targets ────────────────────────────────────────────────────────
-  // baseTDEE is TDEE at current body weight (maintenance).
-  // The slow deficit schedule is applied per-week inside the day loop.
+  // baseTDEE is TDEE at current body weight (maintenance). The gradual
+  // deficit/surplus schedule is keyed by the plan DIRECTION (goal-driven,
+  // healthy-clamped — see resolvePlanDirection), so lose and gain plans use
+  // the same schedule shape as the engine's projections.
   let baseTDEE: number = 0;
-  let cbmiClass: CBMIClass = "healthy";
+  let direction: PlanDirection = "maintain";
   let minCal: number = 2000;
   let maxDeficit: number = 0; // severity-scaled per-day deficit cap (see maxDailyDeficit)
 
@@ -215,38 +225,40 @@ export async function buildMealPlanMenus(
       };
       const profile = computeAllMetrics(profileInput);
       baseTDEE  = Math.round(profile.tdeeCBW);
-      cbmiClass = profile.cbmiClass;
+      direction = resolvePlanDirection(profile);
       minCal    = profile.minCaloriesValue;
       maxDeficit = maxDailyDeficit(profile.cbmi);
     }
   }
 
-  // Fall back to 2000 kcal / healthy class when the full caloric profile
-  // cannot be computed (e.g. sexAtBirth missing).
+  // Fall back to a flat 2000 kcal maintenance plan when the full caloric
+  // profile cannot be computed (e.g. sexAtBirth missing).
   if (baseTDEE === 0) { baseTDEE = 2000; minCal = 1200; maxDeficit = maxDailyDeficit(22); }
 
   // Compute the plan end date dynamically:
-  // - Overweight/obese: run the gradual ramp until the maintenance floor is hit,
-  //   then add MAINTENANCE_BUFFER_DAYS at flat floor calories.
-  // - All other CBMI classes: fixed 35 days using the original weekly schedule.
+  // - Lose/gain plans: run the gradual ramp until it plateaus at the severity-
+  //   scaled cap, then add MAINTENANCE_BUFFER_DAYS at the plateau.
+  // - Maintain plans: fixed 35 days at maintenance calories.
   const MAINTENANCE_BUFFER_DAYS = 35;
-  const isDeficitPlan  = cbmiClass === "overweight" || cbmiClass === "obese";
-  // The ramp plateaus once the deficit reaches its severity-scaled cap
-  // (intake = maintenance − maxDeficit, but never below minCal). Treat that
-  // plateau as the end of the active ramp, then hold for the buffer.
-  const effectiveFloor = Math.max(minCal, baseTDEE - maxDeficit);
+  const isRampPlan = direction !== "maintain";
+  // Plateau intake: lose → the deeper of minCal and (maintenance − cap);
+  // gain → maintenance + cap.
+  const plateauCals = direction === "gain"
+    ? Math.round(baseTDEE + maxDeficit)
+    : Math.max(minCal, baseTDEE - maxDeficit);
 
   let rampEndDay = 35;
-  if (isDeficitPlan && baseTDEE > effectiveFloor) {
+  if (isRampPlan && (direction === "gain" || baseTDEE > plateauCals)) {
     for (let d = 1; d <= 365; d++) {
-      if (gradualDailyCals(baseTDEE, d, cbmiClass, minCal, maxDeficit) <= effectiveFloor) {
+      const cals = gradualDailyCals(baseTDEE, d, direction, minCal, maxDeficit);
+      if (direction === "gain" ? cals >= plateauCals : cals <= plateauCals) {
         rampEndDay = d;
         break;
       }
     }
   }
 
-  const totalExtraDays = isDeficitPlan ? rampEndDay + MAINTENANCE_BUFFER_DAYS - 1 : 34;
+  const totalExtraDays = isRampPlan ? rampEndDay + MAINTENANCE_BUFFER_DAYS - 1 : 34;
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + totalExtraDays);
   endDate.setHours(23, 59, 59, 999);
@@ -266,8 +278,8 @@ export async function buildMealPlanMenus(
   const menus: MenuRow[] = [];
 
   const bannedFilter =
-    allBannedNames.length > 0
-      ? { NOT: { ingredients: { some: { ingredient: { name: { in: allBannedNames, mode: "insensitive" as const } } } } } }
+    exactBannedNames.length > 0
+      ? { NOT: { ingredients: { some: { ingredient: { name: { in: exactBannedNames, mode: "insensitive" as const } } } } } }
       : {};
 
   const recipeSelect = {
@@ -284,10 +296,16 @@ export async function buildMealPlanMenus(
   // over a long deficit plan). isPublic and the banned-ingredient exclusion
   // are constant for the whole build, so they stay in the DB query; all
   // per-pick filters below reproduce the old queries' semantics exactly.
-  const recipePool: PoolRecipe[] = await prisma.recipe.findMany({
+  const recipePoolRaw: PoolRecipe[] = await prisma.recipe.findMany({
     where: { isPublic: true, ...bannedFilter },
     select: { ...recipeSelect, mealTypeId: true, description: true },
   });
+  // Allergy bans apply by word boundary against every ingredient name.
+  const recipePool = allergyMatchers.length === 0
+    ? recipePoolRaw
+    : recipePoolRaw.filter(
+        (r) => !r.ingredients.some((ri) => allergyMatchers.some((rx) => rx.test(ri.ingredient.name)))
+      );
 
   // weekUsedIds resets every 7 days — prevents recipe exhaustion while still
   // ensuring no recipe repeats within the same week.
@@ -299,11 +317,9 @@ export async function buildMealPlanMenus(
     if (dayIndex % 7 === 0) weekUsedIds.clear();
     dayIndex++;
 
-    // Overweight/obese: gradual cumulative deficit that ramps weekly.
-    // All other CBMI classes: original flat weekly schedule.
-    const weekCals    = isDeficitPlan
-      ? gradualDailyCals(baseTDEE, dayIndex, cbmiClass, minCal, maxDeficit)
-      : weeklyDailyCals(baseTDEE, cbmiClass, Math.ceil(dayIndex / 7), minCal);
+    // One schedule for every direction: gradual deficit (lose), gradual
+    // surplus (gain), or flat maintenance — same shape the projections use.
+    const weekCals    = gradualDailyCals(baseTDEE, dayIndex, direction, minCal, maxDeficit);
     const caloriePlan = computeMealCalories(weekCals);
     // Hard ceiling for the whole day — per-meal windows reach 135% of a meal's
     // target, so without this the assembled day can erase the planned deficit.

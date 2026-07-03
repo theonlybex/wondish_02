@@ -4,7 +4,11 @@ import {
   computeAllMetrics,
   computeWeeklyTarget,
   capWindowToDayBudget,
+  clampGoalToHealthyBand,
+  gradualDailyCals,
   DAY_CALORIE_TOLERANCE,
+  HEALTHY_BMI_FLOOR,
+  HEALTHY_BMI_CEIL,
 } from "./caloric-engine";
 
 const birthday = new Date("1994-01-01"); // ~age 32 at test time
@@ -138,6 +142,95 @@ test("day budget: pick is skipped when remaining budget is below the window mini
 test("day budget: pick is skipped when the budget is already exhausted", () => {
   const w = capWindowToDayBudget(0, 500, 2100, 2200);
   assert.equal(w, null);
+});
+
+// ─── Goal-driven direction + healthy-band clamp (items 6 & 7) ────────────────
+
+test("clamp: goal below healthy floor is raised to BMI 18.5", () => {
+  const m2 = 1.65 * 1.65;
+  const floorKg = HEALTHY_BMI_FLOOR * m2;
+  // Healthy 60kg user aiming for BMI ~17 → clamped up to the floor.
+  assert.equal(clampGoalToHealthyBand(17 * m2, 60, m2), floorKg);
+  // Underweight user aiming even lower → clamped to the floor (direction flips to gain).
+  assert.equal(clampGoalToHealthyBand(15 * m2, 17 * m2, m2), floorKg);
+});
+
+test("clamp: goal above healthy ceiling is lowered unless it is an intermediate stop", () => {
+  const m2 = 1.65 * 1.65;
+  const ceilKg = HEALTHY_BMI_CEIL * m2;
+  // Healthy user aiming for BMI 28 (gain away from band) → clamped to ceiling.
+  assert.equal(clampGoalToHealthyBand(28 * m2, 22 * m2, m2), ceilKg);
+  // Overweight (BMI 27) user aiming above current → clamped to ceiling (flips to lose).
+  assert.equal(clampGoalToHealthyBand(29 * m2, 27 * m2, m2), ceilKg);
+  // Obese (BMI 32) user aiming for BMI 26 — intermediate stop toward the band → kept.
+  assert.equal(clampGoalToHealthyBand(26 * m2, 32 * m2, m2), 26 * m2);
+});
+
+test("clamp: goals inside the healthy band pass through untouched", () => {
+  const m2 = 1.65 * 1.65;
+  assert.equal(clampGoalToHealthyBand(21 * m2, 60, m2), 21 * m2);
+  // Underweight user gaining toward (but stopping short of) the band → kept.
+  assert.equal(clampGoalToHealthyBand(18 * m2, 16 * m2, m2), 18 * m2);
+});
+
+test("item 6: short user's default WTBW is floored at healthy BMI", () => {
+  // 145 cm female: IBW = 37 kg → WTBW would be underweight (BMI ~17.6).
+  const p = computeAllMetrics({
+    sex: "female", birthday,
+    heightValue: 145, heightUnit: "cm",
+    cbwValue: 50, cbwUnit: "kg",
+    activityLevel: 2,
+  });
+  const bmiOfTarget = p.tbwKg / p.heightM2;
+  assert.ok(bmiOfTarget >= HEALTHY_BMI_FLOOR - 1e-9,
+    `default target BMI (${bmiOfTarget.toFixed(2)}) must not be underweight`);
+});
+
+test("item 7: healthy user with a set goal below current gets a real lose plan", () => {
+  // BMI 22 (healthy class) with a goal 5 kg down — previously forced to "maintain".
+  const p = computeAllMetrics({
+    sex: "female", birthday,
+    heightValue: 165, heightUnit: "cm",
+    cbwValue: 60, cbwUnit: "kg",
+    activityLevel: 2,
+    utbwValue: 55, utbwUnit: "kg",
+  });
+  const wt = computeWeeklyTarget({ profile: p, anchorStartKg: 60, planStartDate: twoWeeksAgo, now });
+  assert.equal(wt.direction, "lose");
+  assert.ok(wt.weeklyDeltaKg < 0, "healthy-class lose plan must produce a deficit");
+  assert.ok(wt.totalWeeks < 520, "goal must be reachable, not the 10-year cap");
+  assert.ok(wt.thisWeekTargetKg < 60 && wt.thisWeekTargetKg >= 55);
+});
+
+test("item 7: healthy user with no set goal still maintains", () => {
+  const p = healthyProfile(); // no utbw
+  const wt = computeWeeklyTarget({ profile: p, anchorStartKg: 60, planStartDate: twoWeeksAgo, now });
+  assert.equal(wt.direction, "maintain");
+  assert.equal(wt.weeklyDeltaKg, 0);
+});
+
+test("item 7: overweight user with a gain goal is clamped to the band ceiling and loses", () => {
+  // 165 cm, 75 kg (BMI 27.5) asking to gain to 80 kg → effective goal BMI 24.9, lose.
+  const p = computeAllMetrics({
+    sex: "female", birthday,
+    heightValue: 165, heightUnit: "cm",
+    cbwValue: 75, cbwUnit: "kg",
+    activityLevel: 2,
+    utbwValue: 80, utbwUnit: "kg",
+  });
+  assert.ok(Math.abs(p.tbwKg - HEALTHY_BMI_CEIL * p.heightM2) < 1e-9);
+  const wt = computeWeeklyTarget({ profile: p, anchorStartKg: 75, planStartDate: twoWeeksAgo, now });
+  assert.equal(wt.direction, "lose");
+});
+
+test("gradualDailyCals: direction-keyed — lose ramps down, gain ramps up, maintain flat", () => {
+  const tdee = 2500, minCal = 1200, maxDef = 400;
+  assert.ok(gradualDailyCals(tdee, 14, "lose", minCal, maxDef) < tdee);
+  assert.ok(gradualDailyCals(tdee, 14, "gain", minCal, maxDef) > tdee);
+  assert.equal(gradualDailyCals(tdee, 14, "maintain", minCal, maxDef), tdee);
+  // Deficit is capped at maxDeficit and floored at minCal.
+  assert.equal(gradualDailyCals(tdee, 300, "lose", minCal, maxDef), tdee - maxDef);
+  assert.equal(gradualDailyCals(2000, 300, "lose", 1800, maxDef), 1800);
 });
 
 test("no plan: falls back to current as anchor, weekIndex 1, hasPlan false", () => {

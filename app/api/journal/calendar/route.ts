@@ -5,6 +5,7 @@ import {
   computeAllMetrics,
   gradualDailyCals,
   maxDailyDeficit,
+  resolvePlanDirection,
   type Sex,
   type CaloricProfileInput,
   type CaloricProfile,
@@ -133,7 +134,7 @@ export async function GET() {
         dailyCalorieTarget = gradualDailyCals(
           Math.round(caloricProfile.tdeeCBW),
           dayNumber,
-          caloricProfile.cbmiClass,
+          resolvePlanDirection(caloricProfile),
           caloricProfile.minCaloriesValue,
           maxDailyDeficit(caloricProfile.cbmi),
         );

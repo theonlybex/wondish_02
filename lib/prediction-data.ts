@@ -105,7 +105,7 @@ export function computePredictionEstimate(
     tdeeAtStart: profile.tdeeCBW,
     slopePerKg: tdeeSlopePerKg(input.sex, getActivityMultiplier(input.activityLevel)),
     heightM2: profile.heightM2,
-    cbmiClass: profile.cbmiClass,
+    direction: "lose", // prediction is loss-only (gated on overweight/obese above)
     minCal: profile.minCaloriesValue,
   };
   const totalKcalNeeded = weightToLoseKg * KCAL_PER_KG;

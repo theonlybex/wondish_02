@@ -182,6 +182,52 @@ export function calcUTBW(
   return (ibwKg * utbmi) / ibmi;
 }
 
+// ─── Healthy-Band Goal Clamp & Plan Direction ────────────────────────────────
+
+// Healthy BMI band per classifyCBMI: [18.5, 25). 24.9 is the practical ceiling.
+export const HEALTHY_BMI_FLOOR = 18.5;
+export const HEALTHY_BMI_CEIL = 24.9;
+
+/**
+ * Clamp a target weight so plans never aim outside the healthy BMI band in
+ * the unhealthy direction, while preserving intermediate goals that stop
+ * short of the band (e.g. an obese user aiming for BMI 26 keeps that goal).
+ *   - below the band and not an intermediate stop on the way up → BMI 18.5
+ *   - above the band and not an intermediate stop on the way down → BMI 24.9
+ * Also floors the default WTBW for short users, whose IBW-derived target can
+ * land underweight.
+ */
+export function clampGoalToHealthyBand(goalKg: number, cbwKg: number, heightM2: number): number {
+  if (heightM2 <= 0) return goalKg;
+  const floorKg = HEALTHY_BMI_FLOOR * heightM2;
+  const ceilKg = HEALTHY_BMI_CEIL * heightM2;
+  if (goalKg < floorKg && goalKg <= cbwKg) return floorKg;
+  if (goalKg > ceilKg && goalKg >= cbwKg) return ceilKg;
+  return goalKg;
+}
+
+export type PlanDirection = "lose" | "gain" | "maintain";
+
+/** Direction of travel from current weight to an (already clamped) target. */
+export function planDirection(cbwKg: number, tbwKg: number): PlanDirection {
+  if (cbwKg > tbwKg) return "lose";
+  if (cbwKg < tbwKg) return "gain";
+  return "maintain";
+}
+
+/**
+ * Plan direction for a profile. A user-set goal decides the direction (its
+ * clamped form, profile.tbwKg); without one the BMI class decides, so
+ * goal-less healthy users keep maintaining instead of chasing the WTBW
+ * default.
+ */
+export function resolvePlanDirection(profile: CaloricProfile): PlanDirection {
+  if (profile.utbwKg != null) return planDirection(profile.cbwKg, profile.tbwKg);
+  if (profile.cbmiClass === "overweight" || profile.cbmiClass === "obese") return "lose";
+  if (profile.cbmiClass === "underweight") return "gain";
+  return "maintain";
+}
+
 // ─── BMR (Harris-Benedict) ───────────────────────────────────────────────────
 
 // Harris-Benedict weight coefficient (kcal of BMR per kg of body weight).
@@ -264,7 +310,8 @@ export function calcWTG(tbwKg: number, cbwKg: number): number {
 // ─── Minimum Calorie Intake ──────────────────────────────────────────────────
 
 /**
- * Once the user receives this value, retain it until they reach TBW.
+ * Safety floor applied to every computed calorie target (plans, schedules,
+ * projections all clamp intake to at least this value).
  * Male:   1500 kcal
  * Female: 1200 kcal
  */
@@ -386,8 +433,10 @@ export function computeAllMetrics(input: CaloricProfileInput): CaloricProfile {
     utbmi = calcUTBMI(utbwKg, ht.m2);
   }
 
-  // 8. Resolved TBW: use UTBW if set, otherwise WTBW
-  const tbwKg = utbwKg ?? wtbwKg;
+  // 8. Resolved TBW: use UTBW if set, otherwise WTBW — clamped so no plan
+  // targets outside the healthy BMI band in the unhealthy direction (also
+  // floors the WTBW default for short users, which can land underweight).
+  const tbwKg = clampGoalToHealthyBand(utbwKg ?? wtbwKg, cbw.kg, ht.m2);
 
   // 9. BMR (Harris-Benedict) for each weight variant
   const bmrCBW = calcBMR(cbw.kg, ht.cm, age, sex);
@@ -417,7 +466,9 @@ export function computeAllMetrics(input: CaloricProfileInput): CaloricProfile {
   // achieved progressively as CBW decreases month by month toward TBW.
   // targetCalories (TBW-based) is exposed for display and goal-tracking only.
   const minCal = minCalories(sex);
-  const tbwTDEE        = utbwKg != null && tdeeUTBW != null ? tdeeUTBW : tdeeWTBW;
+  // targetCalories follows the RESOLVED (clamped) target weight so the goal
+  // state always matches the tbwKg the plans actually aim for.
+  const tbwTDEE        = calcTDEE(calcBMR(tbwKg, ht.cm, age, sex), am);
   const dailyCalories  = Math.max(tdeeCBW, minCal);
   const targetCalories = Math.max(tbwTDEE, minCal);
 
@@ -462,39 +513,6 @@ export function computeAllMetrics(input: CaloricProfileInput): CaloricProfile {
   };
 }
 
-// ─── Slow Calorie Deficit Schedule ───────────────────────────────────────────
-// Weekly deficit/surplus applied to TDEE based on BMI class.
-// Overweight → subtract; underweight → add; healthy → no change.
-// Index is 1-based week number. Weeks beyond 5 use the week-5 value.
-const DEFICIT_BY_WEEK = [0, 300, 300, 300, 400, 400] as const;
-
-/**
- * Returns the kcal adjustment for a given week of the 35-day plan.
- * Positive = reduce calories (overweight deficit).
- * Negative = increase calories (underweight surplus).
- * Zero = healthy BMI, no change.
- */
-export function slowDeficitForWeek(cbmiClass: CBMIClass, weekNumber: number): number {
-  const deficit = DEFICIT_BY_WEEK[Math.min(weekNumber, DEFICIT_BY_WEEK.length - 1)] ?? 400;
-  if (cbmiClass === "overweight" || cbmiClass === "obese")  return  deficit;
-  if (cbmiClass === "underweight")                          return -deficit;
-  return 0;
-}
-
-/**
- * Daily calorie target for a specific week of the plan.
- * Applies the slow deficit/surplus schedule, then floors to minimum calories.
- */
-export function weeklyDailyCals(
-  tdeeCBW: number,
-  cbmiClass: CBMIClass,
-  weekNumber: number,
-  minCal: number
-): number {
-  const adjustment = slowDeficitForWeek(cbmiClass, weekNumber);
-  return Math.max(Math.round(tdeeCBW - adjustment), minCal);
-}
-
 // ─── Gradual Cumulative Deficit Schedule ──────────────────────────────────────
 // Each week ramps the deficit linearly within the week, picking up where the
 // previous week left off. Weeks 1–3 each add 300 kcal/day; week 4+ each add 400.
@@ -523,26 +541,28 @@ export function gradualDailyDeficit(dayNumber: number): number {
 }
 
 /**
- * Daily calorie target using the gradual cumulative deficit schedule.
- * The deficit ramps in gradually but is capped at `maxDeficit` (a severity-
- * scaled per-day ceiling from maxDailyDeficit) so the sustained weekly rate
- * matches how overweight the patient is instead of driving everyone down to
+ * Daily calorie target using the gradual cumulative deficit schedule, keyed
+ * by the PLAN DIRECTION (goal-driven; see resolvePlanDirection) rather than
+ * BMI class, so a healthy-class user with a set goal still gets a real
+ * deficit/surplus. The deficit ramps in gradually but is capped at
+ * `maxDeficit` (a severity-scaled per-day ceiling from maxDailyDeficit) so
+ * the sustained weekly rate matches severity instead of driving everyone to
  * the minimum. Intake is also floored at minCal for safety, and all
  * projections clamp at the goal weight so intake never overshoots.
  */
 export function gradualDailyCals(
   tdeeCBW: number,
   dayNumber: number,
-  cbmiClass: CBMIClass,
+  direction: PlanDirection,
   minCal: number,
   maxDeficit: number,
 ): number {
-  if (cbmiClass === "overweight" || cbmiClass === "obese") {
+  if (direction === "lose") {
     // Floor = the deeper of (min safe calories) and (maintenance − max deficit).
     const floor = Math.max(minCal, tdeeCBW - maxDeficit);
     return Math.max(Math.round(tdeeCBW - gradualDailyDeficit(dayNumber)), floor);
   }
-  if (cbmiClass === "underweight") {
+  if (direction === "gain") {
     const ceiling = Math.round(tdeeCBW + maxDeficit);
     return Math.min(Math.round(tdeeCBW + gradualDailyDeficit(dayNumber)), ceiling);
   }
@@ -602,7 +622,7 @@ export interface GlideWalk {
   tdeeAtStart: number;   // TDEE at that weight
   slopePerKg: number;    // see tdeeSlopePerKg
   heightM2: number;      // derives simulated BMI for the severity cap
-  cbmiClass: CBMIClass;
+  direction: PlanDirection;
   minCal: number;
 }
 
@@ -616,7 +636,7 @@ export function walkDay(walk: GlideWalk, planDay: number, bankedKcal: number): n
   const tdee = walk.tdeeAtStart - walk.slopePerKg * kgMoved;
   const w = walk.startKg - kgMoved;
   const maxDef = maxDailyDeficit(walk.heightM2 > 0 ? w / walk.heightM2 : 0);
-  const intake = gradualDailyCals(tdee, planDay, walk.cbmiClass, walk.minCal, maxDef);
+  const intake = gradualDailyCals(tdee, planDay, walk.direction, walk.minCal, maxDef);
   return tdee - intake;
 }
 
@@ -664,10 +684,8 @@ export function computeWeeklyTarget(args: {
     : 0;
   const weekIndex = Math.floor(planDay / 7) + 1;
 
-  const direction: WeeklyTarget["direction"] =
-    cbmiClass === "overweight" || cbmiClass === "obese" ? "lose"
-    : cbmiClass === "underweight" ? "gain"
-    : "maintain";
+  // Goal-driven when the user set a goal; BMI class otherwise (item 7).
+  const direction = resolvePlanDirection(profile);
 
   const span = anchorStartKg - goalKg;
   const progressPct = span === 0 ? 100
@@ -697,7 +715,7 @@ export function computeWeeklyTarget(args: {
   // Hero: end-of-this-week projection from current weight at the true ramp position.
   const currentWalk: GlideWalk = {
     startKg: currentKg, tdeeAtStart: tdee, slopePerKg,
-    heightM2: profile.heightM2, cbmiClass, minCal,
+    heightM2: profile.heightM2, direction, minCal,
   };
   const weekKcal = cumulativeDeficitKcal(currentWalk, planDay, 7);
   const weeklyDeltaKg = -weekKcal / KCAL_PER_KG; // <0 losing, >0 gaining
@@ -712,7 +730,7 @@ export function computeWeeklyTarget(args: {
   const anchorWalk: GlideWalk = {
     startKg: anchorStartKg,
     tdeeAtStart: tdee - slopePerKg * (currentKg - anchorStartKg),
-    slopePerKg, heightM2: profile.heightM2, cbmiClass, minCal,
+    slopePerKg, heightM2: profile.heightM2, direction, minCal,
   };
   // One linear walk with week-boundary snapshots (re-walking from day 1 per
   // week would be O(totalWeeks²) — ~1M walkDay calls at the 522-week cap).

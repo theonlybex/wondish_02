@@ -13,7 +13,10 @@ interface JournalEntryRaw {
   meals: JournalMealRaw[];
 }
 
-export function computeJourneyStats(entries: JournalEntryRaw[]): JourneyStats {
+// totalDays = number of days in the requested window. Without it, engagement
+// falls back to entries.length — which silently ignores days with no journal
+// entry at all (2 engaged entries in a 30-day window would read as 100%).
+export function computeJourneyStats(entries: JournalEntryRaw[], totalDays?: number): JourneyStats {
   if (entries.length === 0) {
     return {
       avgMood: 0,
@@ -54,7 +57,7 @@ export function computeJourneyStats(entries: JournalEntryRaw[]): JourneyStats {
     avgWeight: weights.length
       ? +(weights.reduce((a, b) => a + b, 0) / weights.length).toFixed(1)
       : null,
-    engagementPercent: entries.length > 0 ? Math.round((engaged / entries.length) * 100) : 0,
+    engagementPercent: Math.round((engaged / Math.max(totalDays ?? entries.length, entries.length, 1)) * 100),
     mealSourceBreakdown,
     dailyMoods: entries
       .filter((e) => e.mood)

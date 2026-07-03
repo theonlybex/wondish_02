@@ -10,11 +10,10 @@ Working one by one. TDD (node:test via `npm test`) where the logic is pure; DB-c
 - [x] 4. estimateDaysToGoalWeight landmine removed + stale parity comment fixed (90bc6ed)
 - [x] 5. Projections now adapt TDEE + severity cap to simulated weight (06422d5)
 
-**PAUSED HERE per user (2026-07-02) — items 6-9 pending, 7 needs product decisions.**
-- [ ] 6. WTBW targets an underweight BMI for short users — clamp default target to healthy BMI floor (lib/caloric-engine.ts)
-- [ ] 7. Direction from BMI class contradicts user goal + goalWeight/birthday validation — NEEDS PRODUCT DECISION, ask before implementing
-- [ ] 8. Allergy filter is exact-name match — contains-match for allergy-derived bans, product trade-off (lib/meal-plan.ts)
-- [ ] 9. Low-impact: journey engagement denominator, minCal retention comment, underweight schedule inconsistency
+- [x] 6. WTBW underweight for short users — clampGoalToHealthyBand floors every resolved target at BMI 18.5
+- [x] 7. Goal-driven direction (product decision: goal-driven, healthy-clamped; BMI class only when no goal set) + goalWeight/birthday validation in profile PATCH
+- [x] 8. Allergy bans now word-boundary matched w/ singular/plural stem (product decision; "egg" ≠ "eggplant"); non-allergy bans stay exact
+- [x] 9. Journey engagement now divided by days-in-window (route + SSR page); minCal comment corrected; underweight schedule unified on gradualDailyCals
 
 ## Follow-on fixes (meal-plan review, 2026-07-02)
 
