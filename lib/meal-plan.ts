@@ -100,25 +100,9 @@ function pickByMotivation(
   return shuffleArray(scored.slice(0, Math.min(3, scored.length)))[0];
 }
 
-function buildFamilyFilter(dailyFamilies: Set<string>) {
-  if (dailyFamilies.size === 0) return {};
-  return {
-    OR: [
-      { family: null },
-      { family: { notIn: Array.from(dailyFamilies) } },
-    ],
-  };
-}
-
-function buildSubFamilyFilter(mealSubFamilies: Set<string>) {
-  if (mealSubFamilies.size === 0) return {};
-  return {
-    OR: [
-      { subFamily: null },
-      { subFamily: { notIn: Array.from(mealSubFamilies) } },
-    ],
-  };
-}
+// Pool entries carry mealTypeId + description so the in-memory filters can
+// reproduce the per-pick Prisma queries (meal-type scoping, content filter).
+type PoolRecipe = RecipeCandidate & { mealTypeId: string | null; description: string | null };
 
 // Beverages not tagged fruity/veggie are exempt from the daily family constraint (per spec).
 function isBeverageExempt(recipe: RecipeCandidate): boolean {
@@ -140,13 +124,17 @@ function trackChosen(
 
 export type MenuRow = { patientId: string; recipeId: string; mealTypeId: string; date: Date; planVersion: number };
 
+// rows + the weight (lbs) the calorie targets were computed from, so the
+// runner stamps the drift anchor from the same read the plan was built with.
+export type BuildResult = { rows: MenuRow[]; builtForWeight: number | null };
+
 // Pure builder: computes the menu rows for a plan. Does NOT touch the menu table.
 // Persistence + version flip is handled by the orchestrator (meal-plan-runner).
 export async function buildMealPlanMenus(
   patientId: string,
   startDate: Date,
   planVersion: number,
-): Promise<MenuRow[]> {
+): Promise<BuildResult> {
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
     include: {
@@ -277,11 +265,6 @@ export async function buildMealPlanMenus(
 
   const menus: MenuRow[] = [];
 
-  const hasContentFilter = {
-    ingredients: { some: {} },
-    description: { not: null },
-  };
-
   const bannedFilter =
     allBannedNames.length > 0
       ? { NOT: { ingredients: { some: { ingredient: { name: { in: allBannedNames, mode: "insensitive" as const } } } } } }
@@ -295,6 +278,16 @@ export async function buildMealPlanMenus(
   };
 
   const snackMealType = mealTypes.find((mt) => mt.name.toLowerCase() === "snack") ?? mealTypes[mealTypes.length - 1];
+
+  // Perf: load the eligible catalog ONCE and filter in memory. The previous
+  // implementation issued 2–10 Prisma round-trips per meal slot (thousands
+  // over a long deficit plan). isPublic and the banned-ingredient exclusion
+  // are constant for the whole build, so they stay in the DB query; all
+  // per-pick filters below reproduce the old queries' semantics exactly.
+  const recipePool: PoolRecipe[] = await prisma.recipe.findMany({
+    where: { isPublic: true, ...bannedFilter },
+    select: { ...recipeSelect, mealTypeId: true, description: true },
+  });
 
   // weekUsedIds resets every 7 days — prevents recipe exhaustion while still
   // ensuring no recipe repeats within the same week.
@@ -350,51 +343,45 @@ export async function buildMealPlanMenus(
 
       // dishTypeNames = null → no dish-type restriction (any dish type).
       // Re-reads weekUsedIds / family sets each call so filters stay fresh.
-      // Snack-slot queries relax the content filter: simple items like fruits,
+      // Snack-slot picks relax the content filter: simple items like fruits,
       // nuts, and beverages are valid without a full ingredient list.
-      const contentFilter = isSnack ? {} : hasContentFilter;
+      const eligibleIds = new Set(eligibleMealTypeIds);
 
-      const queryRecipes = async (
+      const queryRecipes = (
         dishTypeNames: string[] | null,
         calMin?: number,
         calMax?: number
-      ): Promise<RecipeCandidate[]> => {
+      ): RecipeCandidate[] => {
         // Clamp every bounded pick to the day's remaining calorie budget; skip
         // the pick entirely when the budget can't fit the window's minimum.
         // calMax-only calls filter too (previously the cap was silently dropped
         // unless calMin was also set).
-        let calFilter = {};
+        let calWin: { min: number; max: number } | null = null;
         if (calMax != null) {
           const win = capWindowToDayBudget(calMin ?? 0, calMax, dayBudget, dayCalories);
           if (!win) return [];
-          calFilter = { calories: { gte: Math.round(win.calMin), lte: Math.round(win.calMax) } };
+          calWin = { min: Math.round(win.calMin), max: Math.round(win.calMax) };
         }
-        const dishFilter = dishTypeNames
-          ? { dishType: { name: { in: dishTypeNames, mode: "insensitive" as const } } }
-          : {};
-        const andFilters = [
-          ...(dailyFamilies.size   > 0 ? [buildFamilyFilter(dailyFamilies)]     : []),
-          ...(mealSubFamilies.size > 0 ? [buildSubFamilyFilter(mealSubFamilies)] : []),
-        ];
-        const baseWhere = {
-          mealTypeId: { in: eligibleMealTypeIds },
-          isPublic: true,
-          ...contentFilter,
-          ...bannedFilter,
-          ...calFilter,
-          ...dishFilter,
-          ...(andFilters.length > 0 ? { AND: andFilters } : {}),
-        };
+        const dishNames = dishTypeNames
+          ? new Set(dishTypeNames.map((n) => n.toLowerCase()))
+          : null;
+        const matches = (r: PoolRecipe, excludeUsed: boolean): boolean =>
+          r.mealTypeId !== null && eligibleIds.has(r.mealTypeId) &&
+          (isSnack || (r.ingredients.length > 0 && r.description !== null)) &&
+          (calWin === null ||
+            (r.calories !== null && r.calories >= calWin.min && r.calories <= calWin.max)) &&
+          (dishNames === null ||
+            (r.dishType !== null && dishNames.has(r.dishType.name.toLowerCase()))) &&
+          (r.family === null || !dailyFamilies.has(r.family)) &&
+          (r.subFamily === null || !mealSubFamilies.has(r.subFamily)) &&
+          !(excludeUsed && weekUsedIds.has(r.id));
         // First attempt: exclude recipes already used this week
         if (weekUsedIds.size > 0) {
-          const results = await prisma.recipe.findMany({
-            where: { ...baseWhere, id: { notIn: Array.from(weekUsedIds) } },
-            select: recipeSelect,
-          });
-          if (results.length > 0) return results;
+          const fresh = recipePool.filter((r) => matches(r, true));
+          if (fresh.length > 0) return fresh;
         }
         // Fallback: allow recipe reuse when the weekly pool is exhausted
-        return prisma.recipe.findMany({ where: baseWhere, select: recipeSelect });
+        return recipePool.filter((r) => matches(r, false));
       };
 
       const addRecipe = (recipe: RecipeCandidate) => {
@@ -410,7 +397,7 @@ export async function buildMealPlanMenus(
       // ── Step 1: Try a complete meal ────────────────────────────────────────
       if (target !== null) {
         const calMax = dinnerCalCap !== null ? Math.min(target * 1.35, dinnerCalCap) : target * 1.35;
-        const pool   = await queryRecipes(["complete meal"], target * 0.55, calMax);
+        const pool   = queryRecipes(["complete meal"], target * 0.55, calMax);
         if (pool.length > 0) addRecipe(pick(pool));
       }
 
@@ -418,10 +405,10 @@ export async function buildMealPlanMenus(
       if (mealCalories === 0) {
         const mainTarget  = target ?? 0;
         const mainCalMax  = dinnerCalCap !== null ? Math.min(mainTarget * 0.80, dinnerCalCap) : mainTarget * 0.80;
-        let mainPool      = await queryRecipes(["main dish"], mainTarget * 0.40, mainCalMax);
+        let mainPool      = queryRecipes(["main dish"], mainTarget * 0.40, mainCalMax);
         // Wider retry keeps a calorie cap so the pick still honors the day
         // budget — an unbounded query here would bypass capWindowToDayBudget.
-        if (mainPool.length === 0) mainPool = await queryRecipes(["main dish"], undefined, (target ?? 800) * 1.2);
+        if (mainPool.length === 0) mainPool = queryRecipes(["main dish"], undefined, (target ?? 800) * 1.2);
 
         if (mainPool.length > 0) {
           addRecipe(pick(mainPool));
@@ -431,7 +418,7 @@ export async function buildMealPlanMenus(
             for (const sideType of ["veggie side dish", "starchy side dish", "fruity side dish"]) {
               if (mealCalories >= target * 0.90) break;
               const gap  = target - mealCalories;
-              const pool = await queryRecipes([sideType], gap * 0.15, gap * 0.80);
+              const pool = queryRecipes([sideType], gap * 0.15, gap * 0.80);
               if (pool.length > 0) addRecipe(pick(pool));
             }
           }
@@ -439,8 +426,8 @@ export async function buildMealPlanMenus(
           // No typed dish found — fall back to any recipe for this meal slot.
           // Always keep a calorie cap to avoid oversized recipes landing here.
           const cap      = target ?? 800;
-          const anyPool  = await queryRecipes(null, cap * 0.30, cap * 1.20);
-          const fallback = anyPool.length > 0 ? anyPool : await queryRecipes(null, undefined, cap * 1.20);
+          const anyPool  = queryRecipes(null, cap * 0.30, cap * 1.20);
+          const fallback = anyPool.length > 0 ? anyPool : queryRecipes(null, undefined, cap * 1.20);
           if (fallback.length > 0) addRecipe(pick(fallback));
         }
       }
@@ -450,7 +437,7 @@ export async function buildMealPlanMenus(
       // ── Step 3: Dessert for the biggest meal (lunch) ───────────────────────
       if (isBiggestMeal && target !== null && mealCalories < target * 0.85) {
         const gap  = target - mealCalories;
-        const pool = await queryRecipes(["dessert"], gap * 0.25, gap * 1.10);
+        const pool = queryRecipes(["dessert"], gap * 0.25, gap * 1.10);
         if (pool.length > 0) addRecipe(pick(pool));
       }
 
@@ -458,7 +445,7 @@ export async function buildMealPlanMenus(
       if (target !== null && mealCalories < target * 0.70) {
         const gap    = target - mealCalories;
         const capMax = dinnerCalCap !== null ? Math.min(gap * 1.10, dinnerCalCap - mealCalories) : gap * 1.10;
-        const pool   = await queryRecipes(null, gap * 0.25, capMax);
+        const pool   = queryRecipes(null, gap * 0.25, capMax);
         if (pool.length > 0) addRecipe(pick(pool));
       }
 
@@ -471,25 +458,20 @@ export async function buildMealPlanMenus(
       let extraCount = 0;
       const MAX_EXTRA = 4;
       while (dayCalories < weekCals * 0.9 && extraCount < MAX_EXTRA) {
-        const calGap          = weekCals - dayCalories;
-        const extraFamilyFilter = buildFamilyFilter(dailyFamilies);
-        const extraAndFilters = Object.keys(extraFamilyFilter).length > 0 ? [extraFamilyFilter] : [];
-        const extraBaseWhere = {
-          mealTypeId: snackMealType.id,
-          isPublic: true,
-          calories: { gte: Math.round(calGap * 0.25), lte: Math.round(calGap) },
-          ...hasContentFilter,
-          ...bannedFilter,
-          ...(extraAndFilters.length > 0 ? { AND: extraAndFilters } : {}),
-        };
+        const calGap  = weekCals - dayCalories;
+        const minCals = Math.round(calGap * 0.25);
+        const maxCals = Math.round(calGap);
+        const matchesExtra = (r: PoolRecipe, excludeUsed: boolean): boolean =>
+          r.mealTypeId === snackMealType.id &&
+          r.ingredients.length > 0 && r.description !== null &&
+          r.calories !== null && r.calories >= minCals && r.calories <= maxCals &&
+          (r.family === null || !dailyFamilies.has(r.family)) &&
+          !(excludeUsed && weekUsedIds.has(r.id));
         let extraCandidates = weekUsedIds.size > 0
-          ? await prisma.recipe.findMany({
-              where: { ...extraBaseWhere, id: { notIn: Array.from(weekUsedIds) } },
-              select: recipeSelect,
-            })
+          ? recipePool.filter((r) => matchesExtra(r, true))
           : [];
         if (extraCandidates.length === 0) {
-          extraCandidates = await prisma.recipe.findMany({ where: extraBaseWhere, select: recipeSelect });
+          extraCandidates = recipePool.filter((r) => matchesExtra(r, false));
         }
         if (extraCandidates.length === 0) break;
         const extra = pickByMotivation(extraCandidates, motivationNames, affinityMap, seenIngredientNames, macroTarget);
@@ -506,5 +488,5 @@ export async function buildMealPlanMenus(
     current.setDate(current.getDate() + 1);
   }
 
-  return menus;
+  return { rows: menus, builtForWeight: patient.weight ?? null };
 }

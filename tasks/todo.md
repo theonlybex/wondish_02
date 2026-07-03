@@ -16,6 +16,13 @@ Working one by one. TDD (node:test via `npm test`) where the logic is pure; DB-c
 - [ ] 8. Allergy filter is exact-name match — contains-match for allergy-derived bans, product trade-off (lib/meal-plan.ts)
 - [ ] 9. Low-impact: journey engagement denominator, minCal retention comment, underweight schedule inconsistency
 
+## Follow-on fixes (meal-plan review, 2026-07-02)
+
+- [x] Generator speed-up: single recipe-pool load, in-memory filters, algorithm unchanged (old 255s → new 9.2s for the verify run; all 7 checks pass)
+- [x] Anchor race: mealPlanWeight now stamped from the builder's own patient read (BuildResult.builtForWeight)
+- [x] Menu dates: start normalized to midnight before build, rows match stored mealPlanStartDate
+- [ ] Run scripts/backfill-meal-plan-weight.ts (dry-run verified, 9 accounts) — blocked on user; needs prod run too on deploy
+
 ## Review
 
 - **d06e0d8** day budget cap: worst-case day is now ~105% of target (was ~135%); also fixed calMax-only queries silently dropping their filter. TDD'd via capWindowToDayBudget.

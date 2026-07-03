@@ -50,12 +50,16 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
   try {
     const patient = await prisma.patient.findUnique({
       where: { id: patientId },
-      select: { activePlanVersion: true, weight: true },
+      select: { activePlanVersion: true },
     });
     const nextVersion = (patient?.activePlanVersion ?? 0) + 1;
 
-    // 2. Build the next version's menus in memory.
-    const rows = await buildMealPlanMenus(patientId, startDate, nextVersion);
+    // 2. Build the next version's menus in memory. Normalize the start to
+    // midnight BEFORE building so menu row dates and the stored
+    // mealPlanStartDate agree instead of the rows carrying request time-of-day.
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const { rows, builtForWeight } = await buildMealPlanMenus(patientId, start, nextVersion);
 
     // Guard: never flip to an empty plan. If the builder produced nothing
     // (e.g. an over-restrictive profile vs the recipe catalog), keep the current
@@ -69,8 +73,6 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
     await prisma.menu.createMany({ data: rows });
 
     // 4. Atomic flip — the moment version-scoped reads start seeing the new plan.
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
     await prisma.patient.update({
       where: { id: patientId },
       data: {
@@ -79,9 +81,10 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
         mealPlanStatus: "READY",
         mealPlanStale: false,
         mealPlanError: null,
-        // Anchor the plan to the weight it was built for, so later journal
-        // weigh-ins can detect meaningful drift and offer a regenerate.
-        mealPlanWeight: patient?.weight ?? null,
+        // Anchor the plan to the weight it was built for — from the builder's
+        // own patient read, so a weigh-in landing mid-generation can't make
+        // the anchor disagree with the weight the calorie targets used.
+        mealPlanWeight: builtForWeight,
       },
     });
 
