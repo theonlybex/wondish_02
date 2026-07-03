@@ -32,15 +32,18 @@ export default function WeeklyMealPlanGrid({
     grouped[mtName][dateKey] = menu;
   }
 
-  // Same browsing horizon as the daily view (one week ahead of today):
-  // the next calendar week is viewable, anything beyond is not.
+  // Same browsing horizon as the daily view: current week and next week
+  // only — past weeks live in the Journal calendar.
   const todayMidnight = new Date();
   todayMidnight.setHours(0, 0, 0, 0);
   const maxBrowseDate = addDays(todayMidnight, 7);
+  const currentWeekStart = startOfWeek(todayMidnight, { weekStartsOn: 1 });
   const atForwardLimit = addWeeks(weekStart, 1) > maxBrowseDate;
+  const atBackLimit = weekStart <= currentWeekStart;
 
   const navigate = async (dir: "prev" | "next") => {
     if (dir === "next" && atForwardLimit) return;
+    if (dir === "prev" && atBackLimit) return;
     const newWeekStart =
       dir === "next" ? addWeeks(weekStart, 1) : subWeeks(weekStart, 1);
     setWeekStart(newWeekStart);
@@ -62,7 +65,13 @@ export default function WeeklyMealPlanGrid({
       <div className="flex items-center gap-4 mb-6">
         <button
           onClick={() => navigate("prev")}
-          className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#F3F2FF] transition-colors text-navy"
+          disabled={atBackLimit}
+          aria-disabled={atBackLimit}
+          aria-label={atBackLimit ? "Past weeks are in your Journal calendar" : "Previous week"}
+          title={atBackLimit ? "Past weeks are in your Journal calendar" : undefined}
+          className={`w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center transition-colors text-navy ${
+            atBackLimit ? "opacity-40 cursor-not-allowed" : "hover:bg-[#F3F2FF]"
+          }`}
         >
           ‹
         </button>

@@ -1,3 +1,14 @@
+## Lesson: when adopting part of the user's idea, confirm the dropped part explicitly (2026-07-02)
+
+**Mistake:** User proposed hiding BOTH previous and next days in the meal plan.
+I recommended capping only forward browsing, they approved, and I silently
+kept the back button — they had to point it out.
+
+**Rule:** When a recommendation adopts only part of what the user floated,
+name what's being left out and why in one sentence ("keeping the back button
+because X — want it gone too?"). Approval of a recommendation is not approval
+of its omissions.
+
 ## Lesson: never run `npm run build` while the user's dev server is running (2026-07-02)
 
 **Mistake:** Verified a component change with `npm run build` while the user's

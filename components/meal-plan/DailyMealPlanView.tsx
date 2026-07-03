@@ -295,16 +295,19 @@ export default function DailyMealPlanView({
     }
   };
 
-  // Browsing horizon: the plan is generated weeks ahead, but distant days get
-  // recomputed as weight drifts — only let users browse one week forward.
+  // Browsing horizon: today through one week ahead. The plan is generated
+  // weeks out, but distant days get recomputed as weight drifts; past days
+  // live in the Journal calendar, not here.
   const BROWSE_AHEAD_DAYS = 7;
   const todayMidnight = new Date();
   todayMidnight.setHours(0, 0, 0, 0);
   const maxBrowseDate = addDays(todayMidnight, BROWSE_AHEAD_DAYS);
   const atForwardLimit = date >= maxBrowseDate;
+  const atBackLimit = date <= todayMidnight;
 
   const navigate = async (dir: "prev" | "next") => {
     if (dir === "next" && atForwardLimit) return;
+    if (dir === "prev" && atBackLimit) return;
     setSelectedId(null);
     const newDate = dir === "next" ? addDays(date, 1) : subDays(date, 1);
     const dateStr = format(newDate, "yyyy-MM-dd");
@@ -398,7 +401,13 @@ export default function DailyMealPlanView({
       <div className="flex items-center mb-6">
         <button
           onClick={() => navigate("prev")}
-          className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#ffffff] transition-colors text-forest shrink-0"
+          disabled={atBackLimit}
+          aria-disabled={atBackLimit}
+          aria-label={atBackLimit ? "Past days are in your Journal calendar" : "Previous day"}
+          title={atBackLimit ? "Past days are in your Journal calendar" : undefined}
+          className={`w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center transition-colors text-forest shrink-0 ${
+            atBackLimit ? "opacity-40 cursor-not-allowed" : "hover:bg-[#ffffff]"
+          }`}
         >‹</button>
         <p className="flex-1 text-center font-semibold text-forest text-lg">{format(date, "EEEE, MMMM d")}</p>
         <button
