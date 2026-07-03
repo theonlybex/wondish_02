@@ -1,3 +1,16 @@
+## Lesson: never run `npm run build` while the user's dev server is running (2026-07-02)
+
+**Mistake:** Verified a component change with `npm run build` while the user's
+`npm run dev` was serving the app. Both write to the same `.next` directory, so
+the production build clobbered the dev server's artifacts — layout.css started
+404ing and the user saw unstyled HTML, which looked like a bug in the feature
+they were testing.
+
+**Rule:** Before running `next build` in this repo, check for a running dev
+server (`Get-Process node`) or ask. Prefer `npx tsc --noEmit` + `npm run lint` +
+`npm test` for verification while a dev server is up; save `next build` for when
+it's stopped.
+
 ## Lesson: sanity-check model semantics, not just code correctness (2026-06-11)
 
 **Mistake:** Wired the prediction what-if card's exercise slider straight into the
