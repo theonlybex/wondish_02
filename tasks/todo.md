@@ -21,7 +21,7 @@ Working one by one. TDD (node:test via `npm test`) where the logic is pure; DB-c
 - [x] Generator speed-up: single recipe-pool load, in-memory filters, algorithm unchanged (old 255s → new 9.2s for the verify run; all 7 checks pass)
 - [x] Anchor race: mealPlanWeight now stamped from the builder's own patient read (BuildResult.builtForWeight)
 - [x] Menu dates: start normalized to midnight before build, rows match stored mealPlanStartDate
-- [ ] Run scripts/backfill-meal-plan-weight.ts (dry-run verified, 9 accounts) — blocked on user; needs prod run too on deploy
+- [x] Run scripts/backfill-meal-plan-weight.ts — applied to dev DB (8 accounts, 2026-07-02); verified gg.bex.abdi progress 0% → 54.2%. STILL NEEDED: one-time run against the production DB on deploy.
 
 ## Review
 
