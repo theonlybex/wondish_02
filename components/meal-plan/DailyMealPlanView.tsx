@@ -399,27 +399,25 @@ export default function DailyMealPlanView({
 
       {/* Date nav + calorie pill */}
       <div className="flex items-center mb-6">
-        <button
-          onClick={() => navigate("prev")}
-          disabled={atBackLimit}
-          aria-disabled={atBackLimit}
-          aria-label={atBackLimit ? "Past days are in your Journal calendar" : "Previous day"}
-          title={atBackLimit ? "Past days are in your Journal calendar" : undefined}
-          className={`w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center transition-colors text-forest shrink-0 ${
-            atBackLimit ? "opacity-40 cursor-not-allowed" : "hover:bg-[#ffffff]"
-          }`}
-        >‹</button>
+        {atBackLimit ? (
+          <div className="w-9 h-9 shrink-0" aria-hidden="true" />
+        ) : (
+          <button
+            onClick={() => navigate("prev")}
+            aria-label="Previous day"
+            className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#ffffff] transition-colors text-forest shrink-0"
+          >‹</button>
+        )}
         <p className="flex-1 text-center font-semibold text-forest text-lg">{format(date, "EEEE, MMMM d")}</p>
-        <button
-          onClick={() => navigate("next")}
-          disabled={atForwardLimit}
-          aria-disabled={atForwardLimit}
-          aria-label={atForwardLimit ? "You can browse up to one week ahead" : "Next day"}
-          title={atForwardLimit ? "You can browse up to one week ahead" : undefined}
-          className={`w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center transition-colors text-forest shrink-0 ${
-            atForwardLimit ? "opacity-40 cursor-not-allowed" : "hover:bg-[#ffffff]"
-          }`}
-        >›</button>
+        {atForwardLimit ? (
+          <div className="w-9 h-9 shrink-0" aria-hidden="true" />
+        ) : (
+          <button
+            onClick={() => navigate("next")}
+            aria-label="Next day"
+            className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#ffffff] transition-colors text-forest shrink-0"
+          >›</button>
+        )}
       </div>
 
       {/* Completion banner */}

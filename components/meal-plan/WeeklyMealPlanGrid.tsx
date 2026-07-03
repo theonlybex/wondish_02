@@ -63,33 +63,31 @@ export default function WeeklyMealPlanGrid({
     <div>
       {/* Week navigation */}
       <div className="flex items-center gap-4 mb-6">
-        <button
-          onClick={() => navigate("prev")}
-          disabled={atBackLimit}
-          aria-disabled={atBackLimit}
-          aria-label={atBackLimit ? "Past weeks are in your Journal calendar" : "Previous week"}
-          title={atBackLimit ? "Past weeks are in your Journal calendar" : undefined}
-          className={`w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center transition-colors text-navy ${
-            atBackLimit ? "opacity-40 cursor-not-allowed" : "hover:bg-[#F3F2FF]"
-          }`}
-        >
-          ‹
-        </button>
+        {atBackLimit ? (
+          <div className="w-9 h-9" aria-hidden="true" />
+        ) : (
+          <button
+            onClick={() => navigate("prev")}
+            aria-label="Previous week"
+            className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#F3F2FF] transition-colors text-navy"
+          >
+            ‹
+          </button>
+        )}
         <p className="font-semibold text-navy">
           {format(weekStart, "MMM d")} – {format(addDays(weekStart, 6), "MMM d, yyyy")}
         </p>
-        <button
-          onClick={() => navigate("next")}
-          disabled={atForwardLimit}
-          aria-disabled={atForwardLimit}
-          aria-label={atForwardLimit ? "You can browse up to one week ahead" : "Next week"}
-          title={atForwardLimit ? "You can browse up to one week ahead" : undefined}
-          className={`w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center transition-colors text-navy ${
-            atForwardLimit ? "opacity-40 cursor-not-allowed" : "hover:bg-[#F3F2FF]"
-          }`}
-        >
-          ›
-        </button>
+        {atForwardLimit ? (
+          <div className="w-9 h-9" aria-hidden="true" />
+        ) : (
+          <button
+            onClick={() => navigate("next")}
+            aria-label="Next week"
+            className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#F3F2FF] transition-colors text-navy"
+          >
+            ›
+          </button>
+        )}
       </div>
 
       {loading ? (
