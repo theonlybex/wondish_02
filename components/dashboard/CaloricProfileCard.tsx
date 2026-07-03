@@ -157,8 +157,8 @@ export default function CaloricProfileCard() {
         <WeeklyTargetHero weeklyTarget={profile.weeklyTarget} cbmiClass={profile.cbmiClass} />
       </div>
 
-      {/* Full-width momentum band — the whole journey rising to ideal weight */}
-      <WeeklyTargetBand weeklyTarget={profile.weeklyTarget} idealKg={profile.ibwKg} />
+      {/* Full-width momentum band — the whole journey rising to the user's target weight */}
+      <WeeklyTargetBand weeklyTarget={profile.weeklyTarget} targetKg={profile.tbwKg} />
 
       {/* Metrics grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
@@ -322,7 +322,7 @@ function WeeklyTargetHero({
             </span>
             <span className="text-base font-bold text-[#ABA6A6] mb-0.5">lbs</span>
             <span className="inline-flex items-center text-xs font-bold text-[#B75E78] bg-[#B75E78]/10 rounded-full px-2 py-0.5 mb-1">
-              {arrow} {deltaLbs.toFixed(1)}/wk
+              {arrow} {deltaLbs.toFixed(2)}/wk
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2 mt-3 text-xs">
@@ -340,7 +340,7 @@ function WeeklyTargetHero({
 
 // ─── Full-width Momentum Band (whole-journey rising curve) ────────────────────
 
-function WeeklyTargetBand({ weeklyTarget, idealKg }: { weeklyTarget?: WeeklyTargetDTO; idealKg: number }) {
+function WeeklyTargetBand({ weeklyTarget, targetKg }: { weeklyTarget?: WeeklyTargetDTO; targetKg: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(760);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
@@ -356,12 +356,13 @@ function WeeklyTargetBand({ weeklyTarget, idealKg }: { weeklyTarget?: WeeklyTarg
   }, []);
 
   if (!weeklyTarget || !weeklyTarget.hasPlan || weeklyTarget.direction === "maintain") return null;
-  const { curve, weekIndex, anchorStartKg } = weeklyTarget;
+  const { curve, weekIndex, anchorStartKg, direction } = weeklyTarget;
   if (!curve || curve.length < 2) return null;
 
-  // The journey always spans start (0%, bottom-left) → ideal weight (100%,
-  // top-right): normalize the planned glide so it fills the full height and
-  // terminates in the top-right corner, regardless of where the plan math lands.
+  // The journey spans start (0%) → target weight (100%): normalize the planned
+  // glide so it fills the full height regardless of where the plan math lands.
+  // The curve tracks the weight itself — it descends when losing and rises
+  // when gaining.
   const firstP = curve[0].progressPct;
   const lastP = curve[curve.length - 1].progressPct;
   const pRange = lastP - firstP;
@@ -382,17 +383,19 @@ function WeeklyTargetBand({ weeklyTarget, idealKg }: { weeklyTarget?: WeeklyTarg
   const yFor = (pct: number) => H - BOT - (pct / 100) * (H - TOP - BOT);
 
   const startLbs = kgToLbs(anchorStartKg);
-  const idealLbs = kgToLbs(idealKg);
+  const targetLbs = kgToLbs(targetKg);
 
-  // Each point carries its planned weight: interpolate start → ideal by the
-  // point's normalized height, so hovering shows the pounds at that spot.
+  // Each point carries its planned weight: interpolate start → target by the
+  // point's normalized progress, so hovering shows the pounds at that spot.
+  // Height mirrors the weight: losing plots start-high → target-low, gaining
+  // plots start-low → target-high.
   const xy = curve.map((p, i) => {
     const np = normProgress(p.progressPct, i);
     return {
       x: xFor(p.week),
-      y: yFor(np),
+      y: yFor(direction === "lose" ? 100 - np : np),
       week: p.week,
-      lbs: startLbs + (np / 100) * (idealLbs - startLbs),
+      lbs: startLbs + (np / 100) * (targetLbs - startLbs),
     };
   });
 
@@ -467,7 +470,7 @@ function WeeklyTargetBand({ weeklyTarget, idealKg }: { weeklyTarget?: WeeklyTarg
           {/* start marker */}
           <circle cx={startPt.x} cy={startPt.y} r="3" fill="#fff" stroke="#B75E78" strokeWidth="1.5" />
 
-          {/* goal flag at the top-right terminus */}
+          {/* goal flag at the terminus */}
           <g transform={`translate(${last.x}, ${last.y})`}>
             <line x1="0" y1="0" x2="0" y2="-13" stroke="#812549" strokeWidth="1.75" />
             <path d="M0 -13 L8 -10 L0 -7 Z" fill="#812549" />
@@ -504,7 +507,7 @@ function WeeklyTargetBand({ weeklyTarget, idealKg }: { weeklyTarget?: WeeklyTarg
           {startLbs.toFixed(0)} lbs · start
         </span>
         <span className="text-[10px] font-semibold text-[#812549]">
-          ideal · {idealLbs.toFixed(0)} lbs
+          target · {targetLbs.toFixed(0)} lbs
         </span>
       </div>
     </div>
