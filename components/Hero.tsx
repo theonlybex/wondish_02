@@ -9,7 +9,8 @@ export default async function Hero() {
 
   const chips = [
     { icon: "🎯", icBg: "#F5F1DD", title: t("chip1"), sub: t("chip1Sub"), pos: "top-[26px] -left-[26px]", delay: "0s" },
-    { icon: "📉", icBg: "#FFE9AE", title: t("chip2"), sub: t("chip2Sub"), pos: "bottom-[70px] -right-[22px]", delay: "1.4s" },
+    // TODO(confirm): reviewer questioned the "−5.8/−6 kg" badge; replaced with "Wondish will guide you through." Confirm whether to keep any number.
+    { icon: "🧭", icBg: "#FFE9AE", title: t("chip2"), sub: null, pos: "bottom-[70px] -right-[22px]", delay: "1.4s" },
     { icon: "🛒", icBg: "#8DCEBD", title: t("chip3"), sub: t("chip3Sub"), pos: "-bottom-4 left-[30px]", delay: "2.6s" },
   ];
 
@@ -44,19 +45,25 @@ export default async function Hero() {
           <div>
             <h1
               className="reveal d1 font-extrabold"
-              style={{ fontSize: "clamp(42px, 6vw, 76px)", letterSpacing: "-0.02em", lineHeight: 1.05 }}
+              style={{ fontSize: "clamp(27px, 4.2vw, 50px)", letterSpacing: "-0.02em", lineHeight: 1.1 }}
             >
-              {t("headline1")}{" "}
-              <span className="relative italic font-semibold whitespace-nowrap" style={{ color: "#812549", zIndex: 0 }}>
-                {t("headlineSwash")}
-                <span
-                  aria-hidden="true"
-                  className="absolute left-0 -right-0.5 bottom-1 h-3.5 rounded-lg"
-                  style={{ background: "#FFE9AE", zIndex: -1, transform: "rotate(-1.2deg)" }}
-                />
+              <span className="block whitespace-nowrap">{t("headline1")}</span>
+              <span className="block">
+                {t("headline2")}{" "}
+                <span className="relative italic font-semibold whitespace-nowrap" style={{ color: "#812549", zIndex: 0 }}>
+                  {t("headlineSwash")}
+                  <span
+                    aria-hidden="true"
+                    className="absolute left-0 -right-0.5 bottom-1 h-3.5 rounded-lg"
+                    style={{ background: "#FFE9AE", zIndex: -1, transform: "rotate(-1.2deg)" }}
+                  />
+                </span>
               </span>
             </h1>
-            <p className="reveal d2 text-lg leading-relaxed max-w-[460px] mt-5 mb-8" style={{ color: "#4F4A4A" }}>
+            <p className="reveal d2 text-xl italic font-semibold mt-4" style={{ color: "#812549" }}>
+              {t("tagline")}
+            </p>
+            <p className="reveal d2 text-lg leading-relaxed max-w-[460px] mt-4 mb-8" style={{ color: "#4F4A4A" }}>
               {t("subheadline")}
             </p>
             <div className="reveal d3 flex flex-wrap items-center gap-3.5">
@@ -81,14 +88,14 @@ export default async function Hero() {
           <div className="reveal d2 relative max-w-[440px] w-full mx-auto lg:max-w-none">
             {/* Floating ingredient cutouts */}
             <div
-              className="absolute rounded-full overflow-hidden bg-white z-[1] hidden sm:block"
-              style={{ width: 78, height: 78, top: -10, right: 80, animation: "bob 6s ease-in-out infinite" }}
+              className="absolute rounded-full overflow-hidden bg-white z-[3] border hidden sm:block"
+              style={{ width: 78, height: 78, top: -10, right: 80, borderColor: LINE_SOFT, animation: "bob 6s ease-in-out infinite" }}
             >
               <Image src="/dish/avocado.png" alt="Fresh avocado" fill sizes="78px" className="object-cover" />
             </div>
             <div
-              className="absolute rounded-full overflow-hidden bg-white z-[1] hidden sm:block"
-              style={{ width: 64, height: 64, bottom: 30, left: -34, animation: "bob 7s ease-in-out 0.8s infinite" }}
+              className="absolute rounded-full overflow-hidden bg-white z-[3] border hidden sm:block"
+              style={{ width: 64, height: 64, bottom: 30, left: -34, borderColor: LINE_SOFT, animation: "bob 7s ease-in-out 0.8s infinite" }}
             >
               <Image src="/dish/tomato.png" alt="Cherry tomatoes" fill sizes="64px" className="object-cover" />
             </div>
@@ -105,7 +112,9 @@ export default async function Hero() {
                 </div>
                 <div>
                   {c.title}
-                  <small className="block text-[11px] font-semibold" style={{ color: "#848181" }}>{c.sub}</small>
+                  {c.sub && (
+                    <small className="block text-[11px] font-semibold" style={{ color: "#848181" }}>{c.sub}</small>
+                  )}
                 </div>
               </div>
             ))}

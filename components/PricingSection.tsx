@@ -1,5 +1,6 @@
 import Link from "next/link";
 import CheckoutButton from "./CheckoutButton";
+import IncludedFoodSection from "./IncludedFoodSection";
 import { getTranslations } from "next-intl/server";
 
 function Check({ dark = false }: { dark?: boolean }) {
@@ -18,8 +19,8 @@ function Check({ dark = false }: { dark?: boolean }) {
 export default async function PricingSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   const t = await getTranslations("pricing");
 
-  const freeFeatures = [t("freeF1"), t("freeF2"), t("freeF3"), t("freeF4"), t("freeF5"), t("freeF6")];
-  const premiumFeatures = [t("premiumF1"), t("premiumF2"), t("premiumF3"), t("premiumF4"), t("premiumF5"), t("premiumF6"), t("premiumF7"), t("premiumF8"), t("premiumF9"), t("premiumF10")];
+  const freeFeatures = [t("freeF1"), t("freeF2"), t("freeF3"), t("freeF4")];
+  const premiumFeatures = [t("premiumF1"), t("premiumF2"), t("premiumF3"), t("premiumF4"), t("premiumF5"), t("premiumF6"), t("premiumF7"), t("premiumF8"), t("premiumF9")];
 
   return (
     <section id="pricing" className="pb-24">
@@ -103,7 +104,10 @@ export default async function PricingSection({ isLoggedIn = false }: { isLoggedI
           </div>
         </div>
 
-        <p className="text-center text-sm mt-8" style={{ color: "#848181" }}>{t("footer")}</p>
+        <p className="text-center text-sm font-semibold mt-8" style={{ color: "#4F4A4A" }}>{t("foodNotIncluded")}</p>
+        <p className="text-center text-sm mt-2" style={{ color: "#848181" }}>{t("footer")}</p>
+
+        <IncludedFoodSection />
       </div>
     </section>
   );

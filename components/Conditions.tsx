@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 
-const ICONS = ["🩸", "❤️", "🌸", "🌾", "🫧", "🤰"];
+// Cancer, Fibromyalgia, Diabetes & pre-diabetes, Heart & blood pressure, Gluten & allergies, Gut & digestion
+const ICONS = ["🎗️", "🌿", "🩸", "❤️", "🌾", "🫧"];
 
 export default async function Conditions() {
   const t = await getTranslations("conditions");
@@ -62,6 +63,17 @@ export default async function Conditions() {
                 <p className="text-sm" style={{ color: "rgba(255,255,255,0.7)" }}>{card.desc}</p>
               </div>
             ))}
+          </div>
+
+          <div className="relative z-[2] mt-9">
+            {/* TODO: set Learn more destination */}
+            <a
+              href="#"
+              className="inline-flex items-center gap-2 px-7 py-[15px] rounded-full font-semibold text-[15px] text-white border transition-all hover:-translate-y-0.5 hover:bg-white/10"
+              style={{ borderColor: "rgba(255,255,255,0.4)" }}
+            >
+              {t("learnMore")}
+            </a>
           </div>
 
           <div className="relative z-[2] mt-[34px] flex flex-wrap items-center gap-3 text-sm" style={{ color: "rgba(255,255,255,0.66)" }}>

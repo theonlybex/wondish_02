@@ -4,9 +4,6 @@ import { getTranslations } from "next-intl/server";
 export default async function CTASection() {
   const t = await getTranslations("cta");
 
-  // statHighlight must appear verbatim inside stat for correct rendering
-  const statParts = t("stat").split(t("statHighlight"));
-
   const trustBadges = [t("secureBilling"), t("cancelAnytime"), t("setupIn3min")];
 
   return (
@@ -28,11 +25,6 @@ export default async function CTASection() {
         >
           {t("headline")}
         </h2>
-        <p className="text-base mb-2" style={{ color: "#4F4A4A" }}>
-          {statParts[0]}
-          <span className="font-bold" style={{ color: "#1E1A1A" }}>{t("statHighlight")}</span>
-          {statParts[1] ?? ""}
-        </p>
         <p className="text-[19px] max-w-[480px] mx-auto mb-8" style={{ color: "#4F4A4A" }}>
           {t("subheadline")}
         </p>
