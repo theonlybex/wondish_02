@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --import tsx --test lib/caloric-engine.test.ts lib/prediction-data.test.ts",
+    "test": "node --import tsx --test lib/*.test.ts data/*.test.ts middleware.test.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
