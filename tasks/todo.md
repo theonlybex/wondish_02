@@ -33,6 +33,29 @@ Working one by one. TDD (node:test via `npm test`) where the logic is pure; DB-c
 
 Note: C2+C3 together mean Clara has likely never completed a conversation — the 400 fires on every send and is masked as an empty reply.
 
+## Unit-test sweep findings (2026-07-12, suite at 239 tests — suspected source bugs pinned as current behavior in the .test.ts files, not fixed)
+
+Security/correctness first:
+
+- [ ] T1. middleware.ts matcher: extension exclusion is not anchored to end-of-path, so page routes containing an excluded extension mid-path (e.g. /blog/why-node.js, /some.js/route) bypass Clerk middleware entirely. API routes stay covered via matcher[1]. Same root cause also excludes prefix extensions (.jsx via `js(?!on)`, .csvx via `csv`) and `_next`-prefixed root paths like /_next-steps. (middleware.test.ts)
+- [ ] T2. lib/rate-limit.ts memoryLimit: first request is always allowed even with limit=0 (entry created with count=1 before the compare); fallback key `${name}:${identifier}` lets ("x","y:z") and ("x:y","z") collide. Dev-only (Upstash path unaffected). (lib/rate-limit.test.ts)
+- [ ] T3. lib/journey.ts: a meal with skipped=true AND preparation="cooked" is double-counted in both mealSourceBreakdown buckets; a truthy non-numeric mood string charts as { mood: NaN } (chart-breaking) while avgMood correctly excludes it; mood "0" excluded from average yet still charted; fmt() renders date-only ISO strings as the previous day in negative-UTC-offset timezones. (lib/journey.test.ts)
+- [ ] T4. lib/prediction-data.ts: BMI-25 float boundary (1.6*1.6 = 2.5600000000000005) classifies a nominally-overweight profile as healthy → null estimate; an activityLevel what-if override BELOW the profile level returns null instead of a longer ETA (Journey what-if card may surprise users if it offers lower levels); resolveSex does not trim whitespace. (lib/prediction-data.test.ts)
+- [ ] T5. lib/caloric-engine.ts: calcAge returns negative ages for future birthdays (no clamp); calcIBW has no floor, so heights under ~108 cm yield negative IBW (healthy-band clamp rescues tbwKg downstream); computeAllMetrics reads real Date.now() with no injectable clock. (lib/caloric-engine.test.ts)
+- [ ] T6. lib/meal-plan.ts:292: when no meal type named "snack" exists, calorie top-up falls back to the last sorted meal type and stamps top-up rows with it (e.g. lunch) — looks semi-intentional, needs a product-level look. (lib/meal-plan.test.ts)
+
+Cosmetic / cleanup:
+
+- [ ] T7. lib/recipeEmoji.ts: plural "Overnight Oats" never matches the singular-only oat pattern (falls to fallback); sushi pattern includes bare "roll" so "Cinnamon Roll" gets 🍣; standalone "burger" is captured by the earlier beef pattern (🍔 only reachable via "cheeseburger"/"slider"). (lib/recipeEmoji.test.ts)
+- [ ] T8. lib/onboarding.ts isProfileComplete: weight=0 / height=0 pass the `!= null` presence check and an Invalid Date birthday counts as complete — validation assumed upstream. (lib/onboarding.test.ts)
+- [ ] T9. lib/admin-params.ts is only `export { prisma } from "@/lib/db"` — filename suggests param parsing but there is none; likely a leftover/placeholder.
+- [ ] T10. data/dishes.ts: dishes 7 and 10 use emojis 🫙 (jar) and 🫚 (ginger) that don't match "Mediterranean Quinoa Bowl" / "Tuna Nicoise Salad".
+
+Testability refactors (would unlock unit tests for currently DB-bound logic):
+
+- [ ] T11. Extract getPredictionProfileInput's post-query normalization (lib/queries.ts:54-77 — goal-weight unit conversion, goal>=weight null-out, unit fallbacks) into a pure function taking the patient row.
+- [ ] T12. lib/meal-plan-runner.ts regeneratePlan: accept prisma (or a repository interface) as a parameter so claim-lock/empty-plan/version-flip ordering becomes testable.
+
 ## Review
 
 - **d06e0d8** day budget cap: worst-case day is now ~105% of target (was ~135%); also fixed calMax-only queries silently dropping their filter. TDD'd via capWindowToDayBudget.
