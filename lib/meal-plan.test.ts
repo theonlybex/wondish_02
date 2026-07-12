@@ -25,15 +25,22 @@ const db = {
   mealType: { findMany: async () => db.mealTypes },
   recipe: {
     findMany: async (args: any) => {
-      // Reproduce the one where-clause the builder sends: isPublic plus an
-      // optional NOT-ingredient-name-in filter (case-insensitive).
-      let out = db.recipes.filter((r) => r.isPublic !== false);
-      const notIn: string[] | undefined =
-        args?.where?.NOT?.ingredients?.some?.ingredient?.name?.in;
+      // Faithful interpretation of the builder's where-clause: an isPublic
+      // equality plus an optional NOT-ingredient-name-in filter. Both are
+      // honored from the args (not hardcoded) so a source regression that
+      // drops isPublic or mode: "insensitive" makes the relevant tests fail.
+      let out = db.recipes;
+      if (args?.where?.isPublic !== undefined) {
+        out = out.filter((r) => r.isPublic === args.where.isPublic);
+      }
+      const nameFilter = args?.where?.NOT?.ingredients?.some?.ingredient?.name;
+      const notIn: string[] | undefined = nameFilter?.in;
       if (notIn) {
-        const banned = new Set(notIn.map((n) => n.toLowerCase()));
+        const norm = (s: string) =>
+          nameFilter.mode === "insensitive" ? s.toLowerCase() : s;
+        const banned = new Set(notIn.map(norm));
         out = out.filter(
-          (r) => !r.ingredients.some((ri: any) => banned.has(ri.ingredient.name.toLowerCase()))
+          (r) => !r.ingredients.some((ri: any) => banned.has(norm(ri.ingredient.name)))
         );
       }
       return out;
@@ -75,11 +82,12 @@ type RecipeOpts = {
   id: string; mealTypeId: string | null; calories: number | null;
   dishType?: string | null; family?: string | null; subFamily?: string | null;
   protein?: number; carbs?: number; fat?: number; fiber?: number;
-  ingredients?: string[]; description?: string | null;
+  ingredients?: string[]; description?: string | null; isPublic?: boolean;
 };
 function makeRecipe(o: RecipeOpts) {
   return {
     id: o.id,
+    isPublic: o.isPublic ?? true,
     mealTypeId: o.mealTypeId,
     calories: o.calories,
     protein: o.protein ?? 0, carbs: o.carbs ?? 0, fat: o.fat ?? 0, fiber: o.fiber ?? 0,
@@ -142,6 +150,13 @@ test("throws PATIENT_NOT_FOUND when the patient does not exist", async () => {
 test("throws PROFILE_INCOMPLETE when onboarding is unfinished", async () => {
   setDb(makePatient({ profileCompleted: false }), ALL_MT, []);
   await assert.rejects(build("p1", START), /PROFILE_INCOMPLETE/);
+});
+
+test("an empty recipe catalog yields an empty plan without crashing", async () => {
+  setDb(makePatient(), ALL_MT, []);
+  const { rows, builtForWeight } = await build("p1", START);
+  assert.deepEqual(rows, []);
+  assert.equal(builtForWeight, null);
 });
 
 // ─── Date math + row stamping (maintain fallback) ────────────────────────────
@@ -237,12 +252,55 @@ test("lose plan runs the gradual ramp to its plateau plus a 35-day buffer", asyn
   setDb(overweightPatient(), ALL_MT, breakfastLadder());
   const { rows, builtForWeight } = await build("p1", START);
   const expected = expectedLosePlanDays();
-  assert.ok(expected > 35, "a real deficit ramp must outlast the flat maintain plan");
+  assert.ok(expected > 35 && expected <= 365 + 35, "a real deficit ramp must outlast the flat maintain plan");
   const days = groupByDay(rows);
   assert.equal(days.size, expected, "one planned day per date up to ramp end + buffer");
   assert.ok(days.has(dayKey(addDays(START, expected - 1))));
   assert.ok(!days.has(dayKey(addDays(START, expected))));
   assert.equal(builtForWeight, 70, "drift anchor comes from the weight the plan was built with");
+});
+
+// Underweight fixture with a healthy-band goal above current weight → gain.
+const GAIN_PROFILE_INPUT = {
+  sex: "female" as const,
+  birthday: new Date("1994-01-01"),
+  heightValue: 170, heightUnit: "cm" as const,
+  cbwValue: 50, cbwUnit: "kg" as const,
+  activityLevel: 2,
+  utbwValue: 60, utbwUnit: "kg" as const,
+};
+
+function expectedGainPlanDays(): number {
+  const profile = computeAllMetrics(GAIN_PROFILE_INPUT);
+  assert.equal(resolvePlanDirection(profile), "gain", "fixture must be a gain plan");
+  const baseTDEE = Math.round(profile.tdeeCBW);
+  const minCal = profile.minCaloriesValue;
+  const maxDef = maxDailyDeficit(profile.cbmi);
+  const ceiling = Math.round(baseTDEE + maxDef);
+  let rampEnd = 35;
+  for (let d = 1; d <= 365; d++) {
+    if (gradualDailyCals(baseTDEE, d, "gain", minCal, maxDef) >= ceiling) { rampEnd = d; break; }
+  }
+  return rampEnd + 35;
+}
+
+test("gain plan ramps the surplus to its severity-scaled ceiling plus a 35-day buffer", async () => {
+  setDb(makePatient({
+    weight: 50, weightUnit: "kg",
+    height: 170, heightUnit: "cm",
+    birthday: new Date("1994-01-01"),
+    sexAtBirth: "female",
+    goalWeight: 60, goalWeightUnit: "kg",
+    physicalActivity: { level: 2 },
+  }), ALL_MT, breakfastLadder());
+  const { rows, builtForWeight } = await build("p1", START);
+  const expected = expectedGainPlanDays();
+  assert.ok(expected > 35 && expected <= 365 + 35, "surplus ramp must outlast the flat maintain plan");
+  const days = groupByDay(rows);
+  assert.equal(days.size, expected, "one planned day per date up to ramp end + buffer");
+  assert.ok(days.has(dayKey(addDays(START, expected - 1))));
+  assert.ok(!days.has(dayKey(addDays(START, expected))));
+  assert.equal(builtForWeight, 50);
 });
 
 test("sex resolution falls back to the gender relation when sexAtBirth is missing", async () => {
@@ -429,6 +487,32 @@ test("foods-to-avoid are excluded via the exact-name DB filter", async () => {
   const { rows } = await build("p1", START);
   assert.ok(rows.length > 0);
   assert.ok(rows.every((r) => r.recipeId === "with-basil"));
+});
+
+test("health-condition banned ingredients feed the exact-name DB filter", async () => {
+  const patient = makePatient({
+    healthConditions: [
+      { condition: { name: "Gout", bannedIngredients: [{ name: "Anchovies" }] } },
+    ],
+  });
+  setDb(patient, [MT_L, MT_S], [
+    makeRecipe({ id: "with-anchovies", mealTypeId: MT_L.id, calories: 700, ingredients: ["anchovies", "rice"] }),
+    makeRecipe({ id: "safe", mealTypeId: MT_L.id, calories: 700, ingredients: ["tofu", "rice"] }),
+  ]);
+  const { rows } = await build("p1", START);
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((r) => r.recipeId === "safe"));
+});
+
+test("non-public recipes are never planned", async () => {
+  setDb(makePatient(), [MT_L, MT_S], [
+    makeRecipe({ id: "private", mealTypeId: MT_L.id, calories: 700, isPublic: false }),
+    makeRecipe({ id: "public", mealTypeId: MT_L.id, calories: 700 }),
+  ]);
+  const { rows } = await build("p1", START);
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((r) => r.recipeId === "public"),
+    "isPublic: false must be excluded by the catalog query");
 });
 
 // ─── Motivation / preference scoring ─────────────────────────────────────────
