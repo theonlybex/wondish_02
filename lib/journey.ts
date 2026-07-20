@@ -1,4 +1,7 @@
-import { JourneyStats } from "@/types";
+import { JourneyStats, MacroDay, MacroStats } from "@/types";
+import { sumMealLogs, r1 } from "@/lib/macros";
+
+export type { MacroDay, MacroStats } from "@/types";
 
 interface JournalMealRaw {
   skipped: boolean;
@@ -70,5 +73,95 @@ export function computeJourneyStats(entries: JournalEntryRaw[], totalDays?: numb
     dailyWeights: entries
       .filter((e) => e.weight)
       .map((e) => ({ date: fmt(e.date), weight: e.weight! })),
+  };
+}
+
+// ─── computeMacroStats — pure sibling, ADDITIVE (computeJourneyStats above is
+// pinned by tests and untouched) ─────────────────────────────────────────────
+//
+// Stats read ONLY stored MealLog snapshots — one source of truth, never
+// recomputed from recipes. Groups by the `localDate` string (no Date
+// hydration → no off-by-one), scales+sums via sumMealLogs (r1 once at each
+// day-total boundary), and QUARANTINES all-incomplete days: a day whose every
+// row is `incomplete` (macros summed as 0 because nothing was priceable)
+// still appears in `dailyMacros` flagged, but is excluded from the averages
+// and from `daysOnTarget` — otherwise a fully-unpriceable day reads as a
+// 0-kcal day and drags the mean while looking "wildly under target". Days
+// with SOME complete rows count normally (their incomplete rows contribute
+// their known-0 values, flagged on the day). `daysOnTarget` is ratio-based
+// (|calories/target − 1| ≤ 0.10) — never a float equality (audit T4).
+
+export interface MacroLogRowRaw {
+  localDate: string;
+  servings: number;
+  calories?: number | null;
+  protein?: number | null;
+  carbs?: number | null;
+  fat?: number | null;
+  fiber?: number | null;
+  incomplete?: boolean;
+  deletedAt?: Date | string | null;
+}
+
+export function computeMacroStats(
+  logs: MacroLogRowRaw[],
+  target: MacroStats["target"]
+): MacroStats {
+  const byDay = new Map<string, MacroLogRowRaw[]>();
+  for (const row of logs) {
+    if (row.deletedAt != null) continue; // tombstones never aggregate
+    const bucket = byDay.get(row.localDate);
+    if (bucket) bucket.push(row);
+    else byDay.set(row.localDate, [row]);
+  }
+
+  const dailyMacros: MacroDay[] = [];
+  let sumCalories = 0;
+  let sumProtein = 0;
+  let sumCarbs = 0;
+  let sumFat = 0;
+  let daysComplete = 0;
+  let daysIncomplete = 0;
+  let daysOnTarget = 0;
+
+  const days = Array.from(byDay.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  for (const [date, rows] of days) {
+    const totals = sumMealLogs(rows); // servings-scaled, r1 at the day boundary
+    dailyMacros.push({
+      date,
+      calories: totals.calories,
+      protein: totals.protein,
+      carbs: totals.carbs,
+      fat: totals.fat,
+      incomplete: totals.incomplete, // any row incomplete → day flagged
+    });
+
+    const allIncomplete = rows.every((r) => r.incomplete === true);
+    if (allIncomplete) {
+      daysIncomplete += 1; // quarantined: visible, never averaged
+      continue;
+    }
+    daysComplete += 1;
+    sumCalories += totals.calories;
+    sumProtein += totals.protein;
+    sumCarbs += totals.carbs;
+    sumFat += totals.fat;
+    if (target && target.calories > 0 && Math.abs(totals.calories / target.calories - 1) <= 0.1) {
+      daysOnTarget += 1;
+    }
+  }
+
+  const denom = Math.max(1, daysComplete);
+  return {
+    dailyMacros,
+    avgCalories: r1(sumCalories / denom),
+    avgProtein: r1(sumProtein / denom),
+    avgCarbs: r1(sumCarbs / denom),
+    avgFat: r1(sumFat / denom),
+    daysLogged: byDay.size,
+    daysComplete,
+    daysIncomplete,
+    daysOnTarget,
+    target,
   };
 }

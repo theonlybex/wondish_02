@@ -136,6 +136,32 @@ export interface JourneyStats {
   dailyWeights: { date: string; weight: number }[];
 }
 
+// One logged day in the Stats window (built ONLY from stored MealLog
+// snapshots — never recomputed from recipes). `incomplete: true` when any of
+// the day's rows had unpriceable macros; a day whose EVERY row was incomplete
+// is additionally quarantined out of the averages (see MacroStats counters).
+export interface MacroDay {
+  date: string; // localDate "YYYY-MM-DD" — grouped as a string, no Date math
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  incomplete: boolean;
+}
+
+export interface MacroStats {
+  dailyMacros: MacroDay[]; // every logged day, incl. incomplete ones (flagged)
+  avgCalories: number;
+  avgProtein: number;
+  avgCarbs: number;
+  avgFat: number;
+  daysLogged: number; // days with ≥1 non-tombstoned row
+  daysComplete: number; // daysLogged minus all-incomplete days — the averages' denominator
+  daysIncomplete: number; // days where EVERY row was incomplete (quarantined)
+  daysOnTarget: number; // |calories/target − 1| ≤ 0.10 over COMPLETE days only
+  target: { calories: number; protein: number; carbs: number; fat: number } | null;
+}
+
 // ─── Patient Profile ──────────────────────────────────────────────────────
 
 export interface PatientProfile {

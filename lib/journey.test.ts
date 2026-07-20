@@ -217,3 +217,181 @@ test("fmt: a date-only ISO string formats as itself in every timezone", () => {
   assert.deepEqual(s.dailyMoods, [{ date: "2026-06-01", mood: 3 }]);
   assert.deepEqual(s.dailyWeights, [{ date: "2026-06-01", weight: 70 }]);
 });
+
+// ─── computeMacroStats (additive — everything above this line is pinned) ─────
+
+import { computeMacroStats } from "./journey";
+
+const log = (
+  over: Partial<{
+    localDate: string;
+    servings: number;
+    calories: number | null;
+    protein: number | null;
+    carbs: number | null;
+    fat: number | null;
+    fiber: number | null;
+    incomplete: boolean;
+    deletedAt: Date | null;
+  }> = {}
+) => ({
+  localDate: "2026-07-01",
+  servings: 1,
+  calories: 2000,
+  protein: 100,
+  carbs: 200,
+  fat: 60,
+  fiber: 20,
+  incomplete: false,
+  deletedAt: null as Date | null,
+  ...over,
+});
+
+const TGT = { calories: 2100, protein: 158, carbs: 236, fat: 47 };
+
+test("computeMacroStats: empty logs → zeroed stats with target passthrough", () => {
+  const s = computeMacroStats([], TGT);
+  assert.deepEqual(s, {
+    dailyMacros: [],
+    avgCalories: 0,
+    avgProtein: 0,
+    avgCarbs: 0,
+    avgFat: 0,
+    daysLogged: 0,
+    daysComplete: 0,
+    daysIncomplete: 0,
+    daysOnTarget: 0,
+    target: TGT,
+  });
+  assert.equal(computeMacroStats([], null).target, null);
+});
+
+test("computeMacroStats: groups by the localDate string — no Date math, no tz shift", () => {
+  // A UTC-7 clock would render new Date("2026-07-01") as 2026-06-30; grouping
+  // on the string is structurally immune. Output dates must be the exact
+  // input strings, ascending.
+  const s = computeMacroStats(
+    [
+      log({ localDate: "2026-07-02", calories: 500, protein: 30, carbs: 40, fat: 10, servings: 2 }),
+      log({ localDate: "2026-07-01", calories: 2000, protein: 100, carbs: 200, fat: 60 }),
+      log({ localDate: "2026-07-02", calories: 300, protein: 10, carbs: 50, fat: 5 }),
+    ],
+    null
+  );
+  assert.deepEqual(
+    s.dailyMacros.map((d) => d.date),
+    ["2026-07-01", "2026-07-02"]
+  );
+  // servings scale per row: 500×2 + 300×1 = 1300.
+  assert.deepEqual(s.dailyMacros[1], {
+    date: "2026-07-02",
+    calories: 1300,
+    protein: 70,
+    carbs: 130,
+    fat: 25,
+    incomplete: false,
+  });
+  assert.equal(s.daysLogged, 2);
+  assert.equal(s.daysComplete, 2);
+  // averages over day totals: (2000 + 1300) / 2.
+  assert.equal(s.avgCalories, 1650);
+  assert.equal(s.avgProtein, 85);
+});
+
+test("computeMacroStats: tombstoned rows are excluded; an all-tombstone day vanishes", () => {
+  const dead = new Date(2026, 6, 3);
+  const s = computeMacroStats(
+    [
+      log({ localDate: "2026-07-01", calories: 1000 }),
+      log({ localDate: "2026-07-01", calories: 400, deletedAt: dead }),
+      log({ localDate: "2026-07-02", calories: 900, deletedAt: dead }),
+    ],
+    null
+  );
+  assert.deepEqual(s.dailyMacros.map((d) => d.date), ["2026-07-01"]);
+  assert.equal(s.dailyMacros[0].calories, 1000);
+  assert.equal(s.daysLogged, 1);
+});
+
+test("computeMacroStats: all-incomplete day quarantined — flagged in dailyMacros, out of averages and daysOnTarget, counted in daysIncomplete", () => {
+  // Plan fixture: 3 days, one fully incomplete. Without the quarantine the
+  // unpriceable 0-kcal day would drag avgCalories to 1400 and read as
+  // "wildly under target".
+  const s = computeMacroStats(
+    [
+      log({ localDate: "2026-07-01", calories: 2000 }),
+      log({ localDate: "2026-07-02", calories: 2200 }),
+      log({ localDate: "2026-07-03", calories: 0, protein: 0, carbs: 0, fat: 0, incomplete: true }),
+      log({ localDate: "2026-07-03", calories: 0, protein: 0, carbs: 0, fat: 0, incomplete: true }),
+    ],
+    TGT
+  );
+  assert.equal(s.daysLogged, 3);
+  assert.equal(s.daysComplete, 2);
+  assert.equal(s.daysIncomplete, 1);
+  // Still present-but-flagged in the series.
+  assert.deepEqual(s.dailyMacros.map((d) => [d.date, d.incomplete]), [
+    ["2026-07-01", false],
+    ["2026-07-02", false],
+    ["2026-07-03", true],
+  ]);
+  // Averages divide by daysComplete (2), not daysLogged (3).
+  assert.equal(s.avgCalories, 2100);
+  // 2000 and 2200 are both within ±10% of 2100; the quarantined day is excluded.
+  assert.equal(s.daysOnTarget, 2);
+});
+
+test("computeMacroStats: a day with SOME complete rows counts normally, flagged incomplete", () => {
+  const s = computeMacroStats(
+    [
+      log({ localDate: "2026-07-01", calories: 1800 }),
+      log({ localDate: "2026-07-01", calories: 0, protein: 0, carbs: 0, fat: 0, incomplete: true }),
+    ],
+    null
+  );
+  assert.equal(s.daysComplete, 1);
+  assert.equal(s.daysIncomplete, 0);
+  assert.equal(s.dailyMacros[0].incomplete, true);
+  assert.equal(s.avgCalories, 1800);
+});
+
+test("computeMacroStats: daysOnTarget ±10% edges are ratio-based (target 2100)", () => {
+  const s = computeMacroStats(
+    [
+      log({ localDate: "2026-07-01", calories: 1889 }), // 10.05% under → out
+      log({ localDate: "2026-07-02", calories: 1891 }), //  9.95% under → in
+      log({ localDate: "2026-07-03", calories: 2309 }), //  9.95% over  → in
+      log({ localDate: "2026-07-04", calories: 2311 }), // 10.05% over  → out
+    ],
+    TGT
+  );
+  assert.equal(s.daysOnTarget, 2);
+  // No target → nothing can be "on target", complete days unaffected.
+  const noTarget = computeMacroStats([log({ calories: 2100 })], null);
+  assert.equal(noTarget.daysOnTarget, 0);
+  assert.equal(noTarget.daysComplete, 1);
+});
+
+test("computeMacroStats: every logged day incomplete → zero averages via the Math.max(1) guard", () => {
+  const s = computeMacroStats(
+    [log({ calories: 0, protein: 0, carbs: 0, fat: 0, incomplete: true })],
+    TGT
+  );
+  assert.equal(s.daysLogged, 1);
+  assert.equal(s.daysComplete, 0);
+  assert.equal(s.daysIncomplete, 1);
+  assert.equal(s.avgCalories, 0);
+  assert.equal(s.daysOnTarget, 0);
+});
+
+test("computeMacroStats: day totals and averages are r1-rounded at the boundary", () => {
+  // 433.33 × 1.5 = 649.995 → r1 → 650 at the day-total boundary (sumMealLogs),
+  // and the average of one day echoes it.
+  const s = computeMacroStats(
+    [log({ calories: 433.33, protein: 21.11, carbs: 40.04, fat: 10.02, servings: 1.5 })],
+    null
+  );
+  assert.equal(s.dailyMacros[0].calories, 650);
+  assert.equal(s.avgCalories, 650);
+  assert.equal(s.avgProtein, 31.7); // 21.11 × 1.5 = 31.665 → r1 → 31.7
+});

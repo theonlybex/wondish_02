@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { subDays } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getAccount, getPredictionProfileInput } from "@/lib/queries";
-import { computeJourneyStats } from "@/lib/journey";
+import { computeJourneyStats, computeMacroStats } from "@/lib/journey";
+import { getJourneyPayload, type JourneyPayload } from "@/lib/journey-data";
 import JourneyDashboard from "@/components/journey/JourneyDashboard";
 import PredictionWhatIf from "@/components/journey/PredictionWhatIf";
 
@@ -20,22 +21,24 @@ export default async function JourneyPage() {
   to.setHours(23, 59, 59, 999);
   from.setHours(0, 0, 0, 0);
 
-  const [entries, predictionInput] = await Promise.all([
-    prisma.journalEntry.findMany({
-      where: {
-        patient: { account: { clerkId: userId } },
-        date: { gte: from, lte: to },
-      },
-      include: { meals: true },
-      orderBy: { date: "asc" },
-    }),
+  // One fetch path shared with app/api/journey/route.ts (lib/journey-data.ts).
+  // A missing patient row previously just yielded an empty entry list, so it
+  // degrades the same way here: empty stats, never a redirect.
+  const patient = await prisma.patient.findFirst({
+    where: { account: { clerkId: userId } },
+    select: { id: true },
+  });
+  const totalDays = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000));
+  const emptyPayload: JourneyPayload = {
+    stats: computeJourneyStats([], totalDays),
+    macroStats: computeMacroStats([], null),
+    entries: [],
+  };
+  const [payload, predictionInput] = await Promise.all([
+    patient ? getJourneyPayload(patient.id, from, to) : Promise.resolve(emptyPayload),
     getPredictionProfileInput(userId),
   ]);
-
-  // Engagement is measured against every day in the window, not just the
-  // days that happen to have a journal entry.
-  const totalDays = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000));
-  const stats = computeJourneyStats(entries, totalDays);
+  const { stats } = payload;
 
   const rangeLabel = `${from.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${to.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 
