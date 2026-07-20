@@ -6,6 +6,7 @@ import Link from "next/link";
 import MealStreakGrid, { GridDay } from "@/components/MealStreakGrid";
 import CaloricProfileCard from "@/components/dashboard/CaloricProfileCard";
 import QuickJournalLog from "@/components/dashboard/QuickJournalLog";
+import DailyLogCard from "@/components/tracking/DailyLogCard";
 
 export const metadata = { title: "Overview" };
 
@@ -114,10 +115,11 @@ export default async function OverviewPage() {
       {/* ── Bento grid ───────────────────────────────────────────── */}
       {/*
           With streak data:
-            [ caloric ] [ caloric ] [ caloric ]
+            [ caloric ] [ caloric ] [   log   ]
             [ streak  ] [ streak  ] [ journal ]
 
           Without streak data:
+            [ caloric ] [   log   ]
             [ caloric ] [ journal ]
       */}
       <div
@@ -129,14 +131,17 @@ export default async function OverviewPage() {
                 gridTemplateColumns: "1fr 1fr 340px",
                 gridTemplateRows: "3fr 2fr",
                 gridTemplateAreas: `
-                  "caloric caloric caloric"
+                  "caloric caloric log"
                   "streak  streak  journal"
                 `,
               }
             : {
                 gridTemplateColumns: "1fr 340px",
-                gridTemplateRows: "1fr",
-                gridTemplateAreas: `"caloric journal"`,
+                gridTemplateRows: "3fr 2fr",
+                gridTemplateAreas: `
+                  "caloric log"
+                  "caloric journal"
+                `,
               }),
         }}
       >
@@ -171,6 +176,14 @@ export default async function OverviewPage() {
           <div className="px-5 py-3 flex-1 overflow-auto">
             <QuickJournalLog />
           </div>
+        </div>
+
+        {/* Today's Log — intake tracking */}
+        <div
+          className="rounded-2xl overflow-hidden bg-white"
+          style={{ gridArea: "log", boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
+        >
+          <DailyLogCard />
         </div>
 
         {/* Caloric Profile */}

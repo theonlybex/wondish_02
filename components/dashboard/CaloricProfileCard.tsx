@@ -4,7 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CaloricProfileDTO } from "@/types";
 import type { WeeklyTargetDTO } from "@/types";
 import { kgToLbs } from "@/lib/prediction-data";
-import { KCAL_PER_KG } from "@/lib/caloric-engine";
+import { resolveDailyCalorieTarget } from "@/lib/caloric-engine";
+import {
+  MEAL_LOG_UPDATED_EVENT,
+  formatLocalDate,
+  type DayEnvelopeDTO,
+  type MealLogUpdatedDetail,
+} from "@/components/tracking/shared";
 
 function fmt(n: number | null | undefined, decimals = 1): string {
   if (n == null) return "—";
@@ -15,6 +21,10 @@ export default function CaloricProfileCard() {
   const [profile, setProfile] = useState<CaloricProfileDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Today's intake envelope (server echo: dayTotals / dayTarget / remaining)
+  // for the actual-intake arc. Non-fatal — the arc is simply absent on error.
+  const [today] = useState(() => formatLocalDate(new Date()));
+  const [intake, setIntake] = useState<DayEnvelopeDTO | null>(null);
 
   // `silent` refetches (e.g. after a journal weigh-in) update the numbers in
   // place without flashing the loading skeleton or replaying the animations.
@@ -48,6 +58,38 @@ export default function CaloricProfileCard() {
     return () => window.removeEventListener("journal:saved", onSaved);
   }, [load]);
 
+  // Today's logged intake for the actual arc (GET day envelope on mount).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/meal-log?date=${today}`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled) {
+          setIntake({ dayTotals: json.dayTotals, dayTarget: json.dayTarget, remaining: json.remaining });
+        }
+      } catch {
+        /* non-fatal — arc absent */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [today]);
+
+  // Live ring updates from any meal-log write: apply the server echo directly
+  // (single source of truth — no client-side macro math, no refetch).
+  useEffect(() => {
+    const onUpdated = (e: Event) => {
+      const detail = (e as CustomEvent<MealLogUpdatedDetail>).detail;
+      if (!detail || detail.localDate !== today) return;
+      setIntake({ dayTotals: detail.dayTotals, dayTarget: detail.dayTarget, remaining: detail.remaining });
+    };
+    window.addEventListener(MEAL_LOG_UPDATED_EVENT, onUpdated);
+    return () => window.removeEventListener(MEAL_LOG_UPDATED_EVENT, onUpdated);
+  }, [today]);
+
   if (loading) {
     return (
       <div className="bg-white h-full p-5 animate-pulse">
@@ -72,18 +114,34 @@ export default function CaloricProfileCard() {
     );
   }
 
-  // Calorie ring: the daily target must reflect the actual deficit/surplus at
-  // the current point in the plan — the same schedule that drives the weekly
-  // figure — not bare maintenance. weeklyDeltaKg is signed: negative (losing)
-  // puts the target below maintenance, positive (gaining) above it.
-  const weeklyDeltaKg = profile.weeklyTarget?.weeklyDeltaKg ?? 0;
-  const dailyAdjustment = weeklyDeltaKg * (KCAL_PER_KG / 7); // kcal/day, signed
-  const dailyTarget = Math.max(0, Math.round(profile.tdeeCBW + dailyAdjustment));
+  // Calorie ring: the steady-state daily target (TDEE adjusted by the signed
+  // weekly goal) now comes from the extracted engine helper — the exact math
+  // that used to live inline here.
+  const dailyTarget = resolveDailyCalorieTarget({
+    tdeeCBW: profile.tdeeCBW,
+    weeklyTarget: profile.weeklyTarget,
+  });
   const calRatio = profile.tdeeCBW > 0
     ? Math.min(1, dailyTarget / profile.tdeeCBW)
     : 1;
   const circumference = 2 * Math.PI * 54;
   const dashOffset = circumference * (1 - calRatio);
+
+  // Actual-intake arc: today's eaten kcal over the day's effective budget —
+  // the server's dayTarget (plan-ramp while a plan covers today, steady-state
+  // otherwise); the card's own goal figure above stays the steady-state one.
+  // Over-budget comes from the SIGNED server `remaining`, not client math.
+  const arcTargetCalories = intake?.dayTarget?.calories ?? dailyTarget;
+  const eatenCalories = intake?.dayTotals.calories ?? 0;
+  const overBudget = (intake?.remaining?.calories ?? 0) < 0;
+  const eatenRatio = arcTargetCalories > 0 ? Math.min(1, eatenCalories / arcTargetCalories) : 0;
+  const innerCircumference = 2 * Math.PI * 45;
+  const innerOffset = innerCircumference * (1 - eatenRatio);
+  // "ramp" label when the plan-ramp budget diverges from the steady-state goal.
+  const rampTargetCalories =
+    intake?.dayTarget && intake.dayTarget.basis === "plan-ramp" && intake.dayTarget.calories !== dailyTarget
+      ? intake.dayTarget.calories
+      : null;
 
   return (
     <div className="bg-white h-full flex flex-col">
@@ -124,8 +182,14 @@ export default function CaloricProfileCard() {
       <div className="flex flex-wrap items-center gap-5 mb-4">
         {/* Calorie ring */}
         <div className="cp-a flex flex-col items-center" style={{ animationDelay: "60ms" }}>
-          <div className="relative w-[110px] h-[110px]">
-            <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+          <div
+            className="relative w-[110px] h-[110px]"
+            role="img"
+            aria-label={`Daily target ${dailyTarget} kilocalories${
+              intake ? `, ${Math.round(eatenCalories)} eaten today` : ""
+            }`}
+          >
+            <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90" aria-hidden="true">
               <circle
                 cx="60" cy="60" r="54"
                 fill="none"
@@ -142,6 +206,29 @@ export default function CaloricProfileCard() {
                 strokeDashoffset={dashOffset}
                 className="cp-ring"
               />
+              {/* Actual-intake arc — today's eaten kcal over the effective budget */}
+              {intake && (
+                <>
+                  <circle
+                    cx="60" cy="60" r="45"
+                    fill="none"
+                    stroke="#F5F1DD"
+                    strokeWidth="7"
+                  />
+                  <circle
+                    cx="60" cy="60" r="45"
+                    fill="none"
+                    stroke={overBudget ? "#EA5455" : "#812549"}
+                    strokeWidth="7"
+                    strokeLinecap="round"
+                    strokeDasharray={innerCircumference}
+                    strokeDashoffset={innerOffset}
+                    style={{
+                      transition: "stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.3s ease",
+                    }}
+                  />
+                </>
+              )}
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-xl font-bold text-[#1E1A1A]">
@@ -151,6 +238,22 @@ export default function CaloricProfileCard() {
             </div>
           </div>
           <p className="text-xs text-[#848181] mt-1.5">Daily Target</p>
+          {intake && (
+            <p
+              className="text-[10px] font-semibold tabular-nums mt-0.5"
+              style={{ color: overBudget ? "#EA5455" : "#848181" }}
+            >
+              {Math.round(eatenCalories)} eaten
+              {overBudget && intake.remaining
+                ? ` · ${Math.round(Math.abs(intake.remaining.calories))} over`
+                : ""}
+            </p>
+          )}
+          {rampTargetCalories != null && (
+            <span className="mt-1 inline-flex items-center text-[9px] font-bold text-[#B75E78] bg-[#B75E78]/10 rounded-full px-2 py-0.5">
+              ramp · {rampTargetCalories} kcal today
+            </span>
+          )}
         </div>
 
         {/* This Week's Target — hero text */}

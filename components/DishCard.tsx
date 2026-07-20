@@ -1,6 +1,7 @@
 import type { Dish, MealTypeKey } from "@/types";
 import { clsx } from "clsx";
 import { getRecipeEmoji } from "@/lib/recipeEmoji";
+import AddToLogButton from "@/components/tracking/AddToLogButton";
 
 const mealTypeColors: Record<MealTypeKey, string> = {
   breakfast: "bg-warning/10 text-warning",
@@ -19,9 +20,19 @@ const mealTypeLabels: Record<MealTypeKey, string> = {
 interface DishCardProps {
   dish: Dish;
   compact?: boolean;
+  /**
+   * The Recipe cuid backing this dish. When present, the card renders a
+   * one-tap "Add to log" (source RECIPE, servings stepper) that logs intake
+   * via /api/meal-log. The public /dishes grid maps recipes to synthetic
+   * numeric ids and does not pass it, so unauthenticated surfaces show no
+   * logging affordance.
+   */
+  recipeId?: string;
+  /** Today's plan-completion JournalMeal id, when known — provenance only. */
+  journalMealId?: string;
 }
 
-export default function DishCard({ dish, compact = false }: DishCardProps) {
+export default function DishCard({ dish, compact = false, recipeId, journalMealId }: DishCardProps) {
   return (
     <div className="group bg-white border border-[#EAE4CA] hover:border-primary/20 rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 flex flex-col h-full">
       {/* Emoji banner */}
@@ -86,6 +97,23 @@ export default function DishCard({ dish, compact = false }: DishCardProps) {
           )}
         </div>
       </div>
+
+      {/* One-tap intake logging — only when the real Recipe id is known */}
+      {recipeId && (
+        <div className="mt-3">
+          <AddToLogButton
+            payload={{
+              source: "RECIPE",
+              recipeId,
+              journalMealId,
+              mealType: dish.mealType,
+            }}
+            withServingsStepper
+            size="sm"
+            className="w-full"
+          />
+        </div>
+      )}
       </div>
     </div>
   );
