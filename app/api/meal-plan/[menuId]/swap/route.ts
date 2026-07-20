@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { resolveMacroProfile, getMacroPercentages } from "@/lib/caloric-engine";
+import { macroDeviation } from "@/lib/macros";
 
 export async function PATCH(
   req: NextRequest,
@@ -66,11 +67,10 @@ export async function PATCH(
   const motivationNames = patient.motivations.map((pm) => pm.motivation.name);
   const macroTarget     = getMacroPercentages(resolveMacroProfile(conditionNames, motivationNames));
   if (newRecipe.calories && newRecipe.calories > 0) {
-    const cal       = newRecipe.calories;
-    const deviation =
-      Math.abs(((newRecipe.protein ?? 0) * 4) / cal - macroTarget.protein) +
-      Math.abs(((newRecipe.carbs   ?? 0) * 4) / cal - macroTarget.carbs)   +
-      Math.abs(((newRecipe.fat     ?? 0) * 9) / cal - macroTarget.fat);
+    const deviation = macroDeviation(
+      { calories: newRecipe.calories, protein: newRecipe.protein, carbs: newRecipe.carbs, fat: newRecipe.fat },
+      macroTarget
+    );
     if (deviation > 0.50) {
       return NextResponse.json(
         { error: "Recipe macros do not align with your nutrition profile" },

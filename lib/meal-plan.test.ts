@@ -54,6 +54,10 @@ async function build(patientId: string, start: Date, version = 1): Promise<Build
   const { buildMealPlanMenus } = await modPromise;
   return buildMealPlanMenus(patientId, start, version);
 }
+async function planDayCalories(patientId: string, localDate: string): Promise<number | null> {
+  const { getPlanDayCalories } = await modPromise;
+  return getPlanDayCalories(patientId, localDate);
+}
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -649,4 +653,77 @@ test("planned day calories never exceed the 105% day budget", async () => {
     const total = dayRows.reduce((s, r) => s + (calsById.get(r.recipeId) ?? 0), 0);
     assert.ok(total <= 2000 * 1.05 + 1e-9, `${day}: ${total} kcal exceeds the 2100 day budget`);
   }
+});
+
+// ─── getPlanDayCalories ──────────────────────────────────────────────────────
+// One ramp computation shared by /api/meal-plan GET and tracking's daily
+// target derivation. Reuses the same `db.patient` prisma stub as buildMealPlanMenus.
+
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+test("getPlanDayCalories: returns null when the patient is not found", async () => {
+  setDb(null, [], []);
+  assert.equal(await planDayCalories("missing", "2026-06-01"), null);
+});
+
+test("getPlanDayCalories: returns null when the caloric profile is incomplete (no mealPlanStartDate)", async () => {
+  setDb(makePatient(), [], []); // all profile fields null by default
+  assert.equal(await planDayCalories("p1", "2026-06-01"), null);
+});
+
+test("getPlanDayCalories: returns null when localDate precedes the plan start (dayNumber < 1)", async () => {
+  setDb(
+    makePatient({
+      mealPlanStartDate: new Date("2026-06-10"),
+      weight: 70, weightUnit: "kg", height: 165, heightUnit: "cm",
+      birthday: new Date("1994-01-01"), sexAtBirth: "female",
+      physicalActivity: { level: 2 },
+    }),
+    [], []
+  );
+  assert.equal(await planDayCalories("p1", "2026-06-01"), null);
+});
+
+test("getPlanDayCalories: matches a direct gradualDailyCals computation for day 1 of the plan", async () => {
+  const planStart = new Date("2026-06-01");
+  const patient = makePatient({
+    mealPlanStartDate: planStart,
+    weight: 70, weightUnit: "kg", height: 165, heightUnit: "cm",
+    birthday: new Date("1994-01-01"), sexAtBirth: "female",
+    physicalActivity: { level: 2 },
+    goalWeight: 60, goalWeightUnit: "kg",
+  });
+  setDb(patient, [], []);
+
+  const profile = computeAllMetrics({
+    sex: "female", birthday: new Date("1994-01-01"),
+    heightValue: 165, heightUnit: "cm",
+    cbwValue: 70, cbwUnit: "kg",
+    activityLevel: 2,
+    utbwValue: 60, utbwUnit: "kg",
+  });
+  const expected = gradualDailyCals(
+    Math.round(profile.tdeeCBW), 1, resolvePlanDirection(profile),
+    profile.minCaloriesValue, maxDailyDeficit(profile.cbmi)
+  );
+
+  assert.equal(await planDayCalories("p1", toLocalDateStr(planStart)), expected);
+});
+
+test("getPlanDayCalories: falls back to gender when sexAtBirth is missing", async () => {
+  const planStart = new Date("2026-06-01");
+  setDb(
+    makePatient({
+      mealPlanStartDate: planStart,
+      weight: 70, weightUnit: "kg", height: 165, heightUnit: "cm",
+      birthday: new Date("1994-01-01"), sexAtBirth: null,
+      gender: { name: "Female" },
+      physicalActivity: { level: 2 },
+    }),
+    [], []
+  );
+  assert.notEqual(await planDayCalories("p1", toLocalDateStr(planStart)), null);
 });

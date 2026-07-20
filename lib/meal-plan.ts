@@ -14,6 +14,7 @@ import {
   type MacroPercentages,
   type PlanDirection,
 } from "@/lib/caloric-engine";
+import { macroDeviation } from "@/lib/macros";
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -75,11 +76,10 @@ function pickByMotivation(
     // Macro profile alignment: penalise recipes whose macro ratios deviate
     // from the patient's target (balanced / diabetic / gain_muscle).
     if (macroTarget && (r.calories ?? 0) > 0) {
-      const cal = r.calories!;
-      const deviation =
-        Math.abs(((r.protein ?? 0) * 4) / cal - macroTarget.protein) +
-        Math.abs(((r.carbs   ?? 0) * 4) / cal - macroTarget.carbs)   +
-        Math.abs(((r.fat     ?? 0) * 9) / cal - macroTarget.fat);
+      const deviation = macroDeviation(
+        { calories: r.calories!, protein: r.protein, carbs: r.carbs, fat: r.fat },
+        macroTarget
+      );
       score -= deviation * 40;
     }
     if (hasAffinity) {
@@ -508,4 +508,71 @@ export async function buildMealPlanMenus(
   }
 
   return { rows: menus, builtForWeight: patient.weight ?? null };
+}
+
+// ─── Plan-day calorie lookup (shared by /api/meal-plan GET and tracking) ────
+
+// Parses a "YYYY-MM-DD" local-calendar string into a local-midnight Date —
+// the string-in twin of localMidnight() in app/api/meal-plan/route.ts, kept
+// here so getPlanDayCalories has no dependency on the route file.
+function localDateFromString(localDate: string): Date {
+  const [y, m, d] = localDate.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/**
+ * Daily calorie budget for a given patient + local calendar date, per the
+ * SAME gradual ramp schedule (gradualDailyCals) the active meal plan itself
+ * is built from — one ramp computation shared by /api/meal-plan GET and
+ * tracking's daily-target derivation, so the two never drift apart.
+ * Returns null when the patient has no active plan start date, an
+ * incomplete caloric profile, or when `localDate` falls before the plan's
+ * first day (dayNumber < 1).
+ */
+export async function getPlanDayCalories(patientId: string, localDate: string): Promise<number | null> {
+  const patient = await prisma.patient.findUnique({
+    where: { id: patientId },
+    select: {
+      mealPlanStartDate: true,
+      weight: true, weightUnit: true,
+      goalWeight: true, goalWeightUnit: true,
+      height: true, heightUnit: true,
+      sexAtBirth: true, birthday: true,
+      physicalActivity: { select: { level: true } },
+      gender: { select: { name: true } },
+    },
+  });
+  if (!patient) return null;
+  if (!patient.mealPlanStartDate || !patient.weight || !patient.height || !patient.birthday || !patient.physicalActivity?.level) {
+    return null;
+  }
+  const sex = resolveSex(patient.sexAtBirth, patient.gender?.name);
+  if (!sex) return null;
+
+  const profileInput: CaloricProfileInput = {
+    sex,
+    birthday:      new Date(patient.birthday),
+    heightValue:   patient.height,
+    heightUnit:    patient.heightUnit === "in" ? "in" : "cm",
+    cbwValue:      patient.weight,
+    cbwUnit:       (patient.weightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs",
+    activityLevel: patient.physicalActivity.level,
+    utbwValue:     patient.goalWeight,
+    utbwUnit:      (patient.goalWeightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs" | null,
+  };
+  const profile = computeAllMetrics(profileInput);
+
+  const planStart = new Date(patient.mealPlanStartDate);
+  planStart.setHours(0, 0, 0, 0);
+  const target = localDateFromString(localDate);
+  const dayNumber = Math.round((target.getTime() - planStart.getTime()) / 86400000) + 1;
+  if (dayNumber < 1) return null;
+
+  return gradualDailyCals(
+    Math.round(profile.tdeeCBW),
+    dayNumber,
+    resolvePlanDirection(profile),
+    profile.minCaloriesValue,
+    maxDailyDeficit(profile.cbmi),
+  );
 }

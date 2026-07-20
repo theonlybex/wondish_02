@@ -39,6 +39,8 @@ import {
   computeMealCalories,
   computeDailyMacros,
   KCAL_PER_KG,
+  resolveDailyCalorieTarget,
+  resolveDailyTargets,
   type CaloricProfile,
   type GlideWalk,
 } from "./caloric-engine";
@@ -886,4 +888,60 @@ test("computeAllMetrics: injectable clock computes age as of the provided date",
   }, new Date("2030-01-01"));
   // Born 1994-06-15: turned 35 on 2029-06-15 and not 36 until 2030-06-15.
   assert.equal(p.age, 35);
+});
+
+// ─── resolveDailyCalorieTarget / resolveDailyTargets (tracking) ────────────
+
+test("resolveDailyCalorieTarget: deficit lowers below maintenance, value-parity with the old inline formula", () => {
+  const tdeeCBW = 2200;
+  const weeklyDeltaKg = -0.5; // losing 0.5kg/week
+  const expected = Math.max(0, Math.round(tdeeCBW + weeklyDeltaKg * (KCAL_PER_KG / 7)));
+  assert.equal(resolveDailyCalorieTarget({ tdeeCBW, weeklyTarget: { weeklyDeltaKg } }), expected);
+  assert.ok(expected < tdeeCBW);
+});
+
+test("resolveDailyCalorieTarget: surplus raises above maintenance", () => {
+  const tdeeCBW = 2200;
+  const target = resolveDailyCalorieTarget({ tdeeCBW, weeklyTarget: { weeklyDeltaKg: 0.25 } });
+  assert.ok(target > tdeeCBW);
+});
+
+test("resolveDailyCalorieTarget: no weeklyTarget (or null) is maintenance, rounded", () => {
+  assert.equal(resolveDailyCalorieTarget({ tdeeCBW: 2200.4, weeklyTarget: null }), 2200);
+  assert.equal(resolveDailyCalorieTarget({ tdeeCBW: 2200.4 }), 2200);
+});
+
+test("resolveDailyCalorieTarget: floors at 0", () => {
+  assert.equal(resolveDailyCalorieTarget({ tdeeCBW: 100, weeklyTarget: { weeklyDeltaKg: -5 } }), 0);
+});
+
+test("resolveDailyTargets: steady-state fallback when no planDayCalories given", () => {
+  const profile = { tdeeCBW: 2000, weeklyTarget: { weeklyDeltaKg: 0 } };
+  const targets = resolveDailyTargets(profile, [], []);
+  assert.ok(targets);
+  assert.equal(targets!.basis, "steady-state");
+  assert.equal(targets!.calories, 2000);
+  assert.equal(targets!.profile, "balanced");
+});
+
+test("resolveDailyTargets: planDayCalories wins and sets basis 'plan-ramp'", () => {
+  const profile = { tdeeCBW: 2000, weeklyTarget: { weeklyDeltaKg: -1 } };
+  const targets = resolveDailyTargets(profile, [], [], 1750);
+  assert.ok(targets);
+  assert.equal(targets!.basis, "plan-ramp");
+  assert.equal(targets!.calories, 1750);
+});
+
+test("resolveDailyTargets: diabetic/gain_muscle profile wiring matches resolveMacroProfile", () => {
+  const profile = { tdeeCBW: 2200 };
+  const diabetic = resolveDailyTargets(profile, ["Type 2 Diabetes"], [], 2000)!;
+  assert.equal(diabetic.profile, "diabetic");
+  const gain = resolveDailyTargets(profile, [], ["Build muscle"], 2000)!;
+  assert.equal(gain.profile, "gain_muscle");
+});
+
+test("resolveDailyTargets: non-positive calories returns null (never a 0 target)", () => {
+  assert.equal(resolveDailyTargets({ tdeeCBW: 0, weeklyTarget: null }, [], []), null);
+  assert.equal(resolveDailyTargets({ tdeeCBW: 2000 }, [], [], 0), null);
+  assert.equal(resolveDailyTargets({ tdeeCBW: 2000 }, [], [], -5), null);
 });

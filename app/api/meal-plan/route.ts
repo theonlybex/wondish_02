@@ -2,53 +2,19 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { regeneratePlan, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
+import { getPlanDayCalories } from "@/lib/meal-plan";
 import { addDays } from "date-fns";
-import { computeAllMetrics, gradualDailyCals, maxDailyDeficit, resolvePlanDirection, type CaloricProfileInput } from "@/lib/caloric-engine";
 
 export const maxDuration = 60;
 
-function computeDailyTarget(
-  patient: {
-    mealPlanStartDate: Date | null;
-    weight: number | null; weightUnit: string | null;
-    goalWeight: number | null; goalWeightUnit: string | null;
-    height: number | null; heightUnit: string | null;
-    sexAtBirth: string | null; birthday: Date | null;
-    physicalActivity: { level: number } | null;
-  },
-  targetDate: Date,
-): number | null {
-  if (!patient.mealPlanStartDate || !patient.weight || !patient.height || !patient.birthday || !patient.physicalActivity?.level) return null;
-  const s = (patient.sexAtBirth ?? "").toLowerCase();
-  const sex = s === "male" ? "male" as const : s === "female" ? "female" as const : null;
-  if (!sex) return null;
-
-  const pi: CaloricProfileInput = {
-    sex,
-    birthday:     new Date(patient.birthday),
-    heightValue:  patient.height,
-    heightUnit:   patient.heightUnit === "in" ? "in" : "cm",
-    cbwValue:     patient.weight,
-    cbwUnit:      (patient.weightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs",
-    activityLevel: patient.physicalActivity.level,
-    utbwValue:    patient.goalWeight,
-    utbwUnit:     (patient.goalWeightUnit === "lbs" ? "lbs" : "kg") as "kg" | "lbs" | null,
-  };
-  const profile  = computeAllMetrics(pi);
-  const planStart = new Date(patient.mealPlanStartDate);
-  planStart.setHours(0, 0, 0, 0);
-  const tgt = new Date(targetDate);
-  tgt.setHours(0, 0, 0, 0);
-  const dayNumber = Math.round((tgt.getTime() - planStart.getTime()) / 86400000) + 1;
-  if (dayNumber < 1) return null;
-
-  return gradualDailyCals(
-    Math.round(profile.tdeeCBW),
-    dayNumber,
-    resolvePlanDirection(profile),
-    profile.minCaloriesValue,
-    maxDailyDeficit(profile.cbmi),
-  );
+// "YYYY-MM-DD" local-calendar string for a Date — the string-out twin of
+// getPlanDayCalories' localDateFromString, matching the local-date semantics
+// the rest of this route already uses (localMidnight below).
+function toLocalDateString(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -118,7 +84,9 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const dailyCalorieTarget = !weekStartParam ? computeDailyTarget(patient, startDate) : null;
+  const dailyCalorieTarget = !weekStartParam
+    ? await getPlanDayCalories(patient.id, toLocalDateString(startDate))
+    : null;
 
   return NextResponse.json({ menus, mealPlanStartDate: patient.mealPlanStartDate, loggedRecipeIds, mealRatings, dailyCalorieTarget });
 }

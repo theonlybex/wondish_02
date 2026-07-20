@@ -20,6 +20,7 @@ import { createRequire } from "module";
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { toGrams, sumIngredientMacros } from "../lib/macros.ts";
 
 const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -58,41 +59,10 @@ const NUTRIENT_IDS = {
   fiber:    1079,
 };
 
-// ── Unit → approximate grams conversion ──────────────────────────────────────
-// These are rough estimates; solid foods in cups/tbsp vary by density.
-const UNIT_TO_GRAMS = {
-  g: 1, gr: 1, gram: 1, grams: 1,
-  kg: 1000,
-  oz: 28.35,
-  lb: 453.59, pound: 453.59, pounds: 453.59,
-  ml: 1, milliliter: 1,
-  l: 1000, liter: 1000,
-  cup: 240, cups: 240,
-  tablespoon: 15, tbsp: 15, tbs: 15,
-  teaspoon: 5, tsp: 5,
-  fl_oz: 29.57, "fl oz": 29.57,
-  // Size descriptors — rough median weights
-  whole: 100, piece: 50,
-  small: 50, medium: 100, large: 150,
-  slice: 30,
-  pinch: 0.35, dash: 0.6,
-  clove: 5,
-  sprig: 3,
-  leaves: 2, leaf: 2,
-  stalk: 40, spear: 30, stick: 40,
-  scoop: 30,
-  can: 400,
-  teabag: 2,
-  crackers: 15,
-};
-
-function toGrams(qty, unit) {
-  if (!qty || !unit) return null;
-  const key = unit.toLowerCase().trim();
-  const factor = UNIT_TO_GRAMS[key];
-  if (!factor) return null;
-  return qty * factor;
-}
+// ── Unit → approximate grams conversion, and per-100g ingredient summation ──
+// Both live in lib/macros.ts (the single shared macro module) now — imported
+// back here rather than duplicated, so there is exactly one conversion table
+// and one summation algorithm across scripts/ and the app.
 
 // ── Parse XLSX: ingredient name → FCD ID ────────────────────────────────────
 function parseFcdMap() {
@@ -247,34 +217,35 @@ async function main() {
   let recipesSkipped = 0;
 
   for (const recipe of recipes) {
-    let cal = 0, prot = 0, carb = 0, fat = 0;
-    let hasData = false;
+    const items = recipe.ingredients.map((ri) => ({
+      ingredient: ri.ingredient,
+      quantity: ri.quantity,
+      unit: ri.unit,
+    }));
 
-    for (const ri of recipe.ingredients) {
-      const ing = ri.ingredient;
-      if (ing.calories == null) continue;
-
-      // USDA values are per 100g; convert ingredient quantity to grams
-      const grams = toGrams(ri.quantity, ri.unit);
-      if (!grams) continue;
-
-      const factor = grams / 100;
-      cal  += (ing.calories ?? 0) * factor;
-      prot += (ing.protein  ?? 0) * factor;
-      carb += (ing.carbs    ?? 0) * factor;
-      fat  += (ing.fat      ?? 0) * factor;
-      hasData = true;
-    }
-
+    // USDA values are per 100g; toGrams converts ingredient quantity to grams.
+    // hasData mirrors the original loop's semantics exactly: true as soon as
+    // ONE ingredient has known calories AND a convertible unit, independent
+    // of the magnitude it contributes (e.g. a 0-kcal water line still counts).
+    const hasData = items.some(
+      (it) => it.ingredient.calories != null && toGrams(it.quantity, it.unit) != null
+    );
     if (!hasData) { recipesSkipped++; continue; }
+
+    // No onUnknownUnit callback: the original loop silently dropped
+    // unpriceable lines with no logging, and this migration keeps that
+    // observable behavior — only the DB write's rounding is pinned to match.
+    const summed = sumIngredientMacros(items, () => {});
 
     await prisma.recipe.update({
       where: { id: recipe.id },
       data: {
-        calories: Math.round(cal),
-        protein:  Math.round(prot * 10) / 10,
-        carbs:    Math.round(carb * 10) / 10,
-        fat:      Math.round(fat  * 10) / 10,
+        calories: Math.round(summed.calories),
+        protein:  Math.round(summed.protein * 10) / 10,
+        carbs:    Math.round(summed.carbs   * 10) / 10,
+        fat:      Math.round(summed.fat     * 10) / 10,
+        // fiber intentionally not written — the original loop never summed
+        // it either; that gap is preserved, not silently "fixed" here.
       },
     });
     recipesUpdated++;

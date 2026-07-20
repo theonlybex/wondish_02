@@ -883,3 +883,60 @@ export function computeDailyMacros(
     meals,
   };
 }
+
+// ─── Daily Calorie / Macro Targets (tracking) ─────────────────────────────────
+// Reuse-only: no new formulas. Extracted from the CaloricProfileCard inline
+// math (steady-state ring target) and wired to the plan's own gradual-ramp
+// budget (getPlanDayCalories in lib/meal-plan.ts) so tracking's "remaining"
+// figure always matches whichever budget is actually in effect for the day.
+
+/**
+ * Steady-state daily calorie target: TDEE at current body weight, adjusted by
+ * the signed daily equivalent of the weekly weight-change goal. Floored at 0.
+ * Value-identical to the inline math this replaces
+ * (components/dashboard/CaloricProfileCard.tsx).
+ */
+export function resolveDailyCalorieTarget(profile: {
+  tdeeCBW: number;
+  weeklyTarget?: { weeklyDeltaKg?: number } | null;
+}): number {
+  const dailyAdjustment = (profile.weeklyTarget?.weeklyDeltaKg ?? 0) * (KCAL_PER_KG / 7); // signed
+  return Math.max(0, Math.round(profile.tdeeCBW + dailyAdjustment));
+}
+
+export interface DailyTargets {
+  calories: number;
+  protein:  number;
+  carbs:    number;
+  fat:      number;
+  profile:  MacroProfile;
+  basis:    "plan-ramp" | "steady-state";
+}
+
+/**
+ * Resolves the full daily calorie + macro target for tracking's `dayTarget`.
+ * `planDayCalories` (from lib/meal-plan.ts's getPlanDayCalories) wins whenever
+ * present — the plan-ramp budget the user's active meal plan actually built
+ * that day to; resolveDailyCalorieTarget (steady-state) is the fallback.
+ * Returns null when the resolved calorie figure is non-positive (incomplete
+ * caloric profile) rather than ever emitting a target of 0.
+ */
+export function resolveDailyTargets(
+  profile: Parameters<typeof resolveDailyCalorieTarget>[0],
+  healthConditionNames: string[],
+  motivationNames: string[],
+  planDayCalories?: number | null
+): DailyTargets | null {
+  const calories = planDayCalories ?? resolveDailyCalorieTarget(profile);
+  if (calories <= 0) return null;
+  const mp = resolveMacroProfile(healthConditionNames, motivationNames);
+  const d  = computeDailyMacros(calories, mp);
+  return {
+    calories,
+    protein: d.totalProteinG,
+    carbs:   d.totalCarbsG,
+    fat:     d.totalFatG,
+    profile: mp,
+    basis: planDayCalories != null ? "plan-ramp" : "steady-state",
+  };
+}

@@ -15,7 +15,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:import-recipes": "node scripts/import-recipes.mjs",
-    "db:fetch-nutrition": "node scripts/fetch-nutrition.mjs"
+    "db:fetch-nutrition": "node --import tsx scripts/fetch-nutrition.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
