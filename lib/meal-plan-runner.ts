@@ -22,6 +22,30 @@ export class EmptyPlanError extends Error {
 // A GENERATING run older than this is considered dead and may be re-claimed.
 const STUCK_AFTER_MS = 3 * 60 * 1000;
 
+// Only the prisma members regeneratePlan actually touches. Method syntax (not
+// arrow-property syntax) keeps parameter checking bivariant so the real
+// PrismaClient satisfies this shape while tests can inject an in-memory stub.
+export interface PrismaLike {
+  patient: {
+    updateMany(args: any): Promise<{ count: number }>;
+    findUnique(args: any): Promise<{ activePlanVersion: number } | null>;
+    update(args: any): Promise<unknown>;
+  };
+  menu: {
+    deleteMany(args: any): Promise<unknown>;
+    createMany(args: any): Promise<unknown>;
+  };
+}
+
+// Injectable collaborators. Defaults are the real singletons, so existing
+// callers (`regeneratePlan(id, date)`) are unchanged.
+export interface RunnerDeps {
+  prisma: PrismaLike;
+  buildMealPlanMenus: typeof buildMealPlanMenus;
+}
+
+const defaultDeps: RunnerDeps = { prisma, buildMealPlanMenus };
+
 /**
  * Regenerate a patient's meal plan as a blue/green swap:
  *  1. Atomically claim the slot (status -> GENERATING). Reject if already running.
@@ -31,11 +55,15 @@ const STUCK_AFTER_MS = 3 * 60 * 1000;
  *  5. Best-effort delete of stale older-version rows.
  * On any failure after claiming, status -> FAILED and the OLD plan stays active.
  */
-export async function regeneratePlan(patientId: string, startDate: Date): Promise<number> {
+export async function regeneratePlan(
+  patientId: string,
+  startDate: Date,
+  deps: RunnerDeps = defaultDeps
+): Promise<number> {
   const stuckCutoff = new Date(Date.now() - STUCK_AFTER_MS);
 
   // 1. Claim. Succeeds only if not GENERATING, OR the previous run is stuck.
-  const claim = await prisma.patient.updateMany({
+  const claim = await deps.prisma.patient.updateMany({
     where: {
       id: patientId,
       OR: [
@@ -48,7 +76,7 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
   if (claim.count === 0) throw new MealPlanBusyError();
 
   try {
-    const patient = await prisma.patient.findUnique({
+    const patient = await deps.prisma.patient.findUnique({
       where: { id: patientId },
       select: { activePlanVersion: true },
     });
@@ -59,7 +87,7 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
     // mealPlanStartDate agree instead of the rows carrying request time-of-day.
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
-    const { rows, builtForWeight } = await buildMealPlanMenus(patientId, start, nextVersion);
+    const { rows, builtForWeight } = await deps.buildMealPlanMenus(patientId, start, nextVersion);
 
     // Guard: never flip to an empty plan. If the builder produced nothing
     // (e.g. an over-restrictive profile vs the recipe catalog), keep the current
@@ -69,11 +97,11 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
     // 3. Insert the new version (still invisible to version-scoped reads).
     // A previous run may have inserted this same version's rows and then failed
     // before the flip; purge them first or the retry would double every meal.
-    await prisma.menu.deleteMany({ where: { patientId, planVersion: nextVersion } });
-    await prisma.menu.createMany({ data: rows });
+    await deps.prisma.menu.deleteMany({ where: { patientId, planVersion: nextVersion } });
+    await deps.prisma.menu.createMany({ data: rows });
 
     // 4. Atomic flip — the moment version-scoped reads start seeing the new plan.
-    await prisma.patient.update({
+    await deps.prisma.patient.update({
       where: { id: patientId },
       data: {
         activePlanVersion: nextVersion,
@@ -89,7 +117,7 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
     });
 
     // 5. Best-effort cleanup of old versions. Safe to fail (orphans only).
-    await prisma.menu
+    await deps.prisma.menu
       .deleteMany({ where: { patientId, planVersion: { not: nextVersion } } })
       .catch(() => {});
 
@@ -101,7 +129,7 @@ export async function regeneratePlan(patientId: string, startDate: Date): Promis
         : err instanceof Error
         ? err.message
         : String(err);
-    await prisma.patient
+    await deps.prisma.patient
       .update({
         where: { id: patientId },
         data: { mealPlanStatus: "FAILED", mealPlanError: message },
