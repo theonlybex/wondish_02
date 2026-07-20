@@ -1,13 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { config } from "./middleware";
+import { config, wantsJson401 } from "./middleware";
 
 // The default export (the middleware handler) is intentionally NOT tested:
 // it is created by clerkMiddleware() and requires a live Clerk auth context
 // and NextRequest machinery to exercise. The exported `config` matcher,
 // however, is plain data whose regex decides which requests get auth
 // middleware at all — a silent mistake there either strips auth from API
-// routes or runs Clerk on every static asset.
+// routes or runs Clerk on every static asset. `wantsJson401` is the pure
+// decision the handler delegates to for choosing a JSON 401 vs. an HTML
+// redirect on the unauthenticated path, and IS unit-tested directly below.
 
 test("config.matcher covers app pages and api/trpc routes", () => {
   assert.ok(Array.isArray(config.matcher));
@@ -118,4 +120,28 @@ test("extension near-misses: prefix extensions and truncations are both covered"
   // A truncation of an excluded extension is NOT excluded: middleware runs.
   assert.ok(re.test("file.pn")); // prefix of "png", matches no alternative
   assert.ok(re.test("archive.zi")); // prefix of "zip"
+});
+
+// ── wantsJson401 ────────────────────────────────────────────────────────────
+// Unauthenticated requests to /api/* must get a JSON 401 instead of the
+// 307-to-/login redirect (iOS Bearer clients can't act on an HTML redirect).
+// Page requests keep redirecting to /login.
+
+test("api paths want a JSON 401", () => {
+  assert.equal(wantsJson401("/api/meal-log"), true);
+  assert.equal(wantsJson401("/api/journal"), true);
+  assert.equal(wantsJson401("/api"), true);
+  assert.equal(wantsJson401("/api/"), true);
+});
+
+test("page paths do not want a JSON 401 (they redirect instead)", () => {
+  assert.equal(wantsJson401("/overview"), false);
+  assert.equal(wantsJson401("/journal/2026-06-30"), false);
+  assert.equal(wantsJson401("/"), false);
+});
+
+test("path segments that merely start with 'api' are not /api routes", () => {
+  // Anchored to a real path segment — "/apiary" is a page, not API surface.
+  assert.equal(wantsJson401("/apiary"), false);
+  assert.equal(wantsJson401("/api-docs"), false);
 });

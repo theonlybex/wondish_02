@@ -15,6 +15,13 @@ const isPublicRoute = createRouteMatcher([
 
 const isAuthRoute = createRouteMatcher(["/login(.*)", "/register(.*)"]);
 
+// Pure decision, extracted so it's unit-testable without a live Clerk auth
+// context / NextRequest (see middleware.test.ts). Anchored to the "/api"
+// path segment so "/apiary" or "/api-docs" pages still redirect normally.
+export function wantsJson401(pathname: string): boolean {
+  return pathname === "/api" || pathname.startsWith("/api/");
+}
+
 export default clerkMiddleware(async (auth, req) => {
   const { userId } = await auth();
   const { pathname } = req.nextUrl;
@@ -25,6 +32,13 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   if (!isPublicRoute(req) && !userId) {
+    // iOS/XHR Bearer clients can't act on an HTML 307 redirect (URLSession
+    // follows it and treats the login page as a "successful" response) — API
+    // callers get a real JSON 401 instead. Browser page navigation is
+    // unaffected: it holds a session cookie and never reaches this branch.
+    if (wantsJson401(pathname)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const loginUrl = new URL("/login", req.url);
     return NextResponse.redirect(loginUrl);
   }

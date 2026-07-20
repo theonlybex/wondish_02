@@ -4,15 +4,10 @@ import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import { isProfileComplete } from "@/lib/onboarding";
+import { hasActivePremium } from "@/lib/auth";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import PremiumGuard from "@/components/PremiumGuard";
-
-function hasActivePremium(subscription: { plan: string; status: string } | null | undefined): boolean {
-  if (!subscription) return false;
-  if (subscription.plan !== "PREMIUM") return false;
-  return ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(subscription.status);
-}
 
 export default async function DashboardLayout({
   children,
