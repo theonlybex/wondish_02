@@ -289,7 +289,10 @@ export async function buildMealPlanMenus(
     ingredients: { select: { ingredient: { select: { name: true } } } },
   };
 
-  const snackMealType = mealTypes.find((mt) => mt.name.toLowerCase() === "snack") ?? mealTypes[mealTypes.length - 1];
+  // Product decision 2026-07-20: no "snack" meal type in the DB means NO calorie
+  // top-up — never stamp top-up rows with another meal type. The day may land
+  // under the 90% floor; a missing snack type is a data problem that stays visible.
+  const snackMealType = mealTypes.find((mt) => mt.name.toLowerCase() === "snack") ?? null;
 
   // Perf: load the eligible catalog ONCE and filter in memory. The previous
   // implementation issued 2–10 Prisma round-trips per meal slot (thousands

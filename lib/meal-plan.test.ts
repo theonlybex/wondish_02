@@ -601,6 +601,32 @@ test("day top-up pads with snack recipes until ≥90% of the day target, max 4 e
   }
 });
 
+test("no top-up when the meal plan has no snack meal type at all", async () => {
+  // Only breakfast/lunch/dinner meal types exist — no "snack" row in the DB.
+  // Per-meal calories are deliberately above each step's filler thresholds so
+  // exactly one recipe lands per meal, but the day total (1500) still lands
+  // under the 90% top-up floor (1800) — the exact condition that used to
+  // trigger a fallback top-up stamped with a non-snack meal type.
+  const mealTypes = [MT_B, MT_L, MT_D];
+  const pool = [
+    makeRecipe({ id: "bf", mealTypeId: MT_B.id, calories: 350 }),
+    makeRecipe({ id: "ln", mealTypeId: MT_L.id, calories: 650 }),
+    makeRecipe({ id: "dn", mealTypeId: MT_D.id, calories: 500 }),
+  ];
+  const calsById: Record<string, number> = { bf: 350, ln: 650, dn: 500 };
+  setDb(makePatient(), mealTypes, pool);
+  const { rows } = await build("p1", START);
+  for (const [, dayRows] of groupByDay(rows)) {
+    assert.equal(dayRows.length, 3, "no snack meal type exists, so no top-up rows are added");
+    assert.ok(
+      dayRows.every((r) => r.mealTypeId === MT_B.id || r.mealTypeId === MT_L.id || r.mealTypeId === MT_D.id),
+      "every row belongs to one of the three real meal types, never a borrowed one"
+    );
+    const total = dayRows.reduce((s, r) => s + calsById[r.recipeId], 0);
+    assert.equal(total, 1500, "day lands under the 90% floor and stays there with no top-up attempted");
+  }
+});
+
 test("planned day calories never exceed the 105% day budget", async () => {
   // Rich pool with zero family/subFamily constraints: the only thing keeping
   // days at ~target is the calorie-window clamping. Budget = 2000 * 1.05.
