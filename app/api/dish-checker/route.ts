@@ -74,6 +74,8 @@ export async function POST(req: NextRequest) {
   const stream = anthropic.messages.stream({
     model: "claude-sonnet-5",
     max_tokens: 1024,
+    // Sonnet 5 defaults to adaptive thinking when the param is omitted; chat latency wants it off (C6).
+    thinking: { type: "disabled" },
     system: systemPrompt,
     messages: history,
   });
