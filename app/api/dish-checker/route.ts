@@ -2,11 +2,10 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
+import { sanitizeChatHistory } from "@/lib/chat-history";
 import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-type Message = { role: "user" | "assistant"; content: string };
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -21,16 +20,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let messages: Message[] = [];
+  let body: unknown;
   try {
-    const body = await req.json();
-    messages = Array.isArray(body.messages) ? body.messages : [];
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  if (messages.length === 0) {
-    return NextResponse.json({ error: "No messages provided" }, { status: 400 });
+  const history = sanitizeChatHistory((body as { messages?: unknown })?.messages);
+  if (history === null || history.length === 0) {
+    return NextResponse.json({ error: "Invalid messages" }, { status: 400 });
   }
 
   const account = await prisma.account.findUnique({
@@ -72,32 +71,53 @@ export async function POST(req: NextRequest) {
   const foodMapText = buildFoodMapText(patient);
   const systemPrompt = buildSystemPrompt(account.firstName ?? "there", foodMapText);
 
-  const validMessages = messages
-    .filter((m) => m.role === "user" || m.role === "assistant")
-    .filter((m) => typeof m.content === "string" && m.content.trim().length > 0)
-    .map((m) => ({ ...m, content: m.content.slice(0, 4000) }));
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stream = anthropic.messages.stream({
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-4-5",
     max_tokens: 1024,
     system: systemPrompt,
-    messages: validMessages,
+    messages: history,
   });
 
+  // The Anthropic stream connects asynchronously (`.stream()` never throws
+  // synchronously), so we await the connection here to surface request-time
+  // errors (rate limits, overload) as a clean JSON response instead of an
+  // HTTP 200 that fails mid-stream.
+  try {
+    await stream.withResponse();
+  } catch (err) {
+    if (err instanceof Anthropic.APIError) {
+      if (err.status === 429) {
+        return NextResponse.json(
+          { error: "Clara is busy, try again in a moment" },
+          { status: 429 }
+        );
+      }
+      if (err.status === 529) {
+        return NextResponse.json(
+          { error: "Clara is busy, try again in a moment" },
+          { status: 503 }
+        );
+      }
+    }
+    return NextResponse.json({ error: "Clara is unavailable right now" }, { status: 500 });
+  }
+
+  const encoder = new TextEncoder();
   const readable = new ReadableStream({
     async start(controller) {
       try {
-        for await (const chunk of stream) {
+        for await (const event of stream) {
           if (
-            chunk.type === "content_block_delta" &&
-            chunk.delta.type === "text_delta"
+            event.type === "content_block_delta" &&
+            event.delta.type === "text_delta"
           ) {
-            controller.enqueue(new TextEncoder().encode(chunk.delta.text));
+            controller.enqueue(encoder.encode(event.delta.text));
           }
         }
-      } finally {
         controller.close();
+      } catch (err) {
+        console.error("dish-checker stream error", err);
+        controller.error(err);
       }
     },
   });
