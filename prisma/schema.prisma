@@ -144,6 +144,7 @@ model Patient {
   orders            Order[]
   journalEntries    JournalEntry[]
   customIngredients PatientCustomIngredient[]
+  mealLogs          MealLog[]
 
   profileCompleted Boolean  @default(false)
   tasteCompleted   Boolean  @default(false)
@@ -339,6 +340,7 @@ model Recipe {
   ingredients     RecipeIngredient[]
   menus           Menu[]
   dishPreferences PatientDishPreference[]
+  mealLogs        MealLog[]
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
 }
@@ -468,6 +470,62 @@ model JournalMeal {
   rating         Float?
 
   @@index([journalEntryId])
+}
+
+enum MealLogSource {
+  MANUAL // typed/edited by hand (web or iOS)
+  RECIPE // logged from an existing Recipe row (incl. meal-plan dishes)
+  PICTURE // one-tap from a Picture Mode vision result
+  FRIDGE // "I cooked this" on a Fridge Mode generated recipe
+  CUSTOM // from a PatientCustomIngredient (premium)
+}
+
+model MealLog {
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  // Client-supplied LOCAL calendar date, "YYYY-MM-DD". Aggregation key.
+  // Stored as a string on purpose: no Date hydration, no UTC math, immune to T3.
+  // REQUIRED on every write; the server never defaults it.
+  localDate String
+  mealType  String // "breakfast" | "lunch" | "dinner" | "snack"
+  source    MealLogSource @default(MANUAL)
+  name      String // display label snapshot, always present
+
+  // PER-SERVING snapshot captured at log time. Never recomputed from Recipe.
+  // Stored UNROUNDED (full float precision); r1 rounding happens only at the
+  // response/display boundary, so servings × per-serving always re-sums exactly.
+  servings   Float   @default(1)
+  calories   Float?
+  protein    Float?
+  carbs      Float?
+  fat        Float?
+  fiber      Float?
+  incomplete Boolean @default(false) // true when any macro was unpriceable (null→0)
+
+  // Provenance only — NEVER read for macro math.
+  recipeId           String?
+  recipe             Recipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  customIngredientId String?
+  journalMealId      String? // best-effort provenance pointer to a plan-completion
+  // JournalMeal row. Plain nullable column, deliberately
+  // NOT unique: the same planned dish eaten twice yields
+  // two intake rows pointing at one completion row.
+  pictureResultId    String? // opaque id echoed by Picture Mode
+  fridgeRecipeId     String? // opaque id of the generated Fridge recipe
+
+  note            String?
+  clientRequestId String? // idempotency key for one-tap / offline replay;
+  // ALSO an alternate address for PATCH/DELETE (see routes)
+  deletedAt       DateTime? // soft delete → tombstone for cross-device sync
+  loggedAt        DateTime  @default(now()) // ordering within a day
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([patientId, clientRequestId]) // Postgres treats NULLs as distinct → manual logs unaffected
+  @@index([patientId, localDate]) // hot day/range aggregation
+  @@index([patientId, updatedAt]) // delta sync for iOS
 }
 
 // ─── Reference Data ───────────────────────────────────────────────────────────
