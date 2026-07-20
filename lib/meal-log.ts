@@ -611,6 +611,116 @@ export async function getDayEnvelope(patientId: string, localDate: string): Prom
   return { dayTotals, dayTarget, remaining };
 }
 
+// ─── Delta-sync cursor — compound (updatedAt, id), tie-break safe ──────────
+// `updatedAt` alone is NOT a unique cursor key: a batch write (POST /batch)
+// runs inside one $transaction and can land several rows with an identical
+// (or millisecond-colliding) `updatedAt`. A plain `gt: lastUpdatedAt` cursor
+// silently drops the remainder of that cluster whenever it straddles the
+// DELTA_PAGE_SIZE page boundary — the client's next `updatedAt > cursor`
+// query starts strictly after the boundary row and never revisits siblings
+// that shared its timestamp. Tie-breaking on `id` (unique, monotonic per
+// insert order via cuid) closes the gap: rows are ordered
+// [updatedAt asc, id asc] and paged with
+// `updatedAt > cursor.updatedAt OR (updatedAt = cursor.updatedAt AND id > cursor.id)`.
+//
+// Wire format: the cursor is OPAQUE to the client — a base64url encoding of
+// `JSON.stringify({ u: updatedAt.toISOString(), i: id })`. JSON + base64url
+// (not a raw `${iso}_${id}` join) sidesteps any need to reason about whether
+// a cuid can contain the separator: there is no separator to collide with.
+//
+// External contract (UNCHANGED shape/param): the single `?updatedSince=`
+// query param still means "give me everything after this instant" on the
+// FIRST request, and the response is still `{ logs, nextCursor }`. What
+// changes is only the CONTENT of `nextCursor` — it is now this opaque
+// compound string instead of a plain ISO timestamp. A follow-up page is
+// requested by echoing that `nextCursor` value back as `updatedSince`;
+// `parseDeltaSyncParam` recognizes it as a compound cursor (vs. a plain
+// ISO-8601 string) and resumes from the exact (updatedAt, id) boundary. This
+// avoids introducing a second required query param that an in-flight iOS
+// client wouldn't yet know to send.
+
+export interface DeltaCursor {
+  updatedAt: Date;
+  id: string;
+}
+
+export function encodeDeltaCursor(updatedAt: Date, id: string): string {
+  const json = JSON.stringify({ u: updatedAt.toISOString(), i: id });
+  return Buffer.from(json, "utf8").toString("base64url");
+}
+
+export function decodeDeltaCursor(raw: string): DeltaCursor | null {
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  let json: string;
+  try {
+    json = Buffer.from(raw, "base64url").toString("utf8");
+  } catch {
+    return null;
+  }
+  let obj: unknown;
+  try {
+    obj = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!isObj(obj) || typeof obj.u !== "string" || typeof obj.i !== "string" || obj.i.length === 0) {
+    return null;
+  }
+  const updatedAt = new Date(obj.u);
+  if (Number.isNaN(updatedAt.getTime())) return null;
+  return { updatedAt, id: obj.i };
+}
+
+export interface DeltaSyncParam {
+  since: Date; // the `updatedAt` threshold to page from (cursor's, or the plain ISO on page 1)
+  cursor: DeltaCursor | null; // non-null once paginating past page 1
+}
+
+// Parses the `?updatedSince=` query param. It is either a plain ISO-8601
+// timestamp (first page) or an opaque compound cursor echoed back from a
+// prior `nextCursor` (subsequent pages). Anything else → 400.
+export function parseDeltaSyncParam(raw: string | null): ParseResult<DeltaSyncParam> {
+  if (raw == null || raw === "") {
+    return fail("updatedSince is required");
+  }
+  const cursor = decodeDeltaCursor(raw);
+  if (cursor) return { ok: true, value: { since: cursor.updatedAt, cursor } };
+  const since = new Date(raw);
+  if (Number.isNaN(since.getTime())) {
+    return fail("updatedSince must be an ISO-8601 timestamp or a valid cursor");
+  }
+  return { ok: true, value: { since, cursor: null } };
+}
+
+export type DeltaWhere =
+  | { patientId: string; updatedAt: { gt: Date } }
+  | { patientId: string; OR: [{ updatedAt: { gt: Date } }, { updatedAt: Date; id: { gt: string } }] };
+
+// Prisma where-clause for one delta page. First page: plain `updatedAt >
+// since`. Subsequent pages: compound tie-break so a same-timestamp cluster
+// straddling the page boundary is never split.
+export function buildDeltaWhere(patientId: string, param: DeltaSyncParam): DeltaWhere {
+  if (!param.cursor) {
+    return { patientId, updatedAt: { gt: param.since } };
+  }
+  const { updatedAt, id } = param.cursor;
+  return {
+    patientId,
+    OR: [{ updatedAt: { gt: updatedAt } }, { updatedAt, id: { gt: id } }],
+  };
+}
+
+// Matching orderBy — MUST pair with buildDeltaWhere for a stable total order.
+export const DELTA_ORDER_BY = [{ updatedAt: "asc" as const }, { id: "asc" as const }];
+
+// Opaque compound nextCursor for the next page, or null when this page was
+// short (no more rows).
+export function buildNextDeltaCursor(rows: readonly { updatedAt: Date; id: string }[]): string | null {
+  if (rows.length !== DELTA_PAGE_SIZE) return null;
+  const last = rows[rows.length - 1];
+  return encodeDeltaCursor(last.updatedAt, last.id);
+}
+
 // ─── Range window guard (Stats range GET) ───────────────────────────────────
 
 export function validateRange(from: string, to: string): ParseResult<{ from: string; to: string }> {

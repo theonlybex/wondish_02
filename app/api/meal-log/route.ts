@@ -17,6 +17,10 @@ import {
   validateRange,
   MEAL_TYPES,
   DELTA_PAGE_SIZE,
+  parseDeltaSyncParam,
+  buildDeltaWhere,
+  buildNextDeltaCursor,
+  DELTA_ORDER_BY,
   type RecipeDep,
   type CustomIngredientDep,
   type MealType,
@@ -167,16 +171,22 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Delta mode ──
-  const since = new Date(updatedSince!);
-  if (Number.isNaN(since.getTime())) {
-    return NextResponse.json({ error: "updatedSince must be an ISO-8601 timestamp" }, { status: 400 });
+  // updatedSince doubles as the pagination cursor: page 1 sends a plain
+  // ISO-8601 instant, later pages echo back the opaque compound `nextCursor`
+  // from the prior response. See lib/meal-log.ts (parseDeltaSyncParam et al)
+  // for why a compound (updatedAt, id) cursor is required — a plain
+  // `updatedAt` cursor can silently drop rows that share a timestamp across
+  // a page boundary (batch-write clustering).
+  const parsedParam = parseDeltaSyncParam(updatedSince);
+  if (!parsedParam.ok) {
+    return NextResponse.json({ error: parsedParam.error }, { status: parsedParam.status });
   }
   const rows = await prisma.mealLog.findMany({
-    where: { patientId: patient.id, updatedAt: { gt: since } }, // includes tombstones (deletedAt != null)
-    orderBy: { updatedAt: "asc" },
+    where: buildDeltaWhere(patient.id, parsedParam.value), // includes tombstones (deletedAt != null)
+    orderBy: DELTA_ORDER_BY,
     take: DELTA_PAGE_SIZE,
   });
   const logs = rows.map(serializeMealLog);
-  const nextCursor = rows.length === DELTA_PAGE_SIZE ? rows[rows.length - 1].updatedAt.toISOString() : null;
+  const nextCursor = buildNextDeltaCursor(rows);
   return NextResponse.json({ logs, nextCursor });
 }

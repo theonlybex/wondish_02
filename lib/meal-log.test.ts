@@ -12,6 +12,13 @@ import {
   buildMealLogLookupWhere,
   serializeMealLog,
   computeRemaining,
+  encodeDeltaCursor,
+  decodeDeltaCursor,
+  parseDeltaSyncParam,
+  buildDeltaWhere,
+  buildNextDeltaCursor,
+  DELTA_PAGE_SIZE,
+  type DeltaCursor,
 } from "./meal-log";
 import { r1 } from "./macros";
 
@@ -262,4 +269,179 @@ test("computeRemaining: signed difference, null when target is null", () => {
     { calories: 1740, protein: 108, carbs: 190, fat: 55, fiber: 22, incomplete: false }
   );
   assert.deepEqual(rem, { calories: 360, protein: 50, carbs: 46, fat: -8 });
+});
+
+// ─── Delta-sync cursor — compound (updatedAt, id) ───────────────────────────
+// Covers the fix for silent data loss when a same-`updatedAt` cluster (batch
+// $transaction writes) straddles the DELTA_PAGE_SIZE page boundary: a plain
+// `updatedAt`-only cursor would permanently skip the remainder of the
+// cluster on the follow-up request. See lib/meal-log.ts for the full writeup.
+
+test("encodeDeltaCursor/decodeDeltaCursor: round-trips updatedAt + id", () => {
+  const updatedAt = new Date("2026-07-19T18:22:04.123Z");
+  const cursor = encodeDeltaCursor(updatedAt, "clog_abc123");
+  assert.equal(typeof cursor, "string");
+  const decoded = decodeDeltaCursor(cursor);
+  assert.ok(decoded);
+  assert.equal(decoded!.updatedAt.getTime(), updatedAt.getTime());
+  assert.equal(decoded!.id, "clog_abc123");
+});
+
+test("decodeDeltaCursor: rejects malformed / garbage / structurally-wrong input", () => {
+  assert.equal(decodeDeltaCursor(""), null);
+  assert.equal(decodeDeltaCursor("not-a-cursor-at-all"), null);
+  assert.equal(decodeDeltaCursor("2026-07-19T18:22:04.000Z"), null); // plain ISO, not a cursor
+  // valid base64url, but decodes to JSON missing required fields
+  const badShape = Buffer.from(JSON.stringify({ u: "2026-07-19T18:22:04.000Z" }), "utf8").toString("base64url");
+  assert.equal(decodeDeltaCursor(badShape), null); // missing id
+  const badDate = Buffer.from(JSON.stringify({ u: "not-a-date", i: "clog_1" }), "utf8").toString("base64url");
+  assert.equal(decodeDeltaCursor(badDate), null);
+  const emptyId = Buffer.from(JSON.stringify({ u: "2026-07-19T18:22:04.000Z", i: "" }), "utf8").toString("base64url");
+  assert.equal(decodeDeltaCursor(emptyId), null);
+  // valid base64url, valid JSON, but not an object (e.g. a bare number)
+  const notObj = Buffer.from("42", "utf8").toString("base64url");
+  assert.equal(decodeDeltaCursor(notObj), null);
+});
+
+test("parseDeltaSyncParam: null/empty is rejected (400)", () => {
+  assert.equal(parseDeltaSyncParam(null).ok, false);
+  assert.equal(parseDeltaSyncParam("").ok, false);
+});
+
+test("parseDeltaSyncParam: plain ISO-8601 (page 1) parses to since with no cursor", () => {
+  const r = parseDeltaSyncParam("2026-07-19T18:22:04.000Z");
+  assert.ok(r.ok);
+  assert.equal(r.value.cursor, null);
+  assert.equal(r.value.since.toISOString(), "2026-07-19T18:22:04.000Z");
+});
+
+test("parseDeltaSyncParam: malformed (neither ISO nor a valid cursor) is rejected (400)", () => {
+  const r = parseDeltaSyncParam("not-a-timestamp-or-cursor");
+  assert.equal(r.ok, false);
+  assert.equal((r as { status: number }).status, 400);
+  assert.match((r as { error: string }).error, /updatedSince/i);
+});
+
+test("parseDeltaSyncParam: an echoed-back compound cursor decodes to since+cursor", () => {
+  const updatedAt = new Date("2026-07-19T18:22:04.500Z");
+  const encoded = encodeDeltaCursor(updatedAt, "clog_xyz789");
+  const r = parseDeltaSyncParam(encoded);
+  assert.ok(r.ok);
+  assert.ok(r.value.cursor);
+  assert.equal(r.value.cursor!.id, "clog_xyz789");
+  assert.equal(r.value.since.getTime(), updatedAt.getTime());
+});
+
+// ─── buildDeltaWhere / DELTA_ORDER_BY shape ─────────────────────────────────
+
+test("buildDeltaWhere: first page (no cursor) is a plain updatedAt > since filter", () => {
+  const since = new Date("2026-07-19T00:00:00.000Z");
+  const where = buildDeltaWhere("pat_1", { since, cursor: null });
+  assert.deepEqual(where, { patientId: "pat_1", updatedAt: { gt: since } });
+});
+
+test("buildDeltaWhere: compound page ties on id at the boundary timestamp", () => {
+  const updatedAt = new Date("2026-07-19T00:00:00.000Z");
+  const cursor: DeltaCursor = { updatedAt, id: "clog_500" };
+  const where = buildDeltaWhere("pat_1", { since: updatedAt, cursor });
+  assert.deepEqual(where, {
+    patientId: "pat_1",
+    OR: [{ updatedAt: { gt: updatedAt } }, { updatedAt, id: { gt: "clog_500" } }],
+  });
+});
+
+test("buildNextDeltaCursor: null on a short (final) page, opaque cursor when the page is full", () => {
+  const rows = [{ updatedAt: new Date("2026-07-19T00:00:00.000Z"), id: "clog_1" }];
+  assert.equal(buildNextDeltaCursor(rows), null);
+
+  const full = Array.from({ length: DELTA_PAGE_SIZE }, (_, i) => ({
+    updatedAt: new Date(2026, 6, 19, 0, 0, 0, i),
+    id: `clog_${String(i).padStart(4, "0")}`,
+  }));
+  const cursor = buildNextDeltaCursor(full);
+  assert.ok(cursor);
+  const decoded = decodeDeltaCursor(cursor!);
+  const last = full[full.length - 1];
+  assert.equal(decoded!.id, last.id);
+  assert.equal(decoded!.updatedAt.getTime(), last.updatedAt.getTime());
+});
+
+// ─── Simulated same-timestamp-boundary pagination (no drop, no dup) ────────
+// A minimal in-memory interpreter for the two where-shapes buildDeltaWhere
+// produces — enough to replay what Prisma would actually return, proving the
+// real query builder (not a hand-rolled equivalent) never drops or
+// duplicates rows when a same-`updatedAt` cluster straddles the page edge.
+
+interface FakeRow {
+  id: string;
+  patientId: string;
+  updatedAt: Date;
+}
+
+function matchesDeltaWhere(row: FakeRow, where: ReturnType<typeof buildDeltaWhere>): boolean {
+  if (row.patientId !== where.patientId) return false;
+  if ("OR" in where) {
+    const [gtClause, tieClause] = where.OR;
+    if (row.updatedAt.getTime() > gtClause.updatedAt.gt.getTime()) return true;
+    return row.updatedAt.getTime() === tieClause.updatedAt.getTime() && row.id > tieClause.id.gt;
+  }
+  return row.updatedAt.getTime() > where.updatedAt.gt.getTime();
+}
+
+function fetchDeltaPage(rows: FakeRow[], patientId: string, param: Parameters<typeof buildDeltaWhere>[1]): FakeRow[] {
+  const where = buildDeltaWhere(patientId, param);
+  const matched = rows.filter((r) => matchesDeltaWhere(r, where));
+  matched.sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return matched.slice(0, DELTA_PAGE_SIZE);
+}
+
+test("simulated pagination: a same-updatedAt cluster straddling the page boundary is never dropped or duplicated", () => {
+  const patientId = "pat_1";
+  const clusterTs = new Date("2026-07-19T12:00:00.000Z");
+
+  // Build DELTA_PAGE_SIZE + 250 rows: the first (DELTA_PAGE_SIZE - 5) rows get
+  // strictly increasing timestamps (one per ms), then 250 rows share the
+  // EXACT SAME updatedAt (`clusterTs`) — straddling the boundary at index
+  // DELTA_PAGE_SIZE - 5..+245. A plain updatedAt cursor would drop rows
+  // clusterTs-tagged rows past whatever page-1 happened to take.
+  const rows: FakeRow[] = [];
+  const preClusterCount = DELTA_PAGE_SIZE - 5;
+  for (let i = 0; i < preClusterCount; i++) {
+    rows.push({ id: `pre_${String(i).padStart(5, "0")}`, patientId, updatedAt: new Date(clusterTs.getTime() - (preClusterCount - i) * 1000) });
+  }
+  const clusterSize = 250;
+  for (let i = 0; i < clusterSize; i++) {
+    // ids intentionally NOT in a sorted-friendly pattern relative to insertion,
+    // just unique — pagination correctness must not depend on id/time correlation.
+    rows.push({ id: `clu_${String(i).padStart(5, "0")}`, patientId, updatedAt: new Date(clusterTs.getTime()) });
+  }
+  // a few rows strictly after the cluster too
+  for (let i = 0; i < 10; i++) {
+    rows.push({ id: `post_${String(i).padStart(5, "0")}`, patientId, updatedAt: new Date(clusterTs.getTime() + (i + 1) * 1000) });
+  }
+
+  const since = new Date(clusterTs.getTime() - preClusterCount * 1000 - 1);
+  let param: Parameters<typeof buildDeltaWhere>[1] = { since, cursor: null };
+  const seen: FakeRow[] = [];
+  let pages = 0;
+  for (;;) {
+    pages++;
+    assert.ok(pages < 20, "pagination did not terminate — possible infinite loop");
+    const page = fetchDeltaPage(rows, patientId, param);
+    seen.push(...page);
+    if (page.length < DELTA_PAGE_SIZE) break; // short page → done
+    const last = page[page.length - 1];
+    const nextCursor = decodeDeltaCursor(buildNextDeltaCursor(page)!)!;
+    param = { since: nextCursor.updatedAt, cursor: nextCursor };
+    assert.equal(nextCursor.id, last.id);
+  }
+
+  assert.ok(pages >= 2, "test setup should force at least two pages to actually exercise the boundary");
+  // No drops: every row from the source set was returned exactly once.
+  assert.equal(seen.length, rows.length);
+  const seenIds = seen.map((r) => r.id).sort();
+  const allIds = rows.map((r) => r.id).sort();
+  assert.deepEqual(seenIds, allIds);
+  // No duplicates.
+  assert.equal(new Set(seenIds).size, rows.length);
 });
