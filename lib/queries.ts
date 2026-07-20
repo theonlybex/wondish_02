@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { prisma } from "./db";
-import { resolveSex, toKg, fromKg, type PredictionProfileInput } from "./prediction-data";
+import { type PredictionProfileInput } from "./prediction-data";
+import { normalizePredictionPatient } from "./prediction-profile";
 
 // Per-request cached account fetch. React.cache() deduplicates calls with the
 // same userId within one server render, so layout + page share one DB round trip.
@@ -51,29 +52,6 @@ export const getPredictionProfileInput = cache(
       },
     });
 
-    if (!patient?.weight || !patient.goalWeight || !patient.height || !patient.birthday) return null;
-    const sex = resolveSex(patient.sexAtBirth);
-    const activityLevel = patient.physicalActivity?.level;
-    if (!sex || !activityLevel) return null;
-
-    const weightUnit: "kg" | "lbs" = patient.weightUnit === "lbs" ? "lbs" : "kg";
-    const goalUnit: "kg" | "lbs" =
-      (patient.goalWeightUnit ?? patient.weightUnit) === "lbs" ? "lbs" : "kg";
-    const goalWeight =
-      goalUnit === weightUnit
-        ? patient.goalWeight
-        : fromKg(toKg(patient.goalWeight, goalUnit), weightUnit);
-    if (goalWeight >= patient.weight) return null;
-
-    return {
-      sex,
-      birthday: patient.birthday.toISOString(),
-      heightValue: patient.height,
-      heightUnit: patient.heightUnit === "in" ? "in" : "cm",
-      weightValue: patient.weight,
-      weightUnit,
-      goalWeight: parseFloat(goalWeight.toFixed(1)),
-      activityLevel,
-    };
+    return patient ? normalizePredictionPatient(patient) : null;
   }
 );
