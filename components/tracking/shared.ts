@@ -3,27 +3,21 @@
 // imported as TYPE-ONLY imports from lib/meal-log.ts (fully erased at compile
 // time), so nothing here drags lib/db (Prisma) into the browser bundle.
 
-import type { MealLogDTO, MealType, Remaining } from "@/lib/meal-log";
+import { formatLocalDate, MEAL_TYPES, type MealType } from "@/lib/local-date";
+import type { MealLogDTO, Remaining } from "@/lib/meal-log";
 import type { MacroSnapshot } from "@/lib/macros";
 import type { DailyTargets } from "@/lib/caloric-engine";
 
 export type { MealLogDTO, MealType, Remaining, MacroSnapshot, DailyTargets };
 
 // ─── localDate ───────────────────────────────────────────────────────────────
-// Local getters on the BROWSER's clock, zero-padded — the string-for-string
-// twin of lib/meal-log.ts's formatLocalDate (which cannot be value-imported
-// here: lib/meal-log.ts pulls in lib/db's PrismaClient at module scope, and
-// Prisma cannot run in the browser). Never toISOString().slice(0,10) — that is
-// UTC and reintroduces the T3 off-by-one at local-midnight boundaries.
-// Behavior is pinned to the server twin's contract: `YYYY-MM-DD` via
-// getFullYear/getMonth/getDate.
+// Re-exported from the pure lib/local-date.ts module — one implementation,
+// value-imported safely on the client (local-date.ts imports nothing that
+// touches Prisma/lib/db, so no browser Prisma stub is dragged in). The former
+// hand-written twin here is gone. Never toISOString().slice(0,10) — that is UTC
+// and reintroduces the T3 off-by-one at local-midnight boundaries.
 
-export function formatLocalDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+export { formatLocalDate };
 
 // ─── clientRequestId (idempotency key, one per user action) ─────────────────
 
@@ -32,8 +26,10 @@ export function newClientRequestId(): string {
 }
 
 // ─── mealType metadata (the four fixed sections) ────────────────────────────
+// MEAL_TYPE_ORDER is the same array as lib/local-date's MEAL_TYPES — re-exported
+// under this module's existing import name so component call-sites are untouched.
 
-export const MEAL_TYPE_ORDER = ["breakfast", "lunch", "dinner", "snack"] as const satisfies readonly MealType[];
+export const MEAL_TYPE_ORDER = MEAL_TYPES;
 
 export const MEAL_TYPE_LABELS: Record<MealType, string> = {
   breakfast: "Breakfast",
