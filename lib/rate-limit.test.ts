@@ -64,19 +64,18 @@ test("rejected requests do not extend the window (fixed window, not sliding)", o
   assert.equal((await rateLimit("t-fixed", "frank", 1, 0.12)).success, true);
 });
 
-test("limit of 0 still allows the first request (documents current behavior)", opts, async () => {
-  // The fallback creates the entry with count=1 before ever comparing against
-  // `limit`, so even limit=0 lets one request through. Suspected minor bug;
-  // encoded here as current behavior.
-  assert.equal((await rateLimit("t-zero", "erin", 0, 60)).success, true);
+test("limit of 0 blocks every request", opts, async () => {
+  // limit=0 must reject even the first request.
   assert.equal((await rateLimit("t-zero", "erin", 0, 60)).success, false);
 });
 
-test("fallback key collision: name+identifier are joined with ':' (documents current behavior)", opts, async () => {
-  // memoryLimit keys on `${name}:${identifier}`, so ("x", "y:z") and
-  // ("x:y", "z") collide in the in-memory store. The Upstash path keeps
-  // name (prefix) and identifier separate, so this only affects local dev.
+test("fallback key does not collide across (name, identifier) splits", opts, async () => {
+  // ("t-col", "y:z") and ("t-col:y", "z") are different logical buckets and
+  // must be limited independently, even though naively joining name and
+  // identifier with ':' would make them collide in the in-memory store.
   assert.equal((await rateLimit("t-col", "y:z", 1, 60)).success, true);
-  // Different logical bucket, but same memory key -> already exhausted.
+  assert.equal((await rateLimit("t-col:y", "z", 1, 60)).success, true);
+  // A second request on the same (name, identifier) pair is still limited.
+  assert.equal((await rateLimit("t-col", "y:z", 1, 60)).success, false);
   assert.equal((await rateLimit("t-col:y", "z", 1, 60)).success, false);
 });

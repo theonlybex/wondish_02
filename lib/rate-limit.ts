@@ -31,6 +31,7 @@ const memStore = new Map<string, { count: number; resetAt: number }>();
 
 function memoryLimit(id: string, limit: number, windowSec: number): RateLimitResult {
   const now = Date.now();
+  if (limit < 1) return { success: false };
   const entry = memStore.get(id);
   if (!entry || now > entry.resetAt) {
     memStore.set(id, { count: 1, resetAt: now + windowSec * 1000 });
@@ -60,5 +61,5 @@ export async function rateLimit(
     const { success } = await getUpstashLimiter(name, limit, windowSec).limit(identifier);
     return { success };
   }
-  return memoryLimit(`${name}:${identifier}`, limit, windowSec);
+  return memoryLimit(JSON.stringify([name, identifier]), limit, windowSec);
 }
