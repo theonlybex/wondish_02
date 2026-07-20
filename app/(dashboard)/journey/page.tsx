@@ -38,7 +38,7 @@ export default async function JourneyPage() {
     patient ? getJourneyPayload(patient.id, from, to) : Promise.resolve(emptyPayload),
     getPredictionProfileInput(userId),
   ]);
-  const { stats } = payload;
+  const { stats, macroStats } = payload;
 
   const rangeLabel = `${from.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${to.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 
@@ -71,7 +71,7 @@ export default async function JourneyPage() {
       </div>
 
       <div className="jy" style={{ animationDelay: "120ms" }}>
-        <JourneyDashboard initialStats={stats} />
+        <JourneyDashboard initialStats={stats} initialMacroStats={macroStats} />
       </div>
 
       {/* Prediction what-if card */}
