@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   const systemPrompt = buildSystemPrompt(account.firstName ?? "there", foodMapText);
 
   const stream = anthropic.messages.stream({
-    model: "claude-sonnet-4-5",
+    model: "claude-sonnet-5",
     max_tokens: 1024,
     system: systemPrompt,
     messages: history,

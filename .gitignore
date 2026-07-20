@@ -30,3 +30,6 @@ Thumbs.db
 *.pdf
 *.xlsx
 *.docx
+
+# clerk configuration (can include secrets)
+/.clerk/
