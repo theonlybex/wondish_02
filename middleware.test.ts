@@ -75,30 +75,27 @@ test("the js(?!on) lookahead keeps .json paths under middleware", () => {
   assert.ok(re.test("api/data.json"));
 });
 
-test("_next is only excluded at the start of the path", () => {
+test("_next is only excluded at the start of the path, anchored to a path segment", () => {
   const re = matcherRegex();
   assert.equal(re.test("_next/data/build/page.json"), false);
   // A page that merely contains "_next" deeper in the path is still covered.
   assert.ok(re.test("docs/_next-steps"));
   assert.ok(re.test("next-steps"));
-  // KNOWN SOURCE QUIRK: the lookahead is "(?!_next" with no "/" or end
-  // boundary, so any top-level path merely PREFIXED with "_next" is also
-  // excluded — e.g. a hypothetical page "/_next-steps" would silently skip
-  // auth middleware. Pinned here so a fix (e.g. "_next/") shows up as an
-  // intentional behavior change.
-  assert.equal(re.test("_next-steps"), false);
+  // A top-level path merely PREFIXED with "_next" (not followed by "/" or
+  // end-of-path) is a real page route and must still hit auth middleware.
+  assert.ok(re.test("_next-steps"));
 });
 
-test("extension exclusion applies mid-path, not just at the end", () => {
+test("extension exclusion only applies at the end of the path", () => {
   const re = matcherRegex();
-  // KNOWN SOURCE QUIRK: "[^?]*\\.js(?!on)" is not anchored to the end of the
-  // pathname, so any path CONTAINING an excluded extension is skipped — a
-  // page route like "/blog/why-node.js" or "/some.js/route" would bypass
-  // auth middleware entirely (matcher[1] still covers /api and /trpc, so
-  // API routes are safe). Pinned deliberately; changing this is a source fix.
+  // A path that genuinely ENDS with an asset extension is treated as a
+  // static asset by design.
   assert.equal(re.test("blog/why-node.js"), false);
-  assert.equal(re.test("some.js/route"), false);
-  assert.equal(re.test("release-v1.zip/notes"), false);
+  // Extension exclusion must not match mid-path: these are page routes with
+  // an excluded-looking extension segment followed by more path, not actual
+  // static assets, so they must still hit auth middleware.
+  assert.ok(re.test("some.js/route"));
+  assert.ok(re.test("release-v1.zip/notes"));
 });
 
 test("extension matching is case-sensitive: uppercase assets still hit middleware", () => {
@@ -110,15 +107,14 @@ test("extension matching is case-sensitive: uppercase assets still hit middlewar
   assert.ok(re.test("fonts/Inter.WOFF2"));
 });
 
-test("extension near-misses: prefixes excluded, truncations covered", () => {
+test("extension near-misses: prefix extensions and truncations are both covered", () => {
   const re = matcherRegex();
-  // KNOWN SOURCE QUIRK (same unanchored-extension issue as above): the
-  // extension alternation has no end anchor, so any extension that merely
-  // STARTS with an excluded one is also skipped — ".jsx" via "js(?!on)"
-  // (the lookahead only guards "json", nothing else) and ".csvx" via "csv".
-  // Pinned so tightening the regex (e.g. adding "$") is a visible change.
-  assert.equal(re.test("app.jsx"), false);
-  assert.equal(re.test("data.csvx"), false);
+  // The extension alternation is anchored to end-of-path, so an extension
+  // that merely STARTS with an excluded one is a distinct extension and
+  // must still hit auth middleware — ".jsx" (not just "js(?!on)") and
+  // ".csvx" (not just "csv").
+  assert.ok(re.test("app.jsx"));
+  assert.ok(re.test("data.csvx"));
   // A truncation of an excluded extension is NOT excluded: middleware runs.
   assert.ok(re.test("file.pn")); // prefix of "png", matches no alternative
   assert.ok(re.test("archive.zi")); // prefix of "zip"
