@@ -123,7 +123,7 @@ export const dishes: Dish[] = [
     cookTime: 20,
     servings: 1,
     tags: ["Vegetarian", "High Fiber", "Mediterranean"],
-    emoji: "🫙",
+    emoji: "🥗",
     imageUrl: "/dishes/dish-7.png",
   },
   {
@@ -175,7 +175,7 @@ export const dishes: Dish[] = [
     cookTime: 10,
     servings: 1,
     tags: ["High Protein", "Omega-3", "French"],
-    emoji: "🫚",
+    emoji: "🐟",
     imageUrl: "/dishes/dish-10.png",
   },
 

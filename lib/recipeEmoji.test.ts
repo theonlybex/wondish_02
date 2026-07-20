@@ -59,11 +59,11 @@ test("specific fish patterns precede the generic fish group", () => {
   assert.equal(getRecipeEmoji("Tuna Melt"), "🐟"); // tuna entry, not generic fish
 });
 
-test("standalone 'burger' resolves to the beef emoji, never 🍔", () => {
-  // "burger" appears in both the beef pattern and the later burger pattern;
-  // the beef entry always matches first, so 🍔 for a plain "Burger" name is
-  // unreachable — only "cheeseburger"/"slider" can produce it.
-  assert.equal(getRecipeEmoji("Veggie Burger"), "🥩");
+test("'burger' resolves to the burger emoji; beef/turkey patterns still win when named explicitly", () => {
+  // "burger" no longer appears in the beef pattern, so a plain burger name
+  // reaches the dedicated burger entry. Turkey still precedes it because the
+  // turkey pattern comes first in the map; explicit beef titles still hit 🥩.
+  assert.equal(getRecipeEmoji("Veggie Burger"), "🍔");
   assert.equal(getRecipeEmoji("Turkey Burger"), "🦃"); // turkey precedes beef
   assert.equal(getRecipeEmoji("Cheeseburger"), "🍔"); // \bburger\b can't match inside "cheeseburger"
 });
@@ -149,14 +149,16 @@ test("empty name returns the generic plate", () => {
 
 // ── Documented quirks of current matching ───────────────────
 
-test("generic 'roll' maps to sushi even for non-sushi rolls (current behavior)", () => {
-  // The sushi pattern includes the bare word "roll", so bakery items match it.
-  assert.equal(getRecipeEmoji("Cinnamon Roll"), "🍣");
+test("bare 'roll' no longer maps to sushi for non-sushi rolls", () => {
+  // The sushi pattern is now sushi-specific (sushi|maki|temaki|sushi roll|
+  // california roll), so a bakery item like "Cinnamon Roll" matches no
+  // keyword at all and falls through to the generic plate.
+  assert.equal(getRecipeEmoji("Cinnamon Roll"), "🍽");
 });
 
-test("plural 'oats' misses the singular-only oat pattern (current behavior)", () => {
-  // /\b(oat|...|overnight oat)\b/ has no plural form, so the common name
-  // "Overnight Oats" falls through to the fallback. Suspected source bug.
-  assert.equal(getRecipeEmoji("Overnight Oats"), "🍽");
-  assert.equal(getRecipeEmoji("Overnight Oats", null, "breakfast"), "🍳");
+test("plural 'oats' matches the pluralized oat pattern", () => {
+  // /\b(oats?|...|overnight oats?)\b/ now covers the plural, so the common
+  // name "Overnight Oats" resolves to the oat/porridge emoji.
+  assert.equal(getRecipeEmoji("Overnight Oats"), "🥣");
+  assert.equal(getRecipeEmoji("Overnight Oats", null, "breakfast"), "🥣");
 });
