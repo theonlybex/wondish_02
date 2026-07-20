@@ -43,7 +43,7 @@ export function computeJourneyStats(entries: JournalEntryRaw[], totalDays?: numb
     restaurant: activeMeals.filter((m) => m.preparation === "restaurant").length,
   };
 
-  const engaged = entries.filter((e) => e.meals.some((m) => !m.skipped)).length;
+  const engaged = entries.filter((e) => e.meals.some((m) => !isSkipped(m))).length;
 
   const fmt = (d: Date | string) => {
     // A date-only ISO string is already the answer; parsing it would shift it a day
