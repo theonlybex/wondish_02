@@ -84,12 +84,12 @@ test("heightIn of 0 counts as present (exactly N feet tall)", () => {
   );
 });
 
-test("heightFt of 0 counts as present (`!= null` check, not truthiness)", () => {
-  // Symmetric boundary to heightIn: 0 — a 0ft value is nonsensical upstream,
-  // but this check only asks "is the column filled in".
+test("heightFt of 0 is rejected — unlike heightIn, 0 feet is never physically meaningful", () => {
+  // Asymmetric to heightIn: heightFt uses the `pos` (>0) check because nobody
+  // is 0 feet tall, whereas heightIn legitimately can be 0 (e.g. 5ft 0in).
   assert.equal(
     isProfileComplete({ ...completeImperialProfile(), heightFt: 0 }),
-    true
+    false
   );
 });
 
@@ -121,31 +121,41 @@ test("missing or null weight is incomplete", () => {
   );
 });
 
-test("weight of 0 counts as present (`!= null` check, not truthiness)", () => {
-  // Documents current behavior: 0 passes the null-check even though a zero
-  // weight is not physically meaningful. Validation lives upstream.
+test("weight of 0 is rejected as physically meaningless", () => {
   assert.equal(
     isProfileComplete({ ...completeMetricProfile(), weight: 0 }),
-    true
+    false
   );
 });
 
-test("height of 0 counts as present (`!= null` check, not truthiness)", () => {
-  // Same current-behavior note as weight: 0 is "present" to this check.
+test("height of 0 is rejected as physically meaningless", () => {
   assert.equal(
     isProfileComplete({ ...completeMetricProfile(), height: 0 }),
-    true
+    false
   );
 });
 
-test("an Invalid Date birthday still counts as present (truthiness check)", () => {
-  // Documents current behavior: `patient.birthday && ...` only tests
-  // truthiness, and an Invalid Date object is truthy. Date VALIDITY is not
-  // this function's job — it only checks that the field was filled in.
+test("an Invalid Date birthday is rejected", () => {
+  // `new Date("not-a-date")` is a truthy object, but Number.isNaN(getTime())
+  // catches it — this function now validates the date, not just its presence.
   assert.equal(
     isProfileComplete({
       ...completeMetricProfile(),
       birthday: new Date("not-a-date"),
+    }),
+    false
+  );
+});
+
+test("imperial height with 0 inches (5ft 0in) is complete — 0 inches is legitimate", () => {
+  // Unlike weight/height-in-cm, 0 is a valid value for heightIn (someone who
+  // is exactly N feet tall), so it must use a non-negative check, not `pos`.
+  assert.equal(
+    isProfileComplete({
+      ...completeImperialProfile(),
+      height: null,
+      heightFt: 5,
+      heightIn: 0,
     }),
     true
   );

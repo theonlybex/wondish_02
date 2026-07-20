@@ -26,9 +26,14 @@ export type ProfileCompletionInput =
 
 export function isProfileComplete(patient: ProfileCompletionInput): boolean {
   if (!patient) return false;
-  const hasHeight =
-    patient.height != null || (patient.heightFt != null && patient.heightIn != null);
-  return Boolean(
-    patient.birthday && hasHeight && patient.weight != null && patient.physicalActivityId
-  );
+  const pos = (n: number | null | undefined): boolean =>
+    n != null && Number.isFinite(n) && n > 0;
+  const nonNeg = (n: number | null | undefined): boolean =>
+    n != null && Number.isFinite(n) && n >= 0;
+  const hasHeight = pos(patient.height) || (pos(patient.heightFt) && nonNeg(patient.heightIn));
+  const validBirthday =
+    patient.birthday instanceof Date
+      ? !Number.isNaN(patient.birthday.getTime())
+      : Boolean(patient.birthday);
+  return Boolean(validBirthday && hasHeight && pos(patient.weight) && patient.physicalActivityId);
 }
