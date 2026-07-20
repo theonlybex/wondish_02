@@ -7,6 +7,21 @@ import { convertHeight, convertWeight, calcCBMI } from "@/lib/caloric-engine";
 // generated at before we flag the plan stale. Keeps daily weigh-in noise quiet.
 const WEIGHT_DRIFT_LBS = 5;
 
+// `new Date(dateStr)` on a plain date-only string ("YYYY-MM-DD") parses it as
+// UTC midnight — in any negative UTC-offset zone that lands on the *previous*
+// local calendar day once rendered/formatted locally (the live bug this
+// replaces, mirroring the fix already used at
+// app/api/journal/log-meal/route.ts:20-21). Anchored date-only strings are
+// split and built via the local-time Date constructor instead; anything that
+// isn't a plain date-only string falls through to native parsing unchanged,
+// preserving prior behavior for missing/odd input.
+function parseLocalDateOnly(dateStr: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) return new Date(dateStr);
+  const [, y, m, d] = match;
+  return new Date(Number(y), Number(m) - 1, Number(d));
+}
+
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,7 +32,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const dateParam = searchParams.get("date");
-  const date = dateParam ? new Date(dateParam) : new Date();
+  const date = dateParam ? parseLocalDateOnly(dateParam) : new Date();
   date.setHours(0, 0, 0, 0);
   const dateEnd = new Date(date);
   dateEnd.setHours(23, 59, 59, 999);
@@ -41,7 +56,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { date, mood, weight, energyLevel, activityLevel, notes, meals } = body;
 
-  const entryDate = new Date(date);
+  const entryDate = parseLocalDateOnly(date);
   entryDate.setHours(0, 0, 0, 0);
   const dateEnd = new Date(entryDate);
   dateEnd.setHours(23, 59, 59, 999);
