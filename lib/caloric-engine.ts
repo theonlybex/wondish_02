@@ -78,18 +78,18 @@ export function calcAge(birthday: Date, now: Date = new Date()): number {
   if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birthday.getDate())) {
     age--;
   }
-  return age;
+  return Math.max(0, age); // a future birthday is age 0, never negative
 }
 
 // ─── Ideal Body Weight (IBW) ─────────────────────────────────────────────────
 
 /**
- * IBW in kg.
+ * IBW in kg, floored at 0 (very short heights would otherwise go negative).
  * Females: height_cm - 108
  * Males:   height_cm - 105
  */
 export function calcIBW(heightCm: number, sex: Sex): number {
-  return sex === "female" ? heightCm - 108 : heightCm - 105;
+  return Math.max(0, sex === "female" ? heightCm - 108 : heightCm - 105);
 }
 
 // ─── BMI Calculations ────────────────────────────────────────────────────────
@@ -400,11 +400,12 @@ export interface CaloricProfile {
  * Master computation function — runs all formulas and returns a complete
  * CaloricProfile.
  */
-export function computeAllMetrics(input: CaloricProfileInput): CaloricProfile {
+export function computeAllMetrics(input: CaloricProfileInput, now: Date = new Date()): CaloricProfile {
   const { sex, birthday, heightValue, heightUnit, cbwValue, cbwUnit, activityLevel } = input;
 
-  // 1. Age
-  const age = calcAge(birthday);
+  // 1. Age — computed against the injectable clock so callers (and tests) can
+  // pin "today"; every other formula depends on the clock only through age.
+  const age = calcAge(birthday, now);
 
   // 2. Height conversions
   const ht = convertHeight(heightValue, heightUnit);

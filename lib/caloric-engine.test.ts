@@ -401,10 +401,10 @@ test("calcAge: leap-day birthday ticks over on March 1 in non-leap years", () =>
   assert.equal(calcAge(bday, new Date("2026-03-01")), 26);
 });
 
-test("calcAge: same-day birth is age 0; future birthday gives negative", () => {
+test("calcAge: same-day birth is age 0; future birthday clamps to 0", () => {
   assert.equal(calcAge(new Date("2026-06-30"), new Date("2026-06-30")), 0);
-  // Current behavior: no clamping for not-yet-born dates.
-  assert.equal(calcAge(new Date("2027-01-01"), new Date("2026-06-30")), -1);
+  // A not-yet-born date is age 0, never negative.
+  assert.equal(calcAge(new Date("2027-01-01"), new Date("2026-06-30")), 0);
 });
 
 // ═══ IBW / BMI family ═════════════════════════════════════════════════════════
@@ -412,8 +412,8 @@ test("calcAge: same-day birth is age 0; future birthday gives negative", () => {
 test("calcIBW: sex-specific offsets from height", () => {
   assert.equal(calcIBW(160, "female"), 52); // 160 - 108
   assert.equal(calcIBW(160, "male"), 55);   // 160 - 105
-  // Current behavior: very short heights can produce negative IBW (no floor).
-  assert.equal(calcIBW(100, "female"), -8);
+  // Very short heights floor at 0 instead of going negative.
+  assert.equal(calcIBW(100, "female"), 0);
 });
 
 test("calcCBMI: standard value and non-positive height guard", () => {
@@ -860,7 +860,7 @@ test("computeAllMetrics: activity level outside 1-4 falls back to sedentary", ()
   assert.equal(bogus.tdeeCBW, sedentary.tdeeCBW);
 });
 
-test("computeAllMetrics: zero height degrades without crashing (documents current behavior)", () => {
+test("computeAllMetrics: zero height degrades without crashing", () => {
   const p = computeAllMetrics({
     sex: "female", birthday,
     heightValue: 0, heightUnit: "cm",
@@ -869,7 +869,18 @@ test("computeAllMetrics: zero height degrades without crashing (documents curren
   });
   assert.equal(p.cbmi, 0);                    // calcCBMI guard
   assert.equal(p.cbmiClass, "underweight");   // BMI 0 classifies underweight
-  assert.equal(p.ibwKg, -108);                // current behavior: no IBW floor
+  assert.equal(p.ibwKg, 0);                   // IBW floors at 0
   assert.ok(Number.isFinite(p.dailyCalories));
   assert.ok(p.dailyCalories >= p.minCaloriesValue);
+});
+
+test("computeAllMetrics: injectable clock computes age as of the provided date", () => {
+  const p = computeAllMetrics({
+    sex: "female", birthday: new Date("1994-06-15"),
+    heightValue: 165, heightUnit: "cm",
+    cbwValue: 60, cbwUnit: "kg",
+    activityLevel: 2,
+  }, new Date("2030-01-01"));
+  // Born 1994-06-15: turned 35 on 2029-06-15 and not 36 until 2030-06-15.
+  assert.equal(p.age, 35);
 });
