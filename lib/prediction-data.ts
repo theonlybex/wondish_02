@@ -43,7 +43,7 @@ export const fromKg = (v: number, unit: "kg" | "lbs") => (unit === "lbs" ? v / K
 export const kgToLbs = (v: number) => v / KG_PER_LB;
 
 export function resolveSex(sexAtBirth: string | null | undefined): Sex | null {
-  const s = (sexAtBirth ?? "").toLowerCase();
+  const s = (sexAtBirth ?? "").trim().toLowerCase();
   if (s === "male") return "male";
   if (s === "female") return "female";
   return null;
@@ -55,12 +55,15 @@ export function resolveSex(sexAtBirth: string | null | undefined): Sex | null {
  * when no weight-loss prediction applies (healthy/underweight BMI, goal not
  * below current weight, or no achievable deficit).
  *
- * The intake schedule (gradual deficit ramp + severity-scaled cap) is always
- * anchored to the PROFILE's activity level — that's what the meal plan is
- * generated from. An activity-level override only changes the burn side:
- * extra exercise adds BMR × Δmultiplier of daily deficit on top. Both the
- * /prediction page and the Journey what-if card call this same function, so
- * their estimates always agree.
+ * Whether a prediction applies at all (the overweight/obese gate) is always
+ * judged on the PROFILE's own activity level. An activity-level override
+ * feeds the walk a profile recomputed at the overridden level, exactly as if
+ * the user actually lived at that level: a higher level raises TDEE (bigger
+ * daily deficit, shorter ETA — until the severity cap binds), a lower level
+ * lowers TDEE (smaller deficit, longer but still finite ETA while the goal
+ * stays reachable; null only when TDEE falls to the minimum-intake floor or
+ * the 10-year cap is exceeded). Both the /prediction page and the Journey
+ * what-if card call this same function, so their estimates always agree.
  */
 export function computePredictionEstimate(
   input: PredictionProfileInput,
@@ -69,41 +72,40 @@ export function computePredictionEstimate(
   const goalWeight = overrides?.goalWeight ?? input.goalWeight;
   if (goalWeight >= input.weightValue) return null;
 
-  const profile = computeAllMetrics({
-    sex: input.sex,
-    birthday: new Date(input.birthday),
-    heightValue: input.heightValue,
-    heightUnit: input.heightUnit,
-    cbwValue: input.weightValue,
-    cbwUnit: input.weightUnit,
-    activityLevel: input.activityLevel,
-    utbwValue: goalWeight,
-    utbwUnit: input.weightUnit,
-  });
+  const deriveProfile = (activityLevel: number) =>
+    computeAllMetrics({
+      sex: input.sex,
+      birthday: new Date(input.birthday),
+      heightValue: input.heightValue,
+      heightUnit: input.heightUnit,
+      cbwValue: input.weightValue,
+      cbwUnit: input.weightUnit,
+      activityLevel,
+      utbwValue: goalWeight,
+      utbwUnit: input.weightUnit,
+    });
 
-  if (profile.cbmiClass !== "overweight" && profile.cbmiClass !== "obese") return null;
+  // Eligibility is judged on the real profile — a what-if activity change
+  // never alters whether a weight-loss prediction applies.
+  const baseProfile = deriveProfile(input.activityLevel);
+  if (baseProfile.cbmiClass !== "overweight" && baseProfile.cbmiClass !== "obese") return null;
 
-  const extraBurnPerDay =
-    overrides?.activityLevel != null && overrides.activityLevel !== input.activityLevel
-      ? profile.bmrCBW *
-        (getActivityMultiplier(overrides.activityLevel) - getActivityMultiplier(input.activityLevel))
-      : 0;
+  // The walk itself runs on the (possibly overridden) activity level.
+  const activityLevel = overrides?.activityLevel ?? input.activityLevel;
+  const profile = activityLevel === input.activityLevel ? baseProfile : deriveProfile(activityLevel);
 
   const weightToLoseKg =
     toKg(input.weightValue, input.weightUnit) - toKg(goalWeight, input.weightUnit);
 
   // A deficit is only possible if maintenance is above the minimum safe intake.
-  const effectiveFloor = profile.minCaloriesValue;
-  if (extraBurnPerDay <= 0 && profile.tdeeCBW <= effectiveFloor) return null;
+  if (profile.tdeeCBW <= profile.minCaloriesValue) return null;
 
   // Day-by-day walk of the same adaptive schedule the engine uses (walkDay:
-  // TDEE + severity cap re-derived from the simulated weight as it falls),
-  // with the exercise delta added to each day's burn. The banked total feeds
-  // back into the walk, so extra exercise also lowers the simulated weight.
+  // TDEE + severity cap re-derived from the simulated weight as it falls).
   const walk: GlideWalk = {
     startKg: toKg(input.weightValue, input.weightUnit),
     tdeeAtStart: profile.tdeeCBW,
-    slopePerKg: tdeeSlopePerKg(input.sex, getActivityMultiplier(input.activityLevel)),
+    slopePerKg: tdeeSlopePerKg(input.sex, getActivityMultiplier(activityLevel)),
     heightM2: profile.heightM2,
     direction: "lose", // prediction is loss-only (gated on overweight/obese above)
     minCal: profile.minCaloriesValue,
@@ -112,7 +114,7 @@ export function computePredictionEstimate(
   let days = 0;
   let totalDeficit = 0;
   for (let day = 1; day <= 3650; day++) {
-    totalDeficit += walkDay(walk, day, totalDeficit) + extraBurnPerDay;
+    totalDeficit += walkDay(walk, day, totalDeficit);
     if (totalDeficit >= totalKcalNeeded) {
       days = day;
       break;

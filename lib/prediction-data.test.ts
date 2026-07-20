@@ -72,6 +72,8 @@ test("resolveSex: recognizes male/female case-insensitively", () => {
   assert.equal(resolveSex("Male"), "male");
   assert.equal(resolveSex("FEMALE"), "female");
   assert.equal(resolveSex("MaLe"), "male");
+  // Padded values are trimmed before matching.
+  assert.equal(resolveSex(" male "), "male");
 });
 
 test("resolveSex: null for missing, empty, or unknown values", () => {
@@ -81,8 +83,7 @@ test("resolveSex: null for missing, empty, or unknown values", () => {
   assert.equal(resolveSex("other"), null);
   assert.equal(resolveSex("m"), null);
   assert.equal(resolveSex("man"), null);
-  // No trimming: padded values are not recognized.
-  assert.equal(resolveSex(" male "), null);
+  assert.equal(resolveSex("   "), null); // whitespace-only trims to empty
 });
 
 // ─── computePredictionEstimate: gates (null cases) ───────────────────────────
@@ -142,9 +143,10 @@ test("null for an underweight profile", () => {
   assert.equal(est, null);
 });
 
-test("BMI boundary at 25: just above is overweight (estimate), just below is healthy (null)", () => {
-  // 160 cm → heightM2 ≈ 2.56; 64 kg is nominally BMI 25 but float rounding
-  // (1.6 × 1.6 = 2.5600000000000005) puts it a hair under → healthy → null.
+test("BMI boundary at 25: at or above is overweight (estimate), just below is healthy (null)", () => {
+  // 160 cm → heightM2 = 1.6 × 1.6 = 2.5600000000000005 in floats, so 64 kg
+  // (nominally BMI 25 exactly) computes a hair under 25. classifyCBMI absorbs
+  // that float error, so the nominal boundary still classifies as overweight.
   const base: PredictionProfileInput = {
     sex: "female",
     birthday: "1994-01-01",
@@ -157,6 +159,8 @@ test("BMI boundary at 25: just above is overweight (estimate), just below is hea
   };
   const justAbove = computePredictionEstimate(base);
   assert.ok(justAbove, "BMI just over 25 classifies as overweight and gets an estimate");
+  const exactlyAt = computePredictionEstimate({ ...base, weightValue: 64 });
+  assert.ok(exactlyAt, "nominal BMI 25 exactly classifies as overweight and gets an estimate");
   const justBelow = computePredictionEstimate({ ...base, weightValue: 63.9 });
   assert.equal(justBelow, null, "BMI just under 25 is healthy → null");
 });
@@ -185,9 +189,9 @@ test("null when maintenance TDEE is at or below the minimum-intake floor", () =>
 });
 
 test("a positive exercise override escapes the minimum-intake-floor gate", () => {
-  // extraBurnPerDay > 0 bypasses the gate: the walk's intake is pinned at the
-  // 1200 floor (negative food deficit), but the added exercise burn outweighs
-  // it, so the banked deficit still grows and the goal is reached.
+  // The walk's profile is recomputed at the overridden level: very-active TDEE
+  // (~1435) clears the 1200 kcal floor that blocks the base profile, so a real
+  // deficit opens up and the goal is reached.
   const est = computePredictionEstimate(belowFloorProfile(), { activityLevel: 4 });
   assert.ok(est, "extra exercise must make the below-floor profile converge");
   assert.ok(est!.days > 0 && est!.days <= 3650);
@@ -235,24 +239,68 @@ test("monotonic in goal: a deeper goal takes strictly more days and more weight"
   assert.ok(shallow!.weightToLose < mid!.weightToLose && mid!.weightToLose < deep!.weightToLose);
 });
 
-test("activity override above the profile level shortens the ETA", () => {
+test("activity override above the profile level never lengthens the ETA", () => {
+  // For this deeply obese profile the severity cap (maxDailyDeficit) binds the
+  // daily deficit at every level >= 2, so more activity ties the baseline
+  // rather than beating it — the walk never outpaces the severity-scaled
+  // weekly rate. See the floor-bound test below for a strict speedup.
   const base = computePredictionEstimate(obeseKgProfile());
   const boosted = computePredictionEstimate(obeseKgProfile(), { activityLevel: 4 });
   assert.ok(base && boosted);
-  assert.ok(boosted!.days < base!.days,
-    `extra exercise must shorten the estimate (${boosted!.days} vs ${base!.days})`);
-  // Same journey length, faster → higher average weekly pace.
-  assert.ok(boosted!.weeklyGoal > base!.weeklyGoal);
+  assert.ok(boosted!.days <= base!.days,
+    `extra exercise must never lengthen the estimate (${boosted!.days} vs ${base!.days})`);
+  assert.ok(boosted!.weeklyGoal >= base!.weeklyGoal);
   assert.equal(boosted!.weightToLose, base!.weightToLose);
 });
 
-test("activity override below the profile level can make the goal unreachable → null", () => {
-  // The intake schedule stays anchored to the profile's activity level, so a
-  // lower override only subtracts burn (extraBurnPerDay < 0). Near the goal
-  // the severity cap shrinks to ~0.5 lb/wk, the negative burn outweighs it,
-  // and the banked deficit stops growing — the walk never converges.
+test("activity override above the profile level strictly shortens a floor-bound ETA", () => {
+  // When the min-intake floor (not the severity cap) is what limits the daily
+  // deficit, a higher what-if level raises TDEE and genuinely widens it.
+  const base = computePredictionEstimate(floorBoundElderlyProfile());
+  const active = computePredictionEstimate(floorBoundElderlyProfile(), { activityLevel: 3 });
+  const veryActive = computePredictionEstimate(floorBoundElderlyProfile(), { activityLevel: 4 });
+  assert.ok(base && active && veryActive);
+  assert.ok(active!.days < base!.days && veryActive!.days < active!.days,
+    `days must fall strictly with activity: ${base!.days}, ${active!.days}, ${veryActive!.days}`);
+});
+
+test("activity override below the profile level lengthens the ETA but stays finite while reachable", () => {
+  // The what-if walk runs on a profile recomputed at the overridden level: a
+  // lower level means a genuinely lower TDEE → smaller daily deficit → a
+  // longer, but still finite, estimate as long as the goal stays reachable.
+  const base = computePredictionEstimate(obeseKgProfile());
   const reduced = computePredictionEstimate(obeseKgProfile(), { activityLevel: 1 });
-  assert.equal(reduced, null);
+  assert.ok(base && reduced, "goal must remain reachable at the sedentary level");
+  assert.ok(reduced!.days > base!.days,
+    `less activity must lengthen the estimate (${reduced!.days} vs ${base!.days})`);
+  assert.ok(reduced!.days <= 3650, "still reachable within the 10-year cap");
+  assert.equal(reduced!.weightToLose, base!.weightToLose);
+});
+
+// Obese elderly profile (120 cm, 57 kg, born 1936 → BMI ~39.6): BMR ≈ 995, so
+// low-active TDEE (×1.375 ≈ 1368) clears the 1200 kcal female floor but
+// sedentary TDEE (×1.2 ≈ 1194) sits below it, and the min-intake floor — not
+// the severity cap — is what limits the walk's daily deficit at every level.
+// (BMR only falls as the test ages, so the sedentary side of the gate keeps
+// holding on future run dates.)
+function floorBoundElderlyProfile(): PredictionProfileInput {
+  return {
+    sex: "female",
+    birthday: "1936-01-01",
+    heightValue: 120,
+    heightUnit: "cm",
+    weightValue: 57,
+    weightUnit: "kg",
+    goalWeight: 48,
+    activityLevel: 2,
+  };
+}
+
+test("activity override below the profile level → null when it kills any possible deficit", () => {
+  // At the sedentary override the recomputed TDEE sits below the minimum-intake
+  // floor, so no deficit is possible — the goal is genuinely unreachable.
+  assert.ok(computePredictionEstimate(floorBoundElderlyProfile()), "base profile itself converges");
+  assert.equal(computePredictionEstimate(floorBoundElderlyProfile(), { activityLevel: 1 }), null);
 });
 
 test("activity override equal to the profile level is a no-op", () => {
@@ -261,13 +309,13 @@ test("activity override equal to the profile level is a no-op", () => {
   assert.deepEqual(same, base);
 });
 
-test("activity ordering: from the profile level up, more activity is strictly faster", () => {
+test("activity ordering: the estimate never lengthens as the what-if level rises", () => {
   let prevDays = Infinity;
-  for (const level of [2, 3, 4]) {
+  for (const level of [1, 2, 3, 4]) {
     const est = computePredictionEstimate(obeseKgProfile(), { activityLevel: level });
     assert.ok(est, `estimate should exist at activity level ${level}`);
-    assert.ok(est!.days < prevDays,
-      `days must fall with activity: level ${level} gave ${est!.days} after ${prevDays}`);
+    assert.ok(est!.days <= prevDays,
+      `days must not rise with activity: level ${level} gave ${est!.days} after ${prevDays}`);
     prevDays = est!.days;
   }
 });

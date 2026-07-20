@@ -430,6 +430,9 @@ test("classifyCBMI: exact band edges", () => {
   assert.equal(classifyCBMI(29.999999), "overweight");
   assert.equal(classifyCBMI(30), "obese");       // 30 is obese
   assert.equal(classifyCBMI(0), "underweight");
+  // Float error at a nominal boundary is absorbed: 64 kg at 1.60 m is BMI 25,
+  // but 1.6 * 1.6 === 2.5600000000000005 computes it a hair under 25.
+  assert.equal(classifyCBMI(64 / (1.6 * 1.6)), "overweight");
 });
 
 test("calcIBMI: switches at age 65 exactly", () => {

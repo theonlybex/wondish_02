@@ -106,9 +106,12 @@ export function calcCBMI(weightKg: number, heightM2: number): number {
  * Classify a CBMI value.
  */
 export function classifyCBMI(cbmi: number): CBMIClass {
-  if (cbmi < 18.5) return "underweight";
-  if (cbmi < 25) return "healthy";
-  if (cbmi < 30) return "overweight";
+  // Absorb float error at the class boundaries before comparing:
+  // 1.6 * 1.6 === 2.5600000000000005 puts a nominal BMI 25 a hair under.
+  const b = Math.round(cbmi * 1e6) / 1e6;
+  if (b < 18.5) return "underweight";
+  if (b < 25) return "healthy";
+  if (b < 30) return "overweight";
   return "obese";
 }
 
