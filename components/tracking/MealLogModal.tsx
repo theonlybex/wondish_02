@@ -39,6 +39,10 @@ const emptyMacros = (): MacroFieldState => ({
   fiber: "",
 });
 
+// A per-serving macro field: null (genuinely unset) prefills BLANK, not "0", so
+// re-saving keeps it unset/incomplete rather than silently recording a 0.
+const macroToField = (v: number | null): string => (v == null ? "" : String(v));
+
 interface MealLogModalProps {
   open: boolean;
   onClose: () => void;
@@ -77,11 +81,11 @@ export default function MealLogModal({
     setMacros(
       initial && initial.source === "MANUAL"
         ? {
-            calories: String(initial.perServing.calories),
-            protein: String(initial.perServing.protein),
-            carbs: String(initial.perServing.carbs),
-            fat: String(initial.perServing.fat),
-            fiber: String(initial.perServing.fiber),
+            calories: macroToField(initial.perServing.calories),
+            protein: macroToField(initial.perServing.protein),
+            carbs: macroToField(initial.perServing.carbs),
+            fat: macroToField(initial.perServing.fat),
+            fiber: macroToField(initial.perServing.fiber),
           }
         : emptyMacros()
     );
@@ -185,9 +189,17 @@ export default function MealLogModal({
           </div>
         </div>
 
-        {/* Servings */}
+        {/* Servings — labeled with the ingredient's unit for CUSTOM rows */}
         <div className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-[#1E1A1A]">Servings</span>
+          <span className="text-sm font-medium text-[#1E1A1A]">
+            {initial?.source === "CUSTOM" && initial.unit ? (
+              <>
+                Quantity <span className="font-normal text-[#848181]">({initial.unit})</span>
+              </>
+            ) : (
+              "Servings"
+            )}
+          </span>
           <ServingsStepper value={servings} onChange={setServings} disabled={saving} />
         </div>
 
@@ -217,17 +229,18 @@ export default function MealLogModal({
               ))}
             </div>
             <p className="text-xs text-[#848181]">
-              Fields left blank are counted as 0 and flagged as incomplete nutrition.
+              Fields left blank stay unset (not zero) and flag the entry as incomplete nutrition.
             </p>
           </div>
         ) : (
           initial && (
             <div className="rounded-xl bg-[#F9F7ED] border border-[#EAE4CA] px-3.5 py-3">
               <p className="text-xs font-semibold text-[#1E1A1A] tabular-nums">
-                Per serving: {Math.round(initial.perServing.calories)} kcal · P{" "}
-                {Math.round(initial.perServing.protein)}g · C{" "}
-                {Math.round(initial.perServing.carbs)}g · F{" "}
-                {Math.round(initial.perServing.fat)}g
+                {initial.source === "CUSTOM" && initial.unit ? `Per ${initial.unit}` : "Per serving"}:{" "}
+                {Math.round(initial.perServing.calories ?? 0)} kcal · P{" "}
+                {Math.round(initial.perServing.protein ?? 0)}g · C{" "}
+                {Math.round(initial.perServing.carbs ?? 0)}g · F{" "}
+                {Math.round(initial.perServing.fat ?? 0)}g
               </p>
               <p className="text-[11px] text-[#848181] mt-1">
                 Nutrition was snapshotted when this meal was logged — adjust servings to change

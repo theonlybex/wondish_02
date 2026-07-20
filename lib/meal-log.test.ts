@@ -10,6 +10,7 @@ import {
   buildMealLogCreateData,
   buildMealLogUpsertArgs,
   buildMealLogLookupWhere,
+  nullableMacroColumns,
   serializeMealLog,
   computeRemaining,
   encodeDeltaCursor,
@@ -258,6 +259,128 @@ test("serializeMealLog: perServing r1 at boundary, totals scaled by servings", (
   assert.equal(dto.clientRequestId, "b3f0");
   assert.equal(dto.journalMealId, "cjm_9");
   assert.equal(dto.loggedAt, "2026-07-19T18:22:04.000Z");
+});
+
+// ─── nullable macro columns — blank ≠ 0 (unset macros survive) ─────────────
+// The write half of the null/0 distinction: an absent caller-supplied field is
+// stored as a NULL column (genuinely unknown), never coerced to 0, and flags
+// incomplete. RECIPE/CUSTOM never reach this path (their priced snapshot is
+// stored verbatim).
+
+test("nullableMacroColumns: absent fields become null columns and flag incomplete", () => {
+  const cols = nullableMacroColumns({ calories: 400 });
+  assert.equal(cols.calories, 400);
+  assert.equal(cols.protein, null);
+  assert.equal(cols.carbs, null);
+  assert.equal(cols.fat, null);
+  assert.equal(cols.fiber, null);
+  assert.equal(cols.incomplete, true);
+});
+
+test("nullableMacroColumns: an explicit 0 is kept (0 ≠ unset) and a full set is complete", () => {
+  const cols = nullableMacroColumns({ calories: 400, protein: 0, carbs: 50, fat: 12, fiber: 3 });
+  assert.equal(cols.protein, 0); // explicit zero preserved, NOT turned into null
+  assert.equal(cols.incomplete, false);
+});
+
+test("buildMealLogCreateData: MANUAL blank macro is stored NULL (not 0), incomplete true", () => {
+  const parsed = parseMealLogInput({ localDate: "2026-07-19", mealType: "lunch", source: "MANUAL", name: "Soup", perServing: { calories: 400 } });
+  assert.ok(parsed.ok);
+  const resolved = resolveSnapshot(parsed.value, {});
+  const data = buildMealLogCreateData("pat_1", parsed.value, resolved);
+  assert.equal(data.calories, 400);
+  assert.equal(data.protein, null); // NOT 0 — genuinely unset
+  assert.equal(data.carbs, null);
+  assert.equal(data.fat, null);
+  assert.equal(data.incomplete, true);
+});
+
+test("buildMealLogCreateData: RECIPE stores its server-priced snapshot verbatim (0s stay 0)", () => {
+  const parsed = parseMealLogInput({ localDate: "2026-07-19", mealType: "dinner", source: "RECIPE", recipeId: "r1", servings: 1 });
+  assert.ok(parsed.ok);
+  const snap = { calories: 200, protein: 0, carbs: 0, fat: 0, fiber: 0, incomplete: false };
+  const data = buildMealLogCreateData("pat_1", parsed.value, { snapshot: snap, name: "Bowl" });
+  assert.equal(data.protein, 0); // RECIPE never goes through nullableMacroColumns
+  assert.equal(data.incomplete, false);
+});
+
+// ─── serializeMealLog — nullable perServing preserves unset macros ─────────
+
+test("serializeMealLog: null column serializes to null perServing (not 0), incomplete preserved", () => {
+  const row = {
+    id: "clog_02", localDate: "2026-07-19", mealType: "lunch", source: "MANUAL" as const,
+    name: "Soup", servings: 2,
+    calories: 400, protein: null, carbs: null, fat: null, fiber: null, incomplete: true,
+    recipeId: null, customIngredientId: null, journalMealId: null,
+    pictureResultId: null, fridgeRecipeId: null, note: null,
+    clientRequestId: "k1", deletedAt: null,
+    loggedAt: new Date("2026-07-19T12:00:00.000Z"), updatedAt: new Date("2026-07-19T12:00:00.000Z"),
+  };
+  const dto = serializeMealLog(row);
+  assert.equal(dto.perServing.calories, 400);
+  assert.equal(dto.perServing.protein, null); // unset, NOT 0
+  assert.equal(dto.perServing.incomplete, true);
+  // totals still coerce null→0 for summation (unchanged semantics)
+  assert.equal(dto.totals.calories, r1(400 * 2));
+  assert.equal(dto.totals.protein, 0);
+  assert.equal(dto.totals.incomplete, true);
+});
+
+test("serializeMealLog: unit label only attaches for CUSTOM rows", () => {
+  const base = {
+    id: "clog_03", localDate: "2026-07-19", mealType: "snack" as const,
+    name: "Almonds", servings: 2, calories: 50, protein: 3, carbs: 1, fat: 0, fiber: 0, incomplete: false,
+    recipeId: null, customIngredientId: "ci_1", journalMealId: null,
+    pictureResultId: null, fridgeRecipeId: null, note: null,
+    clientRequestId: null, deletedAt: null,
+    loggedAt: new Date("2026-07-19T15:00:00.000Z"), updatedAt: new Date("2026-07-19T15:00:00.000Z"),
+  };
+  assert.equal(serializeMealLog({ ...base, source: "CUSTOM" }, "cups").unit, "cups");
+  // A non-CUSTOM row ignores any passed unit.
+  assert.equal(serializeMealLog({ ...base, source: "MANUAL" }, "cups").unit, null);
+  // CUSTOM with no known unit → null.
+  assert.equal(serializeMealLog({ ...base, source: "CUSTOM" }).unit, null);
+});
+
+test("null macro survives serialize → edit-prefill → patch round-trip without becoming 0", () => {
+  // 1. Create MANUAL with only calories filled; protein left blank.
+  const created = parseMealLogInput({ localDate: "2026-07-19", mealType: "lunch", source: "MANUAL", name: "Soup", perServing: { calories: 400 } });
+  assert.ok(created.ok);
+  const data = buildMealLogCreateData("pat_1", created.value, resolveSnapshot(created.value, {}));
+
+  // 2. The stored row (protein null column) is serialized to the DTO.
+  const row = {
+    id: "clog_rt", localDate: data.localDate, mealType: data.mealType, source: "MANUAL" as const,
+    name: data.name, servings: data.servings,
+    calories: data.calories, protein: data.protein, carbs: data.carbs, fat: data.fat, fiber: data.fiber,
+    incomplete: data.incomplete,
+    recipeId: null, customIngredientId: null, journalMealId: null,
+    pictureResultId: null, fridgeRecipeId: null, note: null,
+    clientRequestId: "rt", deletedAt: null,
+    loggedAt: new Date("2026-07-19T12:00:00.000Z"), updatedAt: new Date("2026-07-19T12:00:00.000Z"),
+  };
+  const dto = serializeMealLog(row);
+  assert.equal(dto.perServing.protein, null);
+  assert.equal(dto.perServing.incomplete, true);
+
+  // 3. Modal prefill: null → blank input; a re-save omits blank fields entirely.
+  const prefill = {
+    calories: dto.perServing.calories == null ? "" : String(dto.perServing.calories),
+    protein: dto.perServing.protein == null ? "" : String(dto.perServing.protein),
+  };
+  const patchPerServing: Record<string, number> = {};
+  for (const [k, v] of Object.entries(prefill)) {
+    const t = v.trim();
+    if (t) patchPerServing[k] = Number(t); // blanks (protein) omitted
+  }
+
+  // 4. The PATCH re-derives columns; protein STILL null, still incomplete.
+  const patch = parsePatchInput({ servings: dto.servings, perServing: patchPerServing });
+  assert.ok(patch.ok);
+  const cols = nullableMacroColumns(patch.value.perServing);
+  assert.equal(cols.calories, 400);
+  assert.equal(cols.protein, null); // never became 0
+  assert.equal(cols.incomplete, true);
 });
 
 // ─── computeRemaining — signed, null when target null ──────────────────────

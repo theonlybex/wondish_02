@@ -11,6 +11,7 @@ import {
   buildMealLogCreateData,
   buildMealLogUpsertArgs,
   serializeMealLog,
+  buildCustomUnitMap,
   computeRemaining,
   getDayTarget,
   getDayEnvelope,
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
     }
     const ci = await prisma.patientCustomIngredient.findFirst({
       where: { id: input.customIngredientId!, patientId: patient.id },
-      select: { name: true, calories: true, protein: true, carbs: true, fat: true },
+      select: { name: true, calories: true, protein: true, carbs: true, fat: true, unit: true },
     });
     if (!ci) return NextResponse.json({ error: "Custom ingredient not found" }, { status: 404 });
     customIngredient = ci;
@@ -94,7 +95,9 @@ export async function POST(req: NextRequest) {
   }
 
   const envelope = await getDayEnvelope(patient.id, input.localDate);
-  return NextResponse.json({ log: serializeMealLog(row), ...envelope }, { status: created ? 201 : 200 });
+  // CUSTOM rows carry the ingredient unit label; already fetched above.
+  const unit = input.source === MealLogSource.CUSTOM ? customIngredient?.unit ?? null : null;
+  return NextResponse.json({ log: serializeMealLog(row, unit), ...envelope }, { status: created ? 201 : 200 });
 }
 
 // ─── GET /api/meal-log — mutually exclusive query modes ──────────────────────
@@ -134,7 +137,8 @@ export async function GET(req: NextRequest) {
       where: { patientId: patient.id, localDate: date, deletedAt: null },
       orderBy: { loggedAt: "asc" },
     });
-    const logs = rows.map(serializeMealLog);
+    const unitMap = await buildCustomUnitMap(patient.id, rows);
+    const logs = rows.map((r) => serializeMealLog(r, r.customIngredientId ? unitMap.get(r.customIngredientId) ?? null : null));
     const byMealType: Record<MealType, typeof logs> = { breakfast: [], lunch: [], dinner: [], snack: [] };
     for (const dto of logs) {
       if ((MEAL_TYPES as readonly string[]).includes(dto.mealType)) byMealType[dto.mealType as MealType].push(dto);
@@ -186,7 +190,8 @@ export async function GET(req: NextRequest) {
     orderBy: DELTA_ORDER_BY,
     take: DELTA_PAGE_SIZE,
   });
-  const logs = rows.map(serializeMealLog);
+  const unitMap = await buildCustomUnitMap(patient.id, rows);
+  const logs = rows.map((r) => serializeMealLog(r, r.customIngredientId ? unitMap.get(r.customIngredientId) ?? null : null));
   const nextCursor = buildNextDeltaCursor(rows);
   return NextResponse.json({ logs, nextCursor });
 }

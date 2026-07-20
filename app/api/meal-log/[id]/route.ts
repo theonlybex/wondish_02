@@ -1,11 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+import { MealLogSource } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { snapshotFromMacros } from "@/lib/macros";
 import {
   parsePatchInput,
   buildMealLogLookupWhere,
+  nullableMacroColumns,
   serializeMealLog,
   getDayEnvelope,
 } from "@/lib/meal-log";
@@ -52,19 +53,30 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (patch.name !== undefined) data.name = patch.name;
   if (patch.localDate !== undefined) data.localDate = patch.localDate;
   if (patch.perServing !== undefined) {
-    const snap = snapshotFromMacros(patch.perServing);
-    data.calories = snap.calories;
-    data.protein = snap.protein;
-    data.carbs = snap.carbs;
-    data.fat = snap.fat;
-    data.fiber = snap.fiber;
-    data.incomplete = snap.incomplete;
+    // Absent fields → NULL columns (unset ≠ 0), so a blank edit keeps the row
+    // incomplete instead of silently marking it complete with 0s.
+    const cols = nullableMacroColumns(patch.perServing);
+    data.calories = cols.calories;
+    data.protein = cols.protein;
+    data.carbs = cols.carbs;
+    data.fat = cols.fat;
+    data.fiber = cols.fiber;
+    data.incomplete = cols.incomplete;
   }
   if (isUndo) data.deletedAt = null;
 
   const updated = await prisma.mealLog.update({ where: { id: row.id }, data });
+  // Carry the CUSTOM ingredient's unit label on the echo (no-op for other sources).
+  let unit: string | null = null;
+  if (updated.source === MealLogSource.CUSTOM && updated.customIngredientId) {
+    const ci = await prisma.patientCustomIngredient.findFirst({
+      where: { id: updated.customIngredientId, patientId: patient.id },
+      select: { unit: true },
+    });
+    unit = ci?.unit ?? null;
+  }
   const envelope = await getDayEnvelope(patient.id, updated.localDate);
-  return NextResponse.json({ log: serializeMealLog(updated), ...envelope });
+  return NextResponse.json({ log: serializeMealLog(updated, unit), ...envelope });
 }
 
 // ─── DELETE /api/meal-log/[idOrClientRequestId] — soft delete (tombstone) ────

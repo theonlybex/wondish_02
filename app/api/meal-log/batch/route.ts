@@ -10,6 +10,7 @@ import {
   buildMealLogCreateData,
   buildMealLogUpsertArgs,
   serializeMealLog,
+  buildCustomUnitMap,
   getDayEnvelope,
   type ParsedMealLog,
   type RecipeDep,
@@ -88,5 +89,7 @@ export async function POST(req: NextRequest) {
   );
 
   const envelope = await getDayEnvelope(patient.id, localDate);
-  return NextResponse.json({ logs: rows.map(serializeMealLog), ...envelope }, { status: 201 });
+  const unitMap = await buildCustomUnitMap(patient.id, rows);
+  const logs = rows.map((r) => serializeMealLog(r, r.customIngredientId ? unitMap.get(r.customIngredientId) ?? null : null));
+  return NextResponse.json({ logs, ...envelope }, { status: 201 });
 }

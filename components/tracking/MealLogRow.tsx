@@ -36,8 +36,9 @@ export default function MealLogRow({ log, onEdit, onDelete, disabled }: MealLogR
           )}
         </div>
         <p className="text-[11px] text-[#848181] tabular-nums mt-0.5">
-          × {log.servings} · P {Math.round(log.totals.protein)}g · C {Math.round(log.totals.carbs)}g
-          · F {Math.round(log.totals.fat)}g
+          × {log.servings}
+          {log.unit ? ` ${log.unit}` : ""} · P {Math.round(log.totals.protein)}g · C{" "}
+          {Math.round(log.totals.carbs)}g · F {Math.round(log.totals.fat)}g
         </p>
       </div>
 

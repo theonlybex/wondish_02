@@ -32,11 +32,15 @@ import {
   type CaloricProfileInput,
 } from "@/lib/caloric-engine";
 import { getPlanDayCalories } from "@/lib/meal-plan";
+import { formatLocalDate, MEAL_TYPES, type MealType } from "@/lib/local-date";
 
 // ─── Constants / allow-lists ────────────────────────────────────────────────
 
-export const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
-export type MealType = (typeof MEAL_TYPES)[number];
+// Re-exported from the pure lib/local-date.ts module so existing importers of
+// these names (routes, lib/meal-log.test.ts) are untouched, while the single
+// source of truth lives in the client-safe module.
+export { formatLocalDate, MEAL_TYPES };
+export type { MealType };
 
 export const MEAL_LOG_SOURCES = Object.values(MealLogSource) as MealLogSource[];
 
@@ -57,18 +61,8 @@ export type ParseResult<T> =
 
 const fail = (error: string, status = 400): ParseResult<never> => ({ ok: false, error, status });
 
-// ─── formatLocalDate ────────────────────────────────────────────────────────
-// Local getters, zero-padded — the string-for-string twin of iOS's
-// DateFormatter "yyyy-MM-dd" in the device's current calendar. Every web write
-// path derives localDate from this on the BROWSER's clock. Never
-// toISOString().slice(0,10) (UTC → the T3 off-by-one).
-
-export function formatLocalDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+// formatLocalDate now lives in lib/local-date.ts (pure, client-safe) and is
+// re-exported above; the write paths call the same single implementation.
 
 // ─── Parsed shapes ──────────────────────────────────────────────────────────
 
@@ -324,6 +318,7 @@ export interface CustomIngredientDep {
   carbs?: number | null;
   fat?: number | null;
   name: string;
+  unit?: string | null; // carried onto the DTO for the servings label (× 2 cups)
 }
 
 export function resolveSnapshot(
@@ -348,6 +343,39 @@ export function resolveSnapshot(
 // The per-serving snapshot is stored UNROUNDED so N-servings totals re-sum
 // exactly; rounding (r1) happens only at serialization/aggregation.
 
+export interface MacroColumns {
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  fiber: number | null;
+  incomplete: boolean;
+}
+
+// Caller-supplied macro sources: the client hands over per-serving macros
+// directly (vs. RECIPE/CUSTOM, which the server prices from a stored row).
+const CALLER_SUPPLIED_SOURCES: ReadonlySet<MealLogSource> = new Set([
+  MealLogSource.MANUAL,
+  MealLogSource.PICTURE,
+  MealLogSource.FRIDGE,
+]);
+
+// Column values for a caller-supplied per-serving payload. An ABSENT field
+// (dropped by checkPerServing) is stored as NULL — genuinely unset — not 0, and
+// `incomplete` flags when any of the five is absent. This is the write half of
+// the null/0 distinction the modal reads back via perServingFromRow. RECIPE and
+// CUSTOM never come through here — their priced snapshot is stored verbatim.
+export function nullableMacroColumns(perServing: PerServingInput | undefined): MacroColumns {
+  const ps = perServing ?? {};
+  const out: MacroColumns = { calories: null, protein: null, carbs: null, fat: null, fiber: null, incomplete: false };
+  for (const key of MACRO_KEYS) {
+    const v = ps[key];
+    if (v == null) out.incomplete = true;
+    else out[key] = v;
+  }
+  return out;
+}
+
 export interface MealLogCreateData {
   patientId: string;
   localDate: string;
@@ -355,11 +383,11 @@ export interface MealLogCreateData {
   source: MealLogSource;
   name: string;
   servings: number;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  fiber: number;
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  fiber: number | null;
   incomplete: boolean;
   recipeId: string | null;
   customIngredientId: string | null;
@@ -376,6 +404,11 @@ export function buildMealLogCreateData(
   resolved: { snapshot: MacroSnapshot; name: string }
 ): MealLogCreateData {
   const s = resolved.snapshot;
+  // Caller-supplied sources store null for absent fields (unknown ≠ 0);
+  // RECIPE/CUSTOM store the server-priced snapshot verbatim.
+  const cols: MacroColumns = CALLER_SUPPLIED_SOURCES.has(input.source)
+    ? nullableMacroColumns(input.perServing)
+    : { calories: s.calories, protein: s.protein, carbs: s.carbs, fat: s.fat, fiber: s.fiber, incomplete: s.incomplete };
   return {
     patientId,
     localDate: input.localDate,
@@ -383,12 +416,12 @@ export function buildMealLogCreateData(
     source: input.source,
     name: resolved.name,
     servings: input.servings,
-    calories: s.calories,
-    protein: s.protein,
-    carbs: s.carbs,
-    fat: s.fat,
-    fiber: s.fiber,
-    incomplete: s.incomplete,
+    calories: cols.calories,
+    protein: cols.protein,
+    carbs: cols.carbs,
+    fat: cols.fat,
+    fiber: cols.fiber,
+    incomplete: cols.incomplete,
     recipeId: input.recipeId ?? null,
     customIngredientId: input.customIngredientId ?? null,
     journalMealId: input.journalMealId ?? null,
@@ -449,6 +482,20 @@ export interface MealLogRow {
   updatedAt: Date;
 }
 
+// Per-field-nullable per-serving view. A macro is `null` when the row's column
+// is genuinely UNSET (unknown / unpriced), and a number (r1-rounded) when it
+// was recorded — the distinction the edit modal needs so a blank field stays
+// blank on prefill and a re-save keeps it null rather than silently becoming 0.
+// `totals` (summation) keeps its 0-coercing MacroSnapshot semantics unchanged.
+export interface NullableMacroSnapshot {
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  fiber: number | null;
+  incomplete: boolean;
+}
+
 export interface MealLogDTO {
   id: string;
   localDate: string;
@@ -456,8 +503,9 @@ export interface MealLogDTO {
   source: MealLogSource;
   name: string;
   servings: number;
+  unit: string | null; // ingredient unit for CUSTOM rows (joined at read); null otherwise
   clientRequestId: string | null;
-  perServing: MacroSnapshot;
+  perServing: NullableMacroSnapshot;
   totals: MacroSnapshot;
   recipeId: string | null;
   customIngredientId: string | null;
@@ -470,6 +518,7 @@ export interface MealLogDTO {
   updatedAt: string;
 }
 
+// Totals view: null columns coerce to 0 for summation (unchanged semantics).
 function snapshotFromRow(row: MealLogRow): MacroSnapshot {
   return {
     calories: row.calories ?? 0,
@@ -481,7 +530,24 @@ function snapshotFromRow(row: MealLogRow): MacroSnapshot {
   };
 }
 
-export function serializeMealLog(row: MealLogRow): MealLogDTO {
+// Per-serving view: PRESERVES null (r1 only present values). This is what lets
+// the modal distinguish "unset" from an explicit 0.
+function perServingFromRow(row: MealLogRow): NullableMacroSnapshot {
+  const round = (v: number | null) => (v == null ? null : r1(v));
+  return {
+    calories: round(row.calories),
+    protein: round(row.protein),
+    carbs: round(row.carbs),
+    fat: round(row.fat),
+    fiber: round(row.fiber),
+    incomplete: row.incomplete,
+  };
+}
+
+// `unit` is passed by the read path for CUSTOM rows (the PatientCustomIngredient
+// has no MealLog relation, so it is looked up separately — see
+// buildCustomUnitMap; defaults null for every other source/read).
+export function serializeMealLog(row: MealLogRow, unit: string | null = null): MealLogDTO {
   const snap = snapshotFromRow(row);
   return {
     id: row.id,
@@ -490,8 +556,9 @@ export function serializeMealLog(row: MealLogRow): MealLogDTO {
     source: row.source,
     name: row.name,
     servings: row.servings,
+    unit: row.source === MealLogSource.CUSTOM ? unit : null,
     clientRequestId: row.clientRequestId,
-    perServing: scaleSnapshot(snap, 1), // r1 at the display boundary
+    perServing: perServingFromRow(row), // r1 at boundary, null preserved
     totals: scaleSnapshot(snap, row.servings),
     recipeId: row.recipeId,
     customIngredientId: row.customIngredientId,
@@ -503,6 +570,28 @@ export function serializeMealLog(row: MealLogRow): MealLogDTO {
     loggedAt: row.loggedAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+// ─── buildCustomUnitMap — CUSTOM rows → ingredient unit label (DB-bound) ─────
+// PatientCustomIngredient carries the freeform `unit` a CUSTOM row's `servings`
+// counts in ("2 cups"), but MealLog has no Prisma relation to it (schema is not
+// changed — no migration). A single keyed lookup over the CUSTOM rows on a page
+// resolves the labels at read time. Ownership-scoped by patientId. Follows the
+// T11/T12 convention — DB-bound, verified against the branch, not the unit sweep.
+
+export async function buildCustomUnitMap(
+  patientId: string,
+  rows: readonly { source: MealLogSource; customIngredientId: string | null }[]
+): Promise<Map<string, string | null>> {
+  const ids = rows
+    .filter((r) => r.source === MealLogSource.CUSTOM && r.customIngredientId)
+    .map((r) => r.customIngredientId as string);
+  if (ids.length === 0) return new Map();
+  const ingredients = await prisma.patientCustomIngredient.findMany({
+    where: { id: { in: Array.from(new Set(ids)) }, patientId },
+    select: { id: true, unit: true },
+  });
+  return new Map(ingredients.map((ci) => [ci.id, ci.unit]));
 }
 
 // ─── remaining — signed target − totals (null when no target) ───────────────
