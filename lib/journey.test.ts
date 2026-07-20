@@ -109,7 +109,7 @@ test("mealSourceBreakdown: counts each preparation across all entries", () => {
   });
 });
 
-test('mealSourceBreakdown: skipped counts both the flag and preparation === "skipped"', () => {
+test('mealSourceBreakdown: skipped (flag or preparation === "skipped") is an exclusive bucket', () => {
   const s = computeJourneyStats([
     entry({
       meals: [
@@ -120,8 +120,8 @@ test('mealSourceBreakdown: skipped counts both the flag and preparation === "ski
     }),
   ]);
   assert.equal(s.mealSourceBreakdown.skipped, 2);
-  // A skipped-flagged meal with preparation "cooked" is double-counted as cooked too.
-  assert.equal(s.mealSourceBreakdown.cooked, 2);
+  // A skipped-flagged meal never double-counts in its preparation bucket.
+  assert.equal(s.mealSourceBreakdown.cooked, 1);
 });
 
 test("mealSourceBreakdown: unknown preparations count toward no bucket", () => {
@@ -194,19 +194,26 @@ test("dailyMoods/dailyWeights: entries without the value are omitted", () => {
   assert.deepEqual(s.dailyWeights, [{ date: "2026-06-02", weight: 65.5 }]);
 });
 
-test("dailyMoods: a non-numeric mood string is charted as NaN", () => {
-  // Documents a source hazard: dailyMoods filters only falsy strings, so a
-  // truthy non-numeric mood passes the filter and parseFloat yields NaN —
-  // a chart-breaking data point avgMood correctly excludes.
+test("dailyMoods: a non-numeric mood string is excluded from the chart", () => {
+  // A truthy non-numeric mood must not become a NaN chart point: dailyMoods
+  // shares avgMood's numeric > 0 inclusion rule.
   const s = computeJourneyStats([entry({ date: d(2026, 6, 1), mood: "great" })]);
   assert.equal(s.avgMood, 0);
-  assert.deepEqual(s.dailyMoods, [{ date: "2026-06-01", mood: NaN }]);
+  assert.deepEqual(s.dailyMoods, []);
 });
 
-test('dailyMoods: mood "0" is excluded from avgMood but still charted (truthy string)', () => {
-  // Documents an inconsistency: avgMood filters n > 0, dailyMoods only filters
-  // falsy strings — "0" passes and charts a 0-mood point the average ignores.
+test('dailyMoods: mood "0" is excluded from both avgMood and the chart', () => {
+  // Chart and average share the same n > 0 inclusion rule — "0" appears in neither.
   const s = computeJourneyStats([entry({ date: d(2026, 6, 1), mood: "0" })]);
   assert.equal(s.avgMood, 0);
-  assert.deepEqual(s.dailyMoods, [{ date: "2026-06-01", mood: 0 }]);
+  assert.deepEqual(s.dailyMoods, []);
+});
+
+test("fmt: a date-only ISO string formats as itself in every timezone", () => {
+  // new Date("2026-06-01") is midnight UTC — read back through local getters it
+  // renders as 2026-05-31 anywhere west of UTC. A date-only string is already
+  // the answer and must pass through untouched.
+  const s = computeJourneyStats([entry({ date: "2026-06-01", mood: "3", weight: 70 })]);
+  assert.deepEqual(s.dailyMoods, [{ date: "2026-06-01", mood: 3 }]);
+  assert.deepEqual(s.dailyWeights, [{ date: "2026-06-01", weight: 70 }]);
 });
