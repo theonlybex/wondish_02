@@ -5,6 +5,8 @@ import { format, addDays, subDays } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import SwapMealModal from "@/components/meal-plan/SwapMealModal";
 import Button from "@/components/ui/Button";
+import AddToLogButton from "@/components/tracking/AddToLogButton";
+import type { MealType } from "@/lib/local-date";
 import { MenuEntry, RecipeDTO } from "@/types";
 
 interface DailyMealPlanViewProps {
@@ -29,6 +31,17 @@ const MEAL_TIMES: Record<string, string> = {
   Snack:     "3pm",
   Dinner:    "7pm",
 };
+
+// Plan meal-type name ("Breakfast"/…) → the meal-log slug the API expects.
+const MEAL_TYPE_SLUG: Record<string, MealType> = {
+  Breakfast: "breakfast",
+  Lunch:     "lunch",
+  Snack:     "snack",
+  Dinner:    "dinner",
+};
+function mealTypeSlug(name?: string | null): MealType {
+  return MEAL_TYPE_SLUG[name ?? ""] ?? "snack";
+}
 
 function roleBadge(dishTypeName?: string | null): { label: string; bg: string; text: string } | null {
   const n = (dishTypeName ?? "").toLowerCase();
@@ -182,6 +195,17 @@ function InlineDishExpand({
             ))}
           </div>
         )}
+
+        {/* One-tap macro logging — logs this planned dish into today's intake
+            tracker (source RECIPE, server-priced; mealType from the plan row). */}
+        <div className="mb-3">
+          <AddToLogButton
+            payload={{ source: "RECIPE", recipeId: r.id, mealType: mealTypeSlug(menu.mealType?.name) }}
+            label="Add to today's log"
+            size="sm"
+            className="w-full"
+          />
+        </div>
 
         {/* Rating */}
         <div className="flex gap-2 pb-1">
