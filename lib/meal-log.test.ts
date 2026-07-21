@@ -11,6 +11,7 @@ import {
   buildMealLogUpsertArgs,
   buildMealLogLookupWhere,
   nullableMacroColumns,
+  isCallerSuppliedMacroSource,
   serializeMealLog,
   computeRemaining,
   encodeDeltaCursor,
@@ -302,6 +303,16 @@ test("buildMealLogCreateData: RECIPE stores its server-priced snapshot verbatim 
   const data = buildMealLogCreateData("pat_1", parsed.value, { snapshot: snap, name: "Bowl" });
   assert.equal(data.protein, 0); // RECIPE never goes through nullableMacroColumns
   assert.equal(data.incomplete, false);
+});
+
+test("isCallerSuppliedMacroSource: MANUAL/PICTURE/FRIDGE own their macros; RECIPE/CUSTOM are server-priced", () => {
+  assert.equal(isCallerSuppliedMacroSource("MANUAL"), true);
+  assert.equal(isCallerSuppliedMacroSource("PICTURE"), true);
+  assert.equal(isCallerSuppliedMacroSource("FRIDGE"), true);
+  // The PATCH route uses this to reject a client perServing that would otherwise
+  // overwrite a priced RECIPE/CUSTOM snapshot.
+  assert.equal(isCallerSuppliedMacroSource("RECIPE"), false);
+  assert.equal(isCallerSuppliedMacroSource("CUSTOM"), false);
 });
 
 // ─── serializeMealLog — nullable perServing preserves unset macros ─────────

@@ -360,6 +360,13 @@ const CALLER_SUPPLIED_SOURCES: ReadonlySet<MealLogSource> = new Set([
   MealLogSource.FRIDGE,
 ]);
 
+// True when the client owns this source's per-serving macros (create AND edit).
+// RECIPE/CUSTOM are server-priced, so a client-supplied perServing must never
+// overwrite their stored snapshot — the PATCH route guards on this too.
+export function isCallerSuppliedMacroSource(source: MealLogSource): boolean {
+  return CALLER_SUPPLIED_SOURCES.has(source);
+}
+
 // Column values for a caller-supplied per-serving payload. An ABSENT field
 // (dropped by checkPerServing) is stored as NULL — genuinely unset — not 0, and
 // `incomplete` flags when any of the five is absent. This is the write half of
