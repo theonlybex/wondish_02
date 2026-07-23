@@ -3,6 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { sanitizeChatHistory } from "@/lib/chat-history";
+import { accountHasActivePremium, getAccountWithSubscription } from "@/lib/auth";
+import {
+  CHAT_DAILY_FREE,
+  CHAT_DAY_RATE_LIMIT_NAME,
+  CHAT_DAY_RATE_LIMIT_WINDOW_SEC,
+  chatQuotaExceededResponseBody,
+} from "@/lib/freemium";
 import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -12,12 +19,35 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   // Per-user: max 20 requests / 60s (shared across instances via Upstash).
+  // This burst check must fire first — cheaper than the account lookup below
+  // and stops hammering clients before they cost us a DB round trip.
   const { success } = await rateLimit("dish-checker", userId, 20, 60);
   if (!success) {
     return NextResponse.json(
       { error: "Too many requests. Please wait a moment before asking again." },
       { status: 429 }
     );
+  }
+
+  // Single account+subscription lookup serves both the credit gate below and
+  // the patient/prompt lookups further down — do not duplicate this fetch.
+  const account = await getAccountWithSubscription(userId);
+  if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
+
+  // Credit gate (docs/superpowers/plans/2026-07-23-clara-ai-access-architecture.md):
+  // premium accounts bypass the daily allowance entirely; free accounts get
+  // CHAT_DAILY_FREE messages/day. Must run before any Anthropic call so a
+  // gated request costs zero tokens.
+  if (!accountHasActivePremium(account.subscriptions)) {
+    const { success: withinDailyFree } = await rateLimit(
+      CHAT_DAY_RATE_LIMIT_NAME,
+      userId,
+      CHAT_DAILY_FREE,
+      CHAT_DAY_RATE_LIMIT_WINDOW_SEC
+    );
+    if (!withinDailyFree) {
+      return NextResponse.json(chatQuotaExceededResponseBody(), { status: 402 });
+    }
   }
 
   let body: unknown;
@@ -31,12 +61,6 @@ export async function POST(req: NextRequest) {
   if (history === null || history.length === 0) {
     return NextResponse.json({ error: "Invalid messages" }, { status: 400 });
   }
-
-  const account = await prisma.account.findUnique({
-    where: { clerkId: userId },
-    select: { id: true, firstName: true },
-  });
-  if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
 
   const patient = await prisma.patient.findFirst({
     where: { accountId: account.id },
