@@ -3,6 +3,18 @@ import { prisma } from "@/lib/db";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin";
 import { coercePrice, parseIngredients, checkDishPublishGate, isDishStatus } from "@/lib/admin-restaurants";
 
+// Typed early-exits thrown from inside the $transaction below and mapped back
+// to the same response shapes outside it (mirrors AccountClaimConflictError /
+// lib/auth.ts's instanceof-catch convention) — adminErrorResponse's generic
+// catch-all only knows UNAUTHORIZED/FORBIDDEN, so a bare Error would surface
+// as a 500 here instead of the existing 404/400.
+class DishNotFoundError extends Error {}
+class DishGateError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
 // PATCH — any schema field incl. status transitions. `ingredients`, when
 // present, is a full replace-all of the dish's ingredient set (composite PK
 // (dishId, name) — deleteMany + create, both inside one dish.update() call
@@ -12,6 +24,15 @@ import { coercePrice, parseIngredients, checkDishPublishGate, isDishStatus } fro
 // so a payload that omits `ingredients` can't sneak a PUBLISHED dish down to
 // zero ingredients, and a payload that omits `status` can't clear ingredients
 // out from under an already-PUBLISHED dish.
+//
+// The gate-check + write run inside one interactive prisma.$transaction:
+// the dish (count + status) is re-read from `tx` immediately before the
+// gate is evaluated and the update is issued, so there's no round-trip gap
+// between "read the count the gate checks" and "write" for a concurrent
+// PATCH to land in. Without this, two concurrent PATCHes — A clearing
+// ingredients on a DRAFT dish, B publishing without touching ingredients
+// (having read the pre-A count) — could interleave to leave a PUBLISHED
+// dish with zero ingredients, the exact state the gate exists to prevent.
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string; dishId: string } }
@@ -21,7 +42,6 @@ export async function PATCH(
 
     const existing = await prisma.restaurantDish.findUnique({
       where: { id: params.dishId },
-      include: { _count: { select: { ingredients: true } } },
     });
     if (!existing || existing.restaurantId !== params.id) {
       return NextResponse.json({ error: "Dish not found" }, { status: 404 });
@@ -56,30 +76,51 @@ export async function PATCH(
       ingredientsValue = ingredientsResult.value;
     }
 
-    const effectiveStatus = (status as string | undefined) ?? existing.status;
-    const effectiveIngredientCount = ingredientsValue !== undefined ? ingredientsValue.length : existing._count.ingredients;
-    const gate = checkDishPublishGate(effectiveStatus, effectiveIngredientCount);
-    if (!gate.ok) {
-      return NextResponse.json({ error: gate.error }, { status: gate.status });
-    }
+    try {
+      const dish = await prisma.$transaction(async (tx) => {
+        const fresh = await tx.restaurantDish.findUnique({
+          where: { id: params.dishId },
+          include: { _count: { select: { ingredients: true } } },
+        });
+        if (!fresh || fresh.restaurantId !== params.id) {
+          throw new DishNotFoundError();
+        }
 
-    const dish = await prisma.restaurantDish.update({
-      where: { id: params.dishId },
-      data: {
-        ...rest,
-        ...(priceValue !== undefined && { price: priceValue }),
-        ...(status !== undefined && { status }),
-        ...(ingredientsValue !== undefined && {
-          ingredients: {
-            deleteMany: {},
-            create: ingredientsValue.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit })),
+        const effectiveStatus = (status as string | undefined) ?? fresh.status;
+        const effectiveIngredientCount =
+          ingredientsValue !== undefined ? ingredientsValue.length : fresh._count.ingredients;
+        const gate = checkDishPublishGate(effectiveStatus, effectiveIngredientCount);
+        if (!gate.ok) {
+          throw new DishGateError(gate.error, gate.status);
+        }
+
+        return tx.restaurantDish.update({
+          where: { id: params.dishId },
+          data: {
+            ...rest,
+            ...(priceValue !== undefined && { price: priceValue }),
+            ...(status !== undefined && { status }),
+            ...(ingredientsValue !== undefined && {
+              ingredients: {
+                deleteMany: {},
+                create: ingredientsValue.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit })),
+              },
+            }),
           },
-        }),
-      },
-      include: { dishType: true, mealType: true, ingredients: true },
-    });
+          include: { dishType: true, mealType: true, ingredients: true },
+        });
+      });
 
-    return NextResponse.json(dish);
+      return NextResponse.json(dish);
+    } catch (err) {
+      if (err instanceof DishNotFoundError) {
+        return NextResponse.json({ error: "Dish not found" }, { status: 404 });
+      }
+      if (err instanceof DishGateError) {
+        return NextResponse.json({ error: err.message }, { status: err.status });
+      }
+      throw err;
+    }
   } catch (err) {
     return adminErrorResponse(err);
   }
