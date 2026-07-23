@@ -1,10 +1,23 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { getOrCreateAccount } from "@/lib/auth";
+import { AccountClaimConflictError, getOrCreateAccount } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { serializeMe } from "@/lib/me";
 import { cancelStripeAtPeriodEnd } from "@/lib/stripe-admin";
 import { prisma } from "@/lib/db";
+
+// Shared 409 response for the "email already belongs to another Wondish
+// account" outcome from getOrCreateAccount — never a 500 (see
+// AccountClaimConflictError / resolveAccountClaim's "conflict" branch).
+function emailConflictResponse() {
+  return NextResponse.json(
+    {
+      error: "email_conflict",
+      message: "This email is already associated with another Wondish account. Contact support.",
+    },
+    { status: 409 }
+  );
+}
 
 // GET/DELETE /api/me — the identity + subscription surface for the iOS
 // (Bearer-token) client. No existing route returns this shape: GET
@@ -18,7 +31,13 @@ export async function GET() {
   const { success } = await rateLimit("me", userId, 60, 60);
   if (!success) return NextResponse.json({ error: "Too many requests. Please slow down." }, { status: 429 });
 
-  const account = await getOrCreateAccount(userId); // include: { subscriptions: true }
+  let account;
+  try {
+    account = await getOrCreateAccount(userId); // include: { subscriptions: true }
+  } catch (err) {
+    if (err instanceof AccountClaimConflictError) return emailConflictResponse();
+    throw err;
+  }
   const patient = await prisma.patient.findFirst({ where: { account: { clerkId: userId } } });
   return NextResponse.json(serializeMe(account, patient));
 }
@@ -30,7 +49,13 @@ export async function DELETE() {
   const { success } = await rateLimit("me-delete", userId, 10, 60);
   if (!success) return NextResponse.json({ error: "Too many requests. Please slow down." }, { status: 429 });
 
-  const account = await getOrCreateAccount(userId);
+  let account;
+  try {
+    account = await getOrCreateAccount(userId);
+  } catch (err) {
+    if (err instanceof AccountClaimConflictError) return emailConflictResponse();
+    throw err;
+  }
   const active = account.subscriptions?.filter((s) => s.status !== "CANCELED") ?? [];
 
   // D12: never delete over live Apple billing the server can't cancel — the

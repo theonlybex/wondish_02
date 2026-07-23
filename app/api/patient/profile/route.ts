@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { convertWeight, convertHeight, calcCBMI } from "@/lib/caloric-engine";
-import { getOrCreateAccount } from "@/lib/auth";
+import { AccountClaimConflictError, getOrCreateAccount } from "@/lib/auth";
 
 export async function GET() {
   const { userId } = await auth();
@@ -42,7 +42,21 @@ export async function PATCH(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const account = await getOrCreateAccount(userId);
+  let account;
+  try {
+    account = await getOrCreateAccount(userId);
+  } catch (err) {
+    if (err instanceof AccountClaimConflictError) {
+      return NextResponse.json(
+        {
+          error: "email_conflict",
+          message: "This email is already associated with another Wondish account. Contact support.",
+        },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
   if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
 
   const body = await req.json();

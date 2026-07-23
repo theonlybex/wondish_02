@@ -53,7 +53,8 @@ type ClaimTarget = { id: string; clerkId: string | null; email: string } | null;
 export type AccountClaimDecision =
   | { action: "claim"; accountId: string; clerkId: string }
   | { action: "create" }
-  | { action: "none"; accountId: string };
+  | { action: "none"; accountId: string }
+  | { action: "conflict" };
 
 // Pure decision behind getOrCreateAccount's email-claim reconciliation. A row
 // with `clerkId: null` (e.g. a previous partial registration, or a row seeded
@@ -74,12 +75,30 @@ export function resolveAccountClaim(
     return { action: "claim", accountId: existingByEmail.id, clerkId: userId };
   }
   // Unverified email on an unclaimed row (takeover guard), or the row is
-  // already claimed by a different Clerk user — never reassign it.
-  return { action: "create" };
+  // already claimed by a different Clerk user — the email is unclaimable by
+  // this Clerk user. Never reassign it, and never fall through to `create`:
+  // `email` is @unique, so a create here would always throw P2002 and the
+  // caller's `findUniqueOrThrow` would then throw P2025 (no row was ever
+  // created for this clerkId) — a 500 instead of a diagnosable outcome.
+  return { action: "conflict" };
 }
 
 function isUniqueConstraintViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+}
+
+// Thrown by getOrCreateAccount when the Clerk user's email already belongs to
+// a different, unclaimable account row (see resolveAccountClaim's "conflict"
+// branch). Carries only the normalized email that collided — never the other
+// account's id/clerkId — so callers can surface a diagnosable error without
+// leaking which account owns the address.
+export class AccountClaimConflictError extends Error {
+  readonly email: string;
+  constructor(email: string) {
+    super(`Email "${email}" is already associated with another account.`);
+    this.name = "AccountClaimConflictError";
+    this.email = email;
+  }
 }
 
 // Explicit-userId account lookup/creation, race-safe against concurrent
@@ -110,6 +129,12 @@ export async function getOrCreateAccount(userId: string) {
     userId,
     emailVerified
   );
+
+  if (decision.action === "conflict") {
+    // Never reach findUniqueOrThrow below — no row exists (or ever will) for
+    // this clerkId on this path, so that call would throw P2025 (500).
+    throw new AccountClaimConflictError(email);
+  }
 
   if (decision.action === "claim") {
     await prisma.account.update({

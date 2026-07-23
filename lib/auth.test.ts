@@ -50,10 +50,10 @@ test("claims an existing unclaimed email row when the incoming email is verified
     resolveAccountClaim({ id: "a1", clerkId: null, email: "x@y.com" }, "user_123", true),
     { action: "claim", accountId: "a1", clerkId: "user_123" });
 });
-test("does NOT claim an unclaimed row when the incoming email is unverified (takeover guard)", () => {
+test("does NOT claim an unclaimed row when the incoming email is unverified (takeover guard) — conflict, not create", () => {
   assert.deepEqual(
     resolveAccountClaim({ id: "a1", clerkId: null, email: "x@y.com" }, "user_123", false),
-    { action: "create" });
+    { action: "conflict" });
 });
 test("creates when no email row exists", () => {
   assert.deepEqual(resolveAccountClaim(null, "user_123", true), { action: "create" });
@@ -63,8 +63,8 @@ test("no-op when the email row already belongs to this clerk user", () => {
     resolveAccountClaim({ id: "a1", clerkId: "user_123", email: "x@y.com" }, "user_123", true),
     { action: "none", accountId: "a1" });
 });
-test("does not claim a row already owned by a different clerk user (no silent reassignment)", () => {
+test("does not claim a row already owned by a different clerk user (no silent reassignment) — conflict, not create", () => {
   assert.deepEqual(
     resolveAccountClaim({ id: "a1", clerkId: "user_other", email: "x@y.com" }, "user_123", true),
-    { action: "create" });
+    { action: "conflict" });
 });
