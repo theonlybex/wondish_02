@@ -81,11 +81,12 @@ export interface ParsedMealLog {
   localDate: string;
   mealType: MealType;
   source: MealLogSource;
-  name?: string; // absent → server defaults from recipe/custom-ingredient (RECIPE/CUSTOM only)
+  name?: string; // absent → server defaults from recipe/custom-ingredient/dish (RECIPE/CUSTOM/RESTAURANT only)
   servings: number;
   perServing?: PerServingInput; // MANUAL / PICTURE / FRIDGE
   recipeId?: string;
   customIngredientId?: string;
+  restaurantDishId?: string;
   journalMealId?: string;
   pictureResultId?: string;
   fridgeRecipeId?: string;
@@ -193,12 +194,19 @@ function validateItem(raw: unknown, localDate: string, mealType: MealType): Pars
     clientRequestId: optionalString(raw.clientRequestId),
   };
 
-  // name: required for MANUAL/PICTURE/FRIDGE; optional (server-defaulted) for RECIPE/CUSTOM.
+  // name: required for MANUAL/PICTURE/FRIDGE; optional (server-defaulted) for RECIPE/CUSTOM/RESTAURANT.
   const nameProvided = raw.name !== undefined && raw.name !== null;
   if (nameProvided) {
     const n = checkName(raw.name);
     if (!n.ok) return n;
     item.name = n.value;
+  }
+
+  // restaurantDishId is only meaningful for source RESTAURANT — reject the
+  // mismatch outright rather than silently dropping it (unlike recipeId,
+  // which is allowed as opaque passthrough provenance on MANUAL/PICTURE/FRIDGE).
+  if (source !== MealLogSource.RESTAURANT && optionalString(raw.restaurantDishId)) {
+    return fail("restaurantDishId is only valid for source RESTAURANT");
   }
 
   // source-specific required inputs
@@ -210,6 +218,10 @@ function validateItem(raw: unknown, localDate: string, mealType: MealType): Pars
     const customIngredientId = optionalString(raw.customIngredientId);
     if (!customIngredientId) return fail("customIngredientId is required for source CUSTOM");
     item.customIngredientId = customIngredientId;
+  } else if (source === MealLogSource.RESTAURANT) {
+    const restaurantDishId = optionalString(raw.restaurantDishId);
+    if (!restaurantDishId) return fail("restaurantDishId is required for source RESTAURANT");
+    item.restaurantDishId = restaurantDishId;
   } else {
     // MANUAL / PICTURE / FRIDGE — caller supplies per-serving macros and a name.
     if (!nameProvided) return fail(`name is required for source ${source}`);
@@ -297,11 +309,12 @@ export function parsePatchInput(raw: unknown): ParseResult<ParsedPatch> {
 
 // ─── resolveSnapshot — per-source snapshot + name resolution (pure) ─────────
 // The per-serving snapshot is produced by the matching lib/macros function per
-// `source`. RECIPE prices server-side (client macros ignored — trust boundary);
-// CUSTOM stores the ingredient's per-unit macros verbatim (servings is the sole
-// multiplier, applied once at read); MANUAL/PICTURE/FRIDGE use caller macros.
-// Fetching the recipe / custom-ingredient (and the CUSTOM premium gate) is the
-// route's job; this function is pure over the already-fetched deps.
+// `source`. RECIPE and RESTAURANT both price server-side from a whole-dish
+// macro row (client macros ignored — trust boundary); CUSTOM stores the
+// ingredient's per-unit macros verbatim (servings is the sole multiplier,
+// applied once at read); MANUAL/PICTURE/FRIDGE use caller macros. Fetching the
+// recipe / custom-ingredient / restaurant dish (and the CUSTOM premium gate) is
+// the route's job; this function is pure over the already-fetched deps.
 
 export interface RecipeDep {
   calories?: number | null;
@@ -320,10 +333,24 @@ export interface CustomIngredientDep {
   name: string;
   unit?: string | null; // carried onto the DTO for the servings label (× 2 cups)
 }
+// RestaurantDish macro columns are WHOLE-DISH (schema comment: "not per-serving
+// like Recipe/MealLog") — there is no dish-level servings divisor, so the dish
+// itself IS one serving. Reusing recipeToPerServing with no `servings` field
+// divides by the function's implicit default of 1, which is exactly this
+// posture, and reuses the identical null→0 + `incomplete` (calories==null)
+// semantics the RECIPE path already has — no new pricing logic needed.
+export interface RestaurantDishDep {
+  calories?: number | null;
+  protein?: number | null;
+  carbs?: number | null;
+  fat?: number | null;
+  fiber?: number | null;
+  name: string;
+}
 
 export function resolveSnapshot(
   input: ParsedMealLog,
-  deps: { recipe?: RecipeDep; customIngredient?: CustomIngredientDep }
+  deps: { recipe?: RecipeDep; customIngredient?: CustomIngredientDep; restaurantDish?: RestaurantDishDep }
 ): { snapshot: MacroSnapshot; name: string } {
   if (input.source === MealLogSource.RECIPE) {
     const recipe = deps.recipe;
@@ -334,6 +361,11 @@ export function resolveSnapshot(
     const ci = deps.customIngredient;
     if (!ci) throw new Error("resolveSnapshot: CUSTOM source requires a customIngredient dep");
     return { snapshot: snapshotFromCustomIngredient(ci), name: input.name ?? ci.name };
+  }
+  if (input.source === MealLogSource.RESTAURANT) {
+    const dish = deps.restaurantDish;
+    if (!dish) throw new Error("resolveSnapshot: RESTAURANT source requires a restaurantDish dep");
+    return { snapshot: recipeToPerServing(dish), name: input.name ?? dish.name };
   }
   // MANUAL / PICTURE / FRIDGE — name guaranteed present by validation.
   return { snapshot: snapshotFromMacros(input.perServing ?? {}), name: input.name! };
@@ -353,7 +385,7 @@ export interface MacroColumns {
 }
 
 // Caller-supplied macro sources: the client hands over per-serving macros
-// directly (vs. RECIPE/CUSTOM, which the server prices from a stored row).
+// directly (vs. RECIPE/CUSTOM/RESTAURANT, which the server prices from a stored row).
 const CALLER_SUPPLIED_SOURCES: ReadonlySet<MealLogSource> = new Set([
   MealLogSource.MANUAL,
   MealLogSource.PICTURE,
@@ -361,8 +393,8 @@ const CALLER_SUPPLIED_SOURCES: ReadonlySet<MealLogSource> = new Set([
 ]);
 
 // True when the client owns this source's per-serving macros (create AND edit).
-// RECIPE/CUSTOM are server-priced, so a client-supplied perServing must never
-// overwrite their stored snapshot — the PATCH route guards on this too.
+// RECIPE/CUSTOM/RESTAURANT are server-priced, so a client-supplied perServing
+// must never overwrite their stored snapshot — the PATCH route guards on this too.
 export function isCallerSuppliedMacroSource(source: MealLogSource): boolean {
   return CALLER_SUPPLIED_SOURCES.has(source);
 }
@@ -370,8 +402,9 @@ export function isCallerSuppliedMacroSource(source: MealLogSource): boolean {
 // Column values for a caller-supplied per-serving payload. An ABSENT field
 // (dropped by checkPerServing) is stored as NULL — genuinely unset — not 0, and
 // `incomplete` flags when any of the five is absent. This is the write half of
-// the null/0 distinction the modal reads back via perServingFromRow. RECIPE and
-// CUSTOM never come through here — their priced snapshot is stored verbatim.
+// the null/0 distinction the modal reads back via perServingFromRow. RECIPE,
+// CUSTOM, and RESTAURANT never come through here — their priced snapshot is
+// stored verbatim.
 export function nullableMacroColumns(perServing: PerServingInput | undefined): MacroColumns {
   const ps = perServing ?? {};
   const out: MacroColumns = { calories: null, protein: null, carbs: null, fat: null, fiber: null, incomplete: false };
@@ -397,6 +430,7 @@ export interface MealLogCreateData {
   fiber: number | null;
   incomplete: boolean;
   recipeId: string | null;
+  restaurantDishId: string | null;
   customIngredientId: string | null;
   journalMealId: string | null;
   pictureResultId: string | null;
@@ -412,7 +446,7 @@ export function buildMealLogCreateData(
 ): MealLogCreateData {
   const s = resolved.snapshot;
   // Caller-supplied sources store null for absent fields (unknown ≠ 0);
-  // RECIPE/CUSTOM store the server-priced snapshot verbatim.
+  // RECIPE/CUSTOM/RESTAURANT store the server-priced snapshot verbatim.
   const cols: MacroColumns = CALLER_SUPPLIED_SOURCES.has(input.source)
     ? nullableMacroColumns(input.perServing)
     : { calories: s.calories, protein: s.protein, carbs: s.carbs, fat: s.fat, fiber: s.fiber, incomplete: s.incomplete };
@@ -430,6 +464,7 @@ export function buildMealLogCreateData(
     fiber: cols.fiber,
     incomplete: cols.incomplete,
     recipeId: input.recipeId ?? null,
+    restaurantDishId: input.restaurantDishId ?? null,
     customIngredientId: input.customIngredientId ?? null,
     journalMealId: input.journalMealId ?? null,
     pictureResultId: input.pictureResultId ?? null,
@@ -478,6 +513,7 @@ export interface MealLogRow {
   fiber: number | null;
   incomplete: boolean;
   recipeId: string | null;
+  restaurantDishId: string | null;
   customIngredientId: string | null;
   journalMealId: string | null;
   pictureResultId: string | null;
@@ -515,6 +551,7 @@ export interface MealLogDTO {
   perServing: NullableMacroSnapshot;
   totals: MacroSnapshot;
   recipeId: string | null;
+  restaurantDishId: string | null;
   customIngredientId: string | null;
   journalMealId: string | null;
   pictureResultId: string | null;
@@ -568,6 +605,7 @@ export function serializeMealLog(row: MealLogRow, unit: string | null = null): M
     perServing: perServingFromRow(row), // r1 at boundary, null preserved
     totals: scaleSnapshot(snap, row.servings),
     recipeId: row.recipeId,
+    restaurantDishId: row.restaurantDishId,
     customIngredientId: row.customIngredientId,
     journalMealId: row.journalMealId,
     pictureResultId: row.pictureResultId,

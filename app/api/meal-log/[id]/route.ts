@@ -54,8 +54,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (patch.name !== undefined) data.name = patch.name;
   if (patch.localDate !== undefined) data.localDate = patch.localDate;
   // Only caller-supplied sources (MANUAL/PICTURE/FRIDGE) let the client set
-  // macros; a perServing on a server-priced RECIPE/CUSTOM row is ignored so its
-  // stored snapshot can't be clobbered — symmetric with buildMealLogCreateData.
+  // macros; a perServing on a server-priced RECIPE/CUSTOM/RESTAURANT row is
+  // ignored so its stored snapshot can't be clobbered — symmetric with
+  // buildMealLogCreateData.
   if (patch.perServing !== undefined && isCallerSuppliedMacroSource(row.source)) {
     // Absent fields → NULL columns (unset ≠ 0), so a blank edit keeps the row
     // incomplete instead of silently marking it complete with 0s.

@@ -24,6 +24,7 @@ import {
   DELTA_ORDER_BY,
   type RecipeDep,
   type CustomIngredientDep,
+  type RestaurantDishDep,
   type MealType,
 } from "@/lib/meal-log";
 
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
   // resolveSnapshot itself is pure over the fetched deps).
   let recipe: RecipeDep | undefined;
   let customIngredient: CustomIngredientDep | undefined;
+  let restaurantDish: RestaurantDishDep | undefined;
 
   if (input.source === MealLogSource.RECIPE) {
     const r = await prisma.recipe.findUnique({
@@ -74,9 +76,18 @@ export async function POST(req: NextRequest) {
     });
     if (!ci) return NextResponse.json({ error: "Custom ingredient not found" }, { status: 404 });
     customIngredient = ci;
+  } else if (input.source === MealLogSource.RESTAURANT) {
+    // No PUBLISHED/available check at log time — the user already ate it and
+    // menus mutate; resolution is by id only (never gated on dish status).
+    const dish = await prisma.restaurantDish.findUnique({
+      where: { id: input.restaurantDishId! },
+      select: { name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true },
+    });
+    if (!dish) return NextResponse.json({ error: "Restaurant dish not found" }, { status: 404 });
+    restaurantDish = dish;
   }
 
-  const resolved = resolveSnapshot(input, { recipe, customIngredient });
+  const resolved = resolveSnapshot(input, { recipe, customIngredient, restaurantDish });
   const data = buildMealLogCreateData(patient.id, input, resolved);
 
   // Idempotent upsert (pinned update: {}) when a clientRequestId is present;

@@ -140,6 +140,31 @@ test("parseMealLogInput: MANUAL/PICTURE/FRIDGE require a perServing object", () 
   assert.equal(parseMealLogInput({ localDate: "2026-07-19", mealType: "lunch", source: "PICTURE", name: "x" }).ok, false);
 });
 
+// ─── RESTAURANT — restaurantDishId/RESTAURANT pairing (mirrors recipeId/RECIPE) ─
+
+test("parseMealLogInput: RESTAURANT requires restaurantDishId", () => {
+  const missing = parseMealLogInput({ localDate: "2026-07-19", mealType: "dinner", source: "RESTAURANT" });
+  assert.equal(missing.ok, false);
+  assert.match((missing as { error: string }).error, /restaurantDishId/i);
+  const ok = parseMealLogInput({ localDate: "2026-07-19", mealType: "dinner", source: "RESTAURANT", restaurantDishId: "rd_1" });
+  assert.ok(ok.ok);
+  assert.equal(ok.value.restaurantDishId, "rd_1");
+  // name optional (server defaults it from the dish, same as RECIPE)
+  assert.equal(ok.value.name, undefined);
+});
+
+test("parseMealLogInput: restaurantDishId supplied with a non-RESTAURANT source is rejected", () => {
+  const withManual = parseMealLogInput({
+    localDate: "2026-07-19", mealType: "dinner", source: "MANUAL", name: "x",
+    perServing: { calories: 1 }, restaurantDishId: "rd_1",
+  });
+  assert.equal(withManual.ok, false);
+  const withRecipe = parseMealLogInput({
+    localDate: "2026-07-19", mealType: "dinner", source: "RECIPE", recipeId: "r1", restaurantDishId: "rd_1",
+  });
+  assert.equal(withRecipe.ok, false);
+});
+
 // ─── batch bounds ──────────────────────────────────────────────────────────
 
 test("parseBatchInput: 1-50 items, shared localDate/mealType required", () => {
@@ -156,6 +181,26 @@ test("parseBatchInput: 1-50 items, shared localDate/mealType required", () => {
   assert.equal(parseBatchInput({ mealType: "lunch", items: [item] }).ok, false);
   // a bad item fails the whole batch
   assert.equal(parseBatchInput({ localDate: "2026-07-19", mealType: "lunch", items: [{ ...item, servings: 0 }] }).ok, false);
+});
+
+test("parseBatchInput: a RESTAURANT item validates and resolves/prices identically to the single-write path", () => {
+  const batch = parseBatchInput({
+    localDate: "2026-07-19",
+    mealType: "dinner",
+    items: [{ source: "RESTAURANT", restaurantDishId: "rd_1", servings: 1, clientRequestId: "b1" }],
+  });
+  assert.ok(batch.ok);
+  const item = batch.value.items[0];
+  assert.equal(item.source, "RESTAURANT");
+  assert.equal(item.restaurantDishId, "rd_1");
+  const resolved = resolveSnapshot(item, {
+    restaurantDish: { calories: 500, protein: 25, carbs: 40, fat: 15, fiber: 3, name: "Pad Thai" },
+  });
+  const data = buildMealLogCreateData("pat_1", item, resolved);
+  assert.equal(data.name, "Pad Thai");
+  assert.equal(data.calories, 500);
+  assert.equal(data.restaurantDishId, "rd_1");
+  assert.equal(data.incomplete, false);
 });
 
 // ─── parsePatchInput ───────────────────────────────────────────────────────
@@ -193,6 +238,39 @@ test("resolveSnapshot: CUSTOM stores per-unit macros verbatim, fiber 0, no incom
   assert.equal(out.snapshot.fiber, 0);
   assert.equal(out.snapshot.incomplete, false);
   assert.equal(out.name, "Almonds");
+});
+
+test("resolveSnapshot: RESTAURANT prices server-side from the dish's whole-dish macro columns and IGNORES client macros", () => {
+  const parsed = parseMealLogInput({
+    localDate: "2026-07-19", mealType: "dinner", source: "RESTAURANT", restaurantDishId: "rd_1",
+    servings: 1, perServing: { calories: 99999 },
+  });
+  assert.ok(parsed.ok);
+  const out = resolveSnapshot(parsed.value, {
+    restaurantDish: { calories: 650, protein: 30, carbs: 60, fat: 20, fiber: 5, name: "Olive & Vine Bowl" },
+  });
+  // RestaurantDish macros are whole-dish (no servings divisor) — per-serving IS the dish; client's 99999 ignored.
+  assert.equal(out.snapshot.calories, 650);
+  assert.equal(out.snapshot.protein, 30);
+  assert.equal(out.snapshot.incomplete, false);
+  assert.equal(out.name, "Olive & Vine Bowl");
+});
+
+test("resolveSnapshot: RESTAURANT null-macro dish → incomplete (same convention as RECIPE)", () => {
+  const parsed = parseMealLogInput({ localDate: "2026-07-19", mealType: "dinner", source: "RESTAURANT", restaurantDishId: "rd_2" });
+  assert.ok(parsed.ok);
+  const out = resolveSnapshot(parsed.value, {
+    restaurantDish: { calories: null, protein: null, carbs: null, fat: null, fiber: null, name: "Mystery Plate" },
+  });
+  assert.equal(out.snapshot.calories, 0);
+  assert.equal(out.snapshot.incomplete, true);
+  assert.equal(out.name, "Mystery Plate");
+});
+
+test("resolveSnapshot: RESTAURANT source without a resolved dish dep throws (route's 404-not-found guard)", () => {
+  const parsed = parseMealLogInput({ localDate: "2026-07-19", mealType: "dinner", source: "RESTAURANT", restaurantDishId: "rd_missing" });
+  assert.ok(parsed.ok);
+  assert.throws(() => resolveSnapshot(parsed.value, {}));
 });
 
 test("resolveSnapshot: MANUAL uses caller macros and its supplied name", () => {
@@ -249,7 +327,7 @@ test("serializeMealLog: perServing r1 at boundary, totals scaled by servings", (
     id: "clog_01", localDate: "2026-07-19", mealType: "dinner", source: "RECIPE" as const,
     name: "Salmon", servings: 1.5,
     calories: 460.04, protein: 34, carbs: 44, fat: 14, fiber: 4, incomplete: false,
-    recipeId: "r1", customIngredientId: null, journalMealId: "cjm_9",
+    recipeId: "r1", restaurantDishId: null, customIngredientId: null, journalMealId: "cjm_9",
     pictureResultId: null, fridgeRecipeId: null, note: null,
     clientRequestId: "b3f0", deletedAt: null,
     loggedAt: new Date("2026-07-19T18:22:04.000Z"), updatedAt: new Date("2026-07-19T18:22:04.000Z"),
@@ -305,14 +383,26 @@ test("buildMealLogCreateData: RECIPE stores its server-priced snapshot verbatim 
   assert.equal(data.incomplete, false);
 });
 
-test("isCallerSuppliedMacroSource: MANUAL/PICTURE/FRIDGE own their macros; RECIPE/CUSTOM are server-priced", () => {
+test("buildMealLogCreateData: RESTAURANT stores its server-priced snapshot verbatim (0s stay 0) and carries restaurantDishId", () => {
+  const parsed = parseMealLogInput({ localDate: "2026-07-19", mealType: "dinner", source: "RESTAURANT", restaurantDishId: "rd_1", servings: 1 });
+  assert.ok(parsed.ok);
+  const snap = { calories: 650, protein: 0, carbs: 0, fat: 0, fiber: 0, incomplete: false };
+  const data = buildMealLogCreateData("pat_1", parsed.value, { snapshot: snap, name: "Bowl" });
+  assert.equal(data.protein, 0); // RESTAURANT never goes through nullableMacroColumns
+  assert.equal(data.incomplete, false);
+  assert.equal(data.restaurantDishId, "rd_1");
+  assert.equal(data.recipeId, null);
+});
+
+test("isCallerSuppliedMacroSource: MANUAL/PICTURE/FRIDGE own their macros; RECIPE/CUSTOM/RESTAURANT are server-priced", () => {
   assert.equal(isCallerSuppliedMacroSource("MANUAL"), true);
   assert.equal(isCallerSuppliedMacroSource("PICTURE"), true);
   assert.equal(isCallerSuppliedMacroSource("FRIDGE"), true);
   // The PATCH route uses this to reject a client perServing that would otherwise
-  // overwrite a priced RECIPE/CUSTOM snapshot.
+  // overwrite a priced RECIPE/CUSTOM/RESTAURANT snapshot.
   assert.equal(isCallerSuppliedMacroSource("RECIPE"), false);
   assert.equal(isCallerSuppliedMacroSource("CUSTOM"), false);
+  assert.equal(isCallerSuppliedMacroSource("RESTAURANT"), false);
 });
 
 // ─── serializeMealLog — nullable perServing preserves unset macros ─────────
@@ -322,7 +412,7 @@ test("serializeMealLog: null column serializes to null perServing (not 0), incom
     id: "clog_02", localDate: "2026-07-19", mealType: "lunch", source: "MANUAL" as const,
     name: "Soup", servings: 2,
     calories: 400, protein: null, carbs: null, fat: null, fiber: null, incomplete: true,
-    recipeId: null, customIngredientId: null, journalMealId: null,
+    recipeId: null, restaurantDishId: null, customIngredientId: null, journalMealId: null,
     pictureResultId: null, fridgeRecipeId: null, note: null,
     clientRequestId: "k1", deletedAt: null,
     loggedAt: new Date("2026-07-19T12:00:00.000Z"), updatedAt: new Date("2026-07-19T12:00:00.000Z"),
@@ -337,11 +427,28 @@ test("serializeMealLog: null column serializes to null perServing (not 0), incom
   assert.equal(dto.totals.incomplete, true);
 });
 
+test("serializeMealLog: restaurantDishId is carried on the read envelope exactly as recipeId is (provenance, nullable)", () => {
+  const base = {
+    id: "clog_rd1", localDate: "2026-07-19", mealType: "dinner", name: "Bowl", servings: 1,
+    calories: 650, protein: 30, carbs: 60, fat: 20, fiber: 5, incomplete: false,
+    customIngredientId: null, journalMealId: null,
+    pictureResultId: null, fridgeRecipeId: null, note: null,
+    clientRequestId: null, deletedAt: null,
+    loggedAt: new Date("2026-07-19T18:22:04.000Z"), updatedAt: new Date("2026-07-19T18:22:04.000Z"),
+  };
+  const withDish = serializeMealLog({ ...base, source: "RESTAURANT" as const, recipeId: null, restaurantDishId: "rd_1" });
+  assert.equal(withDish.restaurantDishId, "rd_1");
+  assert.equal(withDish.recipeId, null);
+  // A non-RESTAURANT row's restaurantDishId column is null (SetNull provenance, never read for macro math).
+  const recipeRow = serializeMealLog({ ...base, source: "RECIPE" as const, recipeId: "r1", restaurantDishId: null });
+  assert.equal(recipeRow.restaurantDishId, null);
+});
+
 test("serializeMealLog: unit label only attaches for CUSTOM rows", () => {
   const base = {
     id: "clog_03", localDate: "2026-07-19", mealType: "snack" as const,
     name: "Almonds", servings: 2, calories: 50, protein: 3, carbs: 1, fat: 0, fiber: 0, incomplete: false,
-    recipeId: null, customIngredientId: "ci_1", journalMealId: null,
+    recipeId: null, restaurantDishId: null, customIngredientId: "ci_1", journalMealId: null,
     pictureResultId: null, fridgeRecipeId: null, note: null,
     clientRequestId: null, deletedAt: null,
     loggedAt: new Date("2026-07-19T15:00:00.000Z"), updatedAt: new Date("2026-07-19T15:00:00.000Z"),
@@ -365,7 +472,7 @@ test("null macro survives serialize → edit-prefill → patch round-trip withou
     name: data.name, servings: data.servings,
     calories: data.calories, protein: data.protein, carbs: data.carbs, fat: data.fat, fiber: data.fiber,
     incomplete: data.incomplete,
-    recipeId: null, customIngredientId: null, journalMealId: null,
+    recipeId: null, restaurantDishId: null, customIngredientId: null, journalMealId: null,
     pictureResultId: null, fridgeRecipeId: null, note: null,
     clientRequestId: "rt", deletedAt: null,
     loggedAt: new Date("2026-07-19T12:00:00.000Z"), updatedAt: new Date("2026-07-19T12:00:00.000Z"),

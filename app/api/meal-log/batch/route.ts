@@ -15,6 +15,7 @@ import {
   type ParsedMealLog,
   type RecipeDep,
   type CustomIngredientDep,
+  type RestaurantDishDep,
   type MealLogCreateData,
 } from "@/lib/meal-log";
 
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
   for (const item of items) {
     let recipe: RecipeDep | undefined;
     let customIngredient: CustomIngredientDep | undefined;
+    let restaurantDish: RestaurantDishDep | undefined;
 
     if (item.source === MealLogSource.RECIPE) {
       const r = await prisma.recipe.findUnique({
@@ -72,9 +74,17 @@ export async function POST(req: NextRequest) {
       });
       if (!ci) return NextResponse.json({ error: `Custom ingredient not found: ${item.customIngredientId}` }, { status: 404 });
       customIngredient = ci;
+    } else if (item.source === MealLogSource.RESTAURANT) {
+      // Same posture as the single-write route: no PUBLISHED/available gate.
+      const dish = await prisma.restaurantDish.findUnique({
+        where: { id: item.restaurantDishId! },
+        select: { name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true },
+      });
+      if (!dish) return NextResponse.json({ error: `Restaurant dish not found: ${item.restaurantDishId}` }, { status: 404 });
+      restaurantDish = dish;
     }
 
-    const resolved = resolveSnapshot(item as ParsedMealLog, { recipe, customIngredient });
+    const resolved = resolveSnapshot(item as ParsedMealLog, { recipe, customIngredient, restaurantDish });
     rowsData.push(buildMealLogCreateData(patient.id, item, resolved));
   }
 
