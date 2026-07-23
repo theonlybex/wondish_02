@@ -451,7 +451,7 @@ model RestaurantDish {
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   name         String
   description  String?
-  price        Decimal?
+  price        Decimal?   @db.Decimal(10, 2)
   currency     String     @default("USD")
   section      String // e.g. "Mains"
   sortOrder    Int        @default(0)

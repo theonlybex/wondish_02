@@ -42,7 +42,7 @@ CREATE TABLE "RestaurantDish" (
     "restaurantId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
-    "price" DECIMAL(65,30),
+    "price" DECIMAL(10,2),
     "currency" TEXT NOT NULL DEFAULT 'USD',
     "section" TEXT NOT NULL,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
