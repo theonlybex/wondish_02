@@ -1,5 +1,19 @@
 # Clara iOS — Build Roadmap (Phases 1–6)
 
+> **AMENDMENT (2026-07-22, user-confirmed) — supersedes the "Scan is the default tab" references throughout Phases 1–6:**
+> 1. **Tab architecture:** the app keeps the **stock 5-tab bar** (native look confirmed as-is): `[Restaurants*] [Fridge] [Clara] [Stats] [Account]`, with **Restaurants first + default** (shipped: Clara repo `c9a73d2`). Scan is off the tab bar; when Phases 3/4 are built, **Scan + Fridge merge into one "Cook" tab** so all features stay reachable within 5 tabs. No custom 6-item bar (the Restaurants plan's D-IA custom-bar mechanism is retired; the 6-tab note in `docs/restaurants/overview.md` is superseded by this amendment).
+> 2. **Build order after Phase 2 (the auth gate, unchanged):** **Restaurants iOS tab → Phase 6 Stats + Phase 5 Chat (backends already shipped — cheap wins) → Phase 3 Scan + Phase 4 Fridge** (each needs a net-new AI endpoint; now secondary features). The original P3→P4→P5→P6 order predates the Restaurants pivot.
+> 3. **Monetization seam:** add `PaywallContext.restaurants` and a Restaurants line to the freemium constants in Phase 2. Restaurants is free during the Miracle Mile pilot; the premium gate (and the PaywallView pitch copy, which should lead with restaurant benefits) is decided with Phase-2 D1–D4.
+> 4. Phase 3's "zero taps from launch" premise is void; the Scan feature itself is unchanged, only its entry point (inside Cook).
+
+> **AMENDMENT 2 (2026-07-22, frontend + backend audit) — grounds every phase plan in what is actually shipped:**
+>
+> 1. **Frontend reality (Clara repo tip `a466a68`):** all five tab screens are **design mocks with demo data**, not placeholders — `RestaurantsView` + `RestaurantDetailView` (list, cuisine chips, hero card, fit bars, per-dish verdict cards), `FridgeView` (ingredient chips + a working private `FlowLayout` + demo recipe cards), `ChatView` (bubbles, starter chips that fill the input, disabled-send state), `StatsView` (day selector, calorie ring, three macro tiles, 7-day **BarMark** trend with target `RuleMark`, today's-log card), `AccountView` (signed-in mock). `ScanPlaceholderView` still exists but is **unreachable** (off the tab bar) until the Cook tab exists. Consequence for Phases 2–6: the "replace `<Tab>PlaceholderView` wholesale" framing is superseded by **"wire the shipped mock layout to live data"** — keep the shipped card/layout structure, replace the demo models with DTOs, and add the loading/empty/error/paywall states the mocks lack. Each phase doc now carries its own dated amendment block with the concrete substitutions; implement per those blocks.
+> 2. **Backend audit (this repo, `clara-backend-fixes`):** shipped and Bearer-ready — `/api/meal-log` (CRUD + batch + `?updatedSince=` delta with tombstones), `/api/journey` (`macroStats`), `/api/dish-checker` (raw `text/plain` token stream), JSON-401 middleware (`wantsJson401`). **Missing** — `/api/me`, `/api/iap/verify`, `/api/apple/notifications`, `/api/picture`, `/api/fridge`, and the entire Restaurants surface (no models, no routes, no `lib/diet-match.ts`). The `Subscription` model is **single-row, Stripe-only** — the per-source design requires the Phase-2 migration (now pulled forward into Phase-2 Task 1, see its amendment).
+> 3. **New work items:** (a) the **Restaurants iOS tab plan** — the first build after Phase 2 — now exists: `2026-07-22-ios-restaurants-tab.md` (gated on the `docs/restaurants/` Phase-1 backend); (b) the **Cook tab** container is owned by whichever of Phase 3/4 is built first (see the Phase-3/4 amendment blocks); (c) **lock light mode** (`UIUserInterfaceStyle: Light` in `project.yml` Info.plist) in Phase 2 Task 2 — the design tokens are fixed light-only hex values and nothing currently prevents a dark-mode device from rendering mixed chrome.
+> 4. **Branch bases:** every remaining phase branches from the **current Clara `main` tip** (mocks included) and, for later phases, the tip that includes previously-landed phases — the per-doc "from the Phase-2 tip" instructions are superseded.
+> 5. Phase *numbers* no longer match build order (build: 2 → Restaurants → 6 + 5 → 3 + 4). The numbers are doc names only; do not execute "Phase 3" next because of its number.
+
 > **Index doc.** Each phase has its own self-contained plan (linked below) written in the
 > Superpowers plan format (Goal · Architecture · Global Constraints · Open decisions ·
 > dependency-ordered Tasks with Create/Modify/Produces/Steps · Out of scope · Verification).
@@ -94,9 +108,10 @@ own "Open decisions" callout with recommended defaults, summarized here.
 
 ## Status snapshot
 
-- **Phase 1:** implemented (Clara repo through commit `25247bf`; 5-tab shell + design system).
-- **Phase 2:** planned (doc committed `a0233c1`).
-- **Phases 3–6:** planned (this batch).
+- **Phase 1:** implemented; Clara repo is now at `a466a68` — 5-tab shell (Restaurants first/default per Amendment 1) + design system + **all five tab screens as design mocks with demo data** (see Amendment 2 §1).
+- **Phase 2:** planned (doc committed `a0233c1`; amended 2026-07-22 with four pre-implementation fixes — see its amendment block).
+- **Restaurants iOS tab:** planned — `2026-07-22-ios-restaurants-tab.md` (first build after Phase 2; gated on the `docs/restaurants/` Phase-1 backend).
+- **Phases 3–6:** planned (each amended 2026-07-22; implement per the amendment blocks).
 - **Shared backend prerequisite for Phase 6:** shipped on `clara-backend-fixes` (macro-tracking).
 - **User action items carried from earlier work:** set `ANTHROPIC_API_KEY` locally + verify in
   prod (Clara chat can't run without it); apply the `MealLog` Prisma migration once `DATABASE_URL`
