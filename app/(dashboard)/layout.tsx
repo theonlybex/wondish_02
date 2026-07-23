@@ -4,7 +4,7 @@ import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import { isProfileComplete } from "@/lib/onboarding";
-import { hasActivePremium } from "@/lib/auth";
+import { accountHasActivePremium } from "@/lib/auth";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import PremiumGuard from "@/components/PremiumGuard";
@@ -21,7 +21,7 @@ export default async function DashboardLayout({
   const pathname = (await headers()).get("x-pathname") ?? "";
 
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
-  const isPremium = hasActivePremium(account?.subscription);
+  const isPremium = accountHasActivePremium(account?.subscriptions ?? []);
 
   // ── Onboarding gate (single source of truth) ───────────────────────────────
   // The profile data itself decides whether onboarding is done; account.onboarding-

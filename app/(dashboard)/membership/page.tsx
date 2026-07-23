@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getAccount } from "@/lib/queries";
+import { accountHasActivePremium } from "@/lib/auth";
 import Link from "next/link";
 
 export const metadata = { title: "Membership" };
@@ -60,10 +61,11 @@ export default async function MembershipPage() {
   const account = await getAccount(userId);
 
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
-  const sub = account?.subscription;
-  const isPremium =
-    isAdmin ||
-    (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(sub?.status ?? ""));
+  // Stripe-source row: the display fields below (trial/period end) are Stripe
+  // billing concepts, so this page shows the STRIPE row specifically. The
+  // premium gate itself ORs across every source (accountHasActivePremium).
+  const sub = account?.subscriptions?.find((s) => s.source === "STRIPE") ?? null;
+  const isPremium = isAdmin || accountHasActivePremium(account?.subscriptions ?? []);
 
   if (!isPremium) redirect("/pricing");
 

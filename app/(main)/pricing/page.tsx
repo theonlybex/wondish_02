@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
+import { accountHasActivePremium } from "@/lib/auth";
 import PricingSection from "@/components/PricingSection";
 
 export const metadata: Metadata = {
@@ -44,12 +45,11 @@ export default async function PricingPage({
   if (userId) {
     const account = await prisma.account.findUnique({
       where: { clerkId: userId },
-      include: { subscription: true, roles: { include: { role: true } } },
+      include: { subscriptions: true, roles: { include: { role: true } } },
     });
     // Active premium users see their membership page instead
-    const sub = account?.subscription;
     const isAdmin = account?.roles?.some((r: { role: { name: string } }) => r.role.name === "SUPER") ?? false;
-    if (isAdmin || (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(sub?.status ?? ""))) {
+    if (isAdmin || accountHasActivePremium(account?.subscriptions ?? [])) {
       redirect("/membership");
     }
     isLoggedIn = !!account;

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { MealLogSource } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { hasActivePremium, getAccountWithSubscription } from "@/lib/auth";
+import { accountHasActivePremium, getAccountWithSubscription } from "@/lib/auth";
 import {
   parseBatchInput,
   resolveSnapshot,
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   // Premium gate once if any item is CUSTOM.
   if (items.some((it) => it.source === MealLogSource.CUSTOM)) {
     const account = await getAccountWithSubscription(userId);
-    if (!hasActivePremium(account?.subscription)) {
+    if (!accountHasActivePremium(account?.subscriptions ?? [])) {
       return NextResponse.json({ error: "Premium required" }, { status: 402 });
     }
   }

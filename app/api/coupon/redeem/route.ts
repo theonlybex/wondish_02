@@ -73,9 +73,14 @@ export async function POST(req: NextRequest) {
         create: { accountId: account.id, roleId: role.id },
       });
     } else {
-      // PREMIUM coupon — upsert subscription
+      // PREMIUM coupon — upsert subscription. Targets the STRIPE-source row:
+      // pre-migration every account had exactly one subscription row (this
+      // one), so writing the (accountId, STRIPE) row reproduces that exact
+      // behavior post-migration (mechanical rename, not a redesign — routing
+      // coupon redemptions to a separate COUPON-source row is a real
+      // behavior change deferred to a later task).
       await tx.subscription.upsert({
-        where: { accountId: account.id },
+        where: { accountId_source: { accountId: account.id, source: "STRIPE" } },
         update: {
           plan: "PREMIUM",
           status: "ACTIVE",
@@ -85,6 +90,7 @@ export async function POST(req: NextRequest) {
         },
         create: {
           accountId: account.id,
+          source: "STRIPE",
           plan: "PREMIUM",
           status: "ACTIVE",
         },

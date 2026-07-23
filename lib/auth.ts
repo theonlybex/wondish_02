@@ -24,7 +24,7 @@ export function hasActivePremium(
 export async function getAccountWithSubscription(clerkId: string) {
   return prisma.account.findUnique({
     where: { clerkId },
-    include: { subscription: true },
+    include: { subscriptions: true },
   });
 }
 
@@ -33,7 +33,7 @@ export async function getAccount() {
   if (!userId) return null;
   return prisma.account.findUnique({
     where: { clerkId: userId },
-    include: { subscription: true, roles: { include: { role: true } } },
+    include: { subscriptions: true, roles: { include: { role: true } } },
   });
 }
 

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getAccount, getPredictionProfileInput } from "@/lib/queries";
 import PredictionView from "@/components/prediction/PredictionView";
 import { computePredictionEstimate } from "@/lib/prediction-data";
+import { accountHasActivePremium } from "@/lib/auth";
 
 export const metadata = { title: "Your Prediction" };
 
@@ -15,9 +16,7 @@ export default async function PredictionPage() {
     getPredictionProfileInput(userId),
   ]);
 
-  const isPremium =
-    account?.subscription?.plan === "PREMIUM" &&
-    ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(account?.subscription?.status ?? "");
+  const isPremium = accountHasActivePremium(account?.subscriptions ?? []);
 
   const data = input ? computePredictionEstimate(input) : null;
 

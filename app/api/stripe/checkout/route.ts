@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   try {
     let account = await prisma.account.findUnique({
       where: { clerkId: userId },
-      include: { subscription: true },
+      include: { subscriptions: true },
     });
 
     if (!account) {
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
         account = await prisma.account.update({
           where: { email },
           data: { clerkId: userId },
-          include: { subscription: true },
+          include: { subscriptions: true },
         });
       } else {
         account = await prisma.account.create({
@@ -44,21 +44,22 @@ export async function POST(req: NextRequest) {
             email,
             firstName,
             lastName,
-            subscription: { create: {} },
+            subscriptions: { create: {} },
           },
-          include: { subscription: true },
+          include: { subscriptions: true },
         });
       }
     }
 
-    let customerId = account.subscription?.stripeCustomerId;
+    // Stripe checkout always reads/writes the (accountId, STRIPE) row.
+    let customerId = account.subscriptions.find((s) => s.source === "STRIPE")?.stripeCustomerId;
     if (!customerId) {
       const customer = await createStripeCustomer(account.email, `${account.firstName} ${account.lastName}`);
       customerId = customer.id;
       await prisma.subscription.upsert({
-        where: { accountId: account.id },
+        where: { accountId_source: { accountId: account.id, source: "STRIPE" } },
         update: { stripeCustomerId: customerId },
-        create: { accountId: account.id, stripeCustomerId: customerId },
+        create: { accountId: account.id, source: "STRIPE", stripeCustomerId: customerId },
       });
     }
 
@@ -85,10 +86,11 @@ export async function GET() {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   try {
-    const account = await prisma.account.findUnique({ where: { clerkId: userId }, include: { subscription: true } });
-    if (!account?.subscription?.stripeCustomerId) return NextResponse.json({ error: "No billing account found." }, { status: 404 });
+    const account = await prisma.account.findUnique({ where: { clerkId: userId }, include: { subscriptions: true } });
+    const stripeSub = account?.subscriptions.find((s) => s.source === "STRIPE");
+    if (!stripeSub?.stripeCustomerId) return NextResponse.json({ error: "No billing account found." }, { status: 404 });
 
-    const portalSession = await createCustomerPortalSession(account.subscription.stripeCustomerId, `${appUrl}/dashboard`);
+    const portalSession = await createCustomerPortalSession(stripeSub.stripeCustomerId, `${appUrl}/dashboard`);
     return NextResponse.json({ url: portalSession.url });
   } catch (err) {
     console.error("[stripe/portal]", err);

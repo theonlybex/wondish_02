@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
             await stripeClient.subscriptions.retrieve(subscriptionId);
 
           await prisma.subscription.update({
-            where: { accountId },
+            where: { accountId_source: { accountId, source: "STRIPE" } },
             data: {
               stripeSubscriptionId: subscriptionId,
               stripePriceId: stripeSubscription.items.data[0]?.price.id,
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
 
           if (accountId) {
             await prisma.subscription.update({
-              where: { accountId },
+              where: { accountId_source: { accountId, source: "STRIPE" } },
               data: {
                 status: stripeSubscription.status === "trialing" ? "TRIALING" : "ACTIVE",
                 stripeCurrentPeriodEnd: new Date(
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
 
           if (accountId) {
             await prisma.subscription.update({
-              where: { accountId },
+              where: { accountId_source: { accountId, source: "STRIPE" } },
               data: { status: "PAST_DUE" },
             });
           }
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
 
         if (accountId) {
           await prisma.subscription.update({
-            where: { accountId },
+            where: { accountId_source: { accountId, source: "STRIPE" } },
             data: {
               plan: "FREE",
               status: "CANCELED",
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
 
         if (accountId) {
           await prisma.subscription.update({
-            where: { accountId },
+            where: { accountId_source: { accountId, source: "STRIPE" } },
             data: {
               status: subscription.status === "active"
                 ? "ACTIVE"

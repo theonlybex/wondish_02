@@ -21,20 +21,36 @@ export async function GET(req: NextRequest) {
         }
       : {};
 
-    const [items, total] = await Promise.all([
+    // Prisma can't order a to-many relation by a nested scalar field (only by
+    // _count), so "plan desc" ordering — premium accounts first — has to move
+    // to app code. To preserve the exact prior order (and total/pagination),
+    // fetch every matching account pre-sorted by createdAt desc, then do a
+    // stable sort by the STRIPE-row plan (desc) before slicing the page. The
+    // STRIPE row is the pre-migration single subscription row, so this
+    // reproduces the old `orderBy subscription.plan desc, createdAt desc`
+    // exactly for every account today (all rows are still source=STRIPE).
+    const [allMatching, total] = await Promise.all([
       prisma.account.findMany({
         where,
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy: [{ subscription: { plan: "desc" } }, { createdAt: "desc" }],
+        orderBy: [{ createdAt: "desc" }],
         include: {
-          subscription: { select: { plan: true, status: true } },
+          subscriptions: { where: { source: "STRIPE" }, select: { plan: true, status: true } },
           roles: { include: { role: true } },
           company: { select: { name: true } },
         },
       }),
       prisma.account.count({ where }),
     ]);
+
+    const sorted = [...allMatching].sort((a, b) => {
+      const planA = a.subscriptions[0]?.plan ?? "FREE";
+      const planB = b.subscriptions[0]?.plan ?? "FREE";
+      if (planA === planB) return 0;
+      return planA > planB ? -1 : 1; // desc: "PREMIUM" > "FREE"
+    });
+    const items = sorted
+      .slice((page - 1) * limit, (page - 1) * limit + limit)
+      .map(({ subscriptions, ...rest }) => ({ ...rest, subscription: subscriptions[0] ?? null }));
 
     return NextResponse.json({ items, total, page, limit, currentAccountId: admin.id });
   } catch (err) {
@@ -61,14 +77,17 @@ export async function PATCH(req: NextRequest) {
     if ("plan" in body) {
       const { id, plan } = body as { id: string; plan: "FREE" | "PREMIUM" };
 
+      // Targets the STRIPE-source row — see the GET handler above for why
+      // (pre-migration this was the account's sole subscription row).
       await prisma.subscription.upsert({
-        where: { accountId: id },
+        where: { accountId_source: { accountId: id, source: "STRIPE" } },
         update: {
           plan,
           status: plan === "PREMIUM" ? "ACTIVE" : "CANCELED",
         },
         create: {
           accountId: id,
+          source: "STRIPE",
           plan,
           status: plan === "PREMIUM" ? "ACTIVE" : "CANCELED",
         },

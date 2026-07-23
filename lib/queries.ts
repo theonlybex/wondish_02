@@ -8,7 +8,7 @@ import { normalizePredictionPatient } from "./prediction-profile";
 export const getAccount = cache((userId: string) =>
   prisma.account.findUnique({
     where: { clerkId: userId },
-    include: { subscription: true, roles: { include: { role: true } } },
+    include: { subscriptions: true, roles: { include: { role: true } } },
   })
 );
 

@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { accountHasActivePremium } from "@/lib/auth";
 
 export async function GET() {
   const { userId } = await auth();
@@ -8,13 +9,12 @@ export async function GET() {
 
   const account = await prisma.account.findUnique({
     where: { clerkId: userId },
-    include: { subscription: true, roles: { include: { role: true } } },
+    include: { subscriptions: true, roles: { include: { role: true } } },
   });
   if (!account) return NextResponse.json({ dishes: [] });
 
   const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
-  const sub = account.subscription;
-  const isPremium = isAdmin || (sub?.plan === "PREMIUM" && ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(sub?.status ?? ""));
+  const isPremium = isAdmin || accountHasActivePremium(account.subscriptions);
   if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
   const patient = await prisma.patient.findUnique({
