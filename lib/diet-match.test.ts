@@ -140,6 +140,54 @@ test("egg allergy DOES block 'Egg' and 'Scrambled Eggs'", () => {
   assert.equal(evaluateDishAgainstProfile(["Scrambled Eggs"], matchers).passed, false);
 });
 
+// ─── E2 call-site pins (restaurants-e2-brief.md) ───────────────────────────
+//
+// alternatives/route.ts, swap/route.ts and taste/dishes/route.ts previously
+// derived their own banned-name set and matched it via case-insensitive
+// EXACT-NAME comparison only (a Prisma `in`/`mode: insensitive` DB filter, or
+// an in-memory `Set.has()` — never a word-boundary regex). That is the
+// "old divergent behavior" this task retires: after the refactor, all three
+// sites call `evaluateDishAgainstProfile`, so an allergy now blocks by word
+// boundary everywhere. These tests pin the divergence itself — reproducing
+// each site's old exact-name check inline — so the behavior change (and not
+// just the engine's pre-existing capability) is documented and protected.
+
+function oldExactNameCheck(banNames: string[], ingredientNames: string[]): boolean {
+  const banned = new Set(banNames.map((n) => n.toLowerCase()));
+  return ingredientNames.some((i) => banned.has(i.toLowerCase()));
+}
+
+test("E2 pin (alternatives/swap/taste): old exact-name check misses 'Roasted Peanuts' for a 'Peanut' allergy — the exact divergence being closed", () => {
+  const oldBlocked = oldExactNameCheck(["Peanut", "Peanut Butter"], ["Roasted Peanuts"]);
+  assert.equal(oldBlocked, false, "old exact-name matching did NOT catch this — that was the safety gap");
+});
+
+test("E2 pin (alternatives/swap/taste): new engine (word-boundary) blocks 'Roasted Peanuts' for the same 'Peanut' allergy", () => {
+  const { allergyNames, exactBanned } = derivePatientBans(peanutAllergyPatient());
+  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const { passed } = evaluateDishAgainstProfile(["Roasted Peanuts"], matchers);
+  assert.equal(passed, false, "engine must block via word-boundary now that all three sites delegate to it");
+});
+
+test("E2 pin — Adjudication 1 (taste/dishes): motivation-sourced banned ingredient now excludes a dish (previously omitted from the union)", () => {
+  const patient: PatientDietGraph = {
+    ...emptyPatient(),
+    motivations: [{ motivation: { bannedIngredients: [{ name: "Alcohol" }] } }],
+  };
+  const { allergyNames, exactBanned } = derivePatientBans(patient);
+  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+
+  // Old behavior at taste/dishes/route.ts: motivations were never fetched or
+  // unioned, so a motivation-only ban like "Alcohol" was invisible there.
+  const oldTasteUnion: string[] = []; // taste/dishes' old union excluded motivations entirely
+  assert.equal(oldExactNameCheck(oldTasteUnion, ["Alcohol"]), false);
+
+  // New behavior: full 5-source union via the engine catches it.
+  const { passed, violations } = evaluateDishAgainstProfile(["Alcohol"], matchers);
+  assert.equal(passed, false);
+  assert.equal(violations[0]?.source, "motivation");
+});
+
 // ─── exact-ban matching: case-insensitive exact-name, not substring ───────
 
 test("exact-ban matching is case-insensitive exact-name, not substring", () => {
@@ -229,6 +277,21 @@ test("empty ingredient list: passes even with a populated profile", () => {
   const { passed, violations } = evaluateDishAgainstProfile([], matchers);
   assert.equal(passed, true);
   assert.deepEqual(violations, []);
+});
+
+// ─── build-side trim symmetry (Adjudication 2, E2 brief) ──────────────────
+//
+// evaluateDishAgainstProfile trims the ingredient before exact-ban comparison
+// (match-time). Build time must trim the ban name too, or a fixture/profile
+// name with stray whitespace silently fails to match.
+
+test("exact-ban: a whitespace-padded ban name still matches (build-time trim symmetry)", () => {
+  const patient = { ...emptyPatient(), foodToAvoid: [{ food: { name: "  Red Meat  " } }] };
+  const { allergyNames, exactBanned } = derivePatientBans(patient);
+  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const { passed, violations } = evaluateDishAgainstProfile(["Red Meat"], matchers);
+  assert.equal(passed, false);
+  assert.equal(violations[0]?.source, "avoid");
 });
 
 // ─── PATIENT_DIET_INCLUDE ───────────────────────────────────────────────────

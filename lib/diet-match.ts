@@ -97,7 +97,7 @@ export function buildDietMatchers({ allergyNames, exactBanned }: DerivedBans): D
   const seen = new Set<string>();
   const dedupedExactBanned: ExactBan[] = [];
   for (const { name, source } of exactBanned) {
-    const lowered = name.toLowerCase();
+    const lowered = name.trim().toLowerCase();
     const key = `${source}:${lowered}`;
     if (seen.has(key)) continue;
     seen.add(key);
