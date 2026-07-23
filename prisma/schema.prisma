@@ -380,23 +380,114 @@ model RecipeIngredient {
 }
 
 model MealType {
-  id       String    @id @default(cuid())
-  name     String    @unique
-  recipes  Recipe[]
-  patients Patient[]
-  menus    Menu[]
+  id               String           @id @default(cuid())
+  name             String           @unique
+  recipes          Recipe[]
+  patients         Patient[]
+  menus            Menu[]
+  restaurantDishes RestaurantDish[]
 }
 
 model DishType {
-  id      String   @id @default(cuid())
-  name    String   @unique
-  recipes Recipe[]
+  id               String           @id @default(cuid())
+  name             String           @unique
+  recipes          Recipe[]
+  restaurantDishes RestaurantDish[]
 }
 
 model Ethnic {
-  id      String   @id @default(cuid())
-  name    String   @unique
-  recipes Recipe[]
+  id          String       @id @default(cuid())
+  name        String       @unique
+  recipes     Recipe[]
+  restaurants Restaurant[]
+}
+
+// ─── Restaurants ──────────────────────────────────────────────────────────────
+
+enum RestaurantStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum RestaurantDishStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model Restaurant {
+  id           String  @id @default(cuid())
+  name         String
+  slug         String  @unique
+  description  String?
+  imageUrl     String?
+  logoUrl      String?
+  addressLine  String?
+  city         String?
+  state        String?
+  postalCode   String?
+  neighborhood String // e.g. "Miracle Mile"
+  latitude     Float? // nullable now; geo is Phase 7
+  longitude    Float? // nullable now; geo is Phase 7
+
+  ethnicId String? // primary cuisine; reuses the existing Ethnic model
+  ethnic   Ethnic? @relation(fields: [ethnicId], references: [id])
+
+  status    RestaurantStatus @default(DRAFT)
+  hours     Json?
+  phone     String?
+  website   String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  dishes RestaurantDish[]
+
+  @@index([status, neighborhood])
+}
+
+model RestaurantDish {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  price        Decimal?
+  currency     String     @default("USD")
+  section      String // e.g. "Mains"
+  sortOrder    Int        @default(0)
+
+  dishTypeId String?
+  dishType   DishType? @relation(fields: [dishTypeId], references: [id])
+  mealTypeId String?
+  mealType   MealType? @relation(fields: [mealTypeId], references: [id])
+
+  // Optional macros, whole-dish (not per-serving like Recipe/MealLog).
+  calories Float?
+  protein  Float?
+  carbs    Float?
+  fat      Float?
+  fiber    Float?
+
+  isRecommended Boolean              @default(false)
+  available     Boolean              @default(true)
+  status        RestaurantDishStatus @default(DRAFT)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  ingredients RestaurantDishIngredient[]
+  mealLogs    MealLog[]
+
+  @@index([restaurantId, status])
+}
+
+model RestaurantDishIngredient {
+  dishId   String
+  dish     RestaurantDish @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  name     String
+  quantity Float?
+  unit     String?
+
+  @@id([dishId, name])
 }
 
 // ─── Meal Planning ────────────────────────────────────────────────────────────
@@ -490,6 +581,7 @@ enum MealLogSource {
   PICTURE // one-tap from a Picture Mode vision result
   FRIDGE // "I cooked this" on a Fridge Mode generated recipe
   CUSTOM // from a PatientCustomIngredient (premium)
+  RESTAURANT // "Add to today" from a restaurant menu dish
 }
 
 model MealLog {
@@ -518,7 +610,9 @@ model MealLog {
 
   // Provenance only — NEVER read for macro math.
   recipeId           String?
-  recipe             Recipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  recipe             Recipe?         @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  restaurantDishId   String?
+  restaurantDish     RestaurantDish? @relation(fields: [restaurantDishId], references: [id], onDelete: SetNull)
   customIngredientId String?
   journalMealId      String? // best-effort provenance pointer to a plan-completion
   // JournalMeal row. Plain nullable column, deliberately
