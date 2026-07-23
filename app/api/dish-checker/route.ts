@@ -29,6 +29,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Ordering contract: validate-before-charge — body parsing/history validation
+  // must run before the account fetch and daily credit gate below, so a
+  // malformed/invalid request 400s without ever touching a user's quota.
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+  }
+
+  const history = sanitizeChatHistory((body as { messages?: unknown })?.messages);
+  if (history === null || history.length === 0) {
+    return NextResponse.json({ error: "Invalid messages" }, { status: 400 });
+  }
+
   // Single account+subscription lookup serves both the credit gate below and
   // the patient/prompt lookups further down — do not duplicate this fetch.
   const account = await getAccountWithSubscription(userId);
@@ -48,18 +63,6 @@ export async function POST(req: NextRequest) {
     if (!withinDailyFree) {
       return NextResponse.json(chatQuotaExceededResponseBody(), { status: 402 });
     }
-  }
-
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
-  }
-
-  const history = sanitizeChatHistory((body as { messages?: unknown })?.messages);
-  if (history === null || history.length === 0) {
-    return NextResponse.json({ error: "Invalid messages" }, { status: 400 });
   }
 
   const patient = await prisma.patient.findFirst({
