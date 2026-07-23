@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { resolveMacroProfile, getMacroPercentages } from "@/lib/caloric-engine";
 import { macroDeviation } from "@/lib/macros";
+import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 
 export async function PATCH(
   req: NextRequest,
@@ -16,13 +17,7 @@ export async function PATCH(
   // Single round-trip via the Clerk id relation (was account-then-patient).
   const patient = await prisma.patient.findFirst({
     where: { account: { clerkId: userId } },
-    include: {
-      foodAllergies:    { include: { food: { include: { bannedIngredients: true } } } },
-      foodToAvoid:      { include: { food: true } },
-      healthConditions: { include: { condition: { include: { bannedIngredients: true } } } },
-      foodPreferences:  { include: { food: { include: { bannedIngredients: true } } } },
-      motivations:      { include: { motivation: { include: { bannedIngredients: true } } } },
-    },
+    include: PATIENT_DIET_INCLUDE,
   });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
@@ -45,19 +40,15 @@ export async function PATCH(
     return NextResponse.json({ error: "Recipe not suitable for this meal slot" }, { status: 400 });
   }
 
-  // Banned ingredient check
-  const allergyNames      = patient.foodAllergies.flatMap((a) => [a.food.name, ...a.food.bannedIngredients.map((b) => b.name)]);
-  const foodsToAvoidNames = patient.foodToAvoid.map((f) => f.food.name);
-  const conditionBanned   = patient.healthConditions.flatMap((hc) => hc.condition.bannedIngredients.map((b) => b.name));
-  const preferenceBanned  = patient.foodPreferences.flatMap((fp) => fp.food.bannedIngredients.map((b) => b.name));
-  const motivationBanned  = patient.motivations.flatMap((pm) => pm.motivation.bannedIngredients.map((b) => b.name));
-  const allBannedNames    = new Set([
-    ...allergyNames, ...foodsToAvoidNames,
-    ...conditionBanned, ...preferenceBanned, ...motivationBanned,
-  ].map((n) => n.toLowerCase()));
-
-  const hasBanned = newRecipe.ingredients.some((ri) => allBannedNames.has(ri.ingredient.name.toLowerCase()));
-  if (hasBanned) {
+  // Banned ingredient check — word-boundary allergy blocking + exact-name
+  // avoid/condition/preference/motivation matching, via the shared engine.
+  const { allergyNames, exactBanned } = derivePatientBans(patient);
+  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const { passed } = evaluateDishAgainstProfile(
+    newRecipe.ingredients.map((ri) => ri.ingredient.name),
+    matchers
+  );
+  if (!passed) {
     return NextResponse.json({ error: "Recipe contains ingredients you cannot eat" }, { status: 400 });
   }
 

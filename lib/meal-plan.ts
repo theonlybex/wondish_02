@@ -15,6 +15,7 @@ import {
   type PlanDirection,
 } from "@/lib/caloric-engine";
 import { macroDeviation } from "@/lib/macros";
+import { derivePatientBans, buildDietMatchers, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -140,11 +141,7 @@ export async function buildMealPlanMenus(
     include: {
       physicalActivity: true,
       gender:           true,
-      foodAllergies:    { include: { food: { include: { bannedIngredients: true } } } },
-      foodToAvoid:      { include: { food: true } },
-      healthConditions: { include: { condition: { include: { bannedIngredients: true } } } },
-      foodPreferences:  { include: { food:      { include: { bannedIngredients: true } } } },
-      motivations:      { include: { motivation: { include: { bannedIngredients: true } } } },
+      ...PATIENT_DIET_INCLUDE,
       dishPreferences:  {
         include: {
           recipe: {
@@ -159,24 +156,12 @@ export async function buildMealPlanMenus(
   if (!patient.profileCompleted) throw new Error("PROFILE_INCOMPLETE");
 
   // ── Build banned ingredients set ───────────────────────────────────────────
-  const allergyNames      = patient.foodAllergies.flatMap((a) => [a.food.name, ...a.food.bannedIngredients.map((b) => b.name)]);
-  const foodsToAvoidNames = patient.foodToAvoid.map((f) => f.food.name);
-  const conditionBanned   = patient.healthConditions.flatMap((hc) => hc.condition.bannedIngredients.map((b) => b.name));
-  const preferenceBanned  = patient.foodPreferences.flatMap((fp) => fp.food.bannedIngredients.map((b) => b.name));
-  const motivationBanned  = patient.motivations.flatMap((pm) => pm.motivation.bannedIngredients.map((b) => b.name));
-
-  // Allergy-derived names match by WORD BOUNDARY: "peanut" also bans
-  // "peanut butter" / "roasted peanuts", but "egg" does not ban "eggplant".
-  // Non-allergy sources (avoid list, conditions, preferences, motivations)
-  // keep exact-name matching — guidance, not safety-critical.
-  const exactBannedNames = Array.from(new Set([
-    ...foodsToAvoidNames, ...conditionBanned, ...preferenceBanned, ...motivationBanned,
-  ]));
-  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const allergyMatchers = Array.from(new Set(allergyNames))
-    .map((name) => name.trim().toLowerCase().replace(/(?<!s)s$/, "")) // singular stem; keep "-ss" words
-    .filter((stem) => stem.length >= 2)
-    .map((stem) => new RegExp(`\\b${escapeRe(stem)}(?:s|es)?\\b`, "i"));
+  // Derivation + word-boundary allergy matching / exact-name non-allergy
+  // matching now lives in lib/diet-match.ts (shared with the other four call
+  // sites); behavior here is unchanged — this is a lift, not a rewrite.
+  const { allergyNames, exactBanned } = derivePatientBans(patient);
+  const { allergyMatchers, exactBanned: dedupedExactBanned } = buildDietMatchers({ allergyNames, exactBanned });
+  const exactBannedNames = Array.from(new Set(dedupedExactBanned.map((b) => b.name)));
 
   const motivationNames = patient.motivations.map((pm) => pm.motivation.name);
 

@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { accountHasActivePremium } from "@/lib/auth";
+import { derivePatientBans, buildDietMatchers, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 
 export async function GET() {
   const { userId } = await auth();
@@ -19,29 +20,23 @@ export async function GET() {
 
   const patient = await prisma.patient.findUnique({
     where: { accountId: account.id },
-    include: {
-      foodAllergies: { include: { food: { include: { bannedIngredients: true } } } },
-      foodToAvoid: { include: { food: true } },
-      healthConditions: { include: { condition: { include: { bannedIngredients: true } } } },
-      foodPreferences: { include: { food: { include: { bannedIngredients: true } } } },
-    },
+    include: PATIENT_DIET_INCLUDE,
   });
   if (!patient) return NextResponse.json({ dishes: [] });
 
-  // Build banned ingredient list (same logic as meal planner)
-  const bannedNames = Array.from(new Set([
-    ...patient.foodAllergies.flatMap((a) => [a.food.name, ...a.food.bannedIngredients.map((b) => b.name)]),
-    ...patient.foodToAvoid.map((f) => f.food.name),
-    ...patient.healthConditions.flatMap((hc) => hc.condition.bannedIngredients.map((b) => b.name)),
-    ...patient.foodPreferences.flatMap((fp) => fp.food.bannedIngredients.map((b) => b.name)),
-  ]));
+  // Build banned ingredient list via the shared engine — full 5-source union
+  // (this used to omit motivations; that omission is exactly the drift the
+  // shared engine exists to end) plus word-boundary allergy matching.
+  const { allergyNames, exactBanned } = derivePatientBans(patient);
+  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const exactBannedNames = matchers.exactBanned.map((b) => b.name);
 
-  const bannedFilter = bannedNames.length > 0
+  const bannedFilter = exactBannedNames.length > 0
     ? {
         NOT: {
           ingredients: {
             some: {
-              ingredient: { name: { in: bannedNames, mode: "insensitive" as const } },
+              ingredient: { name: { in: exactBannedNames, mode: "insensitive" as const } },
             },
           },
         },
@@ -55,7 +50,11 @@ export async function GET() {
   });
   const swipedIds = swiped.map((s) => s.recipeId);
 
-  // Fetch diverse unrated public recipes with content, respecting banned ingredients
+  // Fetch diverse unrated public recipes with content, respecting banned ingredients.
+  // Exact-ban names are still pushed down to the DB filter above. Allergy
+  // word-boundary matching can't be expressed as a Prisma `where` clause, so
+  // ingredient names are selected here (stripped from the response below) and
+  // matched in-memory.
   const candidates = await prisma.recipe.findMany({
     where: {
       isPublic: true,
@@ -73,11 +72,29 @@ export async function GET() {
       tags: true,
       mealType: { select: { name: true } },
       ethnic: { select: { name: true } },
+      ingredients: { select: { ingredient: { select: { name: true } } } },
     },
     take: 80,
   });
 
-  // Shuffle and return 10 for variety
-  const shuffled = [...candidates].sort(() => Math.random() - 0.5);
-  return NextResponse.json({ dishes: shuffled.slice(0, 10) });
+  const allowed = matchers.allergyMatchers.length === 0
+    ? candidates
+    : candidates.filter(
+        (r) => !r.ingredients.some((ri) => matchers.allergyMatchers.some((rx) => rx.test(ri.ingredient.name)))
+      );
+
+  // Shuffle and return 10 for variety; drop the ingredients field used only
+  // for the in-memory allergy check above — response shape is unchanged.
+  const shuffled = [...allowed].sort(() => Math.random() - 0.5);
+  const dishes = shuffled.slice(0, 10).map((r) => ({
+    id: r.id,
+    name: r.name,
+    emoji: r.emoji,
+    description: r.description,
+    calories: r.calories,
+    tags: r.tags,
+    mealType: r.mealType,
+    ethnic: r.ethnic,
+  }));
+  return NextResponse.json({ dishes });
 }

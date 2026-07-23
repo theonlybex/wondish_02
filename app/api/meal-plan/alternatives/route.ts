@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { derivePatientBans, buildDietMatchers, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -18,36 +19,30 @@ export async function GET(req: NextRequest) {
   // Single round-trip via the Clerk id relation (was account-then-patient).
   const patient = await prisma.patient.findFirst({
     where: { account: { clerkId: userId } },
-    include: {
-      foodAllergies:    { include: { food: { include: { bannedIngredients: true } } } },
-      foodToAvoid:      { include: { food: true } },
-      healthConditions: { include: { condition: { include: { bannedIngredients: true } } } },
-      foodPreferences:  { include: { food: { include: { bannedIngredients: true } } } },
-      motivations:      { include: { motivation: { include: { bannedIngredients: true } } } },
-    },
+    include: PATIENT_DIET_INCLUDE,
   });
 
-  const allergyNames      = patient?.foodAllergies.flatMap((a) => [a.food.name, ...a.food.bannedIngredients.map((b) => b.name)]) ?? [];
-  const foodsToAvoidNames = patient?.foodToAvoid.map((f) => f.food.name) ?? [];
-  const conditionBanned   = patient?.healthConditions.flatMap((hc) => hc.condition.bannedIngredients.map((b) => b.name)) ?? [];
-  const preferenceBanned  = patient?.foodPreferences.flatMap((fp) => fp.food.bannedIngredients.map((b) => b.name)) ?? [];
-  const motivationBanned  = patient?.motivations.flatMap((pm) => pm.motivation.bannedIngredients.map((b) => b.name)) ?? [];
-
-  const allBannedNames = Array.from(new Set([
-    ...allergyNames, ...foodsToAvoidNames,
-    ...conditionBanned, ...preferenceBanned, ...motivationBanned,
-  ]));
+  const { allergyNames, exactBanned } = derivePatientBans(
+    patient ?? { foodAllergies: [], foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [] }
+  );
+  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const exactBannedNames = matchers.exactBanned.map((b) => b.name);
 
   const bannedFilter =
-    allBannedNames.length > 0
-      ? { NOT: { ingredients: { some: { ingredient: { name: { in: allBannedNames, mode: "insensitive" as const } } } } } }
+    exactBannedNames.length > 0
+      ? { NOT: { ingredients: { some: { ingredient: { name: { in: exactBannedNames, mode: "insensitive" as const } } } } } }
       : {};
 
   const calorieFilter = currentCalories > 0
     ? { calories: { gte: currentCalories - 250, lte: currentCalories + 250 } }
     : {};
 
-  const alternatives = await prisma.recipe.findMany({
+  // Exact-ban names (avoid/condition/preference/motivation) are still
+  // pushed down to the DB filter above. Allergy word-boundary matching
+  // cannot be expressed as a Prisma `where` clause, so it's applied here
+  // in-memory against a wider candidate pool before slicing to 3 — same
+  // two-stage pattern lib/meal-plan.ts uses for its recipe catalog.
+  const candidates = await prisma.recipe.findMany({
     where: {
       mealTypeId,
       isPublic: true,
@@ -55,10 +50,18 @@ export async function GET(req: NextRequest) {
       ...bannedFilter,
       ...calorieFilter,
     },
-    take: 3,
+    take: 30,
     orderBy: { createdAt: "desc" },
     include: { mealType: true, dishType: true, ingredients: { include: { ingredient: true } } },
   });
+
+  const alternatives = (
+    matchers.allergyMatchers.length === 0
+      ? candidates
+      : candidates.filter(
+          (r) => !r.ingredients.some((ri) => matchers.allergyMatchers.some((rx) => rx.test(ri.ingredient.name)))
+        )
+  ).slice(0, 3);
 
   return NextResponse.json({ alternatives });
 }

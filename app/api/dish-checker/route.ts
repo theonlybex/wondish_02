@@ -11,6 +11,7 @@ import {
   chatQuotaExceededResponseBody,
 } from "@/lib/freemium";
 import Anthropic from "@anthropic-ai/sdk";
+import { PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -69,29 +70,7 @@ export async function POST(req: NextRequest) {
     where: { accountId: account.id },
     include: {
       mealType: true,
-      foodAllergies: {
-        include: {
-          food: { include: { bannedIngredients: true } },
-        },
-      },
-      foodPreferences: {
-        include: {
-          food: { include: { bannedIngredients: true } },
-        },
-      },
-      foodToAvoid: {
-        include: { food: true },
-      },
-      healthConditions: {
-        include: {
-          condition: { include: { bannedIngredients: true } },
-        },
-      },
-      motivations: {
-        include: {
-          motivation: { include: { bannedIngredients: true } },
-        },
-      },
+      ...PATIENT_DIET_INCLUDE,
     },
   });
 
