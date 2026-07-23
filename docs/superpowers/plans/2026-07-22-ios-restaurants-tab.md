@@ -165,3 +165,16 @@ GET /api/restaurants/[slug]                 (auth; unknown slug → 404 {"error"
 ## Verification checklist
 
 Build green · all `ClaraTests` green · live Bearer smoke 200 on both endpoints · peanut-fixture verdict renders with reason · all five fixture screenshots captured with the disclaimer visible · no client-side verdict/match computation anywhere (grep for `passed`/`violations` usages outside DTO/formatter).
+
+---
+
+## 2026-07-23 AMENDMENT — R-D1 overridden (user directive): chosen dishes count into the user's macros
+
+**User directive (2026-07-23):** dishes the user chooses must be counted into their macro tracking across all platforms. This supersedes R-D1's "deferred to post-Phase-6" default — dish logging ships in THIS cycle. (R-D2–R-D6 unchanged.)
+
+**Design (server-priced snapshot, mirrors the existing RECIPE posture):**
+- Backend: `MealLogSource` gains `RESTAURANT`; `MealLog` gains provenance column `restaurantDishId String?` (relation to `RestaurantDish`, `onDelete: SetNull`, never read for macro math). `POST /api/meal-log` accepts `source: "RESTAURANT"` + `restaurantDishId`: the server resolves the dish and prices the per-serving macro snapshot from the `RestaurantDish` macro columns at log time — the client NEVER sends macros for a RESTAURANT log. A dish with null macros logs with `incomplete: true` (existing semantics). `isCallerSuppliedMacroSource` must classify `RESTAURANT` as server-priced so PATCH cannot clobber the snapshot (same guard as RECIPE/CUSTOM). `name` snapshots the dish name.
+- The GET menu wire contract in Task 1 is UNCHANGED (no macros in the payload); verdicts and logging are independent concerns.
+- iOS: new **Task 6b — "Add to today"**: a log affordance on each available dish card in `RestaurantDetailView` (regardless of verdict — the user chooses) presenting a lightweight confirm (meal-type picker defaulted by time of day, servings default 1) that `POST`s `{ localDate, mealType, source: "RESTAURANT", restaurantDishId, servings }` through `WondishAPIClient`. Success = brief confirmation; failure = alert with retry. **No offline outbox** — Phase 6 owns the sync stack; this is an online-only write, and Phase 6's amendment already makes unknown source strings decode-safe on iOS.
+- Cross-platform counting is automatic once logged: web stats/journey (`computeMacroStats`) and the future iOS Stats tab read `MealLog` rows source-agnostically.
+- Out of scope still: web consumer restaurant pages (restaurants phase-2) — there is no web logging surface for restaurant dishes this cycle, but web dashboards count the logged rows.
