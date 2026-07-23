@@ -1,0 +1,61 @@
+import { auth, clerkClient } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+import { getOrCreateAccount } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
+import { serializeMe } from "@/lib/me";
+import { cancelStripeAtPeriodEnd } from "@/lib/stripe-admin";
+import { prisma } from "@/lib/db";
+
+// GET/DELETE /api/me — the identity + subscription surface for the iOS
+// (Bearer-token) client. No existing route returns this shape: GET
+// /api/patient/profile omits subscription/onboardingComplete/photoUrl and
+// ships a heavy refData catalog; GET /api/stripe/checkout 404s for
+// coupon/admin premium.
+export async function GET() {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { success } = await rateLimit("me", userId, 60, 60);
+  if (!success) return NextResponse.json({ error: "Too many requests. Please slow down." }, { status: 429 });
+
+  const account = await getOrCreateAccount(userId); // include: { subscriptions: true }
+  const patient = await prisma.patient.findFirst({ where: { account: { clerkId: userId } } });
+  return NextResponse.json(serializeMe(account, patient));
+}
+
+export async function DELETE() {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { success } = await rateLimit("me-delete", userId, 10, 60);
+  if (!success) return NextResponse.json({ error: "Too many requests. Please slow down." }, { status: 429 });
+
+  const account = await getOrCreateAccount(userId);
+  const active = account.subscriptions?.filter((s) => s.status !== "CANCELED") ?? [];
+
+  // D12: never delete over live Apple billing the server can't cancel — the
+  // client must send the user to the App Store's Manage Subscriptions sheet
+  // and get an explicit second confirmation before a forced delete.
+  if (active.some((s) => s.source === "APPLE")) {
+    return NextResponse.json(
+      {
+        error: "apple_subscription_active",
+        message: "Cancel your subscription in the App Store before deleting your account.",
+      },
+      { status: 409 }
+    );
+  }
+  // D12: cancel live Stripe/coupon billing at period end before deletion.
+  for (const s of active.filter((s) => s.source === "STRIPE" || s.source === "COUPON")) {
+    await cancelStripeAtPeriodEnd(s); // best-effort; logs on failure
+  }
+
+  // D5.1.1(v): delete the Clerk identity FIRST so a failure partway through
+  // can't leave a re-createable zombie (an Account row with no Clerk user
+  // that getOrCreateAccount would silently resurrect on next sign-in).
+  const client = await clerkClient();
+  await client.users.deleteUser(userId);
+  // Cascades to Subscription/Patient/AccountRole/CouponRedemption via onDelete: Cascade.
+  await prisma.account.deleteMany({ where: { clerkId: userId } });
+  return NextResponse.json({ ok: true });
+}

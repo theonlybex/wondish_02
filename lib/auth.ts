@@ -1,4 +1,5 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 // Single source of truth for "does this subscription grant premium access".
@@ -36,24 +37,111 @@ export async function getAccount() {
   });
 }
 
-export async function getOrCreateAccount() {
-  const { userId } = await auth();
-  if (!userId) return null;
+// `accountHasActivePremium` ORs `hasActivePremium` across every subscription
+// row on the account (one row per source: STRIPE/APPLE/COUPON/ADMIN) — an
+// account is premium if ANY source is currently active, even mid-transition
+// between sources (e.g. an Apple purchase landing before the Stripe row is
+// canceled).
+export function accountHasActivePremium(
+  subs: Array<{ plan: string; status: string } | null | undefined>
+): boolean {
+  return subs.some(hasActivePremium);
+}
 
-  const existing = await prisma.account.findUnique({ where: { clerkId: userId } });
+type ClaimTarget = { id: string; clerkId: string | null; email: string } | null;
+
+export type AccountClaimDecision =
+  | { action: "claim"; accountId: string; clerkId: string }
+  | { action: "create" }
+  | { action: "none"; accountId: string };
+
+// Pure decision behind getOrCreateAccount's email-claim reconciliation. A row
+// with `clerkId: null` (e.g. a previous partial registration, or a row seeded
+// by an admin/coupon flow before the user ever signed in) is claimed for this
+// Clerk user ONLY when the incoming Clerk email is verified — otherwise
+// anyone who merely types someone else's (unverified) email at sign-up could
+// take over that person's account and its premium/coupon entitlements.
+export function resolveAccountClaim(
+  existingByEmail: ClaimTarget,
+  userId: string,
+  emailVerified: boolean
+): AccountClaimDecision {
+  if (!existingByEmail) return { action: "create" };
+  if (existingByEmail.clerkId === userId) {
+    return { action: "none", accountId: existingByEmail.id };
+  }
+  if (existingByEmail.clerkId === null && emailVerified) {
+    return { action: "claim", accountId: existingByEmail.id, clerkId: userId };
+  }
+  // Unverified email on an unclaimed row (takeover guard), or the row is
+  // already claimed by a different Clerk user — never reassign it.
+  return { action: "create" };
+}
+
+function isUniqueConstraintViolation(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+}
+
+// Explicit-userId account lookup/creation, race-safe against concurrent
+// callers (app launch + foreground refresh + a post-purchase webhook can all
+// race to create the same account). Always returns with subscriptions
+// included so callers never need a second round trip for premium/serializeMe.
+export async function getOrCreateAccount(userId: string) {
+  const existing = await prisma.account.findUnique({
+    where: { clerkId: userId },
+    include: { subscriptions: true },
+  });
   if (existing) return existing;
 
-  const clerkUser = await currentUser();
-  if (!clerkUser) return null;
+  const client = await clerkClient();
+  const u = await client.users.getUser(userId);
+  const primaryEmail = u.primaryEmailAddress ?? u.emailAddresses[0] ?? null;
+  const email = primaryEmail?.emailAddress ?? "";
+  const emailVerified = primaryEmail?.verification?.status === "verified";
+  const firstName = u.firstName ?? "";
+  const lastName = u.lastName ?? "";
+  const photoUrl = u.imageUrl ?? null;
 
-  return prisma.account.create({
-    data: {
-      clerkId: userId,
-      email: clerkUser.emailAddresses[0]?.emailAddress ?? "",
-      firstName: clerkUser.firstName ?? "",
-      lastName: clerkUser.lastName ?? "",
-      agreedTerms: true,
-      subscription: { create: { plan: "FREE", status: "ACTIVE" } },
-    },
+  const existingByEmail = email ? await prisma.account.findUnique({ where: { email } }) : null;
+  const decision = resolveAccountClaim(
+    existingByEmail
+      ? { id: existingByEmail.id, clerkId: existingByEmail.clerkId, email: existingByEmail.email }
+      : null,
+    userId,
+    emailVerified
+  );
+
+  if (decision.action === "claim") {
+    await prisma.account.update({
+      where: { id: decision.accountId },
+      data: { clerkId: decision.clerkId },
+    });
+  } else if (decision.action === "create") {
+    try {
+      await prisma.account.create({
+        data: {
+          clerkId: userId,
+          email,
+          firstName,
+          lastName,
+          photoUrl,
+          agreedTerms: true,
+          subscriptions: { create: { plan: "FREE", status: "ACTIVE", source: "STRIPE" } },
+        },
+      });
+    } catch (err) {
+      // Concurrent launch/foreground/post-purchase requests can race to
+      // create the same account (unique on `email`, and once claimed, on
+      // `clerkId`). Rather than 500, fall through to the re-read below —
+      // whichever request won the race is returned to everyone.
+      if (!isUniqueConstraintViolation(err)) throw err;
+    }
+  }
+  // decision.action === "none" needs no write — a concurrent request already
+  // claimed this row between our two reads above.
+
+  return prisma.account.findUniqueOrThrow({
+    where: { clerkId: userId },
+    include: { subscriptions: true },
   });
 }

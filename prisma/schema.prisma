@@ -34,7 +34,7 @@ model Account {
 
   roles             AccountRole[]
   patient           Patient?
-  subscription      Subscription?
+  subscriptions     Subscription[]
   couponRedemptions CouponRedemption[]
 }
 
@@ -73,8 +73,9 @@ model RolePermission {
 
 model Subscription {
   id                     String             @id @default(cuid())
-  accountId              String             @unique
+  accountId              String
   account                Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  source                 SubscriptionSource @default(STRIPE)
   stripeCustomerId       String?            @unique
   stripeSubscriptionId   String?            @unique
   stripePriceId          String?
@@ -85,6 +86,10 @@ model Subscription {
   canceledAt             DateTime?
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
+
+  // One row per (account, source): a Stripe row and an Apple row can coexist
+  // on the same account (D19); each source manages only its own row.
+  @@unique([accountId, source])
 }
 
 enum SubscriptionPlan {
@@ -98,6 +103,13 @@ enum SubscriptionStatus {
   PAST_DUE
   TRIALING
   INCOMPLETE
+}
+
+enum SubscriptionSource {
+  STRIPE
+  APPLE
+  COUPON
+  ADMIN
 }
 
 // ─── Patient Profile ─────────────────────────────────────────────────────────

@@ -1,38 +1,8 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { convertWeight, convertHeight, calcCBMI } from "@/lib/caloric-engine";
-
-async function getOrCreateAccount(userId: string) {
-  let account = await prisma.account.findUnique({ where: { clerkId: userId } });
-  if (!account) {
-    const clerkUser = await currentUser();
-    if (!clerkUser) return null;
-    const email = clerkUser.emailAddresses[0]?.emailAddress ?? "";
-
-    // Email may already exist (e.g. from a previous partial registration)
-    // — claim that row by updating its clerkId instead of creating a duplicate
-    const existing = await prisma.account.findUnique({ where: { email } });
-    if (existing) {
-      account = await prisma.account.update({
-        where: { email },
-        data: { clerkId: userId },
-      });
-    } else {
-      account = await prisma.account.create({
-        data: {
-          clerkId: userId,
-          email,
-          firstName: clerkUser.firstName ?? "",
-          lastName: clerkUser.lastName ?? "",
-          agreedTerms: true,
-          subscription: { create: { plan: "FREE", status: "ACTIVE" } },
-        },
-      });
-    }
-  }
-  return account;
-}
+import { getOrCreateAccount } from "@/lib/auth";
 
 export async function GET() {
   const { userId } = await auth();
