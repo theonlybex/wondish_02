@@ -1,6 +1,15 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { parseLocalDateStrict } from "@/lib/journal";
+
+// Local-date parse (audit Task 15): `new Date("YYYY-MM-DD")` UTC-parses and
+// shifts the window a day early on negative-offset servers; garbage input
+// previously produced a NaN Date → Prisma 500. Invalid params now 400.
+function parseWindowParam(raw: string | null): Date | null | "invalid" {
+  if (raw === null) return null;
+  return parseLocalDateStrict(raw) ?? "invalid";
+}
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -11,11 +20,14 @@ export async function GET(req: NextRequest) {
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
   const { searchParams } = new URL(req.url);
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
+  const from = parseWindowParam(searchParams.get("from"));
+  const to = parseWindowParam(searchParams.get("to"));
+  if (from === "invalid" || to === "invalid") {
+    return NextResponse.json({ error: "from/to must be YYYY-MM-DD strings" }, { status: 400 });
+  }
 
-  const startDate = from ? new Date(from) : new Date();
-  const endDate = to ? new Date(to) : new Date();
+  const startDate = from ?? new Date();
+  const endDate = to ?? new Date();
   startDate.setHours(0, 0, 0, 0);
   endDate.setHours(23, 59, 59, 999);
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { format } from "date-fns";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin";
+import { parseLocalDateStrict } from "@/lib/journal";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,7 +13,16 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const dateParam = searchParams.get("date");
-  const date = dateParam ? new Date(dateParam) : new Date();
+  // Local-date parse (audit Task 15): bare new Date(param) UTC-shifted the
+  // day boundary and 500'd on garbage input.
+  let date: Date;
+  if (dateParam) {
+    const parsed = parseLocalDateStrict(dateParam);
+    if (!parsed) return NextResponse.json({ error: "date must be a YYYY-MM-DD string" }, { status: 400 });
+    date = parsed;
+  } else {
+    date = new Date();
+  }
   date.setHours(0, 0, 0, 0);
   const dateEnd = new Date(date);
   dateEnd.setHours(23, 59, 59, 999);
