@@ -1,6 +1,17 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
+import { classifyCoupon, couponCapWhere, GENERIC_COUPON_ERROR } from "@/lib/coupon";
+
+// Thrown when the atomic cap-enforcing increment matches no row (cap reached
+// or coupon deactivated between the pre-check and the transaction).
+class CouponUnavailableError extends Error {}
+
+function genericUnavailable() {
+  return NextResponse.json({ error: GENERIC_COUPON_ERROR }, { status: 404 });
+}
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -8,8 +19,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json();
-  const code = (body.code as string)?.trim().toUpperCase();
+  // Brute-force guard: ADMIN-type coupons grant the permanent SUPER role, so
+  // unthrottled guessing here would be privilege escalation to full admin.
+  const { success } = await rateLimit("coupon-redeem", userId, 5, 3600);
+  if (!success) {
+    return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const rawCode = (body as { code?: unknown } | null)?.code;
+  const code = typeof rawCode === "string" ? rawCode.trim().toUpperCase() : "";
   if (!code) {
     return NextResponse.json({ error: "Coupon code is required" }, { status: 400 });
   }
@@ -29,34 +53,34 @@ export async function POST(req: NextRequest) {
     include: { redemptions: { where: { accountId: account.id } } },
   });
 
-  if (!coupon || !coupon.isActive) {
-    return NextResponse.json({ error: "Invalid or inactive coupon code" }, { status: 400 });
-  }
-
-  if (coupon.expiresAt && coupon.expiresAt < new Date()) {
-    return NextResponse.json({ error: "This coupon has expired" }, { status: 400 });
-  }
-
-  if (coupon.maxUses !== -1 && coupon.usedCount >= coupon.maxUses) {
-    return NextResponse.json({ error: "This coupon has reached its usage limit" }, { status: 400 });
+  // One generic outcome for not-found/inactive/expired/capped — distinct
+  // copy was an enumeration aid (see lib/coupon.ts).
+  if (!coupon || classifyCoupon(coupon, new Date()) === "unavailable") {
+    return genericUnavailable();
   }
 
   if (coupon.redemptions.length > 0) {
-    return NextResponse.json({ error: "You have already redeemed this coupon" }, { status: 400 });
+    // The caller already knows this code is valid (they redeemed it), so a
+    // distinct message leaks nothing.
+    return NextResponse.json({ error: "You have already redeemed this coupon" }, { status: 409 });
   }
 
   // Apply the coupon in a transaction
-  await prisma.$transaction(async (tx) => {
-    // Record redemption
-    await tx.couponRedemption.create({
-      data: { couponId: coupon.id, accountId: account.id },
-    });
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Record redemption first — the (couponId, accountId) unique aborts a
+      // concurrent double-redeem by the same account (P2002 → 409 below).
+      await tx.couponRedemption.create({
+        data: { couponId: coupon.id, accountId: account.id },
+      });
 
-    // Increment usedCount
-    await tx.coupon.update({
-      where: { id: coupon.id },
-      data: { usedCount: { increment: 1 } },
-    });
+      // Atomic cap enforcement: predicate + increment in ONE UPDATE
+      // statement, so last-slot races can't overshoot maxUses.
+      const capped = await tx.coupon.updateMany({
+        where: couponCapWhere(coupon),
+        data: { usedCount: { increment: 1 } },
+      });
+      if (capped.count === 0) throw new CouponUnavailableError();
 
     if (coupon.type === "ADMIN") {
       // Upsert SUPER role
@@ -96,7 +120,15 @@ export async function POST(req: NextRequest) {
         },
       });
     }
-  });
+    });
+  } catch (err) {
+    if (err instanceof CouponUnavailableError) return genericUnavailable();
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      // Concurrent double-redeem by the same account lost the unique race.
+      return NextResponse.json({ error: "You have already redeemed this coupon" }, { status: 409 });
+    }
+    throw err;
+  }
 
   const message =
     coupon.type === "ADMIN"
