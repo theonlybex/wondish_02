@@ -15,7 +15,7 @@ import {
   type PlanDirection,
 } from "@/lib/caloric-engine";
 import { macroDeviation } from "@/lib/macros";
-import { derivePatientBans, buildDietMatchers, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -160,8 +160,8 @@ export async function buildMealPlanMenus(
   // matching now lives in lib/diet-match.ts (shared with the other four call
   // sites); behavior here is unchanged — this is a lift, not a rewrite.
   const { allergyNames, exactBanned } = derivePatientBans(patient);
-  const { allergyMatchers, exactBanned: dedupedExactBanned } = buildDietMatchers({ allergyNames, exactBanned });
-  const exactBannedNames = Array.from(new Set(dedupedExactBanned.map((b) => b.name)));
+  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const { allergyMatchers } = matchers;
 
   const motivationNames = patient.motivations.map((pm) => pm.motivation.name);
 
@@ -262,10 +262,10 @@ export async function buildMealPlanMenus(
 
   const menus: MenuRow[] = [];
 
-  const bannedFilter =
-    exactBannedNames.length > 0
-      ? { NOT: { ingredients: { some: { ingredient: { name: { in: exactBannedNames, mode: "insensitive" as const } } } } } }
-      : {};
+  // Exact bans are no longer pushed down as a SQL name-equality filter — the
+  // "name in [...]" predicate let "brown sugar" through a "sugar" ban. The
+  // pool filter below applies word-boundary phrase matching for BOTH allergy
+  // and exact-ban sources via evaluateDishAgainstProfile.
 
   const recipeSelect = {
     id: true, protein: true, calories: true, carbs: true, fiber: true, fat: true,
@@ -285,14 +285,15 @@ export async function buildMealPlanMenus(
   // are constant for the whole build, so they stay in the DB query; all
   // per-pick filters below reproduce the old queries' semantics exactly.
   const recipePoolRaw: PoolRecipe[] = await prisma.recipe.findMany({
-    where: { isPublic: true, ...bannedFilter },
+    where: { isPublic: true },
     select: { ...recipeSelect, mealTypeId: true, description: true },
   });
-  // Allergy bans apply by word boundary against every ingredient name.
-  const recipePool = allergyMatchers.length === 0
+  // Allergy AND exact bans apply by word boundary against every ingredient name.
+  const hasBans = allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
+  const recipePool = !hasBans
     ? recipePoolRaw
     : recipePoolRaw.filter(
-        (r) => !r.ingredients.some((ri) => allergyMatchers.some((rx) => rx.test(ri.ingredient.name)))
+        (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed
       );
 
   // weekUsedIds resets every 7 days — prevents recipe exhaustion while still

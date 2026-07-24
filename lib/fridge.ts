@@ -17,7 +17,7 @@
 
 import crypto from "crypto";
 import { MAX_MACRO, MAX_SERVINGS, MAX_NAME } from "@/lib/meal-log";
-import { boundaryPattern, escapeRe, type DietMatchers } from "@/lib/diet-match";
+import { exactBanPattern, type DietMatchers } from "@/lib/diet-match";
 
 export const MAX_INGREDIENTS = 30;
 const MAX_INGREDIENT_LEN = 80;
@@ -195,7 +195,7 @@ export function applyAllergenFilter(recipes: FridgeRecipe[], matchers: DietMatch
   // lib/food-map.ts's collectBannedTerms already applies to banned terms.
   const exactPatterns = matchers.exactBanned
     .filter((b) => b.name.trim().length > 0)
-    .map((b) => boundaryPattern(escapeRe(b.name)));
+    .map((b) => exactBanPattern(b.name));
 
   return recipes.filter((recipe) => {
     const text = recipeSearchText(recipe);

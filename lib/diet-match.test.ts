@@ -387,3 +387,50 @@ test("audit-T2: normalizeBannedIngredientName accepts real names, rejects junk",
   assert.equal(normalizeBannedIngredientName("   "), null);
   assert.equal(normalizeBannedIngredientName(42), null);
 });
+
+// ─── 2026-07-24 logic-audit Task 4: exact-ban phrase matching ───────────────
+//
+// Defect: exact bans (avoid/condition/preference/motivation) used whole-string
+// equality against ingredient names, so condition-ban "sugar" passed "brown
+// sugar" on every DB surface while fridge phrase-blocked the same term.
+// Over-block is the safe direction for health-condition bans.
+
+function conditionBan(name: string): PatientDietGraph {
+  return {
+    foodAllergies: [],
+    foodToAvoid: [],
+    healthConditions: [{ condition: { name: "Cond", bannedIngredients: [{ name }] } }],
+    foodPreferences: [],
+    motivations: [],
+  };
+}
+
+test("audit-T4: condition-ban 'sugar' flags ingredient 'brown sugar' (phrase, not equality)", () => {
+  const matchers = buildDietMatchers(derivePatientBans(conditionBan("sugar")));
+  const { passed, violations } = evaluateDishAgainstProfile(["brown sugar"], matchers);
+  assert.equal(passed, false);
+  assert.deepEqual(violations, [{ ingredient: "brown sugar", term: "sugar", source: "condition" }]);
+});
+
+test("audit-T4: avoid-ban 'egg' flags plural ingredient 'eggs'", () => {
+  const patient: PatientDietGraph = {
+    ...conditionBan("unused"),
+    healthConditions: [],
+    foodToAvoid: [{ food: { name: "egg" } }],
+  };
+  const matchers = buildDietMatchers(derivePatientBans(patient));
+  assert.equal(evaluateDishAgainstProfile(["eggs"], matchers).passed, false);
+  // boundary still holds: "egg" must not flag "eggplant"
+  assert.equal(evaluateDishAgainstProfile(["eggplant"], matchers).passed, true);
+});
+
+test("audit-T4: exact-ban boundary regression — 'corn' does not flag 'acorn squash'", () => {
+  const matchers = buildDietMatchers(derivePatientBans(conditionBan("corn")));
+  assert.equal(evaluateDishAgainstProfile(["acorn squash"], matchers).passed, true);
+  assert.equal(evaluateDishAgainstProfile(["corn tortilla"], matchers).passed, false);
+});
+
+test("audit-T4: multi-word exact ban still phrase-matches ('red meat' in 'ground red meat')", () => {
+  const matchers = buildDietMatchers(derivePatientBans(conditionBan("red meat")));
+  assert.equal(evaluateDishAgainstProfile(["ground red meat"], matchers).passed, false);
+});

@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { accountHasActivePremium } from "@/lib/auth";
-import { derivePatientBans, buildDietMatchers, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 
 export async function GET() {
   const { userId } = await auth();
@@ -29,19 +29,6 @@ export async function GET() {
   // shared engine exists to end) plus word-boundary allergy matching.
   const { allergyNames, exactBanned } = derivePatientBans(patient);
   const matchers = buildDietMatchers({ allergyNames, exactBanned });
-  const exactBannedNames = matchers.exactBanned.map((b) => b.name);
-
-  const bannedFilter = exactBannedNames.length > 0
-    ? {
-        NOT: {
-          ingredients: {
-            some: {
-              ingredient: { name: { in: exactBannedNames, mode: "insensitive" as const } },
-            },
-          },
-        },
-      }
-    : {};
 
   // Get already-swiped IDs
   const swiped = await prisma.patientDishPreference.findMany({
@@ -50,18 +37,17 @@ export async function GET() {
   });
   const swipedIds = swiped.map((s) => s.recipeId);
 
-  // Fetch diverse unrated public recipes with content, respecting banned ingredients.
-  // Exact-ban names are still pushed down to the DB filter above. Allergy
-  // word-boundary matching can't be expressed as a Prisma `where` clause, so
-  // ingredient names are selected here (stripped from the response below) and
-  // matched in-memory.
+  // Fetch diverse unrated public recipes with content. Ban matching (allergy
+  // AND exact sources) is word-boundary phrase matching, which can't be
+  // expressed as a Prisma `where` clause — the old exact-name SQL pushdown
+  // let "brown sugar" through a "sugar" ban. Ingredient names are selected
+  // here (stripped from the response below) and matched in-memory.
   const candidates = await prisma.recipe.findMany({
     where: {
       isPublic: true,
       ingredients: { some: {} },
       description: { not: null },
       ...(swipedIds.length > 0 ? { id: { notIn: swipedIds } } : {}),
-      ...bannedFilter,
     },
     select: {
       id: true,
@@ -77,10 +63,11 @@ export async function GET() {
     take: 80,
   });
 
-  const allowed = matchers.allergyMatchers.length === 0
+  const hasBans = matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
+  const allowed = !hasBans
     ? candidates
     : candidates.filter(
-        (r) => !r.ingredients.some((ri) => matchers.allergyMatchers.some((rx) => rx.test(ri.ingredient.name)))
+        (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed
       );
 
   // Shuffle and return 10 for variety; drop the ingredients field used only

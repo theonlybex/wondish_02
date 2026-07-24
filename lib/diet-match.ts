@@ -136,19 +136,28 @@ export function singularize(w: string): string {
   return w.replace(/(?<!s)s$/, ""); // plain plural; keep "-ss" words
 }
 
+// Union of the singular stem (+s/+es) and the verbatim stored name, so
+// "strawberries" matches both "strawberry" and "strawberries".
+function stemUnionBody(lowered: string): string {
+  const stem = singularize(lowered);
+  return stem === lowered || `${stem}s` === lowered || `${stem}es` === lowered
+    ? `${escapeRe(stem)}(?:s|es)?`
+    : `${escapeRe(stem)}(?:s|es)?|${escapeRe(lowered)}`;
+}
+
+// Phrase matcher for an exact-ban name: stem-union body + Unicode boundaries.
+// Shared by evaluateDishAgainstProfile (discrete ingredient names) and
+// lib/fridge.ts's applyAllergenFilter (free-text recipe fields) so both
+// surfaces block the identical term set.
+export const exactBanPattern = (name: string) => boundaryPattern(stemUnionBody(name.trim().toLowerCase()));
+
 export function buildDietMatchers({ allergyNames, exactBanned }: DerivedBans): DietMatchers {
   const allergyMatchers = Array.from(new Set(allergyNames.flatMap(expandBanName)))
     .map((lowered) => ({ lowered, stem: singularize(lowered) }))
     .filter(({ stem }) => stem.length >= 2)
-    .map(({ lowered, stem }) => {
-      // Union of the singular stem (+s/+es) and the verbatim stored name, so
-      // "strawberries" matches both "strawberry" and "strawberries".
-      const body =
-        stem === lowered || `${stem}s` === lowered || `${stem}es` === lowered
-          ? `${escapeRe(stem)}(?:s|es)?`
-          : `${escapeRe(stem)}(?:s|es)?|${escapeRe(lowered)}`;
-      return Object.assign(boundaryPattern(body), { term: stem }) as AllergyMatcher;
-    });
+    .map(({ lowered, stem }) =>
+      Object.assign(boundaryPattern(stemUnionBody(lowered)), { term: stem }) as AllergyMatcher
+    );
 
   // Exact-ban names lowercased for matching; dedup by (source, name) so a
   // banned ingredient repeated within one source doesn't produce duplicate
@@ -178,6 +187,15 @@ export function evaluateDishAgainstProfile(
 ): { passed: boolean; violations: Violation[] } {
   const violations: Violation[] = [];
 
+  // Word-boundary phrase matching (was whole-string equality): free-text
+  // ingredient names rarely equal the stored ban verbatim — a "sugar"
+  // condition-ban must flag "brown sugar". `term` stays the stored ban name
+  // (wire contract: violation.term is what the user's profile banned).
+  const exactMatchers = matchers.exactBanned.map((b) => ({
+    ...b,
+    re: exactBanPattern(b.name),
+  }));
+
   for (const ingredient of ingredientNames) {
     for (const matcher of matchers.allergyMatchers) {
       if (matcher.test(ingredient)) {
@@ -185,9 +203,8 @@ export function evaluateDishAgainstProfile(
       }
     }
 
-    const lowered = ingredient.trim().toLowerCase();
-    for (const banned of matchers.exactBanned) {
-      if (lowered === banned.name) {
+    for (const banned of exactMatchers) {
+      if (banned.re.test(ingredient)) {
         violations.push({ ingredient, term: banned.name, source: banned.source });
       }
     }

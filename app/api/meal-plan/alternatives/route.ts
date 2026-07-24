@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { derivePatientBans, buildDietMatchers, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -26,28 +26,21 @@ export async function GET(req: NextRequest) {
     patient ?? { foodAllergies: [], foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [] }
   );
   const matchers = buildDietMatchers({ allergyNames, exactBanned });
-  const exactBannedNames = matchers.exactBanned.map((b) => b.name);
-
-  const bannedFilter =
-    exactBannedNames.length > 0
-      ? { NOT: { ingredients: { some: { ingredient: { name: { in: exactBannedNames, mode: "insensitive" as const } } } } } }
-      : {};
 
   const calorieFilter = currentCalories > 0
     ? { calories: { gte: currentCalories - 250, lte: currentCalories + 250 } }
     : {};
 
-  // Exact-ban names (avoid/condition/preference/motivation) are still
-  // pushed down to the DB filter above. Allergy word-boundary matching
-  // cannot be expressed as a Prisma `where` clause, so it's applied here
-  // in-memory against a wider candidate pool before slicing to 3 — same
-  // two-stage pattern lib/meal-plan.ts uses for its recipe catalog.
+  // Ban matching (allergy AND exact sources) is word-boundary phrase
+  // matching, which cannot be expressed as a Prisma `where` clause — the old
+  // exact-name SQL pushdown let "brown sugar" through a "sugar" ban. It's
+  // applied in-memory against a wider candidate pool before slicing to 3 —
+  // same two-stage pattern lib/meal-plan.ts uses for its recipe catalog.
   const candidates = await prisma.recipe.findMany({
     where: {
       mealTypeId,
       isPublic: true,
       ...(excludeRecipeId ? { id: { not: excludeRecipeId } } : {}),
-      ...bannedFilter,
       ...calorieFilter,
     },
     take: 30,
@@ -55,11 +48,12 @@ export async function GET(req: NextRequest) {
     include: { mealType: true, dishType: true, ingredients: { include: { ingredient: true } } },
   });
 
+  const hasBans = matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
   const alternatives = (
-    matchers.allergyMatchers.length === 0
+    !hasBans
       ? candidates
       : candidates.filter(
-          (r) => !r.ingredients.some((ri) => matchers.allergyMatchers.some((rx) => rx.test(ri.ingredient.name)))
+          (r) => evaluateDishAgainstProfile(r.ingredients.map((ri: any) => ri.ingredient.name), matchers).passed
         )
   ).slice(0, 3);
 

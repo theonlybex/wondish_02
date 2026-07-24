@@ -727,3 +727,27 @@ test("getPlanDayCalories: falls back to gender when sexAtBirth is missing", asyn
   );
   assert.notEqual(await planDayCalories("p1", toLocalDateStr(planStart)), null);
 });
+
+// ─── 2026-07-24 logic-audit Task 4: exact bans filter the pool by phrase ────
+//
+// The SQL exact-name pushdown ("name in [...]") let "brown sugar" through a
+// "sugar" condition-ban. The pool now applies evaluateDishAgainstProfile
+// in-memory (same two-stage pattern as the allergy matchers).
+
+test("audit-T4: condition-ban 'sugar' excludes a 'brown sugar' recipe from the plan", async () => {
+  const patient = makePatient({
+    healthConditions: [{ condition: { name: "Diabetes", bannedIngredients: [{ name: "sugar" }] } }],
+  });
+  const pool = [
+    makeRecipe({ id: "bf-sugar", mealTypeId: MT_B.id, calories: 400, family: "f1", subFamily: "s1", ingredients: ["brown sugar", "oats"] }),
+    makeRecipe({ id: "bf-clean", mealTypeId: MT_B.id, calories: 400, family: "f2", subFamily: "s2", ingredients: ["oats"] }),
+    makeRecipe({ id: "lu", mealTypeId: MT_L.id, calories: 700, family: "f3", subFamily: "s3" }),
+    makeRecipe({ id: "d", mealTypeId: MT_D.id, calories: 600, family: "f4", subFamily: "s4" }),
+    makeRecipe({ id: "sn", mealTypeId: MT_S.id, calories: 300, family: "f5", subFamily: "s5" }),
+  ];
+  setDb(patient, ALL_MT, pool);
+  const { rows } = await build("p1", START);
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((r) => r.recipeId !== "bf-sugar"), "brown-sugar recipe must never be planned");
+  assert.ok(rows.some((r) => r.recipeId === "bf-clean"), "clean breakfast still planned");
+});
