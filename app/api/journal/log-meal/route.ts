@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { parseLocalDateStrict } from "@/lib/journal";
 
 // POST /api/journal/log-meal
 // Body: { recipeId, mealTypeName, date, rating: 1 | -1 }
@@ -14,10 +15,33 @@ export async function POST(req: NextRequest) {
   const patient = await prisma.patient.findFirst({ where: { account: { clerkId: userId } } });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
-  const { recipeId, mealTypeName, date, rating } = await req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const { recipeId, mealTypeName, date, rating } = body as {
+    recipeId?: string;
+    mealTypeName?: string;
+    date?: string;
+    rating?: number;
+  };
   if (!recipeId || !date) return NextResponse.json({ error: "Missing fields" }, { status: 400 });
 
-  const [y, m, d] = (date as string).split("-").map(Number);
+  // Contract is rating: 1 | -1 (like/dislike); anything else was previously
+  // stored verbatim (audit Task 14).
+  if (rating !== 1 && rating !== -1) {
+    return NextResponse.json({ error: "rating must be 1 or -1" }, { status: 400 });
+  }
+
+  const parsedDate = parseLocalDateStrict(date);
+  if (!parsedDate) {
+    return NextResponse.json({ error: "date must be a YYYY-MM-DD string" }, { status: 400 });
+  }
+  const y = parsedDate.getFullYear();
+  const m = parsedDate.getMonth() + 1;
+  const d = parsedDate.getDate();
   const entryDate = new Date(y, m - 1, d, 0, 0, 0, 0);
   const dateEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
 

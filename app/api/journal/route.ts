@@ -2,25 +2,11 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { convertHeight, convertWeight, calcCBMI } from "@/lib/caloric-engine";
+import { parseLocalDateStrict, shouldReplaceMeals, validateJournalPost } from "@/lib/journal";
 
 // How far current weight must drift from the weight the active meal plan was
 // generated at before we flag the plan stale. Keeps daily weigh-in noise quiet.
 const WEIGHT_DRIFT_LBS = 5;
-
-// `new Date(dateStr)` on a plain date-only string ("YYYY-MM-DD") parses it as
-// UTC midnight — in any negative UTC-offset zone that lands on the *previous*
-// local calendar day once rendered/formatted locally (the live bug this
-// replaces, mirroring the fix already used at
-// app/api/journal/log-meal/route.ts:20-21). Anchored date-only strings are
-// split and built via the local-time Date constructor instead; anything that
-// isn't a plain date-only string falls through to native parsing unchanged,
-// preserving prior behavior for missing/odd input.
-function parseLocalDateOnly(dateStr: string): Date {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
-  if (!match) return new Date(dateStr);
-  const [, y, m, d] = match;
-  return new Date(Number(y), Number(m) - 1, Number(d));
-}
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -32,7 +18,14 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const dateParam = searchParams.get("date");
-  const date = dateParam ? parseLocalDateOnly(dateParam) : new Date();
+  let date: Date;
+  if (dateParam) {
+    const parsed = parseLocalDateStrict(dateParam);
+    if (!parsed) return NextResponse.json({ error: "date must be a YYYY-MM-DD string" }, { status: 400 });
+    date = parsed;
+  } else {
+    date = new Date();
+  }
   date.setHours(0, 0, 0, 0);
   const dateEnd = new Date(date);
   dateEnd.setHours(23, 59, 59, 999);
@@ -53,10 +46,27 @@ export async function POST(req: NextRequest) {
   const patient = await prisma.patient.findFirst({ where: { account: { clerkId: userId } } });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
-  const body = await req.json();
-  const { date, mood, weight, energyLevel, activityLevel, notes, meals } = body;
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const { mood, energyLevel, activityLevel, notes } = body as {
+    mood?: string | null;
+    energyLevel?: string | null;
+    activityLevel?: string | null;
+    notes?: string | null;
+  };
 
-  const entryDate = parseLocalDateOnly(date);
+  // Validation (audit Task 14): garbage dates previously reached Prisma as
+  // Invalid Dates (500), NaN/negative weights were stored and synced into
+  // patient BMI, and ratings were entirely unvalidated.
+  const validated = validateJournalPost(body);
+  if (!validated.ok) {
+    return NextResponse.json({ error: validated.error }, { status: 400 });
+  }
+  const { date: entryDate, weight: parsedWeight, meals } = validated;
   entryDate.setHours(0, 0, 0, 0);
   const dateEnd = new Date(entryDate);
   dateEnd.setHours(23, 59, 59, 999);
@@ -67,7 +77,7 @@ export async function POST(req: NextRequest) {
 
   const entryData = {
     mood: mood ?? null,
-    weight: weight ? parseFloat(weight) : null,
+    weight: parsedWeight,
     energyLevel: energyLevel ?? null,
     activityLevel: activityLevel ?? null,
     notes: notes ?? null,
@@ -77,14 +87,19 @@ export async function POST(req: NextRequest) {
   await prisma.$transaction(async (tx) => {
     if (existing) {
       entry = await tx.journalEntry.update({ where: { id: existing.id }, data: entryData });
-      await tx.journalMeal.deleteMany({ where: { journalEntryId: existing.id } });
+      // Replace meal rows ONLY when the client sent the meals key — a
+      // mood/weight-only save must not destroy log-meal ratings for the day
+      // (audit Task 14). An explicit meals: [] remains a clear.
+      if (shouldReplaceMeals(body)) {
+        await tx.journalMeal.deleteMany({ where: { journalEntryId: existing.id } });
+      }
     } else {
       entry = await tx.journalEntry.create({ data: { ...entryData, patientId: patient.id, date: entryDate } });
     }
 
     if (meals?.length) {
       await tx.journalMeal.createMany({
-        data: meals.map((m: { mealType: string; recipeId?: string; preparation?: string; skipped?: boolean; rating?: number }) => ({
+        data: meals.map((m) => ({
           journalEntryId: entry!.id,
           mealType: m.mealType,
           recipeId: m.recipeId ?? null,
