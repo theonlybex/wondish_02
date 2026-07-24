@@ -234,6 +234,67 @@ test("applyAllergenFilter: all recipes dropped -> []", () => {
   assert.deepEqual(applyAllergenFilter(recipes, matchers), []);
 });
 
+// ─── applyAllergenFilter: exactBanned phrase branch (foodToAvoid -> source "avoid") ───
+
+function cilantroAvoidPatient(): PatientDietGraph {
+  return {
+    foodAllergies: [],
+    foodToAvoid: [{ food: { name: "cilantro" } }],
+    healthConditions: [],
+    foodPreferences: [],
+    motivations: [],
+  };
+}
+
+function redMeatAvoidPatient(): PatientDietGraph {
+  return {
+    foodAllergies: [],
+    foodToAvoid: [{ food: { name: "red meat" } }],
+    healthConditions: [],
+    foodPreferences: [],
+    motivations: [],
+  };
+}
+
+function emptyNameAvoidPatient(): PatientDietGraph {
+  return {
+    foodAllergies: [],
+    foodToAvoid: [{ food: { name: "   " } }],
+    healthConditions: [],
+    foodPreferences: [],
+    motivations: [],
+  };
+}
+
+test("applyAllergenFilter: exactBanned single-word phrase ('cilantro') drops a recipe listing it, a clean recipe survives", () => {
+  const matchers = buildDietMatchers(derivePatientBans(cilantroAvoidPatient()));
+  const withCilantro = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["fresh cilantro", "lime"] })], 3)!;
+  const withoutCilantro = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["parsley", "lime"] })], 3)!;
+  assert.deepEqual(applyAllergenFilter(withCilantro, matchers), []);
+  const survivors = applyAllergenFilter(withoutCilantro, matchers);
+  assert.equal(survivors.length, 1);
+});
+
+test("applyAllergenFilter: exactBanned multi-word phrase ('red meat') matches only the full phrase, not 'meat' or 'red' alone", () => {
+  const matchers = buildDietMatchers(derivePatientBans(redMeatAvoidPatient()));
+  const withRedMeat = parseFridgeRecipes([validRecipeInput({ steps: ["Sear the red meat until browned."] })], 3)!;
+  const withMeatOnly = parseFridgeRecipes([validRecipeInput({ steps: ["Braise the meat for two hours."] })], 3)!;
+  const withRedOnly = parseFridgeRecipes([validRecipeInput({ steps: ["Roast the red peppers."] })], 3)!;
+  assert.deepEqual(applyAllergenFilter(withRedMeat, matchers), []);
+  assert.equal(applyAllergenFilter(withMeatOnly, matchers).length, 1);
+  assert.equal(applyAllergenFilter(withRedOnly, matchers).length, 1);
+});
+
+test("applyAllergenFilter: exactBanned entry with an empty/whitespace name is ignored (guard) and drops nothing", () => {
+  const matchers = buildDietMatchers(derivePatientBans(emptyNameAvoidPatient()));
+  const recipes = parseFridgeRecipes(
+    [validRecipeInput({ name: "Chickpea Skillet" }), validRecipeInput({ name: "Roasted Butternut Squash" })],
+    3
+  )!;
+  const out = applyAllergenFilter(recipes, matchers);
+  assert.equal(out.length, recipes.length);
+});
+
 // ─── buildFridgePrompt ───────────────────────────────────────────────────────
 
 test("buildFridgePrompt: contains the ingredient list, meal-type hint, and strict tool-use instruction", () => {

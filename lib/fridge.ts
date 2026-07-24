@@ -176,7 +176,13 @@ function recipeSearchText(recipe: FridgeRecipe): string {
 }
 
 export function applyAllergenFilter(recipes: FridgeRecipe[], matchers: DietMatchers): FridgeRecipe[] {
-  const exactPatterns = matchers.exactBanned.map((b) => new RegExp(`\\b${escapeRe(b.name)}\\b`, "i"));
+  // Guard against a malformed DB row with an empty/whitespace name: an empty
+  // pattern (`\b\b`) matches everywhere, silently dropping every recipe
+  // (fails safe, but breaks the feature). Mirrors the same length guard
+  // lib/food-map.ts's collectBannedTerms already applies to banned terms.
+  const exactPatterns = matchers.exactBanned
+    .filter((b) => b.name.trim().length > 0)
+    .map((b) => new RegExp(`\\b${escapeRe(b.name)}\\b`, "i"));
 
   return recipes.filter((recipe) => {
     const text = recipeSearchText(recipe);
