@@ -11,8 +11,12 @@ export async function GET(req: NextRequest) {
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
   const { searchParams } = new URL(req.url);
-  const page = parseInt(searchParams.get("page") ?? "1");
-  const limit = parseInt(searchParams.get("limit") ?? "10");
+  // Clamped: NaN/negative params previously reached Prisma as a NaN skip
+  // (500). Bad input falls back to defaults instead of erroring.
+  const rawPage = parseInt(searchParams.get("page") ?? "1");
+  const rawLimit = parseInt(searchParams.get("limit") ?? "10");
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
+  const limit = Number.isFinite(rawLimit) && rawLimit >= 1 ? Math.min(rawLimit, 100) : 10;
 
   const [orders, total] = await Promise.all([
     prisma.order.findMany({

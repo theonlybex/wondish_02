@@ -47,5 +47,9 @@ export function adminErrorResponse(err: unknown) {
   const message = err instanceof Error ? err.message : "Internal error";
   if (message === "UNAUTHORIZED") return Response.json({ error: "Unauthorized" }, { status: 401 });
   if (message === "FORBIDDEN") return Response.json({ error: "Forbidden" }, { status: 403 });
-  return Response.json({ error: message }, { status: 500 });
+  // Generic 500 body: raw err.message leaked Prisma/Postgres internals
+  // (column names, overflow text) to the client (audit Task 18). Full error
+  // stays server-side.
+  console.error("[admin] unhandled error", err);
+  return Response.json({ error: "Internal error" }, { status: 500 });
 }

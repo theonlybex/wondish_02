@@ -164,7 +164,9 @@ export async function getOrCreateAccount(userId: string) {
           firstName,
           lastName,
           photoUrl,
-          agreedTerms: true,
+          // Only record consent the user actually gave — auto-created
+          // accounts have never seen the terms flow (audit Task 18).
+          agreedTerms: false,
           subscriptions: { create: { plan: "FREE", status: "ACTIVE", source: "STRIPE" } },
         },
       });

@@ -17,10 +17,10 @@ test("FORBIDDEN error maps to 403 with Forbidden body", async () => {
   assert.deepEqual(await res.json(), { error: "Forbidden" });
 });
 
-test("other Error maps to 500 and echoes the message", async () => {
+test("other Error maps to a GENERIC 500 (audit T18: raw messages leaked Prisma internals)", async () => {
   const res = adminErrorResponse(new Error("database exploded"));
   assert.equal(res.status, 500);
-  assert.deepEqual(await res.json(), { error: "database exploded" });
+  assert.deepEqual(await res.json(), { error: "Internal error" });
 });
 
 test("non-Error values map to 500 with generic message", async () => {
@@ -40,7 +40,7 @@ test("null and undefined map to 500 with generic message", async () => {
 test("error whose message merely contains UNAUTHORIZED is not a 401 (exact match only)", async () => {
   const res = adminErrorResponse(new Error("UNAUTHORIZED: token expired"));
   assert.equal(res.status, 500);
-  assert.deepEqual(await res.json(), { error: "UNAUTHORIZED: token expired" });
+  assert.deepEqual(await res.json(), { error: "Internal error" });
 });
 
 test("non-Error object with a message property is NOT duck-typed into a 401", async () => {

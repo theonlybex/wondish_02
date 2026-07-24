@@ -11,6 +11,9 @@ const isPublicRoute = createRouteMatcher([
   "/privacy(.*)",
   "/api/stripe/webhook",
   "/api/health",
+  // Cookie-only locale switch — signed-out visitors on public pages
+  // previously got a middleware 401 when changing language (audit Task 18).
+  "/api/set-locale",
 ]);
 
 const isAuthRoute = createRouteMatcher(["/login(.*)", "/register(.*)"]);

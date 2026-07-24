@@ -4,6 +4,8 @@ import {
   MEAL_TYPES,
   formatLocalDate,
   parseMealLogInput,
+  MAX_NOTE,
+  MAX_CLIENT_REQUEST_ID,
   parseBatchInput,
   parsePatchInput,
   resolveSnapshot,
@@ -712,4 +714,16 @@ test("simulated pagination: a same-updatedAt cluster straddling the page boundar
   assert.deepEqual(seenIds, allIds);
   // No duplicates.
   assert.equal(new Set(seenIds).size, rows.length);
+});
+
+// ─── 2026-07-24 logic-audit Task 18: note/clientRequestId length caps ───────
+
+test("audit-T18: over-cap note and clientRequestId are rejected; at-cap pass", () => {
+  const base = { localDate: "2026-07-24", mealType: "lunch", name: "Salad", source: "MANUAL", perServing: { calories: 100 } };
+  const longNote = parseMealLogInput({ ...base, note: "x".repeat(MAX_NOTE + 1) });
+  assert.equal(longNote.ok, false);
+  const longId = parseMealLogInput({ ...base, clientRequestId: "x".repeat(MAX_CLIENT_REQUEST_ID + 1) });
+  assert.equal(longId.ok, false);
+  const atCap = parseMealLogInput({ ...base, note: "x".repeat(MAX_NOTE), clientRequestId: "y".repeat(MAX_CLIENT_REQUEST_ID) });
+  assert.equal(atCap.ok, true);
 });

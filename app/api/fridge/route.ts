@@ -69,21 +69,25 @@ export async function POST(req: NextRequest) {
   // no account row self-heals instead of hitting a hard 404.
   const account = await getOrCreateAccount(userId);
 
+  // Profile check BEFORE the daily-credit charge (audit Task 18): a
+  // missing-profile 404 used to burn one of the user's FRIDGE_DAILY_FREE
+  // credits with nothing delivered.
+  const patient = await prisma.patient.findFirst({
+    where: { accountId: account.id },
+    include: PATIENT_FOOD_MAP_INCLUDE,
+  });
+  if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+
   // Credit gate (F-D2 server-side daily backstop — the ONLY freemium gate per
   // the Cycle-5 amendment; client-side UsageMeter/PaywallView are void). Must
-  // run before any Anthropic call so a gated request costs zero tokens.
+  // run before any Anthropic call so a gated request costs zero tokens
+  // (charge-before-model is the correct anti-race direction and stays).
   if (!accountHasActivePremium(account.subscriptions)) {
     const day = await rateLimit(FRIDGE_DAY_RATE_LIMIT_NAME, userId, FRIDGE_DAILY_FREE, FRIDGE_DAY_RATE_LIMIT_WINDOW_SEC);
     if (!day.success) {
       return NextResponse.json({ error: "Premium required" }, { status: 402 });
     }
   }
-
-  const patient = await prisma.patient.findFirst({
-    where: { accountId: account.id },
-    include: PATIENT_FOOD_MAP_INCLUDE,
-  });
-  if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
   const foodMapText = buildFoodMapText(patient);
   // F-D7: deterministic server-side allergen filter, independent of the

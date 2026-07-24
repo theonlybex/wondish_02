@@ -53,6 +53,11 @@ const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/; // anchored (audit T1) — format o
 export const MAX_SERVINGS = 50;
 export const MAX_MACRO = 10000;
 export const MAX_NAME = 120;
+// Bounded free-text/id fields (audit Task 18): previously unbounded — a
+// multi-megabyte note or clientRequestId (an indexed unique column) was
+// accepted verbatim on every write path including batch ×50.
+export const MAX_NOTE = 2000;
+export const MAX_CLIENT_REQUEST_ID = 128;
 const MAX_BATCH_ITEMS = 50;
 const MAX_RANGE_DAYS = 366;
 export const DELTA_PAGE_SIZE = 500;
@@ -174,6 +179,13 @@ function optionalString(v: unknown): string | undefined {
 
 function validateItem(raw: unknown, localDate: string, mealType: MealType): ParseResult<ParsedMealLog> {
   if (!isObj(raw)) return fail("meal-log item must be an object");
+
+  if (typeof raw.note === "string" && raw.note.length > MAX_NOTE) {
+    return fail(`note must be <= ${MAX_NOTE} characters`);
+  }
+  if (typeof raw.clientRequestId === "string" && raw.clientRequestId.length > MAX_CLIENT_REQUEST_ID) {
+    return fail(`clientRequestId must be <= ${MAX_CLIENT_REQUEST_ID} characters`);
+  }
 
   // source (default MANUAL)
   let source: MealLogSource = MealLogSource.MANUAL;

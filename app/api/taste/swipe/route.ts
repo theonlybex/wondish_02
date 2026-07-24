@@ -20,10 +20,20 @@ export async function POST(req: NextRequest) {
   const patient = account.patient;
   if (!patient) return NextResponse.json({ error: "No profile" }, { status: 404 });
 
-  const { recipeId, liked } = await req.json();
-  if (!recipeId || liked === undefined) {
-    return NextResponse.json({ error: "recipeId and liked required" }, { status: 400 });
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+  const { recipeId, liked } = (body ?? {}) as { recipeId?: unknown; liked?: unknown };
+  if (typeof recipeId !== "string" || recipeId.length === 0 || typeof liked !== "boolean") {
+    return NextResponse.json({ error: "recipeId (string) and liked (boolean) required" }, { status: 400 });
+  }
+
+  // A nonexistent recipeId used to surface as an FK-violation 500.
+  const recipe = await prisma.recipe.findUnique({ where: { id: recipeId }, select: { id: true } });
+  if (!recipe) return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
 
   await prisma.patientDishPreference.upsert({
     where: { patientId_recipeId: { patientId: patient.id, recipeId } },

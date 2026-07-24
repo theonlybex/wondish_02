@@ -5,7 +5,10 @@ import { NextRequest, NextResponse } from "next/server";
 // them back to where they were going. The layout only redirects here
 // after confirming profileCompleted=true in the DB, so no re-check needed.
 export async function GET(req: NextRequest) {
-  const next = req.nextUrl.searchParams.get("next") ?? "/overview";
+  // Same-origin relative paths only — `new URL(next, req.url)` accepts
+  // absolute and //host values, making ?next= an open redirect (audit T18).
+  const rawNext = req.nextUrl.searchParams.get("next") ?? "/overview";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/overview";
   const res = NextResponse.redirect(new URL(next, req.url));
   res.cookies.set("taste_complete", "1", {
     httpOnly: true,

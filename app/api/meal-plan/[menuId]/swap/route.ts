@@ -12,7 +12,16 @@ export async function PATCH(
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { recipeId } = await req.json();
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const { recipeId } = (body ?? {}) as { recipeId?: unknown };
+  if (typeof recipeId !== "string" || recipeId.length === 0) {
+    return NextResponse.json({ error: "recipeId is required" }, { status: 400 });
+  }
 
   // Single round-trip via the Clerk id relation (was account-then-patient).
   const patient = await prisma.patient.findFirst({
@@ -26,8 +35,10 @@ export async function PATCH(
   });
   if (!menu) return NextResponse.json({ error: "Menu not found" }, { status: 404 });
 
-  const newRecipe = await prisma.recipe.findUnique({
-    where: { id: recipeId },
+  // isPublic parity with every serving surface (audit Task 18): a private
+  // recipe id could previously be swapped in and read back in full.
+  const newRecipe = await prisma.recipe.findFirst({
+    where: { id: recipeId, isPublic: true },
     include: {
       dishType:    true,
       ingredients: { include: { ingredient: true } },

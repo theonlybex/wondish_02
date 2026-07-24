@@ -86,7 +86,9 @@ export interface ListQuery {
 // no allow-list to validate cuisine/neighborhood against here; the DB query
 // simply returns zero rows for a bogus value).
 function parseLimit(raw: string | null): number {
-  if (raw == null) return DEFAULT_LIMIT;
+  // Empty/whitespace counts as absent: Number("") === 0, which previously
+  // clamped to MIN_LIMIT (1) instead of falling back to the default.
+  if (raw == null || raw.trim() === "") return DEFAULT_LIMIT;
   const n = Number(raw);
   if (!Number.isFinite(n)) return DEFAULT_LIMIT;
   return Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, Math.trunc(n)));
