@@ -16,7 +16,7 @@
 // returned.
 
 import crypto from "crypto";
-import { MAX_MACRO, MAX_SERVINGS } from "@/lib/meal-log";
+import { MAX_MACRO, MAX_SERVINGS, MAX_NAME } from "@/lib/meal-log";
 import { escapeRe, type DietMatchers } from "@/lib/diet-match";
 
 export const MAX_INGREDIENTS = 30;
@@ -109,7 +109,10 @@ function parseOneRecipe(raw: unknown, mealTypeHint?: string): FridgeRecipe | nul
   if (typeof raw !== "object" || raw === null) return null;
   const r = raw as Record<string, unknown>;
 
-  const name = typeof r.name === "string" ? r.name.trim() : "";
+  // Clamp to meal-log's own name bound: /api/meal-log's checkName (lib/meal-log.ts)
+  // hard-400s any name over MAX_NAME, so a longer model-generated name here
+  // would parse fine but be permanently unloggable via "Log it".
+  const name = typeof r.name === "string" ? r.name.trim().slice(0, MAX_NAME) : "";
   if (!name) return null;
 
   if (!isNonEmptyStringArray(r.steps)) return null;
@@ -231,7 +234,7 @@ export const SUGGEST_RECIPES_SCHEMA: { type: "object"; properties: Record<string
       items: {
         type: "object",
         properties: {
-          name: { type: "string" },
+          name: { type: "string", maxLength: MAX_NAME },
           description: { type: "string" },
           emoji: { type: "string" },
           usesIngredients: { type: "array", items: { type: "string" } },

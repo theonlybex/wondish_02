@@ -11,7 +11,7 @@ import {
   type FridgeRecipe,
 } from "./fridge";
 import { derivePatientBans, buildDietMatchers, type PatientDietGraph } from "./diet-match";
-import { MAX_MACRO, MAX_SERVINGS } from "./meal-log";
+import { MAX_MACRO, MAX_SERVINGS, MAX_NAME } from "./meal-log";
 
 // ─── normalizeIngredients ───────────────────────────────────────────────────
 
@@ -153,6 +153,13 @@ test("parseFridgeRecipes: coerces missing missingIngredients/conflicts/usesIngre
   assert.deepEqual(out[0].missingIngredients, []);
   assert.deepEqual(out[0].conflicts, []);
   assert.deepEqual(out[0].usesIngredients, []);
+});
+
+test("parseFridgeRecipes: clamps an over-length name to MAX_NAME (meal-log's 120-char bound) so it stays loggable", () => {
+  const longName = "x".repeat(200);
+  const out = parseFridgeRecipes([validRecipeInput({ name: longName })], 3)!;
+  assert.equal(out[0].name.length, MAX_NAME);
+  assert.equal(out[0].name.length, 120);
 });
 
 // ─── applyAllergenFilter (F-D7, word-boundary via diet-match) ──────────────
