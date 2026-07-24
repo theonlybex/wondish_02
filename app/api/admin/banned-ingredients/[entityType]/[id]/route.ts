@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin";
+import { normalizeBannedIngredientName } from "@/lib/diet-match";
 
 type Params = { entityType: string; id: string };
 
@@ -24,9 +25,18 @@ export async function POST(
   try {
     await requireAdmin();
     const { name } = await req.json();
-    if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
+    // Write-side guard: this table feeds the safety matchers — a 1-char or
+    // letterless name would save fine but be silently dropped/inert at match
+    // time (see lib/diet-match.ts normalizeBannedIngredientName).
+    const normalized = normalizeBannedIngredientName(name);
+    if (normalized === null) {
+      return NextResponse.json(
+        { error: "name must be at least 2 characters and contain a letter or digit" },
+        { status: 400 }
+      );
+    }
 
-    const item = await createItem(params.entityType, params.id, name.trim());
+    const item = await createItem(params.entityType, params.id, normalized);
     return NextResponse.json(item, { status: 201 });
   } catch (err) {
     return adminErrorResponse(err);

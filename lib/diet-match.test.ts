@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   singularize,
+  normalizeBannedIngredientName,
   derivePatientBans,
   buildDietMatchers,
   evaluateDishAgainstProfile,
@@ -345,4 +346,44 @@ test("audit-T1: regressions hold — peanut↔peanuts, egg ∤ eggplant", () => 
   const e = buildDietMatchers({ allergyNames: ["egg"], exactBanned: [] });
   assert.equal(e.allergyMatchers.some((re) => re.test("eggplant")), false);
   assert.equal(e.allergyMatchers.some((re) => re.test("scrambled eggs")), true);
+});
+
+// ─── 2026-07-24 logic-audit Task 2: unicode/punctuation boundaries ──────────
+//
+// Defect: JS \b is ASCII-\w-based, so ban terms starting/ending with
+// punctuation or accented letters build unsatisfiable regexes and are
+// silently inert; slash-compound names ("Wheat / Gluten") stem as one
+// unmatchable phrase.
+
+test("audit-T2: accented-edge allergy name matches (unicode-safe boundaries)", () => {
+  const m = buildDietMatchers({ allergyNames: ["œufs"], exactBanned: [] });
+  assert.equal(m.allergyMatchers.some((re) => re.test("œufs brouillés")), true);
+});
+
+test("audit-T2: slash-compound allergy name matches each part", () => {
+  const m = buildDietMatchers({ allergyNames: ["Wheat / Gluten"], exactBanned: [] });
+  assert.equal(m.allergyMatchers.some((re) => re.test("Wheat flour wrapper")), true);
+  assert.equal(m.allergyMatchers.some((re) => re.test("Bun (gluten)")), true);
+});
+
+test("audit-T2: punctuation-wrapped allergy name matches its bare form", () => {
+  const m = buildDietMatchers({ allergyNames: ["(Shellfish)"], exactBanned: [] });
+  assert.equal(m.allergyMatchers.some((re) => re.test("shellfish stock")), true);
+});
+
+test("audit-T2: boundary regressions — butter ∤ butternut, egg ∤ eggplant still hold", () => {
+  const b = buildDietMatchers({ allergyNames: ["butter"], exactBanned: [] });
+  assert.equal(b.allergyMatchers.some((re) => re.test("butternut squash")), false);
+  assert.equal(b.allergyMatchers.some((re) => re.test("peanut butter")), true);
+  const e = buildDietMatchers({ allergyNames: ["egg"], exactBanned: [] });
+  assert.equal(e.allergyMatchers.some((re) => re.test("eggplant parmesan")), false);
+});
+
+test("audit-T2: normalizeBannedIngredientName accepts real names, rejects junk", () => {
+  assert.equal(normalizeBannedIngredientName("  Ground   peanuts "), "Ground peanuts");
+  assert.equal(normalizeBannedIngredientName("Nuts (tree)"), "Nuts (tree)");
+  assert.equal(normalizeBannedIngredientName("("), null);
+  assert.equal(normalizeBannedIngredientName("x"), null);
+  assert.equal(normalizeBannedIngredientName("   "), null);
+  assert.equal(normalizeBannedIngredientName(42), null);
 });

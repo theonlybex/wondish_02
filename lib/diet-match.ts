@@ -87,6 +87,45 @@ export function derivePatientBans(patient: PatientDietGraph): DerivedBans {
 // this escape instead of a second copy.
 export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// Unicode-aware word boundary. JS \b is ASCII-\w-based: it is unsatisfiable
+// at a term edge that is punctuation ("nuts (tree)") or an accented letter
+// ("œufs"), silently disabling that ban everywhere. Lookarounds on Unicode
+// letters/digits behave identically to \b for plain-ASCII terms.
+export const boundaryPattern = (body: string) =>
+  new RegExp(`(?<![\\p{L}\\p{N}])(?:${body})(?![\\p{L}\\p{N}])`, "iu");
+
+// Constructed (not literal) so the `u` flag clears the ES5 tsc target the
+// build type-checks against; runtime is Node 18+ where both are fine.
+const EDGE_PUNCT_RE = new RegExp("^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$", "gu");
+const HAS_LETTER_OR_DIGIT_RE = new RegExp("[\\p{L}\\p{N}]", "u");
+
+// Matching-side variants of a stored ban name: the verbatim name, each
+// slash-separated part ("Wheat / Gluten" → wheat, gluten), and each part with
+// punctuation stripped from its edges ("(shellfish)" → shellfish).
+export function expandBanName(raw: string): string[] {
+  const whole = raw.trim().toLowerCase().replace(/\s+/g, " ");
+  const out = new Set<string>();
+  if (whole) out.add(whole);
+  for (const piece of whole.split("/")) {
+    const p = piece.trim();
+    if (p) out.add(p);
+    const stripped = p.replace(EDGE_PUNCT_RE, "").trim();
+    if (stripped) out.add(stripped);
+  }
+  return Array.from(out).filter((v) => v.length >= 2);
+}
+
+// Write-side guard for admin banned-ingredient names: trims, collapses inner
+// whitespace, and rejects names with no letter/digit or under 2 chars (a
+// 1-char name would be silently dropped by the matcher's min-length filter).
+export function normalizeBannedIngredientName(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const collapsed = raw.trim().replace(/\s+/g, " ");
+  if (collapsed.length < 2) return null;
+  if (!HAS_LETTER_OR_DIGIT_RE.test(collapsed)) return null;
+  return collapsed;
+}
+
 // Singular form of a stored allergy/food name. The plain `(?<!s)s$` strip
 // alone mis-stems -ies/-oes plurals ("strawberries" → "strawberrie"), whose
 // bogus stem then never matches the singular form recipe ingredients use.
@@ -98,8 +137,7 @@ export function singularize(w: string): string {
 }
 
 export function buildDietMatchers({ allergyNames, exactBanned }: DerivedBans): DietMatchers {
-  const allergyMatchers = Array.from(new Set(allergyNames))
-    .map((name) => name.trim().toLowerCase())
+  const allergyMatchers = Array.from(new Set(allergyNames.flatMap(expandBanName)))
     .map((lowered) => ({ lowered, stem: singularize(lowered) }))
     .filter(({ stem }) => stem.length >= 2)
     .map(({ lowered, stem }) => {
@@ -109,7 +147,7 @@ export function buildDietMatchers({ allergyNames, exactBanned }: DerivedBans): D
         stem === lowered || `${stem}s` === lowered || `${stem}es` === lowered
           ? `${escapeRe(stem)}(?:s|es)?`
           : `${escapeRe(stem)}(?:s|es)?|${escapeRe(lowered)}`;
-      return Object.assign(new RegExp(`\\b(?:${body})\\b`, "i"), { term: stem }) as AllergyMatcher;
+      return Object.assign(boundaryPattern(body), { term: stem }) as AllergyMatcher;
     });
 
   // Exact-ban names lowercased for matching; dedup by (source, name) so a

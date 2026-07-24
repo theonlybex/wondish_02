@@ -337,3 +337,18 @@ test("SUGGEST_RECIPES_SCHEMA: is a valid tool input_schema shape", () => {
   assert.equal(SUGGEST_RECIPES_SCHEMA.type, "object");
   assert.ok(SUGGEST_RECIPES_SCHEMA.properties);
 });
+
+// ─── 2026-07-24 logic-audit Task 2: punctuation-edged exact bans ────────────
+
+test("audit-T2: exact ban with punctuation edges ('Nuts (tree)') blocks matching free text", () => {
+  const patient: PatientDietGraph = {
+    foodAllergies: [],
+    foodToAvoid: [{ food: { name: "Nuts (tree)" } }],
+    healthConditions: [],
+    foodPreferences: [],
+    motivations: [],
+  };
+  const matchers = buildDietMatchers(derivePatientBans(patient));
+  const recipes = parseFridgeRecipes([validRecipeInput({ steps: ["Top with nuts (tree) mix."] })], 3)!;
+  assert.deepEqual(applyAllergenFilter(recipes, matchers), []);
+});
