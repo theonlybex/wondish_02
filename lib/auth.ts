@@ -7,12 +7,26 @@ import { prisma } from "@/lib/db";
 // app/(dashboard)/layout.tsx:11-14 — plan must be PREMIUM AND status must be
 // one of ACTIVE/TRIALING/INCOMPLETE (INCOMPLETE covers a just-started Stripe
 // checkout that hasn't confirmed payment yet but shouldn't be locked out).
+// Grace period past a lapsed Stripe period end before entitlement is cut —
+// covers renewal-webhook delivery lag without leaving a meaningful free
+// window. Entitlement is otherwise 100% webhook-dependent: one missed
+// subscription.deleted would leave status ACTIVE (premium) forever.
+const PERIOD_END_GRACE_MS = 24 * 60 * 60 * 1000;
+
 export function hasActivePremium(
-  subscription: { plan: string; status: string } | null | undefined
+  subscription:
+    | { plan: string; status: string; stripeCurrentPeriodEnd?: Date | null }
+    | null
+    | undefined
 ): boolean {
   if (!subscription) return false;
   if (subscription.plan !== "PREMIUM") return false;
-  return ["ACTIVE", "TRIALING", "INCOMPLETE"].includes(subscription.status);
+  if (!["ACTIVE", "TRIALING", "INCOMPLETE"].includes(subscription.status)) return false;
+  // Period-end backstop: only rows that carry a Stripe period end are
+  // subject to it — coupon/admin grants (null periodEnd) never expire here.
+  const periodEnd = subscription.stripeCurrentPeriodEnd;
+  if (periodEnd && periodEnd.getTime() + PERIOD_END_GRACE_MS < Date.now()) return false;
+  return true;
 }
 
 // Explicit account+subscription lookup by Clerk id. Some call sites only ever

@@ -1,11 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { stripe as getStripe } from "@/lib/stripe";
+import { Prisma } from "@prisma/client";
+import { stripe as getStripe, mapStripeStatus } from "@/lib/stripe";
 import { prisma } from "@/lib/db";
 import { redis } from "@/lib/redis";
 import * as Sentry from "@sentry/nextjs";
 
 export const runtime = "nodejs";
+
+// All handlers write via updateMany: a bare update throws P2025 when the row
+// is gone (account deleted while the Stripe sub was live) → 500 → the
+// idempotency claim is released → Stripe retries the same failure for days.
+// A missing row is a tolerated no-op, logged once per event.
+async function updateStripeRow(
+  accountId: string,
+  data: Prisma.SubscriptionUpdateManyMutationInput,
+  eventType: string
+) {
+  const { count } = await prisma.subscription.updateMany({
+    where: { accountId, source: "STRIPE" },
+    data,
+  });
+  if (count === 0) {
+    console.warn(`[webhook] no STRIPE subscription row for account ${accountId} (${eventType}) — skipped`);
+  }
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -49,23 +68,21 @@ export async function POST(req: NextRequest) {
           const stripeSubscription =
             await stripeClient.subscriptions.retrieve(subscriptionId);
 
-          await prisma.subscription.update({
-            where: { accountId_source: { accountId, source: "STRIPE" } },
-            data: {
-              stripeSubscriptionId: subscriptionId,
-              stripePriceId: stripeSubscription.items.data[0]?.price.id,
-              stripeCurrentPeriodEnd: new Date(
-                stripeSubscription.current_period_end * 1000
-              ),
-              plan: "PREMIUM",
-              status: stripeSubscription.status === "trialing"
-                ? "TRIALING"
-                : "ACTIVE",
-              trialEndsAt: stripeSubscription.trial_end
-                ? new Date(stripeSubscription.trial_end * 1000)
-                : null,
-            },
-          });
+          // Honest status: a session can complete with the subscription in
+          // incomplete/past_due (async payment failure) — mapping everything
+          // non-trialing to ACTIVE granted free premium until the next event.
+          await updateStripeRow(accountId, {
+            stripeSubscriptionId: subscriptionId,
+            stripePriceId: stripeSubscription.items.data[0]?.price.id,
+            stripeCurrentPeriodEnd: new Date(
+              stripeSubscription.current_period_end * 1000
+            ),
+            plan: "PREMIUM",
+            status: mapStripeStatus(stripeSubscription.status),
+            trialEndsAt: stripeSubscription.trial_end
+              ? new Date(stripeSubscription.trial_end * 1000)
+              : null,
+          }, event.type);
         }
         break;
       }
@@ -80,15 +97,12 @@ export async function POST(req: NextRequest) {
           const accountId = stripeSubscription.metadata?.accountId;
 
           if (accountId) {
-            await prisma.subscription.update({
-              where: { accountId_source: { accountId, source: "STRIPE" } },
-              data: {
-                status: stripeSubscription.status === "trialing" ? "TRIALING" : "ACTIVE",
-                stripeCurrentPeriodEnd: new Date(
-                  stripeSubscription.current_period_end * 1000
-                ),
-              },
-            });
+            await updateStripeRow(accountId, {
+              status: mapStripeStatus(stripeSubscription.status),
+              stripeCurrentPeriodEnd: new Date(
+                stripeSubscription.current_period_end * 1000
+              ),
+            }, event.type);
           }
         }
         break;
@@ -104,10 +118,7 @@ export async function POST(req: NextRequest) {
           const accountId = stripeSubscription.metadata?.accountId;
 
           if (accountId) {
-            await prisma.subscription.update({
-              where: { accountId_source: { accountId, source: "STRIPE" } },
-              data: { status: "PAST_DUE" },
-            });
+            await updateStripeRow(accountId, { status: "PAST_DUE" }, event.type);
           }
         }
         break;
@@ -118,16 +129,13 @@ export async function POST(req: NextRequest) {
         const accountId = subscription.metadata?.accountId;
 
         if (accountId) {
-          await prisma.subscription.update({
-            where: { accountId_source: { accountId, source: "STRIPE" } },
-            data: {
-              plan: "FREE",
-              status: "CANCELED",
-              canceledAt: new Date(),
-              stripeSubscriptionId: null,
-              stripePriceId: null,
-            },
-          });
+          await updateStripeRow(accountId, {
+            plan: "FREE",
+            status: "CANCELED",
+            canceledAt: new Date(),
+            stripeSubscriptionId: null,
+            stripePriceId: null,
+          }, event.type);
         }
         break;
       }
@@ -137,23 +145,12 @@ export async function POST(req: NextRequest) {
         const accountId = subscription.metadata?.accountId;
 
         if (accountId) {
-          await prisma.subscription.update({
-            where: { accountId_source: { accountId, source: "STRIPE" } },
-            data: {
-              status: subscription.status === "active"
-                ? "ACTIVE"
-                : subscription.status === "trialing"
-                ? "TRIALING"
-                : subscription.status === "past_due"
-                ? "PAST_DUE"
-                : subscription.status === "canceled"
-                ? "CANCELED"
-                : "INCOMPLETE",
-              stripeCurrentPeriodEnd: new Date(
-                subscription.current_period_end * 1000
-              ),
-            },
-          });
+          await updateStripeRow(accountId, {
+            status: mapStripeStatus(subscription.status),
+            stripeCurrentPeriodEnd: new Date(
+              subscription.current_period_end * 1000
+            ),
+          }, event.type);
         }
         break;
       }

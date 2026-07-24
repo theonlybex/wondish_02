@@ -68,3 +68,53 @@ test("does not claim a row already owned by a different clerk user (no silent re
     resolveAccountClaim({ id: "a1", clerkId: "user_other", email: "x@y.com" }, "user_123", true),
     { action: "conflict" });
 });
+
+// ─── 2026-07-24 logic-audit Task 9: period-end backstop ─────────────────────
+//
+// Entitlement was 100% webhook-dependent: one missed subscription.deleted
+// left status ACTIVE (premium) forever. Rows carrying a Stripe period end
+// now lose premium 24h after it lapses regardless of status; coupon/admin
+// rows (null periodEnd) are unaffected.
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+test("audit-T9: ACTIVE premium with periodEnd 3 days past is NOT premium", () => {
+  assert.equal(
+    hasActivePremium({
+      plan: "PREMIUM",
+      status: "ACTIVE",
+      stripeCurrentPeriodEnd: new Date(Date.now() - 3 * DAY_MS),
+    }),
+    false
+  );
+});
+
+test("audit-T9: periodEnd within the 24h grace window keeps premium", () => {
+  assert.equal(
+    hasActivePremium({
+      plan: "PREMIUM",
+      status: "ACTIVE",
+      stripeCurrentPeriodEnd: new Date(Date.now() - 12 * 60 * 60 * 1000),
+    }),
+    true
+  );
+});
+
+test("audit-T9: null periodEnd (coupon/admin rows) keeps existing semantics", () => {
+  assert.equal(
+    hasActivePremium({ plan: "PREMIUM", status: "ACTIVE", stripeCurrentPeriodEnd: null }),
+    true
+  );
+  assert.equal(hasActivePremium({ plan: "PREMIUM", status: "ACTIVE" }), true);
+});
+
+test("audit-T9: future periodEnd keeps premium", () => {
+  assert.equal(
+    hasActivePremium({
+      plan: "PREMIUM",
+      status: "TRIALING",
+      stripeCurrentPeriodEnd: new Date(Date.now() + 7 * DAY_MS),
+    }),
+    true
+  );
+});

@@ -6,6 +6,33 @@ function getStripe() {
   return new Stripe(key, { apiVersion: "2024-04-10", typescript: true });
 }
 
+// Honest Stripe→DB status mapping, shared by every webhook handler. The old
+// inline mappings collapsed unpaid/paused/incomplete_expired into INCOMPLETE
+// — which hasActivePremium counts as premium (fresh-checkout grace) — so a
+// sub whose payments stopped kept premium indefinitely. Unknown/future
+// statuses fail SAFE to CANCELED: losing entitlement wrongly is recoverable,
+// granting it wrongly is free premium.
+export function mapStripeStatus(
+  stripeStatus: string
+): "ACTIVE" | "TRIALING" | "PAST_DUE" | "CANCELED" | "INCOMPLETE" {
+  switch (stripeStatus) {
+    case "active":
+      return "ACTIVE";
+    case "trialing":
+      return "TRIALING";
+    case "past_due":
+    case "unpaid":
+    case "paused":
+      return "PAST_DUE";
+    case "incomplete":
+      return "INCOMPLETE";
+    case "canceled":
+    case "incomplete_expired":
+    default:
+      return "CANCELED";
+  }
+}
+
 /** Resolve a price by lookup_key (set in Stripe dashboard) */
 export async function getPriceByLookupKey(lookupKey: string): Promise<string> {
   const prices = await getStripe().prices.list({ lookup_keys: [lookupKey], limit: 1 });
