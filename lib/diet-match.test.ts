@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  singularize,
   derivePatientBans,
   buildDietMatchers,
   evaluateDishAgainstProfile,
@@ -304,4 +305,44 @@ test("PATIENT_DIET_INCLUDE: shape matches the 5-source graph (allergies/avoid/co
     foodPreferences:  { include: { food: { include: { bannedIngredients: true } } } },
     motivations:      { include: { motivation: { include: { bannedIngredients: true } } } },
   });
+});
+
+// ─── 2026-07-24 logic-audit Task 1: plural-aware stemming ───────────────────
+//
+// Defect: `replace(/(?<!s)s$/, "")` mis-stems -ies/-oes plurals ("Strawberries"
+// → "strawberrie"), so the matcher never hits the singular form recipe
+// ingredients actually use. Matchers must hit both the stored name and its
+// singular/plural counterparts.
+
+test("audit-T1: singularize handles -ies/-oes/-es classes and plain -s", () => {
+  assert.equal(singularize("strawberries"), "strawberry");
+  assert.equal(singularize("tomatoes"), "tomato");
+  assert.equal(singularize("anchovies"), "anchovy");
+  assert.equal(singularize("dishes"), "dish");
+  assert.equal(singularize("peanuts"), "peanut");
+  assert.equal(singularize("egg"), "egg");
+  // pre-existing behavior preserved: trailing "ss" words are kept whole
+  assert.equal(singularize("swiss"), "swiss");
+});
+
+test("audit-T1: 'Strawberries' allergy matches 'strawberry compote' AND 'strawberries'", () => {
+  const m = buildDietMatchers({ allergyNames: ["Strawberries"], exactBanned: [] });
+  assert.equal(m.allergyMatchers.some((re) => re.test("strawberry compote")), true);
+  assert.equal(m.allergyMatchers.some((re) => re.test("Fresh Strawberries")), true);
+});
+
+test("audit-T1: 'Tomatoes' allergy matches 'tomato' and 'Anchovies' matches 'anchovy paste'", () => {
+  const tom = buildDietMatchers({ allergyNames: ["Tomatoes"], exactBanned: [] });
+  assert.equal(tom.allergyMatchers.some((re) => re.test("diced tomato")), true);
+  assert.equal(tom.allergyMatchers.some((re) => re.test("tomatoes")), true);
+  const anch = buildDietMatchers({ allergyNames: ["Anchovies"], exactBanned: [] });
+  assert.equal(anch.allergyMatchers.some((re) => re.test("anchovy paste")), true);
+});
+
+test("audit-T1: regressions hold — peanut↔peanuts, egg ∤ eggplant", () => {
+  const p = buildDietMatchers({ allergyNames: ["peanut"], exactBanned: [] });
+  assert.equal(p.allergyMatchers.some((re) => re.test("roasted peanuts")), true);
+  const e = buildDietMatchers({ allergyNames: ["egg"], exactBanned: [] });
+  assert.equal(e.allergyMatchers.some((re) => re.test("eggplant")), false);
+  assert.equal(e.allergyMatchers.some((re) => re.test("scrambled eggs")), true);
 });

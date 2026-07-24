@@ -87,11 +87,30 @@ export function derivePatientBans(patient: PatientDietGraph): DerivedBans {
 // this escape instead of a second copy.
 export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// Singular form of a stored allergy/food name. The plain `(?<!s)s$` strip
+// alone mis-stems -ies/-oes plurals ("strawberries" → "strawberrie"), whose
+// bogus stem then never matches the singular form recipe ingredients use.
+export function singularize(w: string): string {
+  if (/[a-z]ies$/.test(w)) return w.replace(/ies$/, "y");
+  if (/[a-z]oes$/.test(w)) return w.replace(/oes$/, "o");
+  if (/(ches|shes|xes|zes|sses)$/.test(w)) return w.replace(/es$/, "");
+  return w.replace(/(?<!s)s$/, ""); // plain plural; keep "-ss" words
+}
+
 export function buildDietMatchers({ allergyNames, exactBanned }: DerivedBans): DietMatchers {
   const allergyMatchers = Array.from(new Set(allergyNames))
-    .map((name) => name.trim().toLowerCase().replace(/(?<!s)s$/, "")) // singular stem; keep "-ss" words
-    .filter((stem) => stem.length >= 2)
-    .map((stem) => Object.assign(new RegExp(`\\b${escapeRe(stem)}(?:s|es)?\\b`, "i"), { term: stem }) as AllergyMatcher);
+    .map((name) => name.trim().toLowerCase())
+    .map((lowered) => ({ lowered, stem: singularize(lowered) }))
+    .filter(({ stem }) => stem.length >= 2)
+    .map(({ lowered, stem }) => {
+      // Union of the singular stem (+s/+es) and the verbatim stored name, so
+      // "strawberries" matches both "strawberry" and "strawberries".
+      const body =
+        stem === lowered || `${stem}s` === lowered || `${stem}es` === lowered
+          ? `${escapeRe(stem)}(?:s|es)?`
+          : `${escapeRe(stem)}(?:s|es)?|${escapeRe(lowered)}`;
+      return Object.assign(new RegExp(`\\b(?:${body})\\b`, "i"), { term: stem }) as AllergyMatcher;
+    });
 
   // Exact-ban names lowercased for matching; dedup by (source, name) so a
   // banned ingredient repeated within one source doesn't produce duplicate
