@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  couponPremiumUpsertArgs,
   classifyCoupon,
   couponCapWhere,
   GENERIC_COUPON_ERROR,
@@ -58,5 +59,23 @@ test("couponCapWhere: unlimited (-1) coupon gates only on id + active", () => {
 test("generic error copy names no specific failure cause", () => {
   for (const needle of ["expired", "limit", "inactive", "already"]) {
     assert.equal(GENERIC_COUPON_ERROR.toLowerCase().includes(needle), false);
+  }
+});
+
+// ─── 2026-07-24 logic-audit Task 10: COUPON-source row ──────────────────────
+//
+// PREMIUM redemption previously upserted the STRIPE row and nulled
+// stripeSubscriptionId — erasing the only cancel handle (deleted accounts
+// kept billing) and letting any later Stripe webhook clobber coupon premium.
+
+test("couponPremiumUpsertArgs targets the COUPON row and never touches Stripe fields", () => {
+  const args = couponPremiumUpsertArgs("acc1");
+  assert.deepEqual(args.where, { accountId_source: { accountId: "acc1", source: "COUPON" } });
+  assert.equal(args.create.source, "COUPON");
+  for (const shape of [args.update, args.create] as Array<Record<string, unknown>>) {
+    assert.equal("stripeSubscriptionId" in shape, false);
+    assert.equal("stripeCurrentPeriodEnd" in shape, false);
+    assert.equal(shape.plan, "PREMIUM");
+    assert.equal(shape.status, "ACTIVE");
   }
 });

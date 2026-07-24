@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hasActivePremium, resolveAccountClaim } from "./auth";
+import { accountHasActivePremium, hasActivePremium, resolveAccountClaim } from "./auth";
 
 // Extracted verbatim from the inline check formerly at
 // app/(dashboard)/layout.tsx:11-14 — plan === "PREMIUM" AND status in
@@ -116,5 +116,19 @@ test("audit-T9: future periodEnd keeps premium", () => {
       stripeCurrentPeriodEnd: new Date(Date.now() + 7 * DAY_MS),
     }),
     true
+  );
+});
+
+test("audit-T10: account with STRIPE/FREE + COUPON/PREMIUM-ACTIVE rows is premium", () => {
+  assert.equal(
+    accountHasActivePremium([
+      { plan: "FREE", status: "CANCELED" },
+      { plan: "PREMIUM", status: "ACTIVE" },
+    ]),
+    true
+  );
+  assert.equal(
+    accountHasActivePremium([{ plan: "FREE", status: "ACTIVE" }]),
+    false
   );
 });

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { classifyCoupon, couponCapWhere, GENERIC_COUPON_ERROR } from "@/lib/coupon";
+import { classifyCoupon, couponCapWhere, couponPremiumUpsertArgs, GENERIC_COUPON_ERROR } from "@/lib/coupon";
 
 // Thrown when the atomic cap-enforcing increment matches no row (cap reached
 // or coupon deactivated between the pre-check and the transaction).
@@ -82,44 +82,26 @@ export async function POST(req: NextRequest) {
       });
       if (capped.count === 0) throw new CouponUnavailableError();
 
-    if (coupon.type === "ADMIN") {
-      // Upsert SUPER role
-      const role = await tx.role.upsert({
-        where: { name: "SUPER" },
-        update: {},
-        create: { name: "SUPER" },
-      });
+      if (coupon.type === "ADMIN") {
+        // Upsert SUPER role
+        const role = await tx.role.upsert({
+          where: { name: "SUPER" },
+          update: {},
+          create: { name: "SUPER" },
+        });
 
-      // Assign to account (ignore if already assigned)
-      await tx.accountRole.upsert({
-        where: { accountId_roleId: { accountId: account.id, roleId: role.id } },
-        update: {},
-        create: { accountId: account.id, roleId: role.id },
-      });
-    } else {
-      // PREMIUM coupon — upsert subscription. Targets the STRIPE-source row:
-      // pre-migration every account had exactly one subscription row (this
-      // one), so writing the (accountId, STRIPE) row reproduces that exact
-      // behavior post-migration (mechanical rename, not a redesign — routing
-      // coupon redemptions to a separate COUPON-source row is a real
-      // behavior change deferred to a later task).
-      await tx.subscription.upsert({
-        where: { accountId_source: { accountId: account.id, source: "STRIPE" } },
-        update: {
-          plan: "PREMIUM",
-          status: "ACTIVE",
-          stripeSubscriptionId: null,
-          stripeCurrentPeriodEnd: null,
-          canceledAt: null,
-        },
-        create: {
-          accountId: account.id,
-          source: "STRIPE",
-          plan: "PREMIUM",
-          status: "ACTIVE",
-        },
-      });
-    }
+        // Assign to account (ignore if already assigned)
+        await tx.accountRole.upsert({
+          where: { accountId_roleId: { accountId: account.id, roleId: role.id } },
+          update: {},
+          create: { accountId: account.id, roleId: role.id },
+        });
+      } else {
+        // PREMIUM coupon — grant lives on the COUPON-source row; the STRIPE
+        // row (and its stripeSubscriptionId cancel handle) is never touched.
+        // See lib/coupon.ts couponPremiumUpsertArgs for the full rationale.
+        await tx.subscription.upsert(couponPremiumUpsertArgs(account.id));
+      }
     });
   } catch (err) {
     if (err instanceof CouponUnavailableError) return genericUnavailable();

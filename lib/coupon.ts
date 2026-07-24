@@ -26,6 +26,26 @@ export function classifyCoupon(coupon: CouponState | null, now: Date): "ok" | "u
 // usedCount predicate and the increment execute as ONE conditional UPDATE
 // statement — N concurrent redemptions of the last slot can no longer all
 // pass a stale pre-read and overshoot maxUses (count === 0 ⇒ lost the race).
+// Upsert args for a PREMIUM coupon grant. Targets the COUPON-source row
+// (2026-07-24 audit Task 10): the old STRIPE-row write nulled
+// stripeSubscriptionId — erasing the only cancel handle, so a deleted
+// account could keep being billed — and any later Stripe webhook (which
+// keys on the STRIPE row) silently clobbered coupon-granted premium.
+// accountHasActivePremium ORs across rows, so a COUPON/PREMIUM row grants
+// premium regardless of the STRIPE row's state.
+export function couponPremiumUpsertArgs(accountId: string) {
+  return {
+    where: { accountId_source: { accountId, source: "COUPON" as const } },
+    update: { plan: "PREMIUM" as const, status: "ACTIVE" as const, canceledAt: null },
+    create: {
+      accountId,
+      source: "COUPON" as const,
+      plan: "PREMIUM" as const,
+      status: "ACTIVE" as const,
+    },
+  };
+}
+
 export function couponCapWhere(coupon: { id: string; maxUses: number }): {
   id: string;
   isActive: true;
