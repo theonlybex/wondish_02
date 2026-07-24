@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin";
+import { ALLERGEN_SYNONYMS } from "@/data/allergen-synonyms";
 
 export async function POST() {
   try {
@@ -132,6 +133,28 @@ export async function POST() {
       ],
       skipDuplicates: true,
     });
+
+    // Allergy synonym children — without these, matching falls back to the
+    // allergy display name only, so "Shellfish" would pass ingredient
+    // "Shrimp" (2026-07-24 audit CRITICAL). Existence-checked per pair:
+    // FoodAllergyBannedIngredient has no unique constraint, so a bare
+    // createMany+skipDuplicates would duplicate rows on every re-seed.
+    const seededAllergies = await prisma.foodAllergy.findMany({
+      include: { bannedIngredients: true },
+    });
+    for (const allergy of seededAllergies) {
+      const synonyms = ALLERGEN_SYNONYMS[allergy.name];
+      if (!synonyms) continue;
+      const existing = new Set(
+        allergy.bannedIngredients.map((b) => b.name.trim().toLowerCase())
+      );
+      const missing = synonyms.filter((s) => !existing.has(s.trim().toLowerCase()));
+      if (missing.length > 0) {
+        await prisma.foodAllergyBannedIngredient.createMany({
+          data: missing.map((name) => ({ allergyId: allergy.id, name })),
+        });
+      }
+    }
 
     await prisma.healthCondition.createMany({
       data: [
