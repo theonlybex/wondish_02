@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { AccountClaimConflictError, getOrCreateAccount } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { serializeMe } from "@/lib/me";
-import { cancelStripeAtPeriodEnd } from "@/lib/stripe-admin";
+import { cancelStripeAtPeriodEnd, StripeCancelError } from "@/lib/stripe-admin";
 import { prisma } from "@/lib/db";
 
 // Shared 409 response for the "email already belongs to another Wondish
@@ -70,9 +70,25 @@ export async function DELETE() {
       { status: 409 }
     );
   }
-  // D12: cancel live Stripe/coupon billing at period end before deletion.
-  for (const s of active.filter((s) => s.source === "STRIPE" || s.source === "COUPON")) {
-    await cancelStripeAtPeriodEnd(s); // best-effort; logs on failure
+  // D12: cancel live Stripe/coupon billing at period end BEFORE deletion —
+  // and abort if it fails: deletion would cascade away the only copy of
+  // stripeSubscriptionId, leaving the user billed forever (audit Task 11).
+  try {
+    for (const s of active.filter((s) => s.source === "STRIPE" || s.source === "COUPON")) {
+      await cancelStripeAtPeriodEnd(s);
+    }
+  } catch (err) {
+    if (err instanceof StripeCancelError) {
+      return NextResponse.json(
+        {
+          error: "billing_cancel_failed",
+          message:
+            "We couldn't cancel your subscription with our billing provider. Please try again in a few minutes.",
+        },
+        { status: 502 }
+      );
+    }
+    throw err;
   }
 
   // D5.1.1(v): delete the Clerk identity FIRST so a failure partway through
