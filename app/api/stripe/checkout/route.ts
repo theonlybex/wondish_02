@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
+import { AccountClaimConflictError, getOrCreateAccount } from "@/lib/auth";
 import { createStripeCustomer, createCheckoutSession, createCustomerPortalSession, getPriceByLookupKey } from "@/lib/stripe";
 
 async function resolvePriceId(): Promise<string> {
@@ -17,39 +18,12 @@ export async function POST(req: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   try {
-    let account = await prisma.account.findUnique({
-      where: { clerkId: userId },
-      include: { subscriptions: true },
-    });
-
-    if (!account) {
-      const client = await clerkClient();
-      const clerkUser = await client.users.getUser(userId);
-      const email = clerkUser.emailAddresses[0]?.emailAddress ?? "";
-      const firstName = clerkUser.firstName ?? "";
-      const lastName = clerkUser.lastName ?? "";
-
-      // Account may exist under a different auth path — link Clerk ID rather than creating a duplicate
-      const existing = await prisma.account.findUnique({ where: { email } });
-      if (existing) {
-        account = await prisma.account.update({
-          where: { email },
-          data: { clerkId: userId },
-          include: { subscriptions: true },
-        });
-      } else {
-        account = await prisma.account.create({
-          data: {
-            clerkId: userId,
-            email,
-            firstName,
-            lastName,
-            subscriptions: { create: {} },
-          },
-          include: { subscriptions: true },
-        });
-      }
-    }
+    // Race-safe lookup/claim/create via the shared helper: the previous
+    // bespoke block linked by the FIRST (possibly unverified) Clerk email
+    // and re-pointed clerkId with no ownership guard — an account-takeover
+    // path. getOrCreateAccount claims only verified-email, unowned rows and
+    // signals conflicts as a typed 409 (same contract as /api/me).
+    const account = await getOrCreateAccount(userId);
 
     // Stripe checkout always reads/writes the (accountId, STRIPE) row.
     let customerId = account.subscriptions.find((s) => s.source === "STRIPE")?.stripeCustomerId;
@@ -74,6 +48,15 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ url: checkoutSession.url });
   } catch (err) {
+    if (err instanceof AccountClaimConflictError) {
+      return NextResponse.json(
+        {
+          error: "email_conflict",
+          message: "This email is already associated with another Wondish account. Contact support.",
+        },
+        { status: 409 }
+      );
+    }
     console.error("[stripe/checkout]", err);
     return NextResponse.json({ error: "Failed to create checkout session." }, { status: 500 });
   }
