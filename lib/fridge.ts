@@ -173,7 +173,17 @@ export function parseFridgeRecipes(
 // exactBanned entries are exact ingredient/food names (possibly multi-word);
 // matched as \b-anchored phrases against the recipe's free text.
 function recipeSearchText(recipe: FridgeRecipe): string {
-  return [recipe.name, ...recipe.usesIngredients, ...recipe.missingIngredients, ...recipe.steps]
+  // Every model-authored text field the client renders must be scanned —
+  // description/conflicts previously escaped the filter, so "fried in peanut
+  // oil" could ship in a 200 to a peanut-allergic user.
+  return [
+    recipe.name,
+    recipe.description,
+    ...recipe.usesIngredients,
+    ...recipe.missingIngredients,
+    ...recipe.steps,
+    ...recipe.conflicts,
+  ]
     .join(" \n ")
     .toLowerCase();
 }

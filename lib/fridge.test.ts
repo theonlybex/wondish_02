@@ -352,3 +352,23 @@ test("audit-T2: exact ban with punctuation edges ('Nuts (tree)') blocks matching
   const recipes = parseFridgeRecipes([validRecipeInput({ steps: ["Top with nuts (tree) mix."] })], 3)!;
   assert.deepEqual(applyAllergenFilter(recipes, matchers), []);
 });
+
+// ─── 2026-07-24 logic-audit Task 3: description/conflicts must be scanned ───
+
+test("audit-T3: allergen mentioned only in description is caught by the filter", () => {
+  const matchers = buildDietMatchers(derivePatientBans(peanutAllergyPatient()));
+  const recipes = parseFridgeRecipes(
+    [validRecipeInput({ description: "Crispy tofu fried in peanut oil." })],
+    3
+  )!;
+  assert.deepEqual(applyAllergenFilter(recipes, matchers), []);
+});
+
+test("audit-T3: allergen mentioned only in conflicts is caught by the filter", () => {
+  const matchers = buildDietMatchers(derivePatientBans(peanutAllergyPatient()));
+  const recipes = parseFridgeRecipes(
+    [validRecipeInput({ conflicts: ["contains peanut sauce"] })],
+    3
+  )!;
+  assert.deepEqual(applyAllergenFilter(recipes, matchers), []);
+});
