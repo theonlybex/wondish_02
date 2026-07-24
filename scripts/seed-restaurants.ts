@@ -5,9 +5,14 @@
  * admin screen for everything after this; this script just gets a real,
  * researched starting fixture set into a dev/staging DB).
  *
- * Idempotent: upserts each restaurant by slug, then replaces (delete +
- * create) its dishes/ingredients every run, so re-running always converges
- * to the same end state rather than duplicating rows.
+ * Idempotent AND non-destructive (2026-07-24 audit Task 17): upserts each
+ * restaurant by slug (status only set on create — an admin archive is never
+ * overridden), then reconciles dishes by (section, name): matched dishes
+ * update display scalars only (ingredients/status stay admin-owned per
+ * D-INGREDIENTS), missing dishes are created, and existing dishes are never
+ * deleted — post-seed admin edits and MealLog provenance survive re-runs.
+ * Each restaurant reconciles inside one transaction (no mid-run
+ * empty/partial menu window).
  *
  * ── DATA PROVENANCE / SAFETY CAVEATS ──────────────────────────────────────
  * All restaurant/dish data below is EMBEDDED (translated into typed
@@ -821,66 +826,99 @@ async function main() {
       throw new Error(`No Ethnic resolved for cuisine "${r.cuisine}" (restaurant ${r.slug})`);
     }
 
-    const restaurant = await prisma.restaurant.upsert({
-      where: { slug: r.slug },
-      update: {
-        name: r.name,
-        description: r.description,
-        neighborhood: r.neighborhood,
-        city: r.city,
-        state: r.state,
-        postalCode: r.postalCode,
-        addressLine: r.addressLine,
-        ethnicId,
-        status: "PUBLISHED",
-      },
-      create: {
-        name: r.name,
-        slug: r.slug,
-        description: r.description,
-        neighborhood: r.neighborhood,
-        city: r.city,
-        state: r.state,
-        postalCode: r.postalCode,
-        addressLine: r.addressLine,
-        ethnicId,
-        status: "PUBLISHED",
-      },
-    });
-
-    // Replace-all: delete existing dishes (cascades to their ingredients) and
-    // recreate from the fixture above, so re-running this script always
-    // converges to the same menu rather than accumulating duplicates.
-    await prisma.restaurantDish.deleteMany({ where: { restaurantId: restaurant.id } });
-
-    for (const dish of r.dishes) {
-      await prisma.restaurantDish.create({
-        data: {
-          restaurantId: restaurant.id,
-          name: dish.name,
-          description: dish.description,
-          section: dish.section,
-          sortOrder: dish.sortOrder,
-          price: dish.price,
-          currency: dish.currency ?? "USD",
+    // Non-destructive reconcile (2026-07-24 audit Task 17). The previous
+    // deleteMany+recreate was destructive on re-run against a live DB: it
+    // wiped every post-seed admin menu edit, severed MealLog.restaurantDishId
+    // provenance (onDelete: SetNull), force-published archived restaurants,
+    // and exposed a mid-run empty-menu window. Now, per restaurant, inside
+    // one transaction:
+    //   - restaurant fields update on match, but status is only set on
+    //     CREATE (an admin's archive decision is never overridden);
+    //   - dishes match by (section, name): matched dishes update display
+    //     scalars ONLY — ingredients and status stay admin-owned
+    //     (D-INGREDIENTS: human-verified lists are ground truth, a re-seed
+    //     must never overwrite corrections); missing dishes are created in
+    //     full; unmatched existing dishes are NEVER deleted.
+    const seededCount = await prisma.$transaction(async (tx) => {
+      const restaurant = await tx.restaurant.upsert({
+        where: { slug: r.slug },
+        update: {
+          name: r.name,
+          description: r.description,
+          neighborhood: r.neighborhood,
+          city: r.city,
+          state: r.state,
+          postalCode: r.postalCode,
+          addressLine: r.addressLine,
+          ethnicId,
+        },
+        create: {
+          name: r.name,
+          slug: r.slug,
+          description: r.description,
+          neighborhood: r.neighborhood,
+          city: r.city,
+          state: r.state,
+          postalCode: r.postalCode,
+          addressLine: r.addressLine,
+          ethnicId,
           status: "PUBLISHED",
-          isRecommended: dish.isRecommended ?? false,
-          available: true,
-          ingredients: dish.ingredients.length
-            ? {
-                create: dish.ingredients.map((i) => ({
-                  name: i.name,
-                  quantity: i.quantity ?? null,
-                  unit: i.unit ?? null,
-                })),
-              }
-            : undefined,
         },
       });
-      totalDishes += 1;
-    }
 
-    console.log(`✓ Seeded restaurant "${restaurant.name}" (${restaurant.slug}) with ${r.dishes.length} dishes.`);
+      const existingDishes = await tx.restaurantDish.findMany({
+        where: { restaurantId: restaurant.id },
+        select: { id: true, section: true, name: true },
+      });
+      const dishKey = (section: string, name: string) => `${section} ${name}`;
+      const existingByKey = new Map(existingDishes.map((d) => [dishKey(d.section, d.name), d.id]));
+
+      let count = 0;
+      for (const dish of r.dishes) {
+        const matchedId = existingByKey.get(dishKey(dish.section, dish.name));
+        if (matchedId) {
+          await tx.restaurantDish.update({
+            where: { id: matchedId },
+            data: {
+              description: dish.description,
+              sortOrder: dish.sortOrder,
+              price: dish.price,
+              currency: dish.currency ?? "USD",
+              isRecommended: dish.isRecommended ?? false,
+            },
+          });
+        } else {
+          await tx.restaurantDish.create({
+            data: {
+              restaurantId: restaurant.id,
+              name: dish.name,
+              description: dish.description,
+              section: dish.section,
+              sortOrder: dish.sortOrder,
+              price: dish.price,
+              currency: dish.currency ?? "USD",
+              status: "PUBLISHED",
+              isRecommended: dish.isRecommended ?? false,
+              available: true,
+              ingredients: dish.ingredients.length
+                ? {
+                    create: dish.ingredients.map((i) => ({
+                      name: i.name,
+                      quantity: i.quantity ?? null,
+                      unit: i.unit ?? null,
+                    })),
+                  }
+                : undefined,
+            },
+          });
+        }
+        count += 1;
+      }
+      return count;
+    });
+    totalDishes += seededCount;
+
+    console.log(`✓ Reconciled restaurant "${r.name}" (${r.slug}) — ${r.dishes.length} fixture dishes.`);
   }
 
   console.log(`✓ Done: ${RESTAURANTS.length} restaurants, ${totalDishes} dishes total.`);

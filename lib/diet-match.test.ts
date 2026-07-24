@@ -399,7 +399,7 @@ function conditionBan(name: string): PatientDietGraph {
   return {
     foodAllergies: [],
     foodToAvoid: [],
-    healthConditions: [{ condition: { name: "Cond", bannedIngredients: [{ name }] } }],
+    healthConditions: [{ condition: { bannedIngredients: [{ name }] } }],
     foodPreferences: [],
     motivations: [],
   };

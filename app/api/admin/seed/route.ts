@@ -383,10 +383,18 @@ export async function POST() {
       },
     ];
 
-    await prisma.recipe.createMany({
-      data: recipes.map((r) => ({ ...r, isPublic: true })),
-      skipDuplicates: true,
-    });
+    // Recipe has no unique constraint on name, so createMany's
+    // skipDuplicates is a no-op — every re-seed used to append another full
+    // copy of the sample recipes (audit Task 17). Existence-checked by name.
+    const existingRecipeNames = new Set(
+      (await prisma.recipe.findMany({ select: { name: true } })).map((r) => r.name)
+    );
+    const newRecipes = recipes.filter((r) => !existingRecipeNames.has(r.name));
+    if (newRecipes.length > 0) {
+      await prisma.recipe.createMany({
+        data: newRecipes.map((r) => ({ ...r, isPublic: true })),
+      });
+    }
 
     return NextResponse.json({ ok: true, message: "Seed complete" });
   } catch (error) {
