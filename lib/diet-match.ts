@@ -81,7 +81,11 @@ export function derivePatientBans(patient: PatientDietGraph): DerivedBans {
 // Word-boundary allergy regex + singular-stemming, lifted verbatim in
 // behavior from lib/meal-plan.ts:175-179: "peanut" also bans "peanut butter"
 // / "roasted peanuts", but "egg" does not ban "eggplant".
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// Exported so other modules building their own \b-anchored phrase regexes
+// off DietMatchers output (e.g. lib/fridge.ts's applyAllergenFilter, which
+// scans free-text recipe fields rather than discrete ingredient names) reuse
+// this escape instead of a second copy.
+export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export function buildDietMatchers({ allergyNames, exactBanned }: DerivedBans): DietMatchers {
   const allergyMatchers = Array.from(new Set(allergyNames))

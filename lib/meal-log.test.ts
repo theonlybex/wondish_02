@@ -394,6 +394,33 @@ test("buildMealLogCreateData: RESTAURANT stores its server-priced snapshot verba
   assert.equal(data.recipeId, null);
 });
 
+test("buildMealLogCreateData: FRIDGE stores caller-supplied perServing verbatim and persists fridgeRecipeId (no server pricing)", () => {
+  const parsed = parseMealLogInput({
+    localDate: "2026-07-19",
+    mealType: "dinner",
+    source: "FRIDGE",
+    name: "Chickpea & Spinach Skillet",
+    servings: 1,
+    perServing: { calories: 420, protein: 22, carbs: 48, fat: 15, fiber: 9 },
+    fridgeRecipeId: "frg_abc123",
+  });
+  assert.ok(parsed.ok);
+  // resolveSnapshot is handed no recipe/customIngredient/restaurantDish dep —
+  // proves the FRIDGE branch never invokes server pricing (unlike RECIPE/
+  // CUSTOM/RESTAURANT, which throw without their dep).
+  const resolved = resolveSnapshot(parsed.value, {});
+  const data = buildMealLogCreateData("pat_1", parsed.value, resolved);
+  assert.equal(data.calories, 420);
+  assert.equal(data.protein, 22);
+  assert.equal(data.carbs, 48);
+  assert.equal(data.fat, 15);
+  assert.equal(data.fiber, 9);
+  assert.equal(data.incomplete, false); // all five fields supplied
+  assert.equal(data.fridgeRecipeId, "frg_abc123");
+  assert.equal(data.recipeId, null); // fridgeRecipeId and recipeId are distinct columns
+  assert.equal(data.name, "Chickpea & Spinach Skillet");
+});
+
 test("isCallerSuppliedMacroSource: MANUAL/PICTURE/FRIDGE own their macros; RECIPE/CUSTOM/RESTAURANT are server-priced", () => {
   assert.equal(isCallerSuppliedMacroSource("MANUAL"), true);
   assert.equal(isCallerSuppliedMacroSource("PICTURE"), true);

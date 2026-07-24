@@ -45,8 +45,10 @@ export type { MealType };
 export const MEAL_LOG_SOURCES = Object.values(MealLogSource) as MealLogSource[];
 
 const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/; // anchored (audit T1) — format only
-const MAX_SERVINGS = 50;
-const MAX_MACRO = 10000;
+// Exported: lib/fridge.ts imports these bounds so its parseFridgeRecipes
+// clamp matches exactly what /api/meal-log accepts for caller-supplied macros.
+export const MAX_SERVINGS = 50;
+export const MAX_MACRO = 10000;
 const MAX_NAME = 120;
 const MAX_BATCH_ITEMS = 50;
 const MAX_RANGE_DAYS = 366;

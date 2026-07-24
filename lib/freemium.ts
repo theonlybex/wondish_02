@@ -13,6 +13,20 @@ export const CHAT_DAY_RATE_LIMIT_NAME = "chat-day";
 export const CHAT_DAY_RATE_LIMIT_WINDOW_SEC = 86400;
 
 /**
+ * Free-tier Fridge generations allowed per rolling day (F-D2, server-side
+ * economic backstop — the ONLY freemium gate per the Cycle-5 execution
+ * amendment; client-side UsageMeter/EntitlementStore/PaywallView are void).
+ * Set above the client-honest 1/day so legitimate users never hit it, but
+ * bounds a tampered client to FRIDGE_DAILY_FREE/day instead of the burst
+ * limit's much higher ceiling. Premium bypasses this entirely.
+ */
+export const FRIDGE_DAILY_FREE = 3;
+
+/** lib/rate-limit `rateLimit()` bucket name + window (seconds) for the Fridge daily gate. */
+export const FRIDGE_DAY_RATE_LIMIT_NAME = "fridge-day";
+export const FRIDGE_DAY_RATE_LIMIT_WINDOW_SEC = 86400;
+
+/**
  * Response body for the 402 returned when a non-premium user exceeds
  * CHAT_DAILY_FREE. Matches the repo's existing premium-gate convention (see
  * the CUSTOM meal-log path in app/api/meal-log/route.ts).

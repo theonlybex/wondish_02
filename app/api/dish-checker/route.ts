@@ -11,7 +11,7 @@ import {
   chatQuotaExceededResponseBody,
 } from "@/lib/freemium";
 import Anthropic from "@anthropic-ai/sdk";
-import { PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { PATIENT_FOOD_MAP_INCLUDE, buildFoodMapText } from "@/lib/food-map";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -68,10 +68,7 @@ export async function POST(req: NextRequest) {
 
   const patient = await prisma.patient.findFirst({
     where: { accountId: account.id },
-    include: {
-      mealType: true,
-      ...PATIENT_DIET_INCLUDE,
-    },
+    include: PATIENT_FOOD_MAP_INCLUDE,
   });
 
   const foodMapText = buildFoodMapText(patient);
@@ -133,59 +130,6 @@ export async function POST(req: NextRequest) {
   return new Response(readable, {
     headers: { "Content-Type": "text/plain; charset=utf-8" },
   });
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildFoodMapText(patient: any): string {
-  if (!patient) return "No specific dietary restrictions on file.";
-
-  const lines: string[] = [];
-
-  if (patient.mealType) {
-    lines.push(`Dietary pattern: ${patient.mealType.name}`);
-  }
-
-  if (patient.foodAllergies?.length > 0) {
-    const names = patient.foodAllergies.map((a: any) => a.food.name).join(", ");
-    const banned = patient.foodAllergies.flatMap((a: any) =>
-      a.food.bannedIngredients.map((b: any) => b.name)
-    );
-    lines.push(`Allergies: ${names}`);
-    if (banned.length > 0) lines.push(`Restricted from allergies: ${banned.join(", ")}`);
-  }
-
-  if (patient.foodToAvoid?.length > 0) {
-    lines.push(`Foods to avoid: ${patient.foodToAvoid.map((f: any) => f.food.name).join(", ")}`);
-  }
-
-  if (patient.foodPreferences?.length > 0) {
-    const names = patient.foodPreferences.map((p: any) => p.food.name).join(", ");
-    const banned = patient.foodPreferences.flatMap((p: any) =>
-      p.food.bannedIngredients.map((b: any) => b.name)
-    );
-    lines.push(`Food preferences: ${names}`);
-    if (banned.length > 0) lines.push(`Restricted from preferences: ${banned.join(", ")}`);
-  }
-
-  if (patient.healthConditions?.length > 0) {
-    const names = patient.healthConditions.map((c: any) => c.condition.name).join(", ");
-    const banned = patient.healthConditions.flatMap((c: any) =>
-      c.condition.bannedIngredients.map((b: any) => b.name)
-    );
-    lines.push(`Health conditions: ${names}`);
-    if (banned.length > 0) lines.push(`Restricted from conditions: ${banned.join(", ")}`);
-  }
-
-  if (patient.motivations?.length > 0) {
-    const names = patient.motivations.map((m: any) => m.motivation.name).join(", ");
-    const banned = patient.motivations.flatMap((m: any) =>
-      m.motivation.bannedIngredients.map((b: any) => b.name)
-    );
-    lines.push(`Goals: ${names}`);
-    if (banned.length > 0) lines.push(`Restricted from goals: ${banned.join(", ")}`);
-  }
-
-  return lines.length > 0 ? lines.join("\n") : "No specific dietary restrictions on file.";
 }
 
 function buildSystemPrompt(firstName: string, foodMapText: string): string {
