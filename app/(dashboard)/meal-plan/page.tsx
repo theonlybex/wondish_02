@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { format } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
-import { computeAllMetrics, gradualDailyCals, maxDailyDeficit, resolvePlanDirection, type CaloricProfileInput } from "@/lib/caloric-engine";
+import { computeAllMetrics, gradualDailyCals, maxDailyDeficit, resolvePlanDirection, resolveSex, type CaloricProfileInput } from "@/lib/caloric-engine";
 import DailyMealPlanView from "@/components/meal-plan/DailyMealPlanView";
 import Link from "next/link";
 
@@ -48,6 +48,7 @@ export default async function MealPlanPage() {
         goalWeight: true, goalWeightUnit: true,
         height: true, heightUnit: true,
         sexAtBirth: true, birthday: true,
+        gender: { select: { name: true } },
         physicalActivity: { select: { level: true } },
       },
     }),
@@ -70,8 +71,10 @@ export default async function MealPlanPage() {
     patient?.mealPlanStartDate && patient.weight && patient.height &&
     patient.birthday && patient.physicalActivity?.level
   ) {
-    const s = (patient.sexAtBirth ?? "").toLowerCase();
-    const sex = s === "male" ? "male" as const : s === "female" ? "female" as const : null;
+    // Canonical resolution incl. gender-name fallback (audit Task 16) — the
+    // SSR target previously stayed null for gender-only patients, causing a
+    // paint-then-hydrate flash while GET /api/meal-plan returned a target.
+    const sex = resolveSex(patient.sexAtBirth, patient.gender?.name);
     if (sex) {
       const pi: CaloricProfileInput = {
         sex,

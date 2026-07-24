@@ -15,6 +15,7 @@ export interface PredictionPatientRow {
   heightUnit: string | null;
   birthday: Date | null;
   sexAtBirth: string | null;
+  gender?: { name: string } | null;
   physicalActivity: { level: number } | null;
 }
 
@@ -25,7 +26,7 @@ export function normalizePredictionPatient(
   patient: PredictionPatientRow
 ): PredictionProfileInput | null {
   if (!patient.weight || !patient.goalWeight || !patient.height || !patient.birthday) return null;
-  const sex = resolveSex(patient.sexAtBirth);
+  const sex = resolveSex(patient.sexAtBirth, patient.gender?.name);
   const activityLevel = patient.physicalActivity?.level;
   if (!sex || !activityLevel) return null;
 

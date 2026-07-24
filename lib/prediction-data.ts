@@ -8,6 +8,7 @@ import {
   KCAL_PER_KG,
   type GlideWalk,
   type Sex,
+  resolveSex as engineResolveSex,
 } from "./caloric-engine";
 
 export type { Sex };
@@ -42,11 +43,14 @@ export const fromKg = (v: number, unit: "kg" | "lbs") => (unit === "lbs" ? v / K
 // only exist in kg) into lbs for the UI. Clients always see lbs.
 export const kgToLbs = (v: number) => v / KG_PER_LB;
 
-export function resolveSex(sexAtBirth: string | null | undefined): Sex | null {
-  const s = (sexAtBirth ?? "").trim().toLowerCase();
-  if (s === "male") return "male";
-  if (s === "female") return "female";
-  return null;
+// Delegates to the canonical resolver (audit Task 16) — gains the
+// gender-name fallback so prediction no longer vanishes for gender-only
+// patients while the plan itself is correctly sexed.
+export function resolveSex(
+  sexAtBirth: string | null | undefined,
+  genderName?: string | null
+): Sex | null {
+  return engineResolveSex(sexAtBirth, genderName);
 }
 
 /**

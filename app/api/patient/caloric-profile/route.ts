@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import {
-  computeAllMetrics, computeWeeklyTarget, convertWeight,
+  computeAllMetrics, computeWeeklyTarget, convertWeight, resolveSex,
   type Sex, type CaloricProfileInput,
 } from "@/lib/caloric-engine";
 
@@ -20,6 +20,7 @@ export async function GET() {
     where: { account: { clerkId: userId } },
     include: {
       physicalActivity: true,
+      gender: true,
     },
   });
 
@@ -35,13 +36,10 @@ export async function GET() {
     );
   }
 
-  // Resolve sex from sexAtBirth (the only source)
-  let sex: Sex | null = null;
-  if (patient.sexAtBirth) {
-    const s = patient.sexAtBirth.toLowerCase();
-    if (s === "male") sex = "male";
-    else if (s === "female") sex = "female";
-  }
+  // Canonical resolution with the gender-name fallback (audit Task 16) —
+  // this route previously 422'd for gender-only patients while the plan
+  // builder correctly sexed the same profile.
+  const sex: Sex | null = resolveSex(patient.sexAtBirth, patient.gender?.name);
 
   if (!sex) {
     return NextResponse.json(

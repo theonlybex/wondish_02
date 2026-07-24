@@ -7,6 +7,24 @@
 
 export type Sex = "male" | "female";
 
+// Canonical sex resolution for every caloric consumer (audit Task 16):
+// sexAtBirth wins; a binary gender name is the fallback. Previously only
+// lib/meal-plan.ts had the fallback — caloric-profile 422'd, prediction
+// vanished, and meal-log targets nulled for gender-only patients while the
+// plan itself was correctly sexed.
+export function resolveSex(
+  sexAtBirth: string | null | undefined,
+  genderName?: string | null
+): Sex | null {
+  for (const val of [sexAtBirth, genderName]) {
+    if (!val) continue;
+    const s = val.trim().toLowerCase();
+    if (s === "male") return "male";
+    if (s === "female") return "female";
+  }
+  return null;
+}
+
 export type CBMIClass = "underweight" | "healthy" | "overweight" | "obese";
 
 // ─── Height Conversions ──────────────────────────────────────────────────────

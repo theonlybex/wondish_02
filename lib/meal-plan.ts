@@ -13,6 +13,7 @@ import {
   type CaloricProfileInput,
   type MacroPercentages,
   type PlanDirection,
+  resolveSex,
 } from "@/lib/caloric-engine";
 import { macroDeviation } from "@/lib/macros";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
@@ -26,15 +27,8 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-function resolveSex(sexAtBirth: string | null | undefined, genderName?: string | null): Sex | null {
-  for (const val of [sexAtBirth, genderName]) {
-    if (!val) continue;
-    const s = val.toLowerCase();
-    if (s === "male") return "male";
-    if (s === "female") return "female";
-  }
-  return null;
-}
+// Sex resolution moved to lib/caloric-engine.ts resolveSex (audit Task 16)
+// so every caloric consumer shares the same gender-name fallback.
 
 type RecipeCandidate = {
   id:        string;

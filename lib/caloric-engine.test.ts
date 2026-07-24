@@ -43,6 +43,7 @@ import {
   resolveDailyTargets,
   type CaloricProfile,
   type GlideWalk,
+  resolveSex,
 } from "./caloric-engine";
 
 const birthday = new Date("1994-01-01"); // ~age 32 at test time
@@ -944,4 +945,20 @@ test("resolveDailyTargets: non-positive calories returns null (never a 0 target)
   assert.equal(resolveDailyTargets({ tdeeCBW: 0, weeklyTarget: null }, [], []), null);
   assert.equal(resolveDailyTargets({ tdeeCBW: 2000 }, [], [], 0), null);
   assert.equal(resolveDailyTargets({ tdeeCBW: 2000 }, [], [], -5), null);
+});
+
+// ─── 2026-07-24 logic-audit Task 16: canonical sex resolution ───────────────
+//
+// The gender-name fallback existed only in lib/meal-plan.ts; caloric-profile
+// (422), prediction (silently unavailable), meal-log targets, and the
+// meal-plan SSR page were sexAtBirth-only — a feature-availability split for
+// gender-only patients. One exported resolver, used everywhere.
+
+test("resolveSex: parity table — sexAtBirth, gender fallback, both, neither", () => {
+  assert.equal(resolveSex("Male", null), "male");
+  assert.equal(resolveSex(null, "Female"), "female");
+  assert.equal(resolveSex("female", "Male"), "female"); // sexAtBirth wins
+  assert.equal(resolveSex(null, null), null);
+  assert.equal(resolveSex(undefined, "Non-binary"), null);
+  assert.equal(resolveSex("", "male"), "male");
 });

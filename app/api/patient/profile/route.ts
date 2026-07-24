@@ -79,6 +79,27 @@ export async function PATCH(req: NextRequest) {
       );
     }
   }
+  // Numeric boundary validation (audit Task 16): NaN/negative weight/height
+  // previously reached the caloric engine — NaN propagated into a misleading
+  // EmptyPlanError; a negative height produced plausible-looking wrong BMR.
+  // Zero is left to the existing truthiness handling (treated as absent).
+  const badNumber = (raw: unknown, min: number, max: number): boolean => {
+    if (raw == null || raw === "") return false;
+    const n = parseFloat(String(raw));
+    return !Number.isFinite(n) || n < min || n > max;
+  };
+  if (badNumber(weight, 0, 1500)) {
+    return NextResponse.json({ error: "Weight must be a number between 0 and 1500." }, { status: 422 });
+  }
+  if (badNumber(height, 0, 300)) {
+    return NextResponse.json({ error: "Height must be a number between 0 and 300." }, { status: 422 });
+  }
+  if (badNumber(heightFt, 0, 9)) {
+    return NextResponse.json({ error: "Height (ft) must be a number between 0 and 9." }, { status: 422 });
+  }
+  if (badNumber(heightIn, 0, 11.999)) {
+    return NextResponse.json({ error: "Height (in) must be a number between 0 and 12." }, { status: 422 });
+  }
   if (goalWeight != null && goalWeight !== "") {
     const gw = parseFloat(goalWeight);
     if (!Number.isFinite(gw) || gw < 50 || gw > 1000) {
@@ -180,14 +201,20 @@ export async function PATCH(req: NextRequest) {
       : []),
   ]);
 
-  // Detect whether any meal-plan-affecting fields changed
+  // Detect whether any meal-plan-affecting fields changed. Fields whose
+  // update-path preserves on omission (weight/height/birthday/goalWeight →
+  // `undefined`) only count as changed when the client actually sent a value
+  // — comparing an omitted field against null used to flag phantom changes
+  // (audit Task 16). goalWeight was missing entirely despite driving the
+  // ramp direction via resolvePlanDirection.
   const sorted = (arr: string[]) => JSON.stringify([...arr].sort());
   const mealPlanFieldsChanged = existing != null && (
     existing.physicalActivityId !== (physicalActivityId || null) ||
-    existing.weight             !== (weight            ? parseFloat(weight)            : null) ||
-    existing.height             !== (height            ? parseFloat(height)            : null) ||
+    (!!weight     && existing.weight     !== parseFloat(weight)) ||
+    (!!height     && existing.height     !== parseFloat(height)) ||
+    (!!goalWeight && existing.goalWeight !== parseFloat(goalWeight)) ||
     existing.heightUnit         !== (heightUnit ?? "ftin") ||
-    (existing.birthday?.getTime() ?? null) !== (birthday ? new Date(birthday).getTime() : null) ||
+    (!!birthday && (existing.birthday?.getTime() ?? null) !== new Date(birthday).getTime()) ||
     existing.sexAtBirth         !== (sexAtBirth        || null) ||
     sorted(existing.motivations.map((m) => m.motivationId))      !== sorted(motivationIds      ?? []) ||
     sorted(existing.foodAllergies.map((f) => f.foodId))           !== sorted(foodAllergyIds     ?? []) ||

@@ -48,6 +48,7 @@ export const getPredictionProfileInput = cache(
         goalWeight: true, goalWeightUnit: true,
         height: true, heightUnit: true,
         birthday: true, sexAtBirth: true,
+        gender: { select: { name: true } },
         physicalActivity: { select: { level: true } },
       },
     });

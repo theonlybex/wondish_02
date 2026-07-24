@@ -30,6 +30,7 @@ import {
   type DailyTargets,
   type Sex,
   type CaloricProfileInput,
+  resolveSex,
 } from "@/lib/caloric-engine";
 import { getPlanDayCalories } from "@/lib/meal-plan";
 import { formatLocalDate, MEAL_TYPES, type MealType } from "@/lib/local-date";
@@ -669,13 +670,8 @@ export function computeRemaining(target: DailyTargets | null, totals: MacroSnaps
 // plan covers the day (basis "plan-ramp"), steady-state otherwise. Returns null
 // on an incomplete caloric profile — routes emit dayTarget: null (never a 422).
 
-function resolveSex(sexAtBirth: string | null): Sex | null {
-  if (!sexAtBirth) return null;
-  const s = sexAtBirth.toLowerCase();
-  if (s === "male") return "male";
-  if (s === "female") return "female";
-  return null;
-}
+// Sex resolution shared via lib/caloric-engine.ts resolveSex (audit Task 16)
+// — includes the gender-name fallback the local copy here lacked.
 
 /**
  * @param usePlanRamp when false (range/Stats reads that span many days), the
@@ -690,13 +686,14 @@ export async function getDayTarget(
     where: { id: patientId },
     include: {
       physicalActivity: true,
+      gender: true,
       healthConditions: { include: { condition: true } },
       motivations: { include: { motivation: true } },
     },
   });
   if (!patient) return null;
   if (!patient.weight || !patient.height || !patient.birthday || !patient.physicalActivity?.level) return null;
-  const sex = resolveSex(patient.sexAtBirth);
+  const sex = resolveSex(patient.sexAtBirth, patient.gender?.name);
   if (!sex) return null;
 
   const input: CaloricProfileInput = {
