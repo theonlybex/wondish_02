@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { regeneratePlan, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
+import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
 import { accountHasActivePremium } from "@/lib/auth";
 
 export const maxDuration = 60;
@@ -49,11 +49,14 @@ export async function POST(req: NextRequest) {
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
   if (!patient.profileCompleted) return NextResponse.json({ error: "Profile not complete" }, { status: 422 });
 
-  const start = new Date(typeof startDate === "string" || typeof startDate === "number" ? startDate : NaN);
-  if (Number.isNaN(start.getTime())) {
+  const parsed = new Date(typeof startDate === "string" || typeof startDate === "number" ? startDate : NaN);
+  if (Number.isNaN(parsed.getTime())) {
     return NextResponse.json({ error: "Invalid startDate" }, { status: 400 });
   }
-  start.setHours(0, 0, 0, 0);
+  parsed.setHours(0, 0, 0, 0);
+  // A past start builds a plan that can end before today — the UI then reads
+  // an empty "today" as generation having failed.
+  const start = clampPlanStartToToday(parsed);
 
   // Atomic blue/green regenerate — no unguarded wipe.
   try {

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   regeneratePlan,
+  clampPlanStartToToday,
   MealPlanBusyError,
   EmptyPlanError,
   type RunnerDeps,
@@ -185,4 +186,34 @@ test("happy path: purge precedes insert, and the version flip lands only after i
 test("returns the number of menu rows created", async () => {
   const { deps } = makeDeps();
   assert.equal(await regeneratePlan("p1", START, deps), ROWS.length);
+});
+
+// ─── clampPlanStartToToday ───────────────────────────────────────────────────
+// Regression guard for the stale-regenerate bug (2026-07-24, gg.bex.abdi):
+// the client re-sent the OLD plan's mealPlanStartDate, so a "successful"
+// regenerate built a plan entirely in the past and today's view came up empty.
+// Routes that accept a client-supplied start date must clamp it to today.
+
+test("clampPlanStartToToday: past start dates clamp to today's local midnight", () => {
+  const now = new Date(2026, 6, 24, 14, 30); // Jul 24 2026, 2:30pm local
+  const past = new Date(2026, 4, 26); // May 26 — the stale stored start date
+  const clamped = clampPlanStartToToday(past, now);
+  assert.equal(clamped.getTime(), new Date(2026, 6, 24).getTime());
+});
+
+test("clampPlanStartToToday: today and future start dates pass through unchanged", () => {
+  const now = new Date(2026, 6, 24, 14, 30);
+  const today = new Date(2026, 6, 24);
+  assert.equal(clampPlanStartToToday(today, now).getTime(), today.getTime());
+  const future = new Date(2026, 6, 30);
+  assert.equal(clampPlanStartToToday(future, now).getTime(), future.getTime());
+});
+
+test("clampPlanStartToToday: does not mutate its input and returns a fresh Date", () => {
+  const now = new Date(2026, 6, 24, 9, 0);
+  const past = new Date(2026, 0, 1);
+  const before = past.getTime();
+  const clamped = clampPlanStartToToday(past, now);
+  assert.equal(past.getTime(), before);
+  assert.notEqual(clamped, past);
 });

@@ -300,7 +300,10 @@ export default function DailyMealPlanView({
     setSelectedId(null);
     setProfileIncomplete(false);
     try {
-      const startStr = format(startDate, "yyyy-MM-dd");
+      // Regenerate anchored at TODAY — re-sending the stored plan start date
+      // rebuilt the plan in the past once it was stale, so its window ended
+      // before today and the daily view came up empty (2026-07-24 bug).
+      const startStr = format(new Date(), "yyyy-MM-dd");
       await fetch("/api/meal-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -312,6 +315,7 @@ export default function DailyMealPlanView({
       setMenus(data.menus ?? []);
       setLoggedRecipeIds(data.loggedRecipeIds ?? []);
       setMealRatings(data.mealRatings ?? {});
+      if (data.mealPlanStartDate) setStartDate(new Date(data.mealPlanStartDate));
       setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
       setStale(false);
     } finally {

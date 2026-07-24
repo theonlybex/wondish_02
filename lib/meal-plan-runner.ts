@@ -22,6 +22,19 @@ export class EmptyPlanError extends Error {
 // A GENERATING run older than this is considered dead and may be re-claimed.
 const STUCK_AFTER_MS = 3 * 60 * 1000;
 
+/**
+ * Clamp a client-supplied plan start date to today's local midnight.
+ * A start date in the past builds a plan whose window can end before today,
+ * so "today's meals" is legitimately empty and the UI reads as generation
+ * having failed (2026-07-24: client re-sent the old mealPlanStartDate).
+ * Every route that passes a client date to regeneratePlan must clamp first.
+ */
+export function clampPlanStartToToday(start: Date, now: Date = new Date()): Date {
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  return start < today ? today : new Date(start);
+}
+
 // Only the prisma members regeneratePlan actually touches. Method syntax (not
 // arrow-property syntax) keeps parameter checking bivariant so the real
 // PrismaClient satisfies this shape while tests can inject an in-memory stub.

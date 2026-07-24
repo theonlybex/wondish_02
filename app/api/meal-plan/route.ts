@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { regeneratePlan, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
+import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
 import { getPlanDayCalories } from "@/lib/meal-plan";
 import { accountHasActivePremium } from "@/lib/auth";
 import { addDays } from "date-fns";
@@ -114,11 +114,15 @@ export async function POST(req: NextRequest) {
   }
 
   const { startDate } = await req.json();
-  const start = new Date(startDate);
+  const parsed = new Date(startDate);
 
-  if (isNaN(start.getTime())) {
+  if (isNaN(parsed.getTime())) {
     return NextResponse.json({ error: "Invalid date" }, { status: 400 });
   }
+
+  // A past start builds a plan that can end before today — the UI then reads
+  // an empty "today" as generation having failed.
+  const start = clampPlanStartToToday(parsed);
 
   try {
     const count = await regeneratePlan(patient.id, start);
