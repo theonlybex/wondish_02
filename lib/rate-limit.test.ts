@@ -79,3 +79,24 @@ test("fallback key does not collide across (name, identifier) splits", opts, asy
   assert.equal((await rateLimit("t-col", "y:z", 1, 60)).success, false);
   assert.equal((await rateLimit("t-col:y", "z", 1, 60)).success, false);
 });
+
+// ─── 2026-07-24 logic-audit Task 12: explicit failure policy ────────────────
+//
+// An Upstash rejection previously propagated out of rateLimit, 500-ing every
+// gated route (fail-closed-by-crash) while the client library's own timeout
+// path fails open — incoherent. Policy is now explicit: backend errors fail
+// OPEN (availability over enforcement) and are loudly logged.
+
+test("audit-T12: a throwing backend fails open (success: true), not a throw", async () => {
+  const result = await rateLimit("audit-t12", "user1", 5, 60, async () => {
+    throw new Error("redis down");
+  });
+  assert.deepEqual(result, { success: true });
+});
+
+test("audit-T12: a healthy backend result passes through untouched", async () => {
+  const denied = await rateLimit("audit-t12", "user1", 5, 60, async () => ({ success: false }));
+  assert.deepEqual(denied, { success: false });
+  const allowed = await rateLimit("audit-t12", "user1", 5, 60, async () => ({ success: true }));
+  assert.deepEqual(allowed, { success: true });
+});
