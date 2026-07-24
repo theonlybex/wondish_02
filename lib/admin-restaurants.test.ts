@@ -9,6 +9,7 @@ import {
   isDishStatus,
   RESTAURANT_STATUSES,
   DISH_STATUSES,
+  RESTAURANT_MUTABLE_FIELDS,
 } from "./admin-restaurants";
 
 // ─── slugify — name → URL-safe slug ─────────────────────────────────────────
@@ -162,4 +163,15 @@ test("isDishStatus: accepts exactly DRAFT/PUBLISHED", () => {
   for (const s of DISH_STATUSES) assert.equal(isDishStatus(s), true);
   assert.equal(isDishStatus("ARCHIVED"), false);
   assert.equal(isDishStatus(null), false);
+});
+
+// ─── 2026-07-24 logic-audit Task 6: restaurant field allowlist ──────────────
+
+test("RESTAURANT_MUTABLE_FIELDS excludes identity, status/slug (route-handled), and relations", () => {
+  for (const banned of ["id", "slug", "status", "dishes", "ethnic", "createdAt", "updatedAt"]) {
+    assert.equal((RESTAURANT_MUTABLE_FIELDS as readonly string[]).includes(banned), false, `${banned} must not be allowlisted`);
+  }
+  for (const required of ["name", "neighborhood", "ethnicId", "hours", "phone", "website"]) {
+    assert.equal((RESTAURANT_MUTABLE_FIELDS as readonly string[]).includes(required), true, `${required} missing`);
+  }
 });

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { requireAdmin, adminErrorResponse } from "@/lib/admin";
-import { isRestaurantStatus } from "@/lib/admin-restaurants";
+import { requireAdmin, adminErrorResponse, pickFields } from "@/lib/admin";
+import { isRestaurantStatus, RESTAURANT_MUTABLE_FIELDS } from "@/lib/admin-restaurants";
 
 function isUniqueConstraintViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
@@ -31,7 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const restaurant = await prisma.restaurant.update({
       where: { id: params.id },
       data: {
-        ...rest,
+        ...pickFields(rest, RESTAURANT_MUTABLE_FIELDS),
         ...(status !== undefined && { status }),
         ...(slug !== undefined && { slug: (slug as string).trim() }),
       },

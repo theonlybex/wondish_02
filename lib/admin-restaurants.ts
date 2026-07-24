@@ -37,6 +37,16 @@ export function slugify(name: string): string {
 
 // ─── Status enums ────────────────────────────────────────────────────────
 
+// Mutable Restaurant scalars for admin POST/PATCH bodies (see lib/admin.ts
+// pickFields). Excludes id/slug/status (route-validated explicitly), all
+// relation keys (a nested "dishes" write would bypass the publish gate and
+// its row lock), and timestamps.
+export const RESTAURANT_MUTABLE_FIELDS = [
+  "name", "neighborhood", "description", "imageUrl", "logoUrl", "addressLine",
+  "city", "state", "postalCode", "latitude", "longitude", "ethnicId", "hours",
+  "phone", "website",
+] as const;
+
 export const RESTAURANT_STATUSES = ["DRAFT", "PUBLISHED", "ARCHIVED"] as const;
 export type RestaurantStatusValue = (typeof RESTAURANT_STATUSES)[number];
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireAdmin, adminErrorResponse } from "@/lib/admin";
+import { requireAdmin, adminErrorResponse, pickFields, ZIPCODE_MUTABLE_FIELDS } from "@/lib/admin";
 
 export async function GET() {
   try {
@@ -16,7 +16,11 @@ export async function POST(req: NextRequest) {
   try {
     await requireAdmin();
     const body = await req.json();
-    const zipCode = await prisma.zipCode.create({ data: body });
+    const data = pickFields(body, ZIPCODE_MUTABLE_FIELDS) as { code: string };
+    if (typeof data.code !== "string" || data.code.trim().length === 0) {
+      return NextResponse.json({ error: "code is required" }, { status: 400 });
+    }
+    const zipCode = await prisma.zipCode.create({ data });
     return NextResponse.json(zipCode, { status: 201 });
   } catch (err) {
     return adminErrorResponse(err);
@@ -26,8 +30,12 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     await requireAdmin();
-    const { id, ...data } = await req.json();
-    const zipCode = await prisma.zipCode.update({ where: { id }, data });
+    const body = await req.json();
+    const { id } = body;
+    const zipCode = await prisma.zipCode.update({
+      where: { id },
+      data: pickFields(body, ZIPCODE_MUTABLE_FIELDS),
+    });
     return NextResponse.json(zipCode);
   } catch (err) {
     return adminErrorResponse(err);

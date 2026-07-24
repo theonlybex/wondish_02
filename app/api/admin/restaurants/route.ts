@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { requireAdmin, adminErrorResponse } from "@/lib/admin";
-import { slugify, isRestaurantStatus } from "@/lib/admin-restaurants";
+import { requireAdmin, adminErrorResponse, pickFields } from "@/lib/admin";
+import { slugify, isRestaurantStatus, RESTAURANT_MUTABLE_FIELDS } from "@/lib/admin-restaurants";
 
 function isUniqueConstraintViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
     const restaurant = await prisma.restaurant.create({
       data: {
-        ...rest,
+        ...pickFields(rest, RESTAURANT_MUTABLE_FIELDS),
         name,
         neighborhood,
         slug: resolvedSlug,

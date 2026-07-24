@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { requireAdmin, adminErrorResponse } from "@/lib/admin";
+import { requireAdmin, adminErrorResponse, pickFields, RECIPE_MUTABLE_FIELDS } from "@/lib/admin";
 
 export async function PATCH(
   req: NextRequest,
@@ -10,7 +11,8 @@ export async function PATCH(
     await requireAdmin();
 
     const body = await req.json();
-    const { ingredients, ...recipeData } = body;
+    const { ingredients } = body;
+    const recipeData = pickFields(body, RECIPE_MUTABLE_FIELDS) as Prisma.RecipeUncheckedUpdateInput;
 
     const recipe = await prisma.recipe.update({
       where: { id: params.id },

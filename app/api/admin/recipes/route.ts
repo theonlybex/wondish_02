@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { requireAdmin, adminErrorResponse } from "@/lib/admin";
+import { requireAdmin, adminErrorResponse, pickFields, RECIPE_MUTABLE_FIELDS } from "@/lib/admin";
 
 export async function GET(req: NextRequest) {
   try {
@@ -35,7 +36,13 @@ export async function POST(req: NextRequest) {
     await requireAdmin();
 
     const body = await req.json();
-    const { ingredients, ...recipeData } = body;
+    const { ingredients } = body;
+    if (typeof body.name !== "string" || body.name.trim().length === 0) {
+      return NextResponse.json({ error: "name is required" }, { status: 400 });
+    }
+    // Allowlisted scalars only; cast is sound because name is validated above
+    // and every other listed field is optional on the model.
+    const recipeData = pickFields(body, RECIPE_MUTABLE_FIELDS) as Prisma.RecipeUncheckedCreateInput;
 
     const recipe = await prisma.recipe.create({
       data: {
