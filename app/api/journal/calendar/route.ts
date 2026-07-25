@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
     activityLevel: string | null;
     notes: string | null;
     dailyCalorieTarget: number | null;
-    meals: { mealType: string; recipeName: string; rating: number }[];
+    meals: { mealType: string; recipeName: string; rating: number | null }[];
   }> = {};
 
   // Index journal entries by date
