@@ -175,8 +175,8 @@ surfaces. Explicitly out of scope.
 
 ## Testing
 
-- **Backend:** unit tests for `lib/supplements.ts` validation (Vitest,
-  following `lib/journal.test.ts`).
+- **Backend:** unit tests for `lib/supplements.ts` validation (`node:test`
+  via `npm test`, following `lib/journal.test.ts`).
 - **iOS:** `ClaraTests` for `SupplementsViewModel` (load/add/toggle/error
   paths with stub service), `JournalViewModel` (merge of calendar + history),
   and DTO decoding — following `MealPlanViewModelTests` /
