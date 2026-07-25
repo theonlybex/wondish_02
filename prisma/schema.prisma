@@ -157,6 +157,7 @@ model Patient {
   journalEntries    JournalEntry[]
   customIngredients PatientCustomIngredient[]
   mealLogs          MealLog[]
+  supplements       Supplement[]
 
   profileCompleted Boolean  @default(false)
   tasteCompleted   Boolean  @default(false)
@@ -573,6 +574,32 @@ model JournalMeal {
   rating         Float?
 
   @@index([journalEntryId])
+}
+
+model Supplement {
+  id        String             @id @default(cuid())
+  patientId String
+  patient   Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name      String
+  dosage    String?
+  timeSlot  String // "MORNING" | "AFTERNOON" | "EVENING"
+  deletedAt DateTime? // soft delete: past journal days keep showing real intakes
+  createdAt DateTime           @default(now())
+  intakes   SupplementIntake[]
+
+  @@index([patientId])
+}
+
+model SupplementIntake {
+  id           String     @id @default(cuid())
+  supplementId String
+  supplement   Supplement @relation(fields: [supplementId], references: [id], onDelete: Cascade)
+  patientId    String // scalar copy for range queries; cascade rides the supplement relation
+  date         DateTime // local midnight, journal-style
+  createdAt    DateTime   @default(now())
+
+  @@unique([supplementId, date])
+  @@index([patientId, date])
 }
 
 enum MealLogSource {
