@@ -39,7 +39,7 @@
   - `validateSupplementBody(body, { partial }): { ok: true; name?: string; dosage?: string | null; timeSlot?: SupplementTimeSlot } | { ok: false; error: string }` — with `partial: false` `name` and `timeSlot` are required; with `partial: true` only provided keys are validated/returned.
   - `validateIntakeBody(body): { ok: true; date: Date; taken: boolean } | { ok: false; error: string }`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 // lib/supplements.test.ts
@@ -106,12 +106,12 @@ test("intake: rejects bad date and non-boolean taken", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `cd /Users/becks/Desktop/NewView/wondish_02 && npm test 2>&1 | tail -15`
 Expected: FAIL — `Cannot find module './supplements'`.
 
-- [ ] **Step 3: Implement `lib/supplements.ts`**
+- [x] **Step 3: Implement `lib/supplements.ts`**
 
 ```ts
 // Pure validation for the /api/supplements routes, following lib/journal.ts:
@@ -181,12 +181,12 @@ export function validateIntakeBody(body: Record<string, unknown>): IntakeBodyVal
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `npm test 2>&1 | tail -5`
 Expected: all pass (existing suites + 9 new tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/supplements.ts lib/supplements.test.ts
@@ -203,7 +203,7 @@ git commit -m "feat(supplements): pure validation for supplement + intake bodies
 **Interfaces:**
 - Produces (used by Tasks 3–5): `prisma.supplement`, `prisma.supplementIntake` with the exact fields below.
 
-- [ ] **Step 1: Add models to `prisma/schema.prisma`**
+- [x] **Step 1: Add models to `prisma/schema.prisma`**
 
 Append after the `JournalMeal` model:
 
@@ -241,18 +241,18 @@ In `model Patient`, after `mealLogs          MealLog[]` add:
   supplements       Supplement[]
 ```
 
-- [ ] **Step 2: Create the migration**
+- [x] **Step 2: Create the migration**
 
 Run: `cd /Users/becks/Desktop/NewView/wondish_02 && npx prisma migrate dev --name add_supplements 2>&1 | tail -5`
 Expected: `Your database is now in sync with your schema.` and a new folder under `prisma/migrations/`.
 If no local database is reachable, run `npx prisma migrate dev --name add_supplements --create-only` instead (authors the SQL without executing — matches this repo's "authored, NOT executed" release posture) and then `npx prisma generate`.
 
-- [ ] **Step 3: Verify the client compiles**
+- [x] **Step 3: Verify the client compiles**
 
 Run: `npx tsc --noEmit 2>&1 | tail -3`
 Expected: no new errors (`prisma generate` gave the client `supplement` / `supplementIntake` delegates).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add prisma/schema.prisma prisma/migrations
@@ -270,7 +270,7 @@ git commit -m "feat(supplements): Supplement + SupplementIntake models (soft del
 - Consumes: `validateSupplementBody` (Task 1), Prisma models (Task 2), `parseLocalDateStrict` (`lib/journal.ts`).
 - Produces (consumed by iOS Task 7): `GET ?date=YYYY-MM-DD` → `{ supplements: [{ id, name, dosage, timeSlot, takenToday }] }` ordered by timeSlot (MORNING, AFTERNOON, EVENING) then createdAt; `POST {name, dosage?, timeSlot}` → `{ supplement: { id, name, dosage, timeSlot, takenToday: false } }` (201).
 
-- [ ] **Step 1: Write `app/api/supplements/route.ts`**
+- [x] **Step 1: Write `app/api/supplements/route.ts`**
 
 ```ts
 import { auth } from "@clerk/nextjs/server";
@@ -348,12 +348,12 @@ export async function POST(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: Verify compile + existing tests**
+- [x] **Step 2: Verify compile + existing tests**
 
 Run: `npx tsc --noEmit 2>&1 | tail -3 && npm test 2>&1 | tail -3`
 Expected: clean compile, all tests pass (route logic is thin; its validation is Task 1's tested code).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add app/api/supplements/route.ts
@@ -372,7 +372,7 @@ git commit -m "feat(supplements): list + create routes (per-day takenToday)"
 - Consumes: `validateSupplementBody`, `validateIntakeBody` (Task 1); Prisma (Task 2).
 - Produces (consumed by iOS Task 7): `PATCH {name?, dosage?, timeSlot?}` → `{ supplement: {id, name, dosage, timeSlot} }`; `DELETE` → `{ ok: true }` (soft delete); `POST /intake {date, taken}` → `{ ok: true, taken }` (idempotent upsert/delete).
 
-- [ ] **Step 1: Write `app/api/supplements/[id]/route.ts`**
+- [x] **Step 1: Write `app/api/supplements/[id]/route.ts`**
 
 ```ts
 import { auth } from "@clerk/nextjs/server";
@@ -430,7 +430,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 }
 ```
 
-- [ ] **Step 2: Write `app/api/supplements/[id]/intake/route.ts`**
+- [x] **Step 2: Write `app/api/supplements/[id]/intake/route.ts`**
 
 ```ts
 import { auth } from "@clerk/nextjs/server";
@@ -473,12 +473,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 }
 ```
 
-- [ ] **Step 3: Verify compile + tests**
+- [x] **Step 3: Verify compile + tests**
 
 Run: `npx tsc --noEmit 2>&1 | tail -3 && npm test 2>&1 | tail -3`
 Expected: clean; all pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add "app/api/supplements/[id]"
@@ -496,7 +496,7 @@ git commit -m "feat(supplements): update, soft-delete, and idempotent per-day in
 - Consumes: Prisma (Task 2), `parseLocalDateStrict` (`lib/journal.ts`).
 - Produces (consumed by iOS Task 10): `GET ?from=YYYY-MM-DD&to=YYYY-MM-DD` → `{ days: [{ date: "YYYY-MM-DD", taken: [{ name }], total }] }` — `taken` includes soft-deleted supplements' past intakes; `total` = count of supplements live on that day is intentionally simplified to the CURRENT live count (see comment in code); days with no data are omitted.
 
-- [ ] **Step 1: Write `app/api/supplements/history/route.ts`**
+- [x] **Step 1: Write `app/api/supplements/history/route.ts`**
 
 ```ts
 import { auth } from "@clerk/nextjs/server";
@@ -552,12 +552,12 @@ export async function GET(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: Verify compile + tests**
+- [x] **Step 2: Verify compile + tests**
 
 Run: `npx tsc --noEmit 2>&1 | tail -3 && npm test 2>&1 | tail -3`
 Expected: clean; all pass.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add app/api/supplements/history
@@ -578,7 +578,7 @@ git commit -m "feat(supplements): per-day intake history for the journal"
 - Produces (consumed by iOS Task 10): with `?allMeals=1`, each entry's `meals` includes ALL non-skipped meals — `{ mealType, recipeName, rating: number | null }` (rating `null`/`0` = unrated). Without the param, behavior is byte-identical to today (web unaffected).
 - New in `lib/journal.ts`: `filterCalendarMeals<T extends { skipped: boolean; rating: number | null }>(meals: T[], allMeals: boolean): T[]`.
 
-- [ ] **Step 1: Append failing tests to `lib/journal.test.ts`**
+- [x] **Step 1: Append failing tests to `lib/journal.test.ts`**
 
 ```ts
 test("filterCalendarMeals: default keeps only rated, non-skipped meals", () => {
@@ -606,9 +606,9 @@ test("filterCalendarMeals: allMeals keeps every non-skipped meal", () => {
 
 (Import `filterCalendarMeals` alongside the file's existing `./journal` imports.)
 
-- [ ] **Step 2: Run to verify failure** — `npm test 2>&1 | tail -5` — expect FAIL (`filterCalendarMeals` not exported).
+- [x] **Step 2: Run to verify failure** — `npm test 2>&1 | tail -5` — expect FAIL (`filterCalendarMeals` not exported).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `lib/journal.ts` append:
 
@@ -643,9 +643,9 @@ with:
 
 - In the same `.map`, change `rating: m.rating!` to `rating: allMeals ? m.rating ?? null : m.rating!` and import `filterCalendarMeals` from `@/lib/journal`.
 
-- [ ] **Step 4: Run tests** — `npm test 2>&1 | tail -3 && npx tsc --noEmit 2>&1 | tail -3` — expect all pass, clean compile.
+- [x] **Step 4: Run tests** — `npm test 2>&1 | tail -3 && npx tsc --noEmit 2>&1 | tail -3` — expect all pass, clean compile.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/journal.ts lib/journal.test.ts app/api/journal/calendar/route.ts
@@ -678,7 +678,7 @@ protocol SupplementProviding: Sendable {
 }
 ```
 
-- [ ] **Step 1: Write failing decode tests** (`ClaraTests/SupplementDTOTests.swift`)
+- [x] **Step 1: Write failing decode tests** (`ClaraTests/SupplementDTOTests.swift`)
 
 ```swift
 import XCTest
@@ -706,13 +706,13 @@ final class SupplementDTOTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Register the test file in pbxproj + run to verify compile failure**
+- [x] **Step 2: Register the test file in pbxproj + run to verify compile failure**
 
 Register `SupplementDTOTests.swift` in `project.pbxproj` (ClaraTests group + ClaraTests Sources phase — 4-point hand-edit per commit `78b1089`: PBXBuildFile entry, PBXFileReference entry, group `children` entry, Sources `files` entry; generate each 24-hex UUID with `uuidgen | tr -d - | cut -c1-24 | tr a-f A-F`).
 Run: `cd /Users/becks/Desktop/NewView/Clara && xcodebuild test -project Clara.xcodeproj -scheme Clara -destination "platform=iOS Simulator,id=9A2B71CC-987F-4A6F-8DB1-BF8F2341CCF1" -only-testing ClaraTests/SupplementDTOTests 2>&1 | tail -5`
 Expected: compile FAIL — `SupplementListDTO` undefined.
 
-- [ ] **Step 3: Write `SupplementDTOs.swift`**
+- [x] **Step 3: Write `SupplementDTOs.swift`**
 
 ```swift
 import Foundation
@@ -777,7 +777,7 @@ Note: `POST /api/supplements` and `PATCH .../[id]` responses omit `takenToday` o
     }
 ```
 
-- [ ] **Step 4: Write `SupplementService.swift`**
+- [x] **Step 4: Write `SupplementService.swift`**
 
 ```swift
 import Foundation
@@ -828,9 +828,9 @@ struct SupplementService: SupplementProviding {
 
 (If `APIRequest.Method` lacks `.delete`, add `case delete = "DELETE"` to it — check `Clara/Core/Networking/APIRequest.swift` first.)
 
-- [ ] **Step 5: Register both app files in pbxproj (app target Sources), run the Step-2 test command** — expect `Test Suite 'SupplementDTOTests' passed`.
+- [x] **Step 5: Register both app files in pbxproj (app target Sources), run the Step-2 test command** — expect `Test Suite 'SupplementDTOTests' passed`.
 
-- [ ] **Step 6: Commit (Clara repo)**
+- [x] **Step 6: Commit (Clara repo)**
 
 ```bash
 cd /Users/becks/Desktop/NewView/Clara && git add Clara/Features/Supplements ClaraTests/SupplementDTOTests.swift Clara.xcodeproj/project.pbxproj Clara/Core/Networking/APIRequest.swift
@@ -870,7 +870,7 @@ git commit -m "feat(supplements): DTOs + service for /api/supplements"
 }
 ```
 
-- [ ] **Step 1: Write failing tests** (`ClaraTests/SupplementsViewModelTests.swift`)
+- [x] **Step 1: Write failing tests** (`ClaraTests/SupplementsViewModelTests.swift`)
 
 ```swift
 import XCTest
@@ -973,9 +973,9 @@ final class SupplementsViewModelTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Register test file in pbxproj, run** `-only-testing ClaraTests/SupplementsViewModelTests` — expect compile FAIL (`SupplementsViewModel` undefined).
+- [x] **Step 2: Register test file in pbxproj, run** `-only-testing ClaraTests/SupplementsViewModelTests` — expect compile FAIL (`SupplementsViewModel` undefined).
 
-- [ ] **Step 3: Implement `SupplementsViewModel.swift`**
+- [x] **Step 3: Implement `SupplementsViewModel.swift`**
 
 ```swift
 import Foundation
@@ -1071,9 +1071,9 @@ final class SupplementsViewModel {
 }
 ```
 
-- [ ] **Step 4: Register in pbxproj, run** `ClaraTests/SupplementsViewModelTests` — expect pass. Then run the FULL suite once (no `-only-testing`) — expect all green.
+- [x] **Step 4: Register in pbxproj, run** `ClaraTests/SupplementsViewModelTests` — expect pass. Then run the FULL suite once (no `-only-testing`) — expect all green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Clara/Features/Supplements/SupplementsViewModel.swift ClaraTests/SupplementsViewModelTests.swift Clara.xcodeproj/project.pbxproj
@@ -1092,7 +1092,7 @@ git commit -m "feat(supplements): view model — grouped list, optimistic check-
 - Consumes: `SupplementsViewModel` (Task 8), design system, `LaunchFixtures` (stub wired in Task 12).
 - Produces: `struct SupplementsView: View` with `init(vm: SupplementsViewModel?)` — `PlanHubView` (Task 11) owns VM creation and passes it in (hub owns all three VMs so segment switches don't lose state).
 
-- [ ] **Step 1: Implement the view** — accepted mockup is the source of truth. Structure:
+- [x] **Step 1: Implement the view** — accepted mockup is the source of truth. Structure:
 
 ```swift
 import SwiftUI
@@ -1158,11 +1158,11 @@ Required pieces (all in this file, matching the mockup):
 - `enum SupplementEditorTarget: Identifiable { case create; case edit(SupplementDTO); var id: String { ... } }` (`create` → `"create"`, `edit` → the DTO id).
 - `SupplementEditorSheet` — `NavigationStack` with `WTextField(label: "Name", ...)` (required), `WTextField(label: "Dosage (optional)", placeholder: "e.g. 500 mg · 1 tablet")`, and a 3-chip slot picker (`ForEach(SupplementTimeSlot.allCases)` buttons: selected = `WColor.primary.opacity(0.08)` bg + primary border + primary text; unselected = white bg + `WColor.border`); prefilled when editing. Save button (primary lg, title "Add supplement" / "Save changes") disabled while saving or when name trimmed empty; on success `dismiss()`. Cancel toolbar button.
 
-- [ ] **Step 2: Register in pbxproj; build** — `xcodebuild build -project Clara.xcodeproj -scheme Clara -destination "platform=iOS Simulator,id=9A2B71CC-987F-4A6F-8DB1-BF8F2341CCF1" 2>&1 | tail -3` — expect `BUILD SUCCEEDED`.
+- [x] **Step 2: Register in pbxproj; build** — `xcodebuild build -project Clara.xcodeproj -scheme Clara -destination "platform=iOS Simulator,id=9A2B71CC-987F-4A6F-8DB1-BF8F2341CCF1" 2>&1 | tail -3` — expect `BUILD SUCCEEDED`.
 
-- [ ] **Step 3: Run full test suite** — expect all green (view compiles; logic already covered by Task 8 tests).
+- [x] **Step 3: Run full test suite** — expect all green (view compiles; logic already covered by Task 8 tests).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Clara/Features/Supplements/SupplementsView.swift Clara.xcodeproj/project.pbxproj
@@ -1232,7 +1232,7 @@ struct JournalDay: Identifiable, Equatable {
 }
 ```
 
-- [ ] **Step 1: Write failing tests** (`ClaraTests/JournalViewModelTests.swift`)
+- [x] **Step 1: Write failing tests** (`ClaraTests/JournalViewModelTests.swift`)
 
 ```swift
 import XCTest
@@ -1323,9 +1323,9 @@ extension JournalViewModelTests {
 ```
 
 
-- [ ] **Step 2: Register test file in pbxproj, run** `-only-testing ClaraTests/JournalViewModelTests` — expect compile FAIL.
+- [x] **Step 2: Register test file in pbxproj, run** `-only-testing ClaraTests/JournalViewModelTests` — expect compile FAIL.
 
-- [ ] **Step 3: Implement the three files**
+- [x] **Step 3: Implement the three files**
 
 `JournalDTOs.swift` — exactly the structs from **Interfaces** above (plain `Codable`, no custom decoding).
 
@@ -1414,9 +1414,9 @@ final class JournalViewModel {
 }
 ```
 
-- [ ] **Step 4: Register all files in pbxproj, run** `ClaraTests/JournalViewModelTests` — expect pass; then full suite — green.
+- [x] **Step 4: Register all files in pbxproj, run** `ClaraTests/JournalViewModelTests` — expect pass; then full suite — green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Clara/Features/Journal ClaraTests/JournalViewModelTests.swift Clara.xcodeproj/project.pbxproj
@@ -1438,7 +1438,7 @@ git commit -m "feat(journal): DTOs, service, and day-merge view model"
 - Consumes: everything above.
 - Produces: `PlanHubView` — the new center-tab root.
 
-- [ ] **Step 1: Implement `JournalView.swift`** — day cards per the mockup:
+- [x] **Step 1: Implement `JournalView.swift`** — day cards per the mockup:
 
 ```swift
 import SwiftUI
@@ -1478,7 +1478,7 @@ Required pieces:
 - `emptySection` — `book.closed` SF Symbol, "No history yet", caption "Logged meals and supplements will show up here day by day."
 - `loadingSection` — 3 redacted day-card placeholders; `failedSection` — copy pattern, "Couldn't load your journal", retry → `vm.retry()`.
 
-- [ ] **Step 2: Implement `PlanHubView.swift`**
+- [x] **Step 2: Implement `PlanHubView.swift`**
 
 ```swift
 import SwiftUI
@@ -1572,7 +1572,7 @@ struct PlanHubView: View {
 
 (`stubSupplementProviding` / `stubJournalProviding` don't exist until Task 12 — for THIS task's build, keep the `#if DEBUG` block commented out with `// Task 12 wires fixtures here`, and uncomment in Task 12. The plan's Task 12 includes that uncomment.)
 
-- [ ] **Step 3: Refit `MealPlanView`** — it currently owns `NavigationStack`, `ScrollView`, `.navigationTitle`, and `.padding`. The hub now owns those. Edit `MealPlanView.body` to:
+- [x] **Step 3: Refit `MealPlanView`** — it currently owns `NavigationStack`, `ScrollView`, `.navigationTitle`, and `.padding`. The hub now owns those. Edit `MealPlanView.body` to:
 
 ```swift
     var body: some View {
@@ -1588,11 +1588,11 @@ struct PlanHubView: View {
 
 i.e. delete the `NavigationStack { ScrollView { ... } .background(...) .navigationTitle("Meal Plan") }` wrapper and the `.tint(WColor.primary)` (hub owns both), keep every modifier that hangs state off the view (`.task`, `.fullScreenCover`, `.sheet`, `.alert`) attached to the `VStack`. Also delete the inner `.padding(WSpacing.lg)` / `.padding(.bottom, WSpacing.xxl)` (hub applies them). `#Preview` becomes `#Preview { PlanHubView() }`.
 
-- [ ] **Step 4: Point `RootTabView` at the hub** — `Clara/App/RootTabView.swift:27`: `MealPlanView()` → `PlanHubView()` (tab item label unchanged).
+- [x] **Step 4: Point `RootTabView` at the hub** — `Clara/App/RootTabView.swift:27`: `MealPlanView()` → `PlanHubView()` (tab item label unchanged).
 
-- [ ] **Step 5: Register new files in pbxproj; build + full test suite** — expect `BUILD SUCCEEDED`, all tests green.
+- [x] **Step 5: Register new files in pbxproj; build + full test suite** — expect `BUILD SUCCEEDED`, all tests green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Clara/Features/Journal/JournalView.swift Clara/Features/MealPlan/PlanHubView.swift Clara/Features/MealPlan/MealPlanView.swift Clara/App/RootTabView.swift Clara.xcodeproj/project.pbxproj
@@ -1612,7 +1612,7 @@ git commit -m "feat(plan-hub): segmented Meal Plan | Supplements | Journal cente
 - Consumes: `SupplementProviding`, `JournalProviding`.
 - Produces: fixtures `supplementsLoaded`, `supplementsEmpty`, `journalLoaded` + `stubSupplementProviding` / `stubJournalProviding` accessors mirroring `stubMealPlanProviding`; DEBUG launch args `-tab mealplan -segment supplements|journal` for deterministic screenshots.
 
-- [ ] **Step 1: Add fixture cases and stubs to `LaunchFixtures.swift`**
+- [x] **Step 1: Add fixture cases and stubs to `LaunchFixtures.swift`**
 
 Add `supplementsLoaded, supplementsEmpty, journalLoaded` to the fixture enum, then (mirroring `stubMealPlanProviding` — every OTHER accessor's exhaustive `switch` also gains these three cases in its `nil` branch):
 
@@ -1689,7 +1689,7 @@ struct FixtureJournalProviding: JournalProviding {
 }
 ```
 
-- [ ] **Step 2: Uncomment the fixture block in `PlanHubView.attachViewModelsIfNeeded()`** (Task 11 left it commented) and add the `-segment` launch arg to `PlanHubView.init`, mirroring `RootTabView`'s `-tab`:
+- [x] **Step 2: Uncomment the fixture block in `PlanHubView.attachViewModelsIfNeeded()`** (Task 11 left it commented) and add the `-segment` launch arg to `PlanHubView.init`, mirroring `RootTabView`'s `-tab`:
 
 ```swift
     init() {
@@ -1703,7 +1703,7 @@ struct FixtureJournalProviding: JournalProviding {
     }
 ```
 
-- [ ] **Step 3: Build, install, screenshot all three segments**
+- [x] **Step 3: Build, install, screenshot all three segments**
 
 ```bash
 cd /Users/becks/Desktop/NewView/Clara
@@ -1720,9 +1720,9 @@ done
 (Adjust bundle id / fixture launch-arg spelling to whatever `LaunchFixtures.current` actually parses — check the top of `LaunchFixtures.swift`.)
 Expected: screenshots match the accepted mockup (summary card + slot groups + check circles; journal day cards with thumbs + pill lines).
 
-- [ ] **Step 4: Full test suite one last time** — all green.
+- [x] **Step 4: Full test suite one last time** — all green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Clara/App/LaunchFixtures.swift Clara/Features/MealPlan/PlanHubView.swift
@@ -1733,7 +1733,7 @@ git commit -m "feat(plan-hub): launch fixtures + -segment arg for deterministic 
 
 ### Task 13: Wrap-up
 
-- [ ] **Step 1: Full verification, both repos**
+- [x] **Step 1: Full verification, both repos**
 
 ```bash
 cd /Users/becks/Desktop/NewView/wondish_02 && npm test 2>&1 | tail -3 && npx tsc --noEmit 2>&1 | tail -3
@@ -1742,6 +1742,6 @@ cd /Users/becks/Desktop/NewView/Clara && xcodebuild test -project Clara.xcodepro
 
 Expected: everything green.
 
-- [ ] **Step 2: Update plan checkboxes, commit the plan file (wondish_02), and show the user the Task 12 screenshots** for acceptance against the approved mockup.
+- [x] **Step 2: Update plan checkboxes, commit the plan file (wondish_02), and show the user the Task 12 screenshots** for acceptance against the approved mockup.
 
-- [ ] **Step 3: Release notes** — remind the user: the Prisma migration must run against production before the routes deploy (`npm run db:migrate:deploy` in the release pipeline), matching the repo's authored-not-executed posture.
+- [x] **Step 3: Release notes** — remind the user: the Prisma migration must run against production before the routes deploy (`npm run db:migrate:deploy` in the release pipeline), matching the repo's authored-not-executed posture.
