@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  filterCalendarMeals,
   parseLocalDateStrict,
   shouldReplaceMeals,
   validateJournalPost,
@@ -65,4 +66,28 @@ test("validateJournalPost: omitted weight/meals are preserved as absent, empty-s
     assert.equal(r.weight, null);
     assert.equal(r.meals, undefined);
   }
+});
+
+// ─── Calendar meal filter (iOS journal allMeals mode) ───────────────────────
+
+test("filterCalendarMeals: default keeps only rated, non-skipped meals", () => {
+  const meals = [
+    { skipped: false, rating: 1 },
+    { skipped: false, rating: 0 },
+    { skipped: false, rating: null },
+    { skipped: true, rating: 1 },
+  ];
+  assert.deepEqual(filterCalendarMeals(meals, false), [{ skipped: false, rating: 1 }]);
+});
+
+test("filterCalendarMeals: allMeals keeps every non-skipped meal", () => {
+  const meals = [
+    { skipped: false, rating: 1 },
+    { skipped: false, rating: null },
+    { skipped: true, rating: 1 },
+  ];
+  assert.deepEqual(filterCalendarMeals(meals, true), [
+    { skipped: false, rating: 1 },
+    { skipped: false, rating: null },
+  ]);
 });

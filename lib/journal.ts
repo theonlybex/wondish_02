@@ -85,3 +85,12 @@ export function validateJournalPost(body: Record<string, unknown>): JournalPostV
 
   return { ok: true, date, weight, meals };
 }
+
+// Calendar meal filter: the web journal shows only rated meals; the iOS
+// journal (allMeals) shows everything eaten. Skipped meals never render.
+export function filterCalendarMeals<T extends { skipped: boolean; rating: number | null }>(
+  meals: T[],
+  allMeals: boolean,
+): T[] {
+  return meals.filter((m) => !m.skipped && (allMeals || (m.rating != null && m.rating !== 0)));
+}

@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { filterCalendarMeals } from "@/lib/journal";
 import {
   computeAllMetrics,
   gradualDailyCals,
@@ -20,9 +21,13 @@ function fmtDate(d: Date): string {
  * Returns all journal entries + rated meals for the full meal-plan date range,
  * plus the caloric profile and per-day calorie targets.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // iOS journal mode: include unrated (but never skipped) meals, rating nullable.
+  // Without the param the payload is byte-identical to the web contract.
+  const allMeals = req.nextUrl.searchParams.get("allMeals") === "1";
 
   // Single round-trip via the Clerk id relation (was account-then-patient).
   const patient = await prisma.patient.findFirst({
@@ -143,12 +148,11 @@ export async function GET() {
 
     if (entry) {
       // Only include rated meals (liked/disliked)
-      const ratedMeals = entry.meals
-        .filter((m) => !m.skipped && m.rating != null && m.rating !== 0)
+      const ratedMeals = filterCalendarMeals(entry.meals, allMeals)
         .map((m) => ({
           mealType: m.mealType,
           recipeName: m.recipeId ? recipeNames.get(m.recipeId) ?? "Unknown" : "Unknown",
-          rating: m.rating!,
+          rating: allMeals ? m.rating ?? null : m.rating!,
         }));
 
       entries[key] = {
