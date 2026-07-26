@@ -90,12 +90,25 @@ export async function GET(req: NextRequest) {
   );
 
   // Server facet list: distinct sorted cuisine names across ALL published
-  // restaurants — an independent, unfiltered/unpaginated query.
-  const allPublished = await prisma.restaurant.findMany({
+  // restaurants — an independent, unfiltered/unpaginated query. groupBy makes
+  // the DB do the deduplication (rows returned = distinct ethnicIds, not all
+  // published restaurants); buildCuisineFacet keeps the exact null-drop +
+  // dedupe-by-name + sort semantics the wire contract pins (two Ethnic rows
+  // sharing a name still collapse to one facet entry).
+  const facetGroups = await prisma.restaurant.groupBy({
+    by: ["ethnicId"],
     where: { status: "PUBLISHED" },
-    select: { ethnic: { select: { name: true } } },
   });
-  const cuisines = buildCuisineFacet(allPublished.map((r) => r.ethnic?.name ?? null));
+  const facetEthnicIds = facetGroups
+    .map((g) => g.ethnicId)
+    .filter((id): id is string => id !== null);
+  const facetEthnics = facetEthnicIds.length
+    ? await prisma.ethnic.findMany({
+        where: { id: { in: facetEthnicIds } },
+        select: { name: true },
+      })
+    : [];
+  const cuisines = buildCuisineFacet(facetEthnics.map((e) => e.name));
 
   return NextResponse.json({ restaurants, cuisines, nextCursor });
 }
