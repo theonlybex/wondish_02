@@ -7,6 +7,7 @@ import {
   checkDishPublishGate,
   isRestaurantStatus,
   isDishStatus,
+  stripDishIdentityFields,
   RESTAURANT_STATUSES,
   DISH_STATUSES,
   RESTAURANT_MUTABLE_FIELDS,
@@ -146,6 +147,35 @@ test("checkDishPublishGate: allows PUBLISHED with at least one ingredient", () =
 test("checkDishPublishGate: DRAFT is never blocked, even with zero ingredients", () => {
   const res = checkDishPublishGate("DRAFT", 0);
   assert.equal(res.ok, true);
+});
+
+// ─── stripDishIdentityFields — dish PATCH `...rest` re-parent guard ────────
+
+test("stripDishIdentityFields: removes restaurantId (no re-parenting via update)", () => {
+  const cleaned = stripDishIdentityFields({ restaurantId: "other-restaurant", name: "Pad Thai" });
+  assert.deepEqual(cleaned, { name: "Pad Thai" });
+});
+
+test("stripDishIdentityFields: removes id (no primary-key rewrite via update)", () => {
+  const cleaned = stripDishIdentityFields({ id: "new-id", description: "Spicy" });
+  assert.deepEqual(cleaned, { description: "Spicy" });
+});
+
+test("stripDishIdentityFields: passes every other key through untouched", () => {
+  const rest = {
+    name: "Pad Thai",
+    description: null,
+    section: "Mains",
+    sortOrder: 3,
+    isRecommended: true,
+    available: false,
+    calories: 700,
+  };
+  assert.deepEqual(stripDishIdentityFields({ ...rest, id: "x", restaurantId: "y" }), rest);
+});
+
+test("stripDishIdentityFields: empty object stays empty", () => {
+  assert.deepEqual(stripDishIdentityFields({}), {});
 });
 
 // ─── status enum validation ─────────────────────────────────────────────────

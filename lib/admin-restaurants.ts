@@ -128,6 +128,22 @@ export function parseIngredients(raw: unknown): ParseResult<IngredientInput[]> {
   return ok(Array.from(byName.values()));
 }
 
+// ─── stripDishIdentityFields — dish PATCH `...rest` hygiene ────────────────
+// The dish PATCH route spreads the body's remaining keys straight into
+// `prisma.restaurantDish.update()`. `id` and `restaurantId` must never ride
+// along: a payload carrying `restaurantId` would silently re-parent the dish
+// to another restaurant (bypassing the URL's restaurant scope and its
+// publish-gate row lock), and `id` would rewrite the primary key. Pure strip
+// — every other key passes through untouched, so response shapes stay
+// byte-identical for well-formed payloads.
+
+export function stripDishIdentityFields<T extends Record<string, unknown>>(
+  rest: T
+): Omit<T, "id" | "restaurantId"> {
+  const { id: _id, restaurantId: _restaurantId, ...clean } = rest;
+  return clean;
+}
+
 // ─── checkDishPublishGate — spec-mandated publish gate ─────────────────────
 // A RestaurantDish cannot be set to PUBLISHED (create or update) with an
 // empty ingredient list. Callers resolve `ingredientCount` first: on create,

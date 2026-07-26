@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin";
-import { coercePrice, parseIngredients, checkDishPublishGate, isDishStatus } from "@/lib/admin-restaurants";
+import {
+  coercePrice,
+  parseIngredients,
+  checkDishPublishGate,
+  isDishStatus,
+  stripDishIdentityFields,
+} from "@/lib/admin-restaurants";
 
 // Typed early-exits thrown from inside the $transaction below and mapped back
 // to the same response shapes outside it (mirrors AccountClaimConflictError /
@@ -60,7 +66,10 @@ export async function PATCH(
       return NextResponse.json({ error: "request body must be a JSON object" }, { status: 400 });
     }
 
-    const { price, status, ingredients, ...rest } = body as Record<string, unknown>;
+    // `id`/`restaurantId` are stripped so an update can never re-parent a
+    // dish to a different restaurant (or rewrite its primary key).
+    const { price, status, ingredients, ...rawRest } = body as Record<string, unknown>;
+    const rest = stripDishIdentityFields(rawRest);
 
     if (status !== undefined && !isDishStatus(status)) {
       return NextResponse.json({ error: "status must be one of DRAFT, PUBLISHED" }, { status: 400 });
