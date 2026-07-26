@@ -217,6 +217,9 @@ export function computeVerdict(ingredientNames: readonly string[], matchers: Die
 // ─── matchSummary — over a restaurant's served (PUBLISHED + available) ────
 // dishes: passed = count with zero violations, total = served-dish count.
 // `matchers === null` (no profile) ⇒ null, same convention as computeVerdict.
+// Zero served dishes ⇒ null too (product call, C3 close-out): a restaurant
+// with no published menu must not render a "0 of 0 dishes fit" bar — null is
+// the existing "no fit bar" signal every consumer already honors.
 
 export interface MatchSummary {
   passed: number;
@@ -228,6 +231,7 @@ export function computeMatchSummary(
   matchers: DietMatchers | null
 ): MatchSummary | null {
   if (matchers == null) return null;
+  if (dishIngredientLists.length === 0) return null;
   let passed = 0;
   for (const ingredients of dishIngredientLists) {
     if (evaluateDishAgainstProfile(ingredients as string[], matchers).passed) passed++;

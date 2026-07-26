@@ -215,9 +215,14 @@ test("computeMatchSummary: matchers null (no profile) yields null", () => {
   assert.equal(computeMatchSummary([["Peanuts"], ["Rice"]], null), null);
 });
 
-test("computeMatchSummary: zero-dish restaurant yields {passed:0, total:0}", () => {
+test("computeMatchSummary: zero-dish restaurant yields null (no '0 of 0' fit bar — C3 product call)", () => {
   const matchers = buildDietMatchers(derivePatientBans(emptyPatient()));
-  assert.deepEqual(computeMatchSummary([], matchers), { passed: 0, total: 0 });
+  assert.equal(computeMatchSummary([], matchers), null);
+});
+
+test("computeMatchSummary: a single served dish still yields real counts, not null", () => {
+  const matchers = buildDietMatchers(derivePatientBans(emptyPatient()));
+  assert.deepEqual(computeMatchSummary([["Rice"]], matchers), { passed: 1, total: 1 });
 });
 
 test("computeMatchSummary: counts mixed pass/fail dishes correctly", () => {
