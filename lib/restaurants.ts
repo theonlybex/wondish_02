@@ -12,6 +12,7 @@
 // restaurants.test.ts for byte-exact assertions.
 // ────────────────────────────────────────────────────────────────────────────
 
+import type { Prisma } from "@prisma/client";
 import { evaluateDishAgainstProfile, type DietMatchers, type Violation } from "@/lib/diet-match";
 
 // ─── Result type (mirrors lib/meal-log.ts's ParseResult convention) ────────
@@ -137,6 +138,10 @@ export function paginateListRows<T extends { name: string; id: string }>(
 // meal-log delta cursor (buildDeltaWhere) — `name > cursor.name` OR
 // `(name = cursor.name AND id > cursor.id)` — required because `name` alone
 // is not unique.
+//
+// Typed as Prisma.RestaurantWhereInput (type-only import — this module stays
+// runtime-Prisma-free) so a field-name typo here is a tsc error instead of a
+// silently-ignored filter.
 
 export interface RestaurantWhereFilters {
   cuisine: string | null;
@@ -146,8 +151,8 @@ export interface RestaurantWhereFilters {
 export function buildRestaurantListWhere(
   filters: RestaurantWhereFilters,
   cursor: ListCursor | null
-): Record<string, unknown> {
-  const where: Record<string, unknown> = { status: "PUBLISHED" };
+): Prisma.RestaurantWhereInput {
+  const where: Prisma.RestaurantWhereInput = { status: "PUBLISHED" };
   if (filters.cuisine) where.ethnicId = filters.cuisine;
   if (filters.neighborhood) where.neighborhood = filters.neighborhood;
   if (cursor) {
