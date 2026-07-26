@@ -71,6 +71,19 @@ test("coercePrice: rejects non-string input types", () => {
   assert.equal(res.ok, false);
 });
 
+test("coercePrice: accepts up to 8 integer digits (Decimal(10,2) capacity)", () => {
+  assert.deepEqual(coercePrice("99999999"), { ok: true, value: "99999999" });
+  assert.deepEqual(coercePrice("99999999.99"), { ok: true, value: "99999999.99" });
+});
+
+test("coercePrice: rejects more than 8 integer digits (would overflow Decimal(10,2))", () => {
+  for (const raw of ["999999999", "999999999.99", "123456789012345678901234567890"]) {
+    const res = coercePrice(raw);
+    assert.equal(res.ok, false, `${raw} must be rejected`);
+    if (!res.ok) assert.equal(res.status, 400);
+  }
+});
+
 // ─── parseIngredients — shape validation + dedupe-by-name (replace-all) ────
 
 test("parseIngredients: accepts a well-formed list", () => {

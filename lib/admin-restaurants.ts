@@ -67,8 +67,13 @@ export function isDishStatus(v: unknown): v is DishStatusValue {
 // is passed straight through to `prisma.restaurantDish.{create,update}` — no
 // Prisma.Decimal construction needed here (keeps this module Prisma-free,
 // matching lib/restaurants.ts's structural-Priceish posture).
+//
+// The integer part is bounded to 8 digits: Decimal(10,2) holds at most
+// 10 significant digits with 2 reserved for cents, so anything longer would
+// overflow at write time and surface as an opaque Prisma 500 instead of
+// this 400.
 
-const PRICE_RE = /^\d+(\.\d{1,2})?$/;
+const PRICE_RE = /^\d{1,8}(\.\d{1,2})?$/;
 
 export function coercePrice(raw: unknown): ParseResult<string | null> {
   if (raw === undefined || raw === null) return ok(null);
