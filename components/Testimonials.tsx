@@ -18,10 +18,9 @@ export default async function Testimonials() {
       <div className="max-w-[1180px] mx-auto px-7">
         <div className="reveal max-w-[640px] mx-auto text-center">
           <span
-            className="inline-flex items-center justify-center gap-[9px] text-xs font-bold uppercase tracking-[0.14em]"
+            className="inline-flex items-center justify-center text-xs font-bold uppercase tracking-[0.14em]"
             style={{ color: "#812549" }}
           >
-            <span className="w-[22px] h-0.5 rounded-sm" style={{ background: "#FDC221" }} />
             {t("eyebrow")}
           </span>
           <h2

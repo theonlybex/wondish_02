@@ -4,11 +4,13 @@ import { getTranslations } from "next-intl/server";
 import { getRecipeEmoji } from "@/lib/recipeEmoji";
 import type { MealTypeKey } from "@/types";
 
-const mealTypeTag: Record<MealTypeKey, { bg: string; color: string; label: string }> = {
-  breakfast: { bg: "#FFE9AE", color: "#DEA402", label: "Breakfast" },
-  lunch:     { bg: "#F5F1DD", color: "#5F1C35", label: "Lunch" },
-  dinner:    { bg: "#8DCEBD", color: "#2b6472", label: "Dinner" },
-  snack:     { bg: "#E0A2AA", color: "#5F1C35", label: "Snack" },
+// Meal-tag convention (designer revision 2026-07-28). Breakfast keeps the #FDC221 fill but
+// takes a dark same-hue label — white on #FDC221 is 1.63:1 and fails WCAG AA.
+const mealTypeTag: Record<MealTypeKey, { bg: string; color: string; border: string; label: string }> = {
+  breakfast: { bg: "#FDC221", color: "#7A4A10", border: "#FDC221", label: "Breakfast" },
+  lunch:     { bg: "#00A090", color: "#FFFFFF", border: "#00A090", label: "Lunch" },
+  dinner:    { bg: "#812549", color: "#FFFFFF", border: "#812549", label: "Dinner" },
+  snack:     { bg: "#FFFFFF", color: "#778B04", border: "#778B04", label: "Snack" },
 };
 
 export default async function DishesPreview() {
@@ -27,10 +29,9 @@ export default async function DishesPreview() {
       <div className="reveal max-w-[1180px] mx-auto px-7 mb-12">
         <div className="max-w-[640px] mx-auto text-center">
           <span
-            className="inline-flex items-center justify-center gap-[9px] text-xs font-bold uppercase tracking-[0.14em]"
+            className="inline-flex items-center justify-center text-xs font-bold uppercase tracking-[0.14em]"
             style={{ color: "#812549" }}
           >
-            <span className="w-[22px] h-0.5 rounded-sm" style={{ background: "#FDC221" }} />
             {t("eyebrow")}
           </span>
           <h2
@@ -54,11 +55,11 @@ export default async function DishesPreview() {
       <div className="tray-wrap relative overflow-hidden" style={{ padding: "8px 0 32px" }}>
         <div
           className="pointer-events-none absolute inset-y-0 left-0 w-32 z-10"
-          style={{ background: "linear-gradient(to right, #F9F7ED, transparent)" }}
+          style={{ background: "linear-gradient(to right, #FFFDF5, transparent)" }}
         />
         <div
           className="pointer-events-none absolute inset-y-0 right-0 w-32 z-10"
-          style={{ background: "linear-gradient(to left, #F9F7ED, transparent)" }}
+          style={{ background: "linear-gradient(to left, #FFFDF5, transparent)" }}
         />
 
         <div className="tray-track">
@@ -81,8 +82,8 @@ export default async function DishesPreview() {
                 </div>
                 <div className="p-5">
                   <span
-                    className="inline-block text-[11px] font-bold tracking-[0.08em] uppercase px-2.5 py-1 rounded-full mb-2.5"
-                    style={{ background: tag.bg, color: tag.color }}
+                    className="inline-block text-[11px] font-bold tracking-[0.08em] uppercase px-2.5 py-1 rounded-full mb-2.5 border"
+                    style={{ background: tag.bg, color: tag.color, borderColor: tag.border }}
                   >
                     {tag.label}
                   </span>

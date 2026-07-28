@@ -9,14 +9,13 @@ export default async function CTASection() {
   return (
     <section
       className="relative text-center py-24 px-7 overflow-hidden"
-      style={{ background: "radial-gradient(ellipse 70% 90% at 50% 0%, #F5F1DD, #F9F7ED 70%)" }}
+      style={{ background: "radial-gradient(ellipse 70% 90% at 50% 0%, #F5F1DD, #FFFDF5 70%)" }}
     >
       <div className="reveal max-w-[1180px] mx-auto">
         <span
-          className="inline-flex items-center justify-center gap-[9px] text-xs font-bold uppercase tracking-[0.14em]"
+          className="inline-flex items-center justify-center text-xs font-bold uppercase tracking-[0.14em]"
           style={{ color: "#812549" }}
         >
-          <span className="w-[22px] h-0.5 rounded-sm" style={{ background: "#FDC221" }} />
           {t("eyebrow")}
         </span>
         <h2
@@ -38,8 +37,8 @@ export default async function CTASection() {
           </Link>
           <Link
             href="/dishes"
-            className="inline-flex items-center gap-2 px-7 py-[15px] rounded-full font-semibold text-[15px] border transition-all hover:-translate-y-0.5 hover:text-white hover:bg-[#B75E78] hover:border-[#B75E78]"
-            style={{ color: "#812549", borderColor: "#812549" }}
+            className="inline-flex items-center gap-2 px-7 py-[15px] rounded-full font-semibold text-[15px] transition-all hover:-translate-y-0.5 hover:bg-[#F5F1DD]"
+            style={{ background: "#FFFFFF", color: "#5F1C35" }}
           >
             {t("browseMenu")}
           </Link>

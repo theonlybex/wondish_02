@@ -27,10 +27,9 @@ export default async function PricingSection({ isLoggedIn = false }: { isLoggedI
       <div className="max-w-[1180px] mx-auto px-7">
         <div className="reveal max-w-[640px] mx-auto text-center">
           <span
-            className="inline-flex items-center justify-center gap-[9px] text-xs font-bold uppercase tracking-[0.14em]"
+            className="inline-flex items-center justify-center text-xs font-bold uppercase tracking-[0.14em]"
             style={{ color: "#812549" }}
           >
-            <span className="w-[22px] h-0.5 rounded-sm" style={{ background: "#FDC221" }} />
             {t("eyebrow")}
           </span>
           <h2
@@ -63,8 +62,8 @@ export default async function PricingSection({ isLoggedIn = false }: { isLoggedI
             </ul>
             <Link
               href={isLoggedIn ? "/overview" : "/register"}
-              className="w-full text-center px-7 py-[15px] rounded-full font-semibold text-[15px] border transition-all hover:-translate-y-0.5 hover:text-white hover:bg-[#B75E78] hover:border-[#B75E78]"
-              style={{ color: "#812549", borderColor: "#812549" }}
+              className="w-full text-center px-7 py-[15px] rounded-full font-semibold text-[15px] transition-all hover:-translate-y-0.5 hover:bg-[#F5F1DD]"
+              style={{ background: "#F9F7ED", color: "#5F1C35" }}
             >
               {isLoggedIn ? t("freeCtaLoggedIn") : t("freeCta")}
             </Link>
@@ -98,7 +97,8 @@ export default async function PricingSection({ isLoggedIn = false }: { isLoggedI
                 </li>
               ))}
             </ul>
-            <CheckoutButton className="w-full text-center px-7 py-[15px] rounded-full font-semibold text-[15px] bg-[#00B9A6] hover:bg-[#75C6BC] disabled:opacity-60 disabled:cursor-not-allowed text-black transition-all hover:-translate-y-0.5">
+            {/* Label stays a dark same-hue ink: #FFFFFF on the teal fill is 2.5:1 and fails WCAG AA. */}
+            <CheckoutButton className="w-full text-center px-7 py-[15px] rounded-full font-semibold text-[15px] bg-[#00B9A6] hover:bg-[#75C6BC] disabled:opacity-60 disabled:cursor-not-allowed text-[#00332D] transition-all hover:-translate-y-0.5">
               {t("premiumCta")}
             </CheckoutButton>
           </div>

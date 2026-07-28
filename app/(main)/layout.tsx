@@ -11,7 +11,7 @@ export default function MainLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`${inter.className} bg-[#F9F7ED] text-[#1E1A1A]`}>
+    <div className={`${inter.className} bg-[#FFFDF5] text-[#1E1A1A]`}>
       <style>{`
         .reveal { opacity: 0; transform: translateY(34px); transition: opacity .8s cubic-bezier(.22,1,.36,1), transform .8s cubic-bezier(.22,1,.36,1); }
         .reveal.in { opacity: 1; transform: none; }

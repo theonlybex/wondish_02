@@ -32,12 +32,10 @@ export default function Navbar() {
   return (
     <header className="sticky top-3.5 z-50 px-3.5">
       <div
-        className="max-w-[1180px] mx-auto flex items-center justify-between py-3 pl-5 pr-3.5 rounded-full border"
+        className="max-w-[1180px] mx-auto flex items-center justify-between py-3 pl-5 pr-3.5 rounded-full"
         style={{
-          background: "rgba(249,247,237,0.82)",
-          backdropFilter: "blur(18px) saturate(160%)",
-          WebkitBackdropFilter: "blur(18px) saturate(160%)",
-          borderColor: "#EAE4CA",
+          background: "#FFFFFF",
+          boxShadow: "0 6px 24px rgba(30,26,26,0.06)",
         }}
       >
         {/* Logo */}
@@ -118,8 +116,8 @@ export default function Navbar() {
       {/* Mobile menu */}
       {open && (
         <div
-          className="md:hidden max-w-[1180px] mx-auto mt-2 rounded-3xl border overflow-hidden"
-          style={{ background: "#F9F7ED", borderColor: "#EAE4CA" }}
+          className="md:hidden max-w-[1180px] mx-auto mt-2 rounded-3xl overflow-hidden"
+          style={{ background: "#FFFFFF", boxShadow: "0 6px 24px rgba(30,26,26,0.06)" }}
         >
           <div className="px-6 py-4 flex flex-col gap-1">
             {navLinks.map((link) => (

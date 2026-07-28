@@ -29,32 +29,22 @@ export default async function Hero() {
         @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
       `}</style>
 
-      {/* Soft color blobs */}
-      <div
-        className="absolute rounded-full pointer-events-none"
-        style={{ width: 520, height: 520, background: "#8DCEBD", top: -120, left: -160, opacity: 0.4, filter: "blur(10px)" }}
-      />
-      <div
-        className="absolute rounded-full pointer-events-none"
-        style={{ width: 380, height: 380, background: "#FFE9AE", bottom: -120, right: -120, opacity: 0.55, filter: "blur(10px)" }}
-      />
-
       <div className="relative z-[2] max-w-[1180px] mx-auto px-7">
-        <div className="grid lg:grid-cols-[1.04fr_0.96fr] gap-12 lg:gap-12 items-center">
+        <div className="grid lg:grid-cols-[1.18fr_0.82fr] gap-12 lg:gap-12 items-center">
           {/* Copy */}
           <div>
             <h1
               className="reveal d1 font-extrabold"
-              style={{ fontSize: "clamp(27px, 4.2vw, 50px)", letterSpacing: "-0.02em", lineHeight: 1.1 }}
+              style={{ fontSize: "clamp(36px, 5.5vw, 68px)", letterSpacing: "-0.02em", lineHeight: 1.05 }}
             >
-              <span className="block whitespace-nowrap">{t("headline1")}</span>
+              <span className="block">{t("headline1")}</span>
               <span className="block">
                 {t("headline2")}{" "}
                 <span className="relative italic font-semibold whitespace-nowrap" style={{ color: "#812549", zIndex: 0 }}>
                   {t("headlineSwash")}
                   <span
                     aria-hidden="true"
-                    className="absolute left-0 -right-0.5 bottom-1 h-3.5 rounded-lg"
+                    className="absolute left-0 -right-0.5 bottom-[0.08em] h-[0.28em] rounded-lg"
                     style={{ background: "#FFE9AE", zIndex: -1, transform: "rotate(-1.2deg)" }}
                   />
                 </span>
@@ -76,8 +66,8 @@ export default async function Hero() {
               </Link>
               <a
                 href="#how-it-works"
-                className="inline-flex items-center gap-2 px-7 py-[15px] rounded-full font-semibold text-[15px] border transition-all hover:-translate-y-0.5 hover:text-white hover:bg-[#B75E78] hover:border-[#B75E78]"
-                style={{ color: "#812549", borderColor: "#812549" }}
+                className="inline-flex items-center gap-2 px-7 py-[15px] rounded-full font-semibold text-[15px] transition-all hover:-translate-y-0.5 hover:bg-[#F5F1DD]"
+                style={{ background: "#FFFFFF", color: "#5F1C35" }}
               >
                 {t("ctaSecondary")}
               </a>
@@ -165,18 +155,23 @@ export default async function Hero() {
       </div>
 
       {/* Reassurance strip */}
-      <div
-        className="relative z-[2] mt-9 py-[22px] border-y"
-        style={{ borderColor: LINE_SOFT, background: "rgba(233,243,235,0.4)" }}
-      >
+      <div className="relative z-[2] mt-9 py-[22px]" style={{ background: "#FFFFFF" }}>
         <div className="reveal max-w-[1180px] mx-auto px-7 flex flex-wrap gap-y-3.5 gap-x-9 justify-center items-center">
           {assure.map((item) => (
-            <div key={item} className="flex items-center gap-2 text-sm font-semibold" style={{ color: "#4F4A4A" }}>
+            <div key={item} className="flex items-center gap-2 text-sm font-semibold" style={{ color: "#5F1C35" }}>
               <span
-                className="w-5 h-5 rounded-full text-white flex items-center justify-center text-[11px]"
-                style={{ background: "#812549" }}
+                className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: "#00A090" }}
               >
-                ✓
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path
+                    d="M3.5 8.4l3 3 6-6.4"
+                    stroke="#FFFFFF"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </span>
               {item}
             </div>

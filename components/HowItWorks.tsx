@@ -1,10 +1,7 @@
 import { getTranslations } from "next-intl/server";
 
-const NUM_STYLES = [
-  { background: "#F5F1DD", color: "#5F1C35" },
-  { background: "#FFE9AE", color: "#DEA402" },
-  { background: "#8DCEBD", color: "#2b6472" },
-];
+// All steps share one badge treatment (designer revision 2026-07-28).
+const NUM_STYLE = { background: "#00A090", color: "#FFFFFF" };
 
 export default async function HowItWorks() {
   const t = await getTranslations("howItWorks");
@@ -20,10 +17,9 @@ export default async function HowItWorks() {
       <div className="max-w-[1180px] mx-auto px-7">
         <div className="reveal max-w-[640px] mx-auto text-center">
           <span
-            className="inline-flex items-center justify-center gap-[9px] text-xs font-bold uppercase tracking-[0.14em]"
+            className="inline-flex items-center justify-center text-xs font-bold uppercase tracking-[0.14em]"
             style={{ color: "#812549" }}
           >
-            <span className="w-[22px] h-0.5 rounded-sm" style={{ background: "#FDC221" }} />
             {t("eyebrow")}
           </span>
           <h2
@@ -44,7 +40,7 @@ export default async function HowItWorks() {
             >
               <div
                 className="w-10 h-10 rounded-[13px] flex items-center justify-center font-extrabold text-[15px] mb-[22px]"
-                style={NUM_STYLES[i]}
+                style={NUM_STYLE}
               >
                 {step.num}
               </div>

@@ -19,22 +19,11 @@ export default async function Conditions() {
           className="reveal relative overflow-hidden rounded-[28px] sm:rounded-[40px] py-12 px-7 sm:py-16 sm:px-14 text-white"
           style={{ background: "#5F1C35" }}
         >
-          {/* Ambient blobs */}
-          <div
-            className="absolute rounded-full pointer-events-none"
-            style={{ width: 460, height: 460, top: -160, right: -120, background: "radial-gradient(circle, rgba(183,94,120,0.45), transparent 70%)" }}
-          />
-          <div
-            className="absolute rounded-full pointer-events-none"
-            style={{ width: 360, height: 360, bottom: -160, left: -100, background: "radial-gradient(circle, rgba(0,185,166,0.18), transparent 70%)" }}
-          />
-
           <div className="relative z-[2] max-w-[620px]">
             <span
-              className="inline-flex items-center gap-[9px] text-xs font-bold uppercase tracking-[0.14em]"
+              className="inline-flex items-center text-xs font-bold uppercase tracking-[0.14em]"
               style={{ color: "#FDC221" }}
             >
-              <span className="w-[22px] h-0.5 rounded-sm" style={{ background: "#FDC221" }} />
               {t("eyebrow")}
             </span>
             <h2
