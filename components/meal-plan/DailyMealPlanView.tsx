@@ -249,14 +249,25 @@ export default function DailyMealPlanView({
   const [exchanges, setExchanges] = useState<{ pending: PlanExchangeDTO[]; resolved: PlanExchangeDTO[] } | null>(null);
 
   // Hydrate the exchange overlay for the initial date (the server render
-  // doesn't include it), and backfill the calorie target if the server
-  // couldn't compute it on first render.
+  // doesn't include it), backfill the calorie target if the server couldn't
+  // compute it on first render, and — timezone fix (2026-07-31) — snap to the
+  // CLIENT's local today: the server component computes "today" in the server
+  // timezone (UTC on Vercel), which after ~5pm local showed users the next
+  // day's dishes and disagreed with the iOS app's device-local date.
   useEffect(() => {
-    const dateStr = format(date, "yyyy-MM-dd");
+    const clientToday = format(new Date(), "yyyy-MM-dd");
+    const serverDay = format(date, "yyyy-MM-dd");
+    const dateStr = clientToday !== serverDay ? clientToday : serverDay;
     fetch(`/api/meal-plan?date=${dateStr}&exchanges=1`)
       .then((r) => r.json())
       .then((data) => {
-        if (dailyCalorieTarget === null && data.dailyCalorieTarget != null) {
+        if (clientToday !== serverDay) {
+          setDate(parseLocalDate(clientToday));
+          setMenus(data.menus ?? []);
+          setLoggedRecipeIds(data.loggedRecipeIds ?? []);
+          setMealRatings(data.mealRatings ?? {});
+          setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
+        } else if (dailyCalorieTarget === null && data.dailyCalorieTarget != null) {
           setDailyCalorieTarget(data.dailyCalorieTarget);
         }
         setExchanges(data.exchanges ?? null);
@@ -641,10 +652,12 @@ export default function DailyMealPlanView({
                                       {exchange.eaten && <span className="ml-1.5 text-primary text-[9px] font-bold">✓</span>}
                                     </p>
                                     <p className="text-[9px] text-[#848181] mt-0.5">
-                                      {[
-                                        exchange.perServing.calories ? `${Math.round(xMacro(exchange, "calories"))} kcal` : null,
-                                        exchange.perServing.protein ? `${Math.round(xMacro(exchange, "protein"))}g protein` : null,
-                                      ].filter(Boolean).join(" · ")}
+                                      {exchange.perServing.calories == null && exchange.perServing.protein == null
+                                        ? "No nutrition info for this dish"
+                                        : [
+                                            exchange.perServing.calories ? `${Math.round(xMacro(exchange, "calories"))} kcal` : null,
+                                            exchange.perServing.protein ? `${Math.round(xMacro(exchange, "protein"))}g protein` : null,
+                                          ].filter(Boolean).join(" · ")}
                                     </p>
                                     <p className="text-[9px] text-[#9C9494] mt-0.5 line-through truncate">
                                       was: {menu.recipe.name}
