@@ -1,23 +1,31 @@
 import type { Skill, SkillTool, ToolDef } from "./types";
 import { profileSkill } from "./skills/profile";
+import { gapSkill } from "./gap";
 
 /**
- * Every skill that exists. A skill cycle adds exactly one import and one array
- * entry here — nothing else in the runtime changes.
+ * Product skills — subject to CLARA_SKILLS. A skill cycle adds exactly one
+ * import and one array entry here; nothing else in the runtime changes.
  */
 export const ALL_SKILLS: Skill[] = [profileSkill];
 
 /**
- * CLARA_SKILLS is an allow-list of skill names ("profile,logs"). Unset ⇒ all
- * registered skills are active; empty string ⇒ none (kill switch). Unknown
- * tokens are ignored so a stale env value can never crash the route.
+ * Runtime skills are always active: gap_report is how we learn what to build
+ * next, so a CLARA_SKILLS value must never be able to silence it.
+ */
+export const RUNTIME_SKILLS: Skill[] = [gapSkill];
+
+/**
+ * CLARA_SKILLS is an allow-list of product skill names ("profile,logs"). Unset
+ * ⇒ all registered product skills are active; empty string ⇒ none (kill
+ * switch). Unknown tokens are ignored so a stale env value can never crash the
+ * route. Runtime skills are appended regardless.
  */
 export function resolveActiveSkills(all: Skill[], envValue: string | undefined): Skill[] {
-  if (envValue === undefined) return all;
+  if (envValue === undefined) return [...all, ...RUNTIME_SKILLS];
   const allowed = new Set(
     envValue.split(",").map((s) => s.trim()).filter((s) => s.length > 0)
   );
-  return all.filter((s) => allowed.has(s.name));
+  return [...all.filter((s) => allowed.has(s.name)), ...RUNTIME_SKILLS];
 }
 
 export function buildToolDefs(active: Skill[]): ToolDef[] {

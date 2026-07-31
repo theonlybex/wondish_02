@@ -27,15 +27,31 @@ const beta: Skill = {
 };
 
 test("an unset CLARA_SKILLS enables every registered skill", () => {
-  assert.deepEqual(resolveActiveSkills([alpha, beta], undefined).map((s) => s.name), ["alpha", "beta"]);
+  assert.deepEqual(resolveActiveSkills([alpha, beta], undefined).map((s) => s.name), [
+    "alpha",
+    "beta",
+    "gap",
+  ]);
 });
 
 test("CLARA_SKILLS is an allow-list; unknown tokens are ignored", () => {
-  assert.deepEqual(resolveActiveSkills([alpha, beta], "beta,ghost").map((s) => s.name), ["beta"]);
+  assert.deepEqual(resolveActiveSkills([alpha, beta], "beta,ghost").map((s) => s.name), [
+    "beta",
+    "gap",
+  ]);
 });
 
-test("an empty CLARA_SKILLS disables every skill", () => {
-  assert.deepEqual(resolveActiveSkills([alpha, beta], ""), []);
+test("an empty CLARA_SKILLS disables product skills but never the runtime one", () => {
+  assert.deepEqual(resolveActiveSkills([alpha, beta], "").map((s) => s.name), ["gap"]);
+});
+
+test("gap_report cannot be switched off by any CLARA_SKILLS value", () => {
+  for (const env of [undefined, "", "alpha", "ghost"]) {
+    assert.ok(
+      resolveActiveSkills([alpha], env).some((s) => s.name === "gap"),
+      `env=${String(env)}`
+    );
+  }
 });
 
 // Pass the skill list directly, NOT through resolveActiveSkills: E5 makes that
@@ -71,14 +87,14 @@ test("findTool resolves by name across active skills, null otherwise", () => {
 });
 
 test("tool names are unique across all registered skills", async () => {
-  const { ALL_SKILLS } = await import("./registry");
-  const names = ALL_SKILLS.flatMap((s) => s.tools.map((t) => t.def.name));
+  const { ALL_SKILLS, RUNTIME_SKILLS } = await import("./registry");
+  const names = [...ALL_SKILLS, ...RUNTIME_SKILLS].flatMap((s) => s.tools.map((t) => t.def.name));
   assert.equal(new Set(names).size, names.length);
 });
 
 test("no registered tool accepts an identity field", async () => {
-  const { ALL_SKILLS } = await import("./registry");
-  for (const skill of ALL_SKILLS) {
+  const { ALL_SKILLS, RUNTIME_SKILLS } = await import("./registry");
+  for (const skill of [...ALL_SKILLS, ...RUNTIME_SKILLS]) {
     for (const tool of skill.tools) {
       for (const key of Object.keys(tool.def.input_schema.properties)) {
         assert.ok(

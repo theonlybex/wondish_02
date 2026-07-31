@@ -157,6 +157,8 @@ model Patient {
   journalEntries    JournalEntry[]
   customIngredients PatientCustomIngredient[]
   mealLogs          MealLog[]
+
+  claraCapabilityRequests ClaraCapabilityRequest[]
   supplements       Supplement[]
 
   restaurantPlanExchanges RestaurantPlanExchange[]
@@ -810,4 +812,52 @@ model ZipCode {
   state   String?
   country String?
   active  Boolean @default(true)
+}
+
+// ─── Clara capability-gap ledger ──────────────────────────────────────────────
+
+enum ClaraGapCategory {
+  LOGS
+  NUTRITION
+  MEAL_PLAN
+  JOURNAL
+  SUPPLEMENTS
+  FILTERS
+  GROCERY
+  RESTAURANTS
+  FRIDGE
+  EXCHANGES
+  PROGRESS
+  TASTE
+  CUSTOM_INGREDIENTS
+  BODY_GOALS
+  OTHER
+}
+
+enum ClaraGapReason {
+  NOT_BUILT
+  FLAGGED_OFF
+  OUT_OF_SCOPE
+  UNCLEAR
+}
+
+/// One recorded "Clara could not do that" event. Demand data that decides which
+/// skill cycle runs next (spec 2026-07-30-clara-full-service-assistant §5).
+/// Stores a model-written PARAPHRASE only — never the raw transcript.
+/// Retention: 180 days.
+model ClaraCapabilityRequest {
+  id        String           @id @default(cuid())
+  patientId String
+  patient   Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  category  ClaraGapCategory
+  reason    ClaraGapReason   @default(NOT_BUILT)
+  summary   String
+  surface   String           @default("unknown")
+  /// Client-local day, "YYYY-MM-DD" — the dedupe axis.
+  localDate String
+  createdAt DateTime         @default(now())
+
+  /// One row per user per category per day: ranking counts people, not volume.
+  @@unique([patientId, category, localDate])
+  @@index([category, createdAt])
 }
