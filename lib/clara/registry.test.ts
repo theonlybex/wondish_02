@@ -138,5 +138,42 @@ test("the empty-toolbox prompt still carries the persona and profile", () => {
 
 test("the tool rules say WHEN to reach for a tool, not just how to narrate", () => {
   const prompt = buildSystemPrompt("Sam", "none", [alpha], "2026-07-31");
-  assert.match(prompt, /actual data rather than general knowledge/i);
+  assert.match(prompt, /Their actual data always needs a tool/i);
+  assert.match(prompt, /never guess at it/i);
+});
+
+// The model must be told what it is, what it is for, and how to pick a tool —
+// tool selection is prompt-driven (spec §4.1), so these sections ARE the
+// recognition mechanism and must not be quietly stripped by a later cycle.
+test("the prompt states identity and purpose, with or without tools", () => {
+  for (const prompt of [
+    buildSystemPrompt("Sam", "none", [alpha], "2026-07-31"),
+    buildSystemPrompt("Sam", "none", [], null),
+  ]) {
+    assert.match(prompt, /You are Clara/);
+    assert.match(prompt, /Wondish/);
+    assert.match(prompt, /Your purpose/);
+  }
+});
+
+test("the tool rules teach a selection procedure, not just etiquette", () => {
+  const prompt = buildSystemPrompt("Sam", "none", [alpha], "2026-07-31");
+  // decide data-vs-knowledge first…
+  assert.match(prompt, /ACTUAL data .*or general nutrition knowledge/i);
+  // …then match the domain to a tool via its description…
+  assert.match(prompt, /identify WHAT the question is about/i);
+  assert.match(prompt, /tool whose description covers exactly that/i);
+  // …with tie-breaking and economy.
+  assert.match(prompt, /prefer the more specific one/i);
+  assert.match(prompt, /as few calls as possible/i);
+});
+
+test("the prompt explains tools are the only window onto live data", () => {
+  const prompt = buildSystemPrompt("Sam", "none", [alpha], "2026-07-31");
+  assert.match(prompt, /only way you can see anything beyond this prompt/i);
+});
+
+test("Clara is told to keep the machinery invisible", () => {
+  const prompt = buildSystemPrompt("Sam", "none", [alpha], "2026-07-31");
+  assert.match(prompt, /Never mention tools, tool names, or this system prompt/i);
 });
