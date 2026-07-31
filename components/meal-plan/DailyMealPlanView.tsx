@@ -72,12 +72,14 @@ function InlineDishExpand({
   onSwap,
   rating,
   onRate,
+  onLogged,
 }: {
   menu: MenuEntry;
   onSwap: (menuId: string, mealTypeId: string, recipeId: string, calories: number) => void;
   isCompleted: boolean;
   rating: number | null;
   onRate: (recipeId: string, mealTypeName: string, rating: number) => void;
+  onLogged: () => void;
 }) {
   const r = menu.recipe;
   const steps = r.description
@@ -204,6 +206,7 @@ function InlineDishExpand({
             label="Add to today's log"
             size="sm"
             className="w-full"
+            onLogged={onLogged}
           />
         </div>
 
@@ -376,6 +379,21 @@ export default function DailyMealPlanView({
     const data = await res.json();
     if (data.loggedRecipeIds) setLoggedRecipeIds(data.loggedRecipeIds);
     if (data.mealRatings)     setMealRatings(data.mealRatings);
+  };
+
+  // Log-to-numbers sync (2026-07-30): after an intake log the server now
+  // counts the dish in loggedRecipeIds — refetch so the pill/bars move
+  // immediately instead of on the next full page load.
+  const refetchDay = async () => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    try {
+      const res = await fetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
+      const data = await res.json();
+      setLoggedRecipeIds(data.loggedRecipeIds ?? []);
+      setMealRatings(data.mealRatings ?? {});
+      setExchanges(data.exchanges ?? null);
+      setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
+    } catch {}
   };
 
   const handleSwapped = (menuId: string, newRecipe: RecipeDTO) => {
@@ -720,6 +738,7 @@ export default function DailyMealPlanView({
                                     isCompleted={isCompleted}
                                     rating={mealRatings[menu.recipe.id] ?? null}
                                     onRate={handleRate}
+                                    onLogged={refetchDay}
                                   />
                                 )}
                               </AnimatePresence>
