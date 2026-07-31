@@ -51,6 +51,17 @@ export default function DishCheckerClient({ firstName }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: history.filter((m, i) => !(i === 0 && m.role === "assistant")),
+          // Clara resolves relative dates ("two weeks ago") against these. The
+          // server does no UTC math and asserts no date at all when they are
+          // absent, so an older client keeps working unchanged.
+          // en-CA renders YYYY-MM-DD; offset is minutes EAST of UTC (UTC-5 ⇒ -300).
+          clientDate: new Intl.DateTimeFormat("en-CA", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(new Date()),
+          tzOffsetMinutes: -new Date().getTimezoneOffset(),
+          surface: "web",
         }),
       });
 

@@ -12,6 +12,19 @@ import {
 } from "@/lib/freemium";
 import Anthropic from "@anthropic-ai/sdk";
 import { PATIENT_FOOD_MAP_INCLUDE, buildFoodMapText } from "@/lib/food-map";
+import { startClaraLoop } from "@/lib/clara/loop";
+import { createAnthropicClient } from "@/lib/clara/anthropic-client";
+import { parseClaraRequestOptions } from "@/lib/clara/request";
+import { resolveToday } from "@/lib/clara/dates";
+import { maxToolRounds } from "@/lib/clara/budget";
+import {
+  ALL_SKILLS,
+  resolveActiveSkills,
+  buildToolDefs,
+  buildSystemPrompt,
+  findTool,
+} from "@/lib/clara/registry";
+import type { ClaraContext, ToolResult } from "@/lib/clara/types";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -71,24 +84,59 @@ export async function POST(req: NextRequest) {
     include: PATIENT_FOOD_MAP_INCLUDE,
   });
 
-  const foodMapText = buildFoodMapText(patient);
-  const systemPrompt = buildSystemPrompt(account.firstName ?? "there", foodMapText);
+  // NOTE: `patient` may be null — an account can exist without a Patient row,
+  // and this route has always answered for them (buildFoodMapText tolerates
+  // null). That behavior is pinned: no 404. Such a caller simply gets no
+  // toolbox, which reproduces the pre-loop response exactly.
+  const options = parseClaraRequestOptions(body);
+  const resolution = resolveToday(options.clientDate, options.tzOffsetMinutes, new Date());
+  // A server-derived date is NOT the caller's: on a UTC deploy it would tell a
+  // UTC-7 user it is already tomorrow. Assert a date only when they sent one.
+  const promptToday = resolution.source === "server" ? null : resolution.localDate;
 
-  const stream = anthropic.messages.stream({
-    model: "claude-sonnet-5",
-    max_tokens: 1024,
-    // Sonnet 5 defaults to adaptive thinking when the param is omitted; chat latency wants it off (C6).
-    thinking: { type: "disabled" },
-    system: systemPrompt,
-    messages: history,
-  });
+  const isPremium = accountHasActivePremium(account.subscriptions);
+  const firstName = account.firstName ?? "there";
 
-  // The Anthropic stream connects asynchronously (`.stream()` never throws
-  // synchronously), so we await the connection here to surface request-time
-  // errors (rate limits, overload) as a clean JSON response instead of an
-  // HTTP 200 that fails mid-stream.
+  const activeSkills = patient ? resolveActiveSkills(ALL_SKILLS, process.env.CLARA_SKILLS) : [];
+
+  const ctx: ClaraContext | null = patient
+    ? {
+        patientId: patient.id,
+        accountId: account.id,
+        firstName,
+        isPremium,
+        today: resolution.localDate,
+        surface: options.surface,
+      }
+    : null;
+
+  const systemPrompt = buildSystemPrompt(
+    firstName,
+    buildFoodMapText(patient),
+    activeSkills,
+    promptToday
+  );
+
+  const execute = async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
+    const tool = ctx ? findTool(activeSkills, name) : null;
+    if (!tool || !ctx) return { ok: false, reason: "FAILED", message: `Unknown tool ${name}` };
+    return tool.handler(ctx, input);
+  };
+
+  // Round 1 is opened here (not inside the stream) so connect-time errors —
+  // rate limits, overload — still become clean JSON responses instead of an
+  // HTTP 200 that dies mid-stream.
+  let generator;
   try {
-    await stream.withResponse();
+    generator = await startClaraLoop({
+      client: createAnthropicClient(anthropic),
+      system: systemPrompt,
+      tools: buildToolDefs(activeSkills),
+      messages: history,
+      maxToolRounds: maxToolRounds(isPremium),
+      execute,
+      onError: (err) => console.error("clara loop error", err),
+    });
   } catch (err) {
     if (err instanceof Anthropic.APIError) {
       if (err.status === 429) {
@@ -111,13 +159,8 @@ export async function POST(req: NextRequest) {
   const readable = new ReadableStream({
     async start(controller) {
       try {
-        for await (const event of stream) {
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            controller.enqueue(encoder.encode(event.delta.text));
-          }
+        for await (const chunk of generator) {
+          controller.enqueue(encoder.encode(chunk));
         }
         controller.close();
       } catch (err) {
@@ -130,25 +173,4 @@ export async function POST(req: NextRequest) {
   return new Response(readable, {
     headers: { "Content-Type": "text/plain; charset=utf-8" },
   });
-}
-
-function buildSystemPrompt(firstName: string, foodMapText: string): string {
-  return `You are Clara, a warm and knowledgeable personal food advisor for ${firstName}.
-
-${firstName}'s dietary profile:
-${foodMapText}
-
-Your behavior:
-1. When asked about a dish or food, assume the most common ingredients and preparation method if not specified — state your assumptions briefly before evaluating.
-2. Start with what works well for ${firstName}'s goals and profile (positive first).
-3. Identify every conflict with their dietary profile and explain WHY it matters to their health.
-4. If the dish can be adjusted: propose specific modifications and ask if they accept.
-   - If accepted → confirm ACCEPTED ✅ with modifications noted.
-   - If declined → confirm REJECTED ❌, suggest an alternative dish.
-5. No conflicts → confirm PASSED ✅, explain why it is a great fit for their profile.
-6. After your first message, do NOT re-introduce yourself or restate their profile. Continue the conversation naturally.
-7. Be warm, encouraging, and educational. Never clinical or cold.
-8. Keep responses concise — 3 to 5 sentences unless the user asks for more detail.
-9. If the dietary profile is empty or incomplete, still give your best nutritional advice based on general healthy eating principles.
-10. Never use markdown formatting — no bold (**), no headers (#), no bullet dashes or asterisks. Write in plain, conversational prose like a knowledgeable friend texting you.`;
 }
