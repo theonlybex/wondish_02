@@ -7,7 +7,7 @@ import SwapMealModal from "@/components/meal-plan/SwapMealModal";
 import Button from "@/components/ui/Button";
 import AddToLogButton from "@/components/tracking/AddToLogButton";
 import type { MealType } from "@/lib/local-date";
-import { MenuEntry, RecipeDTO } from "@/types";
+import { MenuEntry, RecipeDTO, PlanExchangeDTO } from "@/types";
 
 interface DailyMealPlanViewProps {
   initialMenus: MenuEntry[];
@@ -256,15 +256,23 @@ export default function DailyMealPlanView({
   const [swapModal, setSwapModal]       = useState<{
     menuId: string; mealTypeId: string; recipeId: string; calories: number;
   } | null>(null);
+  // Plan-exchange overlay (display parity — the exchange interaction lives in
+  // the iOS app; the server is the single source of truth).
+  const [exchanges, setExchanges] = useState<{ pending: PlanExchangeDTO[]; resolved: PlanExchangeDTO[] } | null>(null);
 
-  // If the server didn't compute the target (missing profile fields on first render),
-  // fetch it client-side so the free calories card always appears.
+  // Hydrate the exchange overlay for the initial date (the server render
+  // doesn't include it), and backfill the calorie target if the server
+  // couldn't compute it on first render.
   useEffect(() => {
-    if (dailyCalorieTarget !== null) return;
     const dateStr = format(date, "yyyy-MM-dd");
-    fetch(`/api/meal-plan?date=${dateStr}`)
+    fetch(`/api/meal-plan?date=${dateStr}&exchanges=1`)
       .then((r) => r.json())
-      .then((data) => { if (data.dailyCalorieTarget != null) setDailyCalorieTarget(data.dailyCalorieTarget); })
+      .then((data) => {
+        if (dailyCalorieTarget === null && data.dailyCalorieTarget != null) {
+          setDailyCalorieTarget(data.dailyCalorieTarget);
+        }
+        setExchanges(data.exchanges ?? null);
+      })
       .catch(() => {});
   }, []);
 
@@ -283,12 +291,13 @@ export default function DailyMealPlanView({
       const newStartDate = new Date(data.startDate);
       setStartDate(newStartDate);
       setDate(today);
-      const mRes = await fetch(`/api/meal-plan?date=${format(today, "yyyy-MM-dd")}`);
+      const mRes = await fetch(`/api/meal-plan?date=${format(today, "yyyy-MM-dd")}&exchanges=1`);
       const mData = await mRes.json();
       setMenus(mData.menus ?? []);
       setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
       setMealRatings(mData.mealRatings ?? {});
       setDailyCalorieTarget(mData.dailyCalorieTarget ?? null);
+      setExchanges(mData.exchanges ?? null);
     } finally {
       setSettingStart(false);
     }
@@ -310,13 +319,14 @@ export default function DailyMealPlanView({
         body: JSON.stringify({ startDate: startStr }),
       });
       const dateStr = format(date, "yyyy-MM-dd");
-      const res = await fetch(`/api/meal-plan?date=${dateStr}`);
+      const res = await fetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
       const data = await res.json();
       setMenus(data.menus ?? []);
       setLoggedRecipeIds(data.loggedRecipeIds ?? []);
       setMealRatings(data.mealRatings ?? {});
       if (data.mealPlanStartDate) setStartDate(new Date(data.mealPlanStartDate));
       setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
+      setExchanges(data.exchanges ?? null);
       setStale(false);
     } finally {
       setRegenerating(false);
@@ -342,13 +352,14 @@ export default function DailyMealPlanView({
     setDate(newDate);
     setLoading(true);
     try {
-      const res  = await fetch(`/api/meal-plan?date=${dateStr}`);
+      const res  = await fetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
       const data = await res.json();
       setMenus(data.menus ?? []);
       setLoggedRecipeIds(data.loggedRecipeIds ?? []);
       setMealRatings(data.mealRatings ?? {});
       if (data.mealPlanStartDate) setStartDate(new Date(data.mealPlanStartDate));
       setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
+      setExchanges(data.exchanges ?? null);
     } finally {
       setLoading(false);
     }
@@ -376,18 +387,37 @@ export default function DailyMealPlanView({
   const isPastPlanEnd = planEnd ? date > planEnd : false;
 
   const loggedSet        = new Set(loggedRecipeIds);
-  const isAllDone        = menus.length > 0 && menus.every((m) => loggedSet.has(m.recipe.id));
-  const completedCount   = menus.filter((m) => loggedSet.has(m.recipe.id)).length;
-  const totalCalories    = menus.reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
-  const completedCalories = menus
-    .filter((m) => loggedSet.has(m.recipe.id))
-    .reduce((sum, m) => sum + (m.recipe.calories ?? 0), 0);
-  const totalProtein     = menus.reduce((sum, m) => sum + (m.recipe.protein  ?? 0), 0);
-  const totalCarbs       = menus.reduce((sum, m) => sum + (m.recipe.carbs    ?? 0), 0);
-  const totalFat         = menus.reduce((sum, m) => sum + (m.recipe.fat      ?? 0), 0);
-  const consumedProtein  = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.protein  ?? 0), 0);
-  const consumedCarbs    = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.carbs    ?? 0), 0);
-  const consumedFat      = menus.filter((m) => loggedSet.has(m.recipe.id)).reduce((sum, m) => sum + (m.recipe.fat      ?? 0), 0);
+
+  // Plan-exchange overlay: a RESOLVED exchange replaces its displaced menu's
+  // dish everywhere below — macros come from the exchange snapshot × servings,
+  // and "done" means the exchanged-in dish was eaten (not the recipe logged).
+  const exchangeByMenuId = new Map<string, PlanExchangeDTO>(
+    (exchanges?.resolved ?? [])
+      .filter((x) => x.displacedMenuId)
+      .map((x) => [x.displacedMenuId as string, x])
+  );
+  const pendingExchanges = exchanges?.pending ?? [];
+  const xMacro = (x: PlanExchangeDTO, key: "calories" | "protein" | "carbs" | "fat") =>
+    (x.perServing[key] ?? 0) * x.servings;
+  const menuMacro = (m: MenuEntry, key: "calories" | "protein" | "carbs" | "fat") => {
+    const x = exchangeByMenuId.get(m.id);
+    return x ? xMacro(x, key) : m.recipe[key] ?? 0;
+  };
+  const menuDone = (m: MenuEntry) => {
+    const x = exchangeByMenuId.get(m.id);
+    return x ? x.eaten : loggedSet.has(m.recipe.id);
+  };
+
+  const isAllDone        = menus.length > 0 && menus.every(menuDone);
+  const completedCount   = menus.filter(menuDone).length;
+  const totalCalories    = menus.reduce((sum, m) => sum + menuMacro(m, "calories"), 0);
+  const completedCalories = menus.filter(menuDone).reduce((sum, m) => sum + menuMacro(m, "calories"), 0);
+  const totalProtein     = menus.reduce((sum, m) => sum + menuMacro(m, "protein"), 0);
+  const totalCarbs       = menus.reduce((sum, m) => sum + menuMacro(m, "carbs"), 0);
+  const totalFat         = menus.reduce((sum, m) => sum + menuMacro(m, "fat"), 0);
+  const consumedProtein  = menus.filter(menuDone).reduce((sum, m) => sum + menuMacro(m, "protein"), 0);
+  const consumedCarbs    = menus.filter(menuDone).reduce((sum, m) => sum + menuMacro(m, "carbs"), 0);
+  const consumedFat      = menus.filter(menuDone).reduce((sum, m) => sum + menuMacro(m, "fat"), 0);
   const budgetCalories = dailyCalorieTarget ?? totalCalories;
   const freeCalories   = dailyCalorieTarget ? Math.max(0, dailyCalorieTarget - totalCalories) : 0;
   const calPct  = budgetCalories > 0 ? Math.min(100, (completedCalories / budgetCalories) * 100) : 0;
@@ -448,6 +478,25 @@ export default function DailyMealPlanView({
         )}
       </div>
 
+      {/* Pending plan-exchanges strip (display parity — resolve in the app) */}
+      {pendingExchanges.length > 0 && (
+        <div className="bg-white border border-[#EAE4CA] rounded-2xl px-4 py-3 mb-4 text-sm text-[#5F1C35]">
+          <span className="font-semibold">{pendingExchanges.length}</span>{" "}
+          dish{pendingExchanges.length > 1 ? "es" : ""} waiting to join today&apos;s plan — choose what
+          to exchange in the Wondish app.
+          <span className="flex flex-wrap gap-1.5 mt-2">
+            {pendingExchanges.map((x) => (
+              <span
+                key={x.id}
+                className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-[#F5F1DD] text-[#5F1C35]"
+              >
+                {x.emoji ? `${x.emoji} ` : ""}{x.name} · {x.originLabel}
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+
       {/* Completion banner */}
       {menus.length > 0 && (
         <div
@@ -472,7 +521,7 @@ export default function DailyMealPlanView({
               {menus.map((m) => (
                 <div
                   key={m.id}
-                  className={`w-2 h-2 rounded-full ${loggedSet.has(m.recipe.id) ? "bg-primary" : "bg-[#EAE4CA]"}`}
+                  className={`w-2 h-2 rounded-full ${menuDone(m) ? "bg-primary" : "bg-[#EAE4CA]"}`}
                 />
               ))}
             </div>
@@ -577,7 +626,7 @@ export default function DailyMealPlanView({
                           )}
                         </div>
                         <span className="text-[9px] text-[#848181]">
-                          {Math.round(group.dishes.reduce((s, m) => s + (m.recipe.calories ?? 0), 0))} kcal
+                          {Math.round(group.dishes.reduce((s, m) => s + menuMacro(m, "calories"), 0))} kcal
                         </span>
                       </div>
 
@@ -588,6 +637,39 @@ export default function DailyMealPlanView({
                           const isCompleted = loggedSet.has(menu.recipe.id);
                           const isMainDish  = dIdx === 0;
                           const isSelected  = selectedId === menu.id;
+                          const exchange    = exchangeByMenuId.get(menu.id);
+
+                          // Displaced slot: the exchanged-in dish renders in
+                          // place of the planned one. Display-only — swap/
+                          // rate/expand live in the iOS app for exchanges.
+                          if (exchange) {
+                            return (
+                              <React.Fragment key={menu.id}>
+                                {dIdx > 0 && <div className="h-px bg-[#F5F1DD] my-2" />}
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`text-forest truncate ${isMainDish ? "text-[11px] font-semibold" : "text-[10px] font-medium"}`}>
+                                      {exchange.emoji ? `${exchange.emoji} ` : ""}{exchange.name}
+                                      {exchange.eaten && <span className="ml-1.5 text-primary text-[9px] font-bold">✓</span>}
+                                    </p>
+                                    <p className="text-[9px] text-[#848181] mt-0.5">
+                                      {[
+                                        exchange.perServing.calories ? `${Math.round(xMacro(exchange, "calories"))} kcal` : null,
+                                        exchange.perServing.protein ? `${Math.round(xMacro(exchange, "protein"))}g protein` : null,
+                                      ].filter(Boolean).join(" · ")}
+                                    </p>
+                                    <p className="text-[9px] text-[#9C9494] mt-0.5 line-through truncate">
+                                      was: {menu.recipe.name}
+                                    </p>
+                                  </div>
+                                  <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#F5F1DD] text-[#5F1C35] shrink-0">
+                                    From {exchange.originLabel}
+                                  </span>
+                                </div>
+                              </React.Fragment>
+                            );
+                          }
+
                           return (
                             <React.Fragment key={menu.id}>
                               {dIdx > 0 && <div className="h-px bg-[#F5F1DD] my-2" />}
