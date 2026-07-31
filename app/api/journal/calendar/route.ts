@@ -81,7 +81,13 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
-  // Build recipe name lookup from menus
+  // Build recipe name lookup from menus.
+  // Plan-exchange note (spec 2026-07-30-plan-exchanges-design.md): menus here
+  // feed ONLY this name lookup for journaled meals — they are not rendered as
+  // planned dishes — so displaced menus are deliberately NOT filtered out:
+  // a dish eaten before its slot was exchanged must keep resolving its name.
+  // Eaten exchanged-in dishes flow through MealLog (planExchangeId), which
+  // this journal-entry view does not read.
   const recipeNames = new Map<string, string>();
   for (const m of menus) {
     recipeNames.set(m.recipeId, m.recipe.name);

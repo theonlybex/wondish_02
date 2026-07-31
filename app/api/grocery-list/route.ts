@@ -2,6 +2,16 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseLocalDateStrict } from "@/lib/journal";
+import { getDisplacedMenuIdsForRange } from "@/lib/plan-exchanges";
+
+// "YYYY-MM-DD" local-calendar string for a Date (same helper as
+// app/api/meal-plan/route.ts — local semantics, no UTC math).
+function toLocalDateString(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 // Local-date parse (audit Task 15): `new Date("YYYY-MM-DD")` UTC-parses and
 // shifts the window a day early on negative-offset servers; garbage input
@@ -36,9 +46,20 @@ export async function GET(req: NextRequest) {
     include: { recipe: { include: { ingredients: { include: { ingredient: true } } } } },
   });
 
+  // Plan-exchange overlay: displaced planned dishes drop out of the shopping
+  // list (a restaurant meal needs no groceries; a fridge dish uses what the
+  // user owns — spec 2026-07-30-plan-exchanges-design.md).
+  const displaced = await getDisplacedMenuIdsForRange(
+    patient.id,
+    patient.activePlanVersion,
+    toLocalDateString(startDate),
+    toLocalDateString(endDate)
+  );
+  const effectiveMenus = menus.filter((m) => !displaced.has(m.id));
+
   const aggregated: Record<string, { ingredientId: string; name: string; totalQuantity: number; unit: string | null }> = {};
 
-  for (const menu of menus) {
+  for (const menu of effectiveMenus) {
     for (const ri of menu.recipe.ingredients) {
       const key = ri.ingredientId;
       if (!aggregated[key]) {
