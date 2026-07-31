@@ -10,6 +10,48 @@
 
 **Spec:** `docs/superpowers/specs/2026-07-30-clara-full-service-assistant-design.md` (program spec; §4 recognition, §5 gap ledger, §8 resolved decisions).
 
+## AMENDMENT 2026-07-31: the date line is client-sourced or absent
+
+**Why:** the original E2 text put `Today's date for ${firstName} is ${today}` into every
+system prompt, and E1 falls back to the *server* date when the client sends none. Vercel
+runs UTC, so an iOS caller (which does not send `clientDate` until S1) in a negative-offset
+timezone would have Clara assert tomorrow's date all evening. C0 has no date-using skill,
+but Clara would still say it in prose — a regression shipped to iOS by a cycle that claims
+not to touch iOS.
+
+**Supersedes** the E2 prompt text and the E4 route wiring:
+
+- `buildSystemPrompt(firstName, foodMapText, active, today)` takes `today: string | null`.
+  When `null`, the date sentence is **omitted entirely** — which is exactly today's
+  behavior, so a client that sends nothing is unchanged rather than newly wrong.
+- The route passes the date through only when it came from the caller:
+  ```ts
+  const resolution = resolveToday(options.clientDate, options.tzOffsetMinutes, new Date());
+  const promptToday = resolution.source === "server" ? null : resolution.localDate;
+  ```
+  `ClaraContext.today` still carries the resolved string (handlers always need *a* date);
+  only the prompt assertion is gated.
+- Add to `lib/clara/registry.test.ts`:
+  ```ts
+  test("no date is asserted when the client did not supply one", () => {
+    const prompt = buildSystemPrompt("Sam", "none", [], null);
+    assert.ok(!/Today's date/i.test(prompt));
+  });
+  ```
+- Add to `lib/clara/dates.test.ts` — the regression this prevents:
+  ```ts
+  test("a UTC server in the evening of a negative-offset caller is NOT their today", () => {
+    // 2026-07-31T00:30Z is still 2026-07-30 for a UTC-7 caller.
+    const server = resolveToday(undefined, undefined, new Date("2026-07-31T00:30:00Z"));
+    assert.equal(server.source, "server"); // ⇒ prompt omits the date (see registry)
+    assert.equal(resolveToday(undefined, -420, new Date("2026-07-31T00:30:00Z")).localDate, "2026-07-30");
+  });
+  ```
+
+**iOS impact:** still none this cycle. S1 adds `clientDate` + `tzOffsetMinutes` + `surface`
+to the iOS request body, at which point iOS gains the date sentence and its gap rows stop
+being filed as `surface: "unknown"`.
+
 ## Global Constraints
 
 - **Engine-only cycle.** No Clara (iOS) repo work. Every task lands in `wondish_02`.
