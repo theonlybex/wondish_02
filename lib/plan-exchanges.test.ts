@@ -172,3 +172,29 @@ describe("wire contract", () => {
     assert.deepEqual(Object.keys(body), ["menus", "mealPlanStartDate", "loggedRecipeIds", "mealRatings", "dailyCalorieTarget"]);
   });
 });
+
+// ── eatGuard + mealTypeForExchange (amendment 2026-07-30) ───────────────────
+import { eatGuard, mealTypeForExchange } from "./plan-exchanges";
+
+describe("eatGuard", () => {
+  const resolved = { ...base, status: "RESOLVED" as const, displacedMenuId: "m1" };
+  it("passes a resolved, uneaten exchange", () =>
+    assert.equal(eatGuard({ row: resolved, alreadyEaten: false }), null));
+  it("rejects non-RESOLVED rows", () => {
+    assert.match(eatGuard({ row: base, alreadyEaten: false })!, /exchange it in first|not resolved/i);
+    assert.match(eatGuard({ row: { ...base, status: "CANCELLED" as const }, alreadyEaten: false })!, /exchange it in first|not resolved/i);
+  });
+  it("rejects double-eat", () =>
+    assert.match(eatGuard({ row: resolved, alreadyEaten: true })!, /already/i));
+});
+
+describe("mealTypeForExchange", () => {
+  it("fridge rows use their own valid mealType", () =>
+    assert.equal(mealTypeForExchange({ rowMealType: "breakfast", menuMealTypeName: null }), "breakfast"));
+  it("restaurant rows use the displaced menu's meal type, lowercased", () =>
+    assert.equal(mealTypeForExchange({ rowMealType: null, menuMealTypeName: "Lunch" }), "lunch"));
+  it("falls back to dinner on garbage", () => {
+    assert.equal(mealTypeForExchange({ rowMealType: "brunch", menuMealTypeName: null }), "dinner");
+    assert.equal(mealTypeForExchange({ rowMealType: null, menuMealTypeName: null }), "dinner");
+  });
+});

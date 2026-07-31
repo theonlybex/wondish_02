@@ -223,3 +223,28 @@ export function resolveGuard(args: {
   if (menuEaten) return "That planned dish is already eaten";
   return null;
 }
+
+// ── eat action (plan amendment 2026-07-30) ──────────────────────────────────
+// "Eaten" is a server-side transition: the PATCH's { action: "eat" } writes
+// the MealLog intake row from the exchange's own snapshot in one transaction
+// (the client can't — RESTAURANT logs need ids/macros the DTO deliberately
+// doesn't carry, and standing rule 3 forbids client-priced macros).
+
+export function eatGuard(args: { row: ExchangeRowLike; alreadyEaten: boolean }): string | null {
+  if (args.row.status !== "RESOLVED") return "Exchange it in first — the dish isn't in your plan yet";
+  if (args.alreadyEaten) return "Already marked eaten";
+  return null;
+}
+
+const VALID_MEAL_TYPES = new Set(["breakfast", "lunch", "dinner", "snack"]);
+
+export function mealTypeForExchange(args: {
+  rowMealType: string | null;
+  menuMealTypeName: string | null;
+}): string {
+  const own = (args.rowMealType ?? "").toLowerCase();
+  if (VALID_MEAL_TYPES.has(own)) return own;
+  const fromMenu = (args.menuMealTypeName ?? "").toLowerCase();
+  if (VALID_MEAL_TYPES.has(fromMenu)) return fromMenu;
+  return "dinner";
+}

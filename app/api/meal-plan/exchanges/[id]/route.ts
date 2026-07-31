@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import {
   findExchangeById,
   resolveGuard,
+  eatGuard,
+  mealTypeForExchange,
   toExchangeDTO,
   localDayWindow,
 } from "@/lib/plan-exchanges";
@@ -28,8 +30,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
   const { action, menuId } = (body ?? {}) as { action?: unknown; menuId?: unknown };
-  if (action !== "resolve" && action !== "cancel") {
-    return NextResponse.json({ error: "action must be 'resolve' or 'cancel'" }, { status: 400 });
+  if (action !== "resolve" && action !== "cancel" && action !== "eat") {
+    return NextResponse.json({ error: "action must be 'resolve', 'cancel' or 'eat'" }, { status: 400 });
   }
   if (action === "resolve" && (typeof menuId !== "string" || !menuId)) {
     return NextResponse.json({ error: "menuId is required to resolve" }, { status: 400 });
@@ -72,6 +74,62 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             data: { status: "CANCELLED", displacedMenuId: null },
           });
     return NextResponse.json({ exchange: toExchangeDTO(updated, source, new Set()) });
+  }
+
+  if (action === "eat") {
+    // Amendment 2026-07-30: server-side eaten transition — writes the intake
+    // MealLog row from the exchange's own snapshot (per-serving macros
+    // verbatim; servings from the row) in one transaction with the guards.
+    try {
+      await prisma.$transaction(async (tx) => {
+        const existing = await tx.mealLog.findFirst({
+          where: { patientId: patient.id, planExchangeId: row.id, deletedAt: null },
+          select: { id: true },
+        });
+        const err = eatGuard({ row, alreadyEaten: Boolean(existing) });
+        if (err) throw new ResolveError(err);
+        const menu = row.displacedMenuId
+          ? await tx.menu.findFirst({
+              where: { id: row.displacedMenuId },
+              select: { mealType: { select: { name: true } } },
+            })
+          : null;
+        const isRestaurant = source === "RESTAURANT";
+        const restRow = row as typeof row & { restaurantDishId?: string | null };
+        const fridgeRow = row as typeof row & { fridgeRecipeId?: string | null; mealType?: string | null };
+        const incomplete =
+          row.calories == null || row.protein == null || row.carbs == null ||
+          row.fat == null || row.fiber == null;
+        await tx.mealLog.create({
+          data: {
+            patientId: patient.id,
+            localDate: row.localDate,
+            mealType: mealTypeForExchange({
+              rowMealType: isRestaurant ? null : fridgeRow.mealType ?? null,
+              menuMealTypeName: menu?.mealType?.name ?? null,
+            }),
+            source: isRestaurant ? "RESTAURANT" : "FRIDGE",
+            name: row.name,
+            servings: row.servings,
+            calories: row.calories,
+            protein: row.protein,
+            carbs: row.carbs,
+            fat: row.fat,
+            fiber: row.fiber,
+            incomplete,
+            restaurantDishId: isRestaurant ? restRow.restaurantDishId ?? null : null,
+            fridgeRecipeId: isRestaurant ? null : fridgeRow.fridgeRecipeId ?? null,
+            planExchangeId: row.id,
+          },
+        });
+      });
+      return NextResponse.json({ exchange: toExchangeDTO(row, source, new Set([row.id])) });
+    } catch (err) {
+      if (err instanceof ResolveError) {
+        return NextResponse.json({ error: err.message }, { status: 409 });
+      }
+      throw err;
+    }
   }
 
   // action === "resolve"
