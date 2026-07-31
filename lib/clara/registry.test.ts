@@ -1,0 +1,103 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { resolveActiveSkills, buildToolDefs, buildSystemPrompt, findTool } from "./registry";
+import type { Skill, ToolResult, ClaraContext } from "./types";
+
+const noop = async (): Promise<ToolResult> => ({ ok: true, data: null });
+
+const alpha: Skill = {
+  name: "alpha",
+  promptFragment: "ALPHA-FRAGMENT",
+  tools: [
+    {
+      def: { name: "alpha_get", description: "d", input_schema: { type: "object", properties: {} } },
+      handler: noop,
+    },
+  ],
+};
+const beta: Skill = {
+  name: "beta",
+  promptFragment: "BETA-FRAGMENT",
+  tools: [
+    {
+      def: { name: "beta_get", description: "d", input_schema: { type: "object", properties: {} } },
+      handler: noop,
+    },
+  ],
+};
+
+test("an unset CLARA_SKILLS enables every registered skill", () => {
+  assert.deepEqual(resolveActiveSkills([alpha, beta], undefined).map((s) => s.name), ["alpha", "beta"]);
+});
+
+test("CLARA_SKILLS is an allow-list; unknown tokens are ignored", () => {
+  assert.deepEqual(resolveActiveSkills([alpha, beta], "beta,ghost").map((s) => s.name), ["beta"]);
+});
+
+test("an empty CLARA_SKILLS disables every skill", () => {
+  assert.deepEqual(resolveActiveSkills([alpha, beta], ""), []);
+});
+
+// Pass the skill list directly, NOT through resolveActiveSkills: E5 makes that
+// function append an always-on runtime skill, and this test is about assembly.
+test("only active skills contribute tools and prompt fragments", () => {
+  assert.deepEqual(buildToolDefs([alpha]).map((t) => t.name), ["alpha_get"]);
+  const prompt = buildSystemPrompt("Sam", "no restrictions", [alpha], "2026-07-31");
+  assert.ok(prompt.includes("ALPHA-FRAGMENT"));
+  assert.ok(!prompt.includes("BETA-FRAGMENT"));
+});
+
+test("the system prompt carries the caller's local today", () => {
+  const prompt = buildSystemPrompt("Sam", "no restrictions", [], "2026-07-31");
+  assert.ok(prompt.includes("2026-07-31"));
+});
+
+// Amendment 2026-07-31: a server-derived date is NOT the caller's date, so the
+// prompt must assert none at all rather than a plausible-looking wrong one.
+test("no date is asserted when the client did not supply one", () => {
+  const prompt = buildSystemPrompt("Sam", "none", [], null);
+  assert.ok(!/Today's date/i.test(prompt));
+});
+
+test("the narration rule is always present so tool rounds are never silent", () => {
+  const prompt = buildSystemPrompt("Sam", "none", [alpha], "2026-07-31");
+  assert.match(prompt, /before you use a tool/i);
+});
+
+test("findTool resolves by name across active skills, null otherwise", () => {
+  const active = [alpha, beta];
+  assert.equal(findTool(active, "beta_get")?.def.name, "beta_get");
+  assert.equal(findTool(active, "nope_get"), null);
+});
+
+test("tool names are unique across all registered skills", async () => {
+  const { ALL_SKILLS } = await import("./registry");
+  const names = ALL_SKILLS.flatMap((s) => s.tools.map((t) => t.def.name));
+  assert.equal(new Set(names).size, names.length);
+});
+
+test("no registered tool accepts an identity field", async () => {
+  const { ALL_SKILLS } = await import("./registry");
+  for (const skill of ALL_SKILLS) {
+    for (const tool of skill.tools) {
+      for (const key of Object.keys(tool.def.input_schema.properties)) {
+        assert.ok(
+          !/^(patientId|accountId|userId|clerkId)$/i.test(key),
+          `${tool.def.name} exposes identity field ${key}`
+        );
+      }
+    }
+  }
+});
+
+test("ClaraContext is the only identity carrier a handler receives", () => {
+  const ctx: ClaraContext = {
+    patientId: "p1",
+    accountId: "a1",
+    firstName: "Sam",
+    isPremium: false,
+    today: "2026-07-31",
+    surface: "web",
+  };
+  assert.equal(ctx.patientId, "p1");
+});
