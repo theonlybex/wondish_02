@@ -146,6 +146,11 @@ function parseOneRecipe(raw: unknown, mealTypeHint?: string): FridgeRecipe | nul
   };
 }
 
+// Exchange endpoints re-validate the client-supplied fridge-recipe snapshot
+// with the same rules generation output obeys (name clamp, steps required,
+// F-D8 macro plausibility) — one validator, two callers.
+export const validateFridgeRecipeSnapshot = parseOneRecipe;
+
 // Validates the model's tool-use JSON. Returns null ONLY when `raw` is not a
 // usable array (unrecoverable junk -> route emits 502). A valid array that
 // yields zero surviving recipes returns [] (a legitimate "no recipes

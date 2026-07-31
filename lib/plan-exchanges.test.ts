@@ -101,3 +101,32 @@ describe("parseRestaurantExchangeInput", () => {
     assert.equal(parseRestaurantExchangeInput({ restaurantDishId: "d1", localDate: "2026-07-30", calories: 100 }).ok, false);
   });
 });
+
+// ── parseFridgeExchangeInput (Task E4) ──────────────────────────────────────
+import { parseFridgeExchangeInput } from "./plan-exchanges";
+
+describe("parseFridgeExchangeInput", () => {
+  const recipe = {
+    id: "f1", name: "Veggie Omelette", description: "", emoji: "🍳",
+    usesIngredients: ["eggs"], missingIngredients: [], steps: ["whisk"],
+    mealType: "breakfast", servings: 1,
+    perServing: { calories: 320, protein: 22, carbs: 4, fat: 24, fiber: 1 },
+    fitsPlan: true, conflicts: [],
+  };
+
+  it("accepts valid input, defaults servings to 1", () => {
+    const r = parseFridgeExchangeInput({ localDate: "2026-07-30", recipe });
+    assert.ok(r.ok && r.value.recipe.name === "Veggie Omelette" && r.value.servings === 1);
+    assert.ok(r.ok && r.value.fridgeRecipeId === null);
+  });
+
+  it("carries fridgeRecipeId provenance when sent", () => {
+    const r = parseFridgeExchangeInput({ localDate: "2026-07-30", recipe, fridgeRecipeId: "frg_1" });
+    assert.ok(r.ok && r.value.fridgeRecipeId === "frg_1");
+  });
+
+  it("rejects invalid recipe or localDate", () => {
+    assert.equal(parseFridgeExchangeInput({ localDate: "2026-07-30", recipe: { name: 1 } }).ok, false);
+    assert.equal(parseFridgeExchangeInput({ localDate: "nope", recipe }).ok, false);
+  });
+});

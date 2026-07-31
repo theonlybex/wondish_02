@@ -4,6 +4,7 @@
 // never mutated: exchanges are day-scoped overlay rows composed at read time.
 import { prisma } from "@/lib/db";
 import { parseLocalDateStrict } from "@/lib/journal";
+import { validateFridgeRecipeSnapshot, type FridgeRecipe } from "@/lib/fridge";
 import type { PlanExchangeDTO, PlanExchangeSource } from "@/types";
 
 // Structural union of both exchange tables' rows — restaurant rows carry
@@ -173,4 +174,29 @@ export function parseRestaurantExchangeInput(
   const servings = parseServings(r.servings);
   if (typeof servings !== "number") return { ok: false, error: servings.error };
   return { ok: true, value: { restaurantDishId, localDate: r.localDate, servings } };
+}
+
+export function parseFridgeExchangeInput(
+  raw: unknown
+): ParseExchangeResult<{
+  localDate: string;
+  servings: number;
+  recipe: FridgeRecipe;
+  fridgeRecipeId: string | null;
+}> {
+  if (typeof raw !== "object" || raw === null) return { ok: false, error: "Invalid body" };
+  const r = raw as Record<string, unknown>;
+  if (typeof r.localDate !== "string" || !localDayWindow(r.localDate)) {
+    return { ok: false, error: "localDate must be YYYY-MM-DD" };
+  }
+  // Same validation the fridge generator's own output passes (name clamp,
+  // steps required, F-D8 macro plausibility) — a snapshot that fails here
+  // could never have come from /api/fridge.
+  const recipe = validateFridgeRecipeSnapshot(r.recipe);
+  if (!recipe) return { ok: false, error: "recipe failed validation" };
+  const servings = parseServings(r.servings);
+  if (typeof servings !== "number") return { ok: false, error: servings.error };
+  const fridgeRecipeId =
+    typeof r.fridgeRecipeId === "string" && r.fridgeRecipeId ? r.fridgeRecipeId : null;
+  return { ok: true, value: { localDate: r.localDate, servings, recipe, fridgeRecipeId } };
 }

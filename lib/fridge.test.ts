@@ -6,6 +6,7 @@ import {
   applyAllergenFilter,
   buildFridgePrompt,
   FRIDGE_SYSTEM_PROMPT,
+  validateFridgeRecipeSnapshot,
   SUGGEST_RECIPES_SCHEMA,
   MAX_INGREDIENTS,
   type FridgeRecipe,
@@ -371,4 +372,16 @@ test("audit-T3: allergen mentioned only in conflicts is caught by the filter", (
     3
   )!;
   assert.deepEqual(applyAllergenFilter(recipes, matchers), []);
+});
+
+test("validateFridgeRecipeSnapshot: parseOneRecipe exported — accepts well-formed recipe, rejects junk", () => {
+  const good = validateFridgeRecipeSnapshot({
+    id: "f1", name: "Veggie Omelette", description: "", emoji: "🍳",
+    usesIngredients: ["eggs"], missingIngredients: [], steps: ["whisk", "fry"],
+    mealType: "breakfast", servings: 1,
+    perServing: { calories: 320, protein: 22, carbs: 4, fat: 24, fiber: 1 },
+    fitsPlan: true, conflicts: [],
+  });
+  assert.ok(good && good.name === "Veggie Omelette");
+  assert.equal(validateFridgeRecipeSnapshot({ name: 42 }), null);
 });
