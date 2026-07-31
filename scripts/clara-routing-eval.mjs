@@ -36,10 +36,11 @@ const failures = [];
 for (const testCase of ROUTING_FIXTURE) {
   let message;
   try {
+    // Settings mirror lib/clara/anthropic-client.ts exactly — the eval must
+    // measure the production configuration (thinking omitted ⇒ adaptive).
     message = await anthropic.messages.create({
       model: CLARA_MODEL,
       max_tokens: CLARA_MAX_TOKENS,
-      thinking: { type: "disabled" },
       system,
       tools,
       messages: [{ role: "user", content: testCase.utterance }],

@@ -70,7 +70,13 @@ export interface Skill {
 export type ModelContentBlock =
   | { type: "text"; text: string }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "tool_result"; tool_use_id: string; content: string };
+  | { type: "tool_result"; tool_use_id: string; content: string }
+  // Thinking blocks pass through VERBATIM (signature included): with thinking
+  // enabled, the API requires the thinking block that preceded a tool_use to be
+  // replayed in the assistant turn, or the follow-up round is rejected. They
+  // are never streamed to the user — only text deltas are.
+  | { type: "thinking"; thinking: string; signature: string }
+  | { type: "redacted_thinking"; data: string };
 
 export interface ModelMessage {
   role: "user" | "assistant";

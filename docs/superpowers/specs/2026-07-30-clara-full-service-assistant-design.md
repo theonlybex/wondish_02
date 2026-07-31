@@ -378,7 +378,7 @@ accepted on the rest). Skill-owned questions stay open until their cycle.
 | # | Question | Resolution / owner |
 |---|---|---|
 | 1 | Stream framing | **Resolved:** no framing. Clara narrates in prose before tool rounds; wire unchanged, both clients untouched. |
-| 2 | Tool-round budget + credit accounting | **Resolved:** 1 message = 1 credit, gate checked once before the first model call. **2 rounds free · 5 premium.** All rounds `claude-sonnet-5`, thinking disabled, `max_tokens` 1024. |
+| 2 | Tool-round budget + credit accounting | **Resolved (amended 2026-07-31):** 1 message = 1 credit, gate checked once before the first model call. **2 rounds free · 5 premium.** Free tier **3 messages/day** (was 5); premium unlimited. All rounds `claude-sonnet-5`, **adaptive thinking** (param omitted — disabled measurably suppresses tool selection), `max_tokens` 2048. |
 | 3 | Meal-log write shape for a Clara-logged meal | Open — **S1** |
 | 4 | Filter vocabulary mapping | Open — **S6** |
 | 5 | Date semantics for "two weeks ago" | **Resolved:** optional `clientDate` + `tzOffsetMinutes` on the chat body (additive, matches `MealLog.localDate` precedent). Absent → server date + logged caveat. Web sends it in C0; iOS in S1. |

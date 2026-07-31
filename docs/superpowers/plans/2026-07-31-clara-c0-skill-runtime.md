@@ -54,13 +54,37 @@ null-date rule stays regardless: it is the correct behavior for any client that 
 send a date (an older iOS build still in the wild, a future integration), and it is what
 makes the field's absence safe rather than silently wrong.
 
+## AMENDMENT 2026-07-31 (2): adaptive thinking on; free tier 3 messages/day
+
+**User decisions (2026-07-31), superseding the "Model settings unchanged" constraint and
+the credit line below:**
+
+1. **Thinking is ADAPTIVE, not disabled.** The `thinking` param is now omitted, which is
+   how Sonnet 5 selects adaptive thinking. Reason: the final review flagged (and
+   Anthropic's guidance confirms) that with thinking disabled the model is measurably
+   less likely to reach for tools — the one capability this runtime exists to ship.
+   Consequences implemented with it:
+   - `CLARA_MAX_TOKENS` 1024 → **2048**: thinking tokens count against `max_tokens`, and
+     at 1024 a round could burn its budget thinking and truncate the tool call (which
+     the loop then refuses to execute).
+   - `thinking` / `redacted_thinking` blocks now pass through the `ModelContentBlock`
+     union and are **replayed verbatim** (signature included) in the assistant turn —
+     the API rejects a tool_use follow-up whose preceding thinking block was dropped.
+     They are never streamed to the user; only text deltas are.
+   - The routing-eval script mirrors the omission so it measures the production config.
+2. **`CHAT_DAILY_FREE` 5 → 3.** Free users get 3 Clara messages/day; premium stays
+   unlimited (burst-limited only). Reason: a message is now up to 3 model calls at a
+   higher token cap, and the original ~$3–4/user/mo free-tier ceiling was estimated
+   optimistically. 3 × 3 calls × 2048 tokens keeps the worst case near the pre-runtime
+   level instead of tripling it.
+
 ## Global Constraints
 
 - ~~**Engine-only cycle.**~~ **AMENDED 2026-07-31 (user-directed):** the cycle also ships **T1** in the Clara iOS repo — the three additive body fields, so iOS gets an accurate date sentence and clean gap-ledger attribution from day one. E1–E7 land in `wondish_02`; T1 lands in `~/Desktop/BeTech/Clara`. The two repos have zero file overlap, so T1 may run in parallel with E1–E3 (cycle.md §3).
 - **Wire contract pinned.** For a valid existing body (`{"messages":[…]}`), the response stays `200 text/plain` with raw token deltas — no SSE, no sentinel, no JSON envelope. New body fields are **optional and additive**; absent fields must reproduce today's behavior exactly.
 - **No stream framing.** Tool activity surfaces only as prose Clara writes ("Let me check your logs…"). A second stream format is out of scope for this cycle and every skill cycle after it.
 - **Credit accounting.** One user message = one credit. The daily gate is checked **once**, before the first model call — `validate → gate → model call` ordering is preserved so a gated request spends zero tokens. Free accounts get `MAX_TOOL_ROUNDS_FREE = 2` tool-executing rounds, premium `MAX_TOOL_ROUNDS_PREMIUM = 5`; total model calls per turn is at most rounds + 1 (the forced final answer).
-- **Model settings unchanged:** `claude-sonnet-5`, `thinking: { type: "disabled" }`, `max_tokens: 1024`, on every round.
+- ~~**Model settings unchanged:** `claude-sonnet-5`, `thinking: { type: "disabled" }`, `max_tokens: 1024`, on every round.~~ **Superseded by AMENDMENT (2):** `claude-sonnet-5`, thinking param omitted (adaptive), `max_tokens: 2048`, on every round.
 - **Auth scope.** `patientId` is resolved from Clerk auth on the request. No tool input field may identify a user, patient, or account. This is a named review dimension for every task that adds a tool.
 - **Errors after the first byte degrade to prose.** Once any text has been enqueued the response is already `200 text/plain`; failures then emit a plain apology sentence and close cleanly. Failures *before* the first byte keep today's exact JSON bodies and statuses (401/400/402/404/429/503/500).
 - **Migrations are additive and authored offline** — no drops, no alters of live data; applied via `prisma migrate deploy` at the release gate, never mid-cycle.
@@ -1975,7 +1999,7 @@ func testClientDateIsGregorianRegardlessOfDeviceLocale() throws {
 
 ```bash
 cd ~/Desktop/BeTech/Clara
-xcodebuild test -scheme Clara -destination 'platform=iOS Simulator,name=iPhone 16' \
+xcodebuild test -scheme Clara -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   -only-testing:ClaraTests/StreamChatTests 2>&1 | tail -30
 ```
 Expected: compile failure — `ChatWireRequestBody.make` does not exist.
@@ -2045,7 +2069,7 @@ with:
 - [ ] **Step 5: Run the tests to verify they pass**
 
 ```bash
-xcodebuild test -scheme Clara -destination 'platform=iOS Simulator,name=iPhone 16' \
+xcodebuild test -scheme Clara -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   -only-testing:ClaraTests/StreamChatTests 2>&1 | tail -30
 ```
 Expected: PASS, including the pre-existing `StreamChatTests` cases (the body gained fields; nothing it asserted was removed).
@@ -2053,7 +2077,7 @@ Expected: PASS, including the pre-existing `StreamChatTests` cases (the body gai
 - [ ] **Step 6: Run the whole suite**
 
 ```bash
-xcodebuild test -scheme Clara -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
+xcodebuild test -scheme Clara -destination 'platform=iOS Simulator,name=iPhone 17 Pro' 2>&1 | tail -20
 ```
 Expected: PASS — `ChatViewModelTests`, `StreamChatLoopbackIntegrationTests` and the rest are untouched by design.
 

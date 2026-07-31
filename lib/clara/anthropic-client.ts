@@ -7,7 +7,13 @@ import type {
 } from "./types";
 
 export const CLARA_MODEL = "claude-sonnet-5";
-export const CLARA_MAX_TOKENS = 1024;
+/**
+ * 2048, up from the pre-runtime 1024 (AMENDMENT 2026-07-31, user-directed):
+ * adaptive thinking is now on, and thinking tokens count against max_tokens —
+ * at 1024 a round could burn its whole budget thinking and truncate the
+ * tool call, which the loop then (correctly) refuses to execute.
+ */
+export const CLARA_MAX_TOKENS = 2048;
 
 /**
  * The ONLY Anthropic-aware file in the runtime. Adapts the SDK's streaming
@@ -24,11 +30,15 @@ export const CLARA_MAX_TOKENS = 1024;
 export function createAnthropicClient(anthropic: Anthropic): ModelClient {
   return {
     async openRound(req: ModelRoundRequest): Promise<AsyncIterable<ModelRoundEvent>> {
+      // AMENDMENT 2026-07-31 (user-directed): the `thinking` param is OMITTED,
+      // which on Sonnet 5 means ADAPTIVE thinking. This reverses the C6-era
+      // "disabled for latency" choice: with thinking off the model is
+      // measurably less likely to reach for tools, and tool use is the point
+      // of this runtime. Adaptive lets quick turns stay quick while tool
+      // decisions get thought.
       const stream = anthropic.messages.stream({
         model: CLARA_MODEL,
         max_tokens: CLARA_MAX_TOKENS,
-        // Sonnet 5 defaults to adaptive thinking when omitted; chat latency wants it off (C6).
-        thinking: { type: "disabled" },
         system: [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }],
         ...(req.tools.length > 0 ? { tools: req.tools } : {}),
         messages: req.messages as Anthropic.MessageParam[],
@@ -71,9 +81,16 @@ export function createAnthropicClient(anthropic: Anthropic): ModelClient {
               name: block.name,
               input: (block.input ?? {}) as Record<string, unknown>,
             });
+          } else if (block.type === "thinking") {
+            // Replayed verbatim, signature included: with thinking enabled the
+            // API rejects a tool_use follow-up whose assistant turn lost the
+            // thinking block that preceded it. Never streamed to the user.
+            content.push({ type: "thinking", thinking: block.thinking, signature: block.signature });
+          } else if (block.type === "redacted_thinking") {
+            content.push({ type: "redacted_thinking", data: block.data });
           }
-          // Any other block kind (e.g. thinking) is deliberately dropped:
-          // thinking is disabled, and replaying unknown blocks risks a 400.
+          // Any genuinely unknown block kind is still dropped — replaying a
+          // shape we don't understand risks a 400.
         }
         yield { type: "end", content, stopReason: final.stop_reason ?? null };
       })();

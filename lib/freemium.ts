@@ -5,8 +5,16 @@
 // never hold an API key, so cost is controlled entirely server-side via a
 // per-user daily allowance on top of the existing burst rate limit.
 
-/** Free-tier Clara chat messages allowed per rolling day. Premium bypasses this entirely. */
-export const CHAT_DAILY_FREE = 5;
+/**
+ * Free-tier Clara chat messages allowed per rolling day. Premium bypasses this
+ * entirely (unlimited, burst-limited only).
+ *
+ * 5 → 3 (AMENDMENT 2026-07-31, user-directed): the C0 skill runtime made a
+ * message cost up to 3 model calls (2 tool rounds + forced final) with adaptive
+ * thinking on, so the free allowance was cut to keep the per-user ceiling near
+ * the pre-runtime level instead of tripling it.
+ */
+export const CHAT_DAILY_FREE = 3;
 
 /** lib/rate-limit `rateLimit()` bucket name + window (seconds) for the Clara daily chat gate. */
 export const CHAT_DAY_RATE_LIMIT_NAME = "chat-day";

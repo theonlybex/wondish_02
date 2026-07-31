@@ -62,7 +62,7 @@ const TOOL = {
   input_schema: { type: "object" as const, properties: {} },
 };
 
-test("model, token cap and disabled thinking are sent on every round", async () => {
+test("model and token cap are sent on every round", async () => {
   const { anthropic, sent } = fakeAnthropic({ deltas: ["hi"] });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = createAnthropicClient(anthropic as any);
@@ -70,7 +70,18 @@ test("model, token cap and disabled thinking are sent on every round", async () 
   assert.equal(sent[0].model, CLARA_MODEL);
   assert.equal(sent[0].model, "claude-sonnet-5");
   assert.equal(sent[0].max_tokens, CLARA_MAX_TOKENS);
-  assert.deepEqual(sent[0].thinking, { type: "disabled" });
+  assert.equal(sent[0].max_tokens, 2048); // room for thinking + a tool call
+});
+
+// AMENDMENT 2026-07-31 (user-directed): thinking is ADAPTIVE — the param is
+// omitted, which is how Sonnet 5 selects it. With thinking disabled the model
+// is measurably less likely to reach for tools, and tools are the point.
+test("the thinking param is omitted so Sonnet 5 uses adaptive thinking", async () => {
+  const { anthropic, sent } = fakeAnthropic({ deltas: ["hi"] });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = createAnthropicClient(anthropic as any);
+  await collect(await client.openRound({ system: "S", messages: [], tools: [] }));
+  assert.ok(!("thinking" in sent[0]), "thinking must be absent, not disabled");
 });
 
 // An empty toolbox must produce a request with NO tools key at all — that is
@@ -150,16 +161,72 @@ test("stop_reason is surfaced so the loop can refuse truncated tool calls", asyn
   assert.equal((events.at(-1) as { stopReason: string }).stopReason, "max_tokens");
 });
 
-test("unknown block kinds are dropped rather than replayed", async () => {
+// With thinking enabled the API REQUIRES the thinking block that preceded a
+// tool_use to be replayed verbatim (signature included) in the assistant turn —
+// dropping it 400s the follow-up round.
+test("thinking blocks pass through verbatim for replay", async () => {
   const { anthropic } = fakeAnthropic({
     deltas: ["hi"],
-    content: [{ type: "thinking", thinking: "…" }, { type: "text", text: "hi" }],
+    content: [
+      { type: "thinking", thinking: "user wants their profile", signature: "sig123" },
+      { type: "tool_use", id: "t1", name: "x_get", input: {} },
+      { type: "text", text: "hi" },
+    ],
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = createAnthropicClient(anthropic as any);
+  const events = await collect(await client.openRound({ system: "S", messages: [], tools: [TOOL] }));
+  const end = events.at(-1) as { content: { type: string }[] };
+  assert.deepEqual(end.content[0], {
+    type: "thinking",
+    thinking: "user wants their profile",
+    signature: "sig123",
+  });
+  assert.deepEqual(end.content.map((b) => b.type), ["thinking", "tool_use", "text"]);
+});
+
+test("redacted_thinking blocks pass through too", async () => {
+  const { anthropic } = fakeAnthropic({
+    deltas: [],
+    content: [{ type: "redacted_thinking", data: "opaque" }, { type: "text", text: "hi" }],
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = createAnthropicClient(anthropic as any);
+  const events = await collect(await client.openRound({ system: "S", messages: [], tools: [] }));
+  const end = events.at(-1) as { content: { type: string }[] };
+  assert.deepEqual(end.content[0], { type: "redacted_thinking", data: "opaque" });
+});
+
+test("genuinely unknown block kinds are still dropped rather than replayed", async () => {
+  const { anthropic } = fakeAnthropic({
+    deltas: ["hi"],
+    content: [{ type: "mystery_block", stuff: "?" }, { type: "text", text: "hi" }],
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = createAnthropicClient(anthropic as any);
   const events = await collect(await client.openRound({ system: "S", messages: [], tools: [] }));
   const end = events.at(-1) as { content: { type: string }[] };
   assert.deepEqual(end.content, [{ type: "text", text: "hi" }]);
+});
+
+// Thinking must never reach the user's chat: only text deltas stream.
+test("thinking is not streamed as user-visible text", async () => {
+  const { anthropic } = fakeAnthropic({
+    deltas: ["visible"],
+    content: [
+      { type: "thinking", thinking: "SECRET-REASONING", signature: "s" },
+      { type: "text", text: "visible" },
+    ],
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = createAnthropicClient(anthropic as any);
+  const events = await collect(await client.openRound({ system: "S", messages: [], tools: [] }));
+  const streamed = events
+    .filter((e) => e.type === "text")
+    .map((e) => (e as { text: string }).text)
+    .join("");
+  assert.equal(streamed, "visible");
+  assert.ok(!streamed.includes("SECRET-REASONING"));
 });
 
 // Round 1 opens eagerly so this rejects BEFORE the route commits to a 200,

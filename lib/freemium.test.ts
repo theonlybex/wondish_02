@@ -7,8 +7,9 @@ import {
   chatQuotaExceededResponseBody,
 } from "./freemium";
 
-test("CHAT_DAILY_FREE is 5 (free-tier Clara messages per day)", () => {
-  assert.equal(CHAT_DAILY_FREE, 5);
+test("CHAT_DAILY_FREE is 3 (free-tier Clara messages per day; premium unlimited)", () => {
+  // 5 → 3 with the C0 tool-use runtime — a message is now up to 3 model calls.
+  assert.equal(CHAT_DAILY_FREE, 3);
 });
 
 test("chat daily gate uses the 'chat-day' rate-limit bucket, 24h window", () => {
