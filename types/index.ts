@@ -280,3 +280,32 @@ export interface OrderDTO {
     price?: number | null;
   }[];
 }
+
+// ─── Plan Exchanges (spec 2026-07-30-plan-exchanges-design.md) ──────────────
+
+export type PlanExchangeStatus = "PENDING" | "RESOLVED" | "CANCELLED";
+export type PlanExchangeSource = "RESTAURANT" | "FRIDGE";
+
+export interface PlanExchangePerServing {
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  fiber: number | null;
+}
+
+export interface PlanExchangeDTO {
+  id: string;
+  source: PlanExchangeSource;
+  localDate: string; // "YYYY-MM-DD"
+  status: PlanExchangeStatus; // CANCELLED never serialized in GET
+  servings: number;
+  displacedMenuId: string | null;
+  name: string;
+  originLabel: string; // "Ristorante Roma" | "Your fridge"
+  emoji: string | null; // fridge only, null for restaurant
+  perServing: PlanExchangePerServing;
+  incomplete: boolean;
+  eaten: boolean; // derived: MealLog with planExchangeId exists
+  createdAt: string; // ISO
+}
