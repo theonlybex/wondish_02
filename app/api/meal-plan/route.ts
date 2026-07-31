@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
-import { getPlanDayCalories } from "@/lib/meal-plan";
+import { getPlanDayCalories, deriveLoggedRecipeIds } from "@/lib/meal-plan";
 import { accountHasActivePremium } from "@/lib/auth";
 import { getExchangesForRange, splitByStatus } from "@/lib/plan-exchanges";
 import { addDays } from "date-fns";
@@ -80,7 +80,18 @@ export async function GET(req: NextRequest) {
       include: { meals: { select: { recipeId: true, skipped: true, rating: true } } },
     });
     const activeMeals = (journalEntry?.meals ?? []).filter((m) => !m.skipped && m.recipeId);
-    loggedRecipeIds = activeMeals.map((m) => m.recipeId as string);
+    // Log-to-numbers sync (2026-07-30): "Log meal" writes /api/meal-log
+    // intake, not JournalMeal — union live intake rows in so logging from
+    // any surface marks the dish done (deleting the log un-marks it).
+    // Ratings stay journal-only.
+    const intakeLogs = await prisma.mealLog.findMany({
+      where: { patientId: patient.id, localDate: toLocalDateString(startDate), deletedAt: null, recipeId: { not: null } },
+      select: { recipeId: true },
+    });
+    loggedRecipeIds = deriveLoggedRecipeIds(
+      activeMeals.map((m) => m.recipeId as string),
+      intakeLogs.map((l) => l.recipeId as string)
+    );
     for (const m of activeMeals) {
       if (m.recipeId && m.rating != null) mealRatings[m.recipeId] = m.rating;
     }

@@ -556,3 +556,25 @@ export async function getPlanDayCalories(patientId: string, localDate: string): 
     maxDailyDeficit(profile.cbmi),
   );
 }
+
+// ─── deriveLoggedRecipeIds ──────────────────────────────────────────────────
+// A plan dish counts as "logged" when it was completed in the journal OR a
+// live intake row for its recipe exists for the day (log-to-numbers sync fix,
+// 2026-07-30): "Log meal" writes /api/meal-log intake, the plan surfaces'
+// progress previously read only JournalMeal completions, so logging never
+// moved the numbers. Deleting the intake log naturally un-logs (callers pass
+// only deletedAt-null rows). Journal order first, then new intake ids.
+export function deriveLoggedRecipeIds(
+  journalRecipeIds: string[],
+  intakeRecipeIds: string[]
+): string[] {
+  const seen = new Set(journalRecipeIds);
+  const out = [...journalRecipeIds];
+  for (const id of intakeRecipeIds) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
+}

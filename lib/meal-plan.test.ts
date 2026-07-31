@@ -751,3 +751,16 @@ test("audit-T4: condition-ban 'sugar' excludes a 'brown sugar' recipe from the p
   assert.ok(rows.every((r) => r.recipeId !== "bf-sugar"), "brown-sugar recipe must never be planned");
   assert.ok(rows.some((r) => r.recipeId === "bf-clean"), "clean breakfast still planned");
 });
+
+// ─── deriveLoggedRecipeIds (log-to-numbers sync fix, 2026-07-30) ────────────
+test("deriveLoggedRecipeIds: unions journal completions with live intake logs, deduped, order-stable", async () => {
+  const { deriveLoggedRecipeIds } = await modPromise;
+  assert.deepEqual(deriveLoggedRecipeIds(["r1", "r2"], ["r2", "r3", "r3"]), ["r1", "r2", "r3"]);
+});
+
+test("deriveLoggedRecipeIds: either side empty passes the other through", async () => {
+  const { deriveLoggedRecipeIds } = await modPromise;
+  assert.deepEqual(deriveLoggedRecipeIds([], ["r9"]), ["r9"]);
+  assert.deepEqual(deriveLoggedRecipeIds(["r1"], []), ["r1"]);
+  assert.deepEqual(deriveLoggedRecipeIds([], []), []);
+});
