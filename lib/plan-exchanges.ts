@@ -140,3 +140,37 @@ export async function findExchangeById(
   if (fridge) return { row: fridge, source: "FRIDGE" };
   return null;
 }
+
+// ── Input parsers ───────────────────────────────────────────────────────────
+
+const MACRO_KEYS = ["calories", "protein", "carbs", "fat", "fiber"] as const;
+
+export type ParseExchangeResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
+function parseServings(raw: unknown): number | { error: string } {
+  if (raw === undefined) return 1;
+  if (typeof raw !== "number" || !isFinite(raw) || raw <= 0 || raw > 20) {
+    return { error: "servings must be a number in (0, 20]" };
+  }
+  return raw;
+}
+
+export function parseRestaurantExchangeInput(
+  raw: unknown
+): ParseExchangeResult<{ restaurantDishId: string; localDate: string; servings: number }> {
+  if (typeof raw !== "object" || raw === null) return { ok: false, error: "Invalid body" };
+  const r = raw as Record<string, unknown>;
+  // Server prices RESTAURANT macros (standing rule 3) — reject any client attempt.
+  for (const k of MACRO_KEYS) {
+    if (k in r) return { ok: false, error: `${k} is server-priced; do not send it` };
+  }
+  const restaurantDishId =
+    typeof r.restaurantDishId === "string" && r.restaurantDishId ? r.restaurantDishId : null;
+  if (!restaurantDishId) return { ok: false, error: "restaurantDishId is required" };
+  if (typeof r.localDate !== "string" || !localDayWindow(r.localDate)) {
+    return { ok: false, error: "localDate must be YYYY-MM-DD" };
+  }
+  const servings = parseServings(r.servings);
+  if (typeof servings !== "number") return { ok: false, error: servings.error };
+  return { ok: true, value: { restaurantDishId, localDate: r.localDate, servings } };
+}

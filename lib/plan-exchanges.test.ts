@@ -80,3 +80,24 @@ describe("localDayWindow", () => {
     assert.equal(localDayWindow("2026-7-30"), null);
   });
 });
+
+// ── parseRestaurantExchangeInput (Task E3) ──────────────────────────────────
+import { parseRestaurantExchangeInput } from "./plan-exchanges";
+
+describe("parseRestaurantExchangeInput", () => {
+  it("accepts minimal valid input, defaults servings to 1", () => {
+    const r = parseRestaurantExchangeInput({ restaurantDishId: "d1", localDate: "2026-07-30" });
+    assert.ok(r.ok && r.value.servings === 1 && r.value.restaurantDishId === "d1");
+  });
+
+  it("rejects missing dish id, bad localDate, out-of-range servings", () => {
+    assert.equal(parseRestaurantExchangeInput({ localDate: "2026-07-30" }).ok, false);
+    assert.equal(parseRestaurantExchangeInput({ restaurantDishId: "d1", localDate: "yesterday" }).ok, false);
+    assert.equal(parseRestaurantExchangeInput({ restaurantDishId: "d1", localDate: "2026-07-30", servings: 0 }).ok, false);
+    assert.equal(parseRestaurantExchangeInput({ restaurantDishId: "d1", localDate: "2026-07-30", servings: 21 }).ok, false);
+  });
+
+  it("rejects client-supplied macros — server prices RESTAURANT (standing rule 3)", () => {
+    assert.equal(parseRestaurantExchangeInput({ restaurantDishId: "d1", localDate: "2026-07-30", calories: 100 }).ok, false);
+  });
+});
