@@ -11,10 +11,41 @@ export const GAP_CATEGORIES = [
 export const GAP_REASONS = ["NOT_BUILT", "FLAGGED_OFF", "OUT_OF_SCOPE", "UNCLEAR"] as const;
 
 export const MAX_GAP_SUMMARY = 200;
-/** Gap rows one user may create per day. Beyond it, reports are dropped silently. */
-export const GAP_DAILY_CAP = 10;
+/**
+ * Gap rows one user may create per day. Must stay ABOVE the category count:
+ * the unique (patient, category, day) index already bounds a user to one row
+ * per category per day, so a cap below GAP_CATEGORIES.length could only ever
+ * delete distinct-category signal — never volume it wasn't already bounding.
+ * The cap is a backstop against a pathological client, not the real limit.
+ */
+export const GAP_DAILY_CAP = 20;
 export const GAP_RATE_LIMIT_NAME = "clara-gap-day";
 export const GAP_RATE_LIMIT_WINDOW_SEC = 86400;
+
+/**
+ * Which product skill each category belongs to, so the server can tell
+ * "never built" from "built but switched off". The model cannot: a disabled
+ * skill has its tools and prompt fragment stripped from the request, so it
+ * sees the identical absence either way and would file everything NOT_BUILT.
+ */
+export const CATEGORY_TO_SKILL: Partial<Record<(typeof GAP_CATEGORIES)[number], string>> = {
+  FILTERS: "profile",
+};
+
+/**
+ * The server owns the FLAGGED_OFF verdict — it is the only party that knows
+ * what is registered versus active. The model's reason is respected otherwise.
+ */
+export function resolveGapReason(
+  category: (typeof GAP_CATEGORIES)[number],
+  modelReason: (typeof GAP_REASONS)[number],
+  disabledSkills: readonly string[]
+): (typeof GAP_REASONS)[number] {
+  const skill = CATEGORY_TO_SKILL[category];
+  if (skill && disabledSkills.includes(skill)) return "FLAGGED_OFF";
+  // A model-supplied FLAGGED_OFF is never trustworthy — it cannot see config.
+  return modelReason === "FLAGGED_OFF" ? "NOT_BUILT" : modelReason;
+}
 
 export interface NormalizedGap {
   category: (typeof GAP_CATEGORIES)[number];
@@ -43,6 +74,110 @@ export function normalizeGapInput(
   return {
     ok: true,
     value: { category, reason, summary: rawSummary.slice(0, MAX_GAP_SUMMARY) },
+  };
+}
+
+/** The two effects the handler needs, injected so the handler is testable. */
+export interface GapDeps {
+  findExisting: (patientId: string, category: string, localDate: string) => Promise<boolean>;
+  consumeDailyBudget: (patientId: string) => Promise<boolean>;
+  write: (row: {
+    patientId: string;
+    category: string;
+    reason: string;
+    summary: string;
+    surface: string;
+    localDate: string;
+  }) => Promise<void>;
+}
+
+const prismaGapDeps: GapDeps = {
+  findExisting: async (patientId, category, localDate) =>
+    (await prisma.claraCapabilityRequest.findUnique({
+      where: {
+        patientId_category_localDate: {
+          patientId,
+          category: category as never,
+          localDate,
+        },
+      },
+      select: { id: true },
+    })) !== null,
+
+  consumeDailyBudget: async (patientId) => {
+    // rateLimit fails OPEN if Redis is down (lib/rate-limit.ts). That is the
+    // right trade here — a telemetry cap must never change the user's chat —
+    // and the unique index bounds the damage to one row per category per day.
+    const { success } = await rateLimit(
+      GAP_RATE_LIMIT_NAME,
+      patientId,
+      GAP_DAILY_CAP,
+      GAP_RATE_LIMIT_WINDOW_SEC
+    );
+    return success;
+  },
+
+  write: async (row) => {
+    await prisma.claraCapabilityRequest.upsert({
+      where: {
+        patientId_category_localDate: {
+          patientId: row.patientId,
+          category: row.category as never,
+          localDate: row.localDate,
+        },
+      },
+      create: {
+        patientId: row.patientId,
+        category: row.category as never,
+        reason: row.reason as never,
+        summary: row.summary,
+        surface: row.surface,
+        localDate: row.localDate,
+      },
+      // Keep the first summary of the day — ranking counts distinct users, so
+      // repeats must not inflate anything — but let buildable demand win the
+      // reason: a first "cancel my subscription" (OUT_OF_SCOPE) must not bury a
+      // later genuine NOT_BUILT ask filed under the same catch-all category.
+      update: row.reason === "NOT_BUILT" ? { reason: "NOT_BUILT" } : {},
+    });
+  },
+};
+
+/**
+ * Built as a factory so the effects are injectable — the plan specified this
+ * shape, and every future write skill will copy this file as its template.
+ */
+export function makeGapHandler(deps: GapDeps = prismaGapDeps) {
+  return async (ctx: ClaraContext, input: Record<string, unknown>): Promise<ToolResult> => {
+    const parsed = normalizeGapInput(input);
+    if (!parsed.ok) return { ok: false, reason: "INVALID_INPUT", message: parsed.message };
+
+    const reason = resolveGapReason(parsed.value.category, parsed.value.reason, ctx.disabledSkills);
+
+    // Dedupe BEFORE spending budget. The unique index means a repeat ask in the
+    // same category today writes nothing, so charging for it would let a user
+    // burn their whole allowance on one category and lose every other
+    // category's signal for the rest of the day.
+    if (await deps.findExisting(ctx.patientId, parsed.value.category, ctx.today)) {
+      return { ok: true, data: { recorded: true, duplicate: true } };
+    }
+
+    if (!(await deps.consumeDailyBudget(ctx.patientId))) {
+      // Over the cap: acknowledge and drop. The user's chat must not change
+      // because of an internal telemetry limit.
+      return { ok: true, data: { recorded: false } };
+    }
+
+    await deps.write({
+      patientId: ctx.patientId,
+      category: parsed.value.category,
+      reason,
+      summary: parsed.value.summary,
+      surface: ctx.surface,
+      localDate: ctx.today,
+    });
+
+    return { ok: true, data: { recorded: true } };
   };
 }
 
@@ -85,43 +220,7 @@ export const gapSkill: Skill = {
           required: ["category", "summary"],
         },
       },
-      handler: async (ctx: ClaraContext, input): Promise<ToolResult> => {
-        const parsed = normalizeGapInput(input);
-        if (!parsed.ok) return { ok: false, reason: "INVALID_INPUT", message: parsed.message };
-
-        const { success } = await rateLimit(
-          GAP_RATE_LIMIT_NAME,
-          ctx.patientId,
-          GAP_DAILY_CAP,
-          GAP_RATE_LIMIT_WINDOW_SEC
-        );
-        // Over the cap: acknowledge and drop. The user's chat must not change
-        // because of an internal telemetry limit.
-        if (!success) return { ok: true, data: { recorded: false } };
-
-        await prisma.claraCapabilityRequest.upsert({
-          where: {
-            patientId_category_localDate: {
-              patientId: ctx.patientId,
-              category: parsed.value.category,
-              localDate: ctx.today,
-            },
-          },
-          create: {
-            patientId: ctx.patientId,
-            category: parsed.value.category,
-            reason: parsed.value.reason,
-            summary: parsed.value.summary,
-            surface: ctx.surface,
-            localDate: ctx.today,
-          },
-          // Same user, same category, same day ⇒ keep the first row. Ranking
-          // counts distinct users, so repeats must not inflate anything.
-          update: {},
-        });
-
-        return { ok: true, data: { recorded: true } };
-      },
+      handler: makeGapHandler(),
     },
   ],
 };

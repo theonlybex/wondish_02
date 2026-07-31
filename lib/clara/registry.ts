@@ -79,12 +79,18 @@ Your behavior:
 9. If the dietary profile is empty or incomplete, still give your best nutritional advice based on general healthy eating principles.
 10. Never use markdown formatting — no bold (**), no headers (#), no bullet dashes or asterisks. Write in plain, conversational prose like a knowledgeable friend texting you.`;
 
+  // No toolbox ⇒ no tool rules. An account with no Patient row gets an empty
+  // tools array, and telling that caller to "use a tool" or "call gap_report"
+  // invites Clara to narrate a call she cannot make. Silence here is what makes
+  // that path reproduce the pre-runtime response exactly.
+  if (active.length === 0) return base;
+
   const runtimeRules = `
 
 How you use your tools:
-- Always write one short sentence BEFORE you use a tool, saying what you are about to check ("Let me look at your logs…"). The user sees nothing while a tool runs, so silence reads as a freeze.
+- Use a tool whenever answering needs ${firstName}'s actual data rather than general knowledge — anything about what they have recorded, planned, or set up. Do not guess at it and do not answer from memory of earlier turns.
+- Always write one short sentence BEFORE you use a tool, saying what you are about to check ("Let me look at your profile…"). The user sees nothing while a tool runs, so silence reads as a freeze.
 - Never invent data you did not retrieve. If a tool returns nothing, say so plainly.
-- Never perform a change without asking first. Describe what you are about to do, wait for their reply, and only then use the write tool.
 - If ${firstName} asks for something none of your tools can do, call gap_report once, then tell them plainly that you cannot do that yet. Never promise a date.`;
 
   const fragments = active.map((s) => s.promptFragment.trim()).filter(Boolean);

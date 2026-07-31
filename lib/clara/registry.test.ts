@@ -114,6 +114,29 @@ test("ClaraContext is the only identity carrier a handler receives", () => {
     isPremium: false,
     today: "2026-07-31",
     surface: "web",
+    disabledSkills: [],
   };
   assert.equal(ctx.patientId, "p1");
+});
+
+// An account with no Patient row gets an empty toolbox. Telling that caller how
+// to "use a tool" or to "call gap_report" invites Clara to narrate a call she
+// cannot make — and breaks the route's promise that this path reproduces the
+// pre-runtime response exactly.
+test("no tool rules are emitted when the toolbox is empty", () => {
+  const prompt = buildSystemPrompt("Sam", "no restrictions", [], null);
+  assert.ok(!/how you use your tools/i.test(prompt));
+  assert.ok(!/gap_report/.test(prompt));
+  assert.ok(!/before you use a tool/i.test(prompt));
+});
+
+test("the empty-toolbox prompt still carries the persona and profile", () => {
+  const prompt = buildSystemPrompt("Sam", "MY-FOOD-MAP", [], null);
+  assert.ok(prompt.includes("Clara"));
+  assert.ok(prompt.includes("MY-FOOD-MAP"));
+});
+
+test("the tool rules say WHEN to reach for a tool, not just how to narrate", () => {
+  const prompt = buildSystemPrompt("Sam", "none", [alpha], "2026-07-31");
+  assert.match(prompt, /actual data rather than general knowledge/i);
 });

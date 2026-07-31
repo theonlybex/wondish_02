@@ -98,6 +98,10 @@ export async function POST(req: NextRequest) {
   const firstName = account.firstName ?? "there";
 
   const activeSkills = patient ? resolveActiveSkills(ALL_SKILLS, process.env.CLARA_SKILLS) : [];
+  // Registered but switched off — only the server can tell this from "never
+  // built", so it authors the FLAGGED_OFF verdict rather than the model.
+  const activeNames = new Set(activeSkills.map((s) => s.name));
+  const disabledSkills = ALL_SKILLS.filter((s) => !activeNames.has(s.name)).map((s) => s.name);
 
   const ctx: ClaraContext | null = patient
     ? {
@@ -107,6 +111,7 @@ export async function POST(req: NextRequest) {
         isPremium,
         today: resolution.localDate,
         surface: options.surface,
+        disabledSkills,
       }
     : null;
 
@@ -118,8 +123,11 @@ export async function POST(req: NextRequest) {
   );
 
   const execute = async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
-    const tool = ctx ? findTool(activeSkills, name) : null;
-    if (!tool || !ctx) return { ok: false, reason: "FAILED", message: `Unknown tool ${name}` };
+    if (!ctx) return { ok: false, reason: "FAILED", message: "No tools are available." };
+    const tool = findTool(activeSkills, name);
+    // Deliberately does not echo the model-supplied name back into the next
+    // round's tool_result.
+    if (!tool) return { ok: false, reason: "FAILED", message: "That tool does not exist." };
     return tool.handler(ctx, input);
   };
 

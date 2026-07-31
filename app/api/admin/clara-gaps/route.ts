@@ -5,6 +5,8 @@ import { aggregateGaps, MIN_SAMPLE_DAYS, MIN_SAMPLE_USERS } from "@/lib/clara/ad
 import { parseLocalDateStrict } from "@/lib/journal";
 
 const DAY_MS = 86_400_000;
+/** Hard ceiling per query so a wide range cannot become an unbounded scan. */
+const MAX_REPORT_ROWS = 50_000;
 
 function toLocalDateString(d: Date): string {
   const y = d.getFullYear();
@@ -38,6 +40,12 @@ export async function GET(req: NextRequest) {
       1,
       Math.round((toDate.getTime() - fromDate.getTime()) / DAY_MS) + 1
     );
+    // Bound the scan: the report queries this window AND the one before it, so
+    // an unbounded range loads the whole table twice. A year is far beyond any
+    // useful re-rank window (and beyond the 180-day retention).
+    if (windowDays > 366) {
+      return NextResponse.json({ error: "Range must be 366 days or fewer" }, { status: 400 });
+    }
     const prevTo = toLocalDateString(new Date(fromDate.getTime() - DAY_MS));
     const prevFrom = toLocalDateString(new Date(fromDate.getTime() - windowDays * DAY_MS));
 
@@ -53,10 +61,12 @@ export async function GET(req: NextRequest) {
       prisma.claraCapabilityRequest.findMany({
         where: { localDate: { gte: from, lte: to } },
         select,
+        take: MAX_REPORT_ROWS,
       }),
       prisma.claraCapabilityRequest.findMany({
         where: { localDate: { gte: prevFrom, lte: prevTo } },
         select,
+        take: MAX_REPORT_ROWS,
       }),
     ]);
 

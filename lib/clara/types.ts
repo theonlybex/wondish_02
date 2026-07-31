@@ -33,9 +33,21 @@ export interface ClaraContext {
   accountId: string;
   firstName: string;
   isPremium: boolean;
-  /** "YYYY-MM-DD" — the caller's local today (lib/clara/dates.ts). */
+  /**
+   * "YYYY-MM-DD" — the caller's local today (lib/clara/dates.ts). ALWAYS a
+   * usable date, because handlers need one; but when the client sent none this
+   * is server-derived and the system prompt deliberately asserts NO date. A
+   * future date-using skill must therefore treat this as the authority and not
+   * assume the model was told the same day.
+   */
   today: string;
   surface: "web" | "ios" | "unknown";
+  /**
+   * Product skills that are registered but switched off by CLARA_SKILLS. The
+   * server is the only party that can tell "never built" from "built but
+   * disabled" — the model sees the same absence either way.
+   */
+  disabledSkills: readonly string[];
 }
 
 export interface SkillTool {
@@ -72,9 +84,21 @@ export interface ModelRoundRequest {
   tools: ToolDef[];
 }
 
+/**
+ * Text deltas stream as they arrive (that is what reaches the user); the single
+ * terminal `end` event carries the round's AUTHORITATIVE assistant content and
+ * stop reason.
+ *
+ * The loop must replay `end.content` verbatim rather than rebuilding the turn
+ * from deltas: one delta is not one content block, and a message of
+ * [text, tool_use, text] would otherwise be replayed reordered and split into
+ * dozens of blocks — some of them empty or whitespace-only, which the API
+ * rejects. `stopReason` is how the loop learns a round was truncated by
+ * max_tokens, whose tool inputs are partially-parsed and must not be executed.
+ */
 export type ModelRoundEvent =
   | { type: "text"; text: string }
-  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> };
+  | { type: "end"; content: ModelContentBlock[]; stopReason: string | null };
 
 export interface ModelClient {
   /**

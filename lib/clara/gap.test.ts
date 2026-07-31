@@ -55,7 +55,15 @@ test("gap_report takes no identity field and is capped per user per day", () => 
     "summary",
   ]);
   assert.deepEqual(def.input_schema.required, ["category", "summary"]);
-  assert.equal(GAP_DAILY_CAP, 10);
+});
+
+// A cap at or below the category count could only ever delete distinct-category
+// signal: the unique (patient, category, day) index already bounds volume.
+test("the daily cap sits above the category count so it cannot silence categories", () => {
+  assert.ok(
+    GAP_DAILY_CAP > GAP_CATEGORIES.length,
+    `cap ${GAP_DAILY_CAP} must exceed ${GAP_CATEGORIES.length} categories`
+  );
 });
 
 test("the tool's enums are exactly the stored enums — no drift", () => {
@@ -64,4 +72,111 @@ test("the tool's enums are exactly the stored enums — no drift", () => {
     { enum?: string[] }
   >;
   assert.deepEqual(props.category.enum, [...GAP_CATEGORIES]);
+});
+
+// ─── handler behaviour (injectable deps, per the plan's factory shape) ───────
+
+import { makeGapHandler, resolveGapReason, type GapDeps } from "./gap";
+import type { ClaraContext } from "./types";
+
+const ctx: ClaraContext = {
+  patientId: "p1",
+  accountId: "a1",
+  firstName: "Sam",
+  isPremium: false,
+  today: "2026-07-31",
+  surface: "web",
+  disabledSkills: [],
+};
+
+function fakeDeps(over: Partial<GapDeps> = {}) {
+  const writes: Parameters<GapDeps["write"]>[0][] = [];
+  let budgetCalls = 0;
+  const deps: GapDeps = {
+    findExisting: async () => false,
+    consumeDailyBudget: async () => {
+      budgetCalls += 1;
+      return true;
+    },
+    write: async (row) => {
+      writes.push(row);
+    },
+    ...over,
+  };
+  return { deps, writes, budget: () => budgetCalls };
+}
+
+test("a new report consumes budget and writes one row", async () => {
+  const { deps, writes, budget } = fakeDeps();
+  const result = await makeGapHandler(deps)(ctx, { category: "LOGS", summary: "wanted last week" });
+  assert.deepEqual(result, { ok: true, data: { recorded: true } });
+  assert.equal(budget(), 1);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].localDate, "2026-07-31");
+  assert.equal(writes[0].patientId, "p1");
+});
+
+// Repeats dedupe on the unique index anyway, so charging for them would let one
+// category burn the whole daily allowance and lose every other category's signal.
+test("a same-day repeat in the same category spends no budget and writes nothing", async () => {
+  const { deps, writes, budget } = fakeDeps({ findExisting: async () => true });
+  const result = await makeGapHandler(deps)(ctx, { category: "LOGS", summary: "again" });
+  assert.deepEqual(result, { ok: true, data: { recorded: true, duplicate: true } });
+  assert.equal(budget(), 0);
+  assert.equal(writes.length, 0);
+});
+
+test("over the cap the report is dropped, but the user's chat is unaffected", async () => {
+  const { deps, writes } = fakeDeps({ consumeDailyBudget: async () => false });
+  const result = await makeGapHandler(deps)(ctx, { category: "LOGS", summary: "s" });
+  assert.deepEqual(result, { ok: true, data: { recorded: false } });
+  assert.equal(writes.length, 0);
+});
+
+test("a missing summary is rejected before any effect runs", async () => {
+  const { deps, writes, budget } = fakeDeps();
+  const result = await makeGapHandler(deps)(ctx, { category: "LOGS" });
+  assert.equal(result.ok, false);
+  assert.equal(budget(), 0);
+  assert.equal(writes.length, 0);
+});
+
+test("the patient id written is the context's, never the model's input", async () => {
+  const { deps, writes } = fakeDeps();
+  await makeGapHandler(deps)(ctx, {
+    category: "LOGS",
+    summary: "s",
+    patientId: "attacker",
+    ctx: { patientId: "attacker" },
+  });
+  assert.equal(writes[0].patientId, "p1");
+});
+
+// ─── FLAGGED_OFF is a server verdict ────────────────────────────────────────
+// A disabled skill has its tools and prompt fragment stripped from the request,
+// so the model sees the same absence as "never built" and cannot tell them apart.
+
+test("a category whose skill is switched off is recorded as FLAGGED_OFF", () => {
+  assert.equal(resolveGapReason("FILTERS", "NOT_BUILT", ["profile"]), "FLAGGED_OFF");
+});
+
+test("the same category with its skill enabled stays NOT_BUILT", () => {
+  assert.equal(resolveGapReason("FILTERS", "NOT_BUILT", []), "NOT_BUILT");
+});
+
+test("a model-claimed FLAGGED_OFF is downgraded — it cannot see config", () => {
+  assert.equal(resolveGapReason("LOGS", "FLAGGED_OFF", []), "NOT_BUILT");
+});
+
+test("OUT_OF_SCOPE from the model is respected", () => {
+  assert.equal(resolveGapReason("OTHER", "OUT_OF_SCOPE", ["profile"]), "OUT_OF_SCOPE");
+});
+
+test("the handler stores the server-resolved reason, not the model's", async () => {
+  const { deps, writes } = fakeDeps();
+  await makeGapHandler(deps)(
+    { ...ctx, disabledSkills: ["profile"] },
+    { category: "FILTERS", summary: "add shellfish", reason: "NOT_BUILT" }
+  );
+  assert.equal(writes[0].reason, "FLAGGED_OFF");
 });

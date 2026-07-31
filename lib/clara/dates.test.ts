@@ -3,8 +3,30 @@ import assert from "node:assert/strict";
 import { resolveToday, shiftLocalDate } from "./dates";
 
 test("resolveToday prefers a valid clientDate", () => {
-  const r = resolveToday("2026-07-31", undefined, new Date("2026-01-01T00:00:00Z"));
+  const r = resolveToday("2026-07-31", undefined, new Date("2026-07-31T12:00:00Z"));
   assert.deepEqual(r, { localDate: "2026-07-31", source: "client" });
+});
+
+test("a clientDate a day either side of the server is still trusted (timezones)", () => {
+  const now = new Date("2026-07-31T12:00:00Z");
+  assert.equal(resolveToday("2026-07-30", undefined, now).source, "client");
+  assert.equal(resolveToday("2026-08-01", undefined, now).source, "client");
+});
+
+// The date is client-controlled, asserted verbatim in the prompt, and used as
+// the gap-ledger dedupe key — an arbitrary value would let a client defeat the
+// unique constraint and distort the report windows.
+test("a clientDate far from now is rejected, not trusted", () => {
+  const now = new Date("2026-07-31T12:00:00Z");
+  assert.equal(resolveToday("2099-01-01", undefined, now).source, "server");
+  assert.equal(resolveToday("2020-01-01", undefined, now).source, "server");
+});
+
+test("a rolled-over date like 2026-02-31 is rejected rather than silently shifted", () => {
+  // parseLocalDateStrict alone accepts it (it becomes March 3); the round-trip
+  // check is what catches it.
+  const r = resolveToday("2026-02-31", undefined, new Date("2026-03-01T12:00:00Z"));
+  assert.equal(r.source, "server");
 });
 
 test("resolveToday rejects garbage clientDate and falls back", () => {

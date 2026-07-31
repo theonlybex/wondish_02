@@ -64,16 +64,25 @@ function toRows(rows: GapInputRow[], previous: Map<string, number>): GapRow[] {
  * (an ops problem, not backlog), so neither can drift into the build order.
  */
 export function aggregateGaps(rows: GapInputRow[], opts: { previous: GapInputRow[] }): GapReport {
-  const previousUsers = new Map<string, number>();
-  group(opts.previous).forEach((e, category) => previousUsers.set(category, e.users.size));
+  /**
+   * Each bucket's trend must compare like with like. Building ONE unfiltered
+   * previous-window map and reusing it across all three buckets inverts the
+   * sign whenever a category carried a different reason last window: a LOGS
+   * category with 3 OUT_OF_SCOPE users previously and 2 NOT_BUILT users now
+   * reported "-1" when buildable demand had in fact gone 0 → 2.
+   */
+  const bucket = (predicate: (r: GapInputRow) => boolean): GapRow[] => {
+    const previousUsers = new Map<string, number>();
+    group(opts.previous.filter(predicate)).forEach((e, category) =>
+      previousUsers.set(category, e.users.size)
+    );
+    return toRows(rows.filter(predicate), previousUsers);
+  };
 
   return {
-    buildable: toRows(
-      rows.filter((r) => r.reason === "NOT_BUILT" || r.reason === "UNCLEAR"),
-      previousUsers
-    ),
-    outOfScope: toRows(rows.filter((r) => r.reason === "OUT_OF_SCOPE"), previousUsers),
-    flaggedOff: toRows(rows.filter((r) => r.reason === "FLAGGED_OFF"), previousUsers),
+    buildable: bucket((r) => r.reason === "NOT_BUILT" || r.reason === "UNCLEAR"),
+    outOfScope: bucket((r) => r.reason === "OUT_OF_SCOPE"),
+    flaggedOff: bucket((r) => r.reason === "FLAGGED_OFF"),
     totalRows: rows.length,
   };
 }

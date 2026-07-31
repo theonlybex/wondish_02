@@ -17,6 +17,14 @@ export const MID_STREAM_FALLBACK =
   " Sorry — I lost my train of thought there. Could you ask me that again?";
 
 /**
+ * A turn that produced no text at all would otherwise return HTTP 200 with a
+ * zero-byte body, which both clients render as an empty assistant bubble with
+ * no error to show.
+ */
+export const EMPTY_ANSWER_FALLBACK =
+  "Sorry — I couldn't put an answer together just then. Could you ask me that again?";
+
+/**
  * Runs Clara's bounded tool-use loop.
  *
  * Round 1 is opened eagerly (awaited) so a connect failure rejects BEFORE the
@@ -42,19 +50,24 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
   async function* run(): AsyncGenerator<string> {
     let stream = firstRound;
     let toolRoundsUsed = 0;
+    let emitted = false;
 
     for (;;) {
-      const assistant: ModelContentBlock[] = [];
-      const calls: { id: string; name: string; input: Record<string, unknown> }[] = [];
+      // The assistant turn is taken from the round's terminal event, NEVER
+      // rebuilt from deltas: one delta is not one content block, empty and
+      // whitespace-only blocks are rejected by the API, and delta order does
+      // not preserve real block order.
+      let assistant: ModelContentBlock[] = [];
+      let stopReason: string | null = null;
 
       try {
         for await (const event of stream) {
           if (event.type === "text") {
-            assistant.push({ type: "text", text: event.text });
+            if (event.text.length > 0) emitted = true;
             yield event.text;
           } else {
-            assistant.push({ type: "tool_use", id: event.id, name: event.name, input: event.input });
-            calls.push({ id: event.id, name: event.name, input: event.input });
+            assistant = event.content;
+            stopReason = event.stopReason;
           }
         }
       } catch (err) {
@@ -63,12 +76,47 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
         return;
       }
 
-      if (calls.length === 0) return;
+      const calls = assistant.filter(
+        (b): b is Extract<ModelContentBlock, { type: "tool_use" }> => b.type === "tool_use"
+      );
+
+      // A round truncated by max_tokens has partially-parsed tool inputs — the
+      // SDK accumulates input_json_delta without throwing, so a truncated call
+      // looks valid. Executing it would act on half-read arguments. Stop and
+      // let whatever prose was produced stand.
+      if (stopReason === "max_tokens" && calls.length > 0) {
+        params.onError?.(new Error("clara loop: round truncated by max_tokens, tool calls dropped"));
+        if (!emitted) yield EMPTY_ANSWER_FALLBACK;
+        return;
+      }
+
+      if (calls.length === 0) {
+        if (!emitted) yield EMPTY_ANSWER_FALLBACK;
+        return;
+      }
+
+      // HARD STOP. Passing `tools: []` only *asks* the model not to call tools;
+      // it does not make it impossible. Without this the loop would keep
+      // executing and re-opening rounds forever on a client that ignores it —
+      // an unbounded spend loop in a paid path, guarded only by a remote
+      // service's good behaviour. The budget is enforced here, locally.
+      if (toolRoundsUsed >= params.maxToolRounds) {
+        params.onError?.(
+          new Error("clara loop: tool_use returned after the round budget was spent")
+        );
+        if (!emitted) yield EMPTY_ANSWER_FALLBACK;
+        return;
+      }
 
       messages.push({ role: "assistant", content: assistant });
 
       const results: ModelContentBlock[] = [];
+      const seenCallIds = new Set<string>();
       for (const call of calls) {
+        // Two tool_result blocks sharing one tool_use_id is a 400 on the next
+        // round; drop the duplicate rather than poison the turn.
+        if (seenCallIds.has(call.id)) continue;
+        seenCallIds.add(call.id);
         let result: ToolResult;
         try {
           result = await params.execute(call.name, call.input);

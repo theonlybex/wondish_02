@@ -304,8 +304,9 @@ export default function AdminClaraGapsPage() {
             Flagged off — an ops problem
           </h2>
           <p className="text-xs text-[#6E6868] mt-1">
-            These skills exist but were disabled for the account via CLARA_SKILLS. Anything here means
-            a user hit a wall we built and then switched off.
+            These skills exist but are switched off by the <code>CLARA_SKILLS</code> environment
+            variable — a global setting, not a per-account one. Anything here means a user hit a wall
+            we built and then disabled. The server decides this verdict, not Clara.
           </p>
         </div>
         <GapTable

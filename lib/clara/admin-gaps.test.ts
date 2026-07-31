@@ -79,3 +79,39 @@ test("the re-rank thresholds match the spec", () => {
   assert.equal(MIN_SAMPLE_USERS, 20);
   assert.equal(MIN_SAMPLE_DAYS, 14);
 });
+
+// Regression: the previous-window user counts were built from ALL rows and
+// reused across all three buckets, so a category whose reason changed between
+// windows reported the wrong direction — "demand falling" while buildable
+// demand was in fact rising. The old test used NOT_BUILT on both sides, the one
+// combination where the bug is invisible.
+test("each bucket's trend compares against the same bucket, not the whole window", () => {
+  const report = aggregateGaps([row("p1", "LOGS"), row("p2", "LOGS")], {
+    previous: [
+      row("p7", "LOGS", "OUT_OF_SCOPE"),
+      row("p8", "LOGS", "OUT_OF_SCOPE"),
+      row("p9", "LOGS", "OUT_OF_SCOPE"),
+    ],
+  });
+  // Buildable LOGS went 0 -> 2, so it is NEW to this bucket (null). Comparing
+  // against the 3 OUT_OF_SCOPE users would have reported "-1 fewer" — demand
+  // falling — for a category whose buildable demand had just appeared.
+  assert.equal(report.buildable[0].distinctUsers, 2);
+  assert.equal(report.buildable[0].trend, null);
+  assert.notEqual(report.buildable[0].trend, -1);
+});
+
+test("a bucket that really did shrink still reports a negative trend", () => {
+  const report = aggregateGaps([row("p1", "LOGS")], {
+    previous: [row("p1", "LOGS"), row("p2", "LOGS"), row("p3", "LOGS")],
+  });
+  assert.equal(report.buildable[0].trend, -2);
+});
+
+test("an out-of-scope bucket trends against its own history too", () => {
+  const report = aggregateGaps([row("p1", "OTHER", "OUT_OF_SCOPE")], {
+    previous: [row("p1", "OTHER", "NOT_BUILT"), row("p2", "OTHER", "NOT_BUILT")],
+  });
+  assert.equal(report.outOfScope[0].trend, null, "new to this bucket");
+  assert.equal(report.buildable.length, 0);
+});

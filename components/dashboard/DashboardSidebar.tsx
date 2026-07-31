@@ -26,6 +26,7 @@ export default function DashboardSidebar({ isAdmin }: { isAdmin: boolean }) {
     { href: "/admin/restaurants", label: t("restaurants"), icon: "🍜" },
     { href: "/admin/parameters/gender", label: t("parameters"), icon: "⚙️" },
     { href: "/admin/coupons", label: t("coupons"), icon: "🎟️" },
+    { href: "/admin/clara-gaps", label: t("claraGaps"), icon: "📊" },
   ];
 
   return (

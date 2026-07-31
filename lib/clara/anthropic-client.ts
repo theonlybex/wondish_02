@@ -1,5 +1,10 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type { ModelClient, ModelRoundEvent, ModelRoundRequest } from "./types";
+import type {
+  ModelClient,
+  ModelContentBlock,
+  ModelRoundEvent,
+  ModelRoundRequest,
+} from "./types";
 
 export const CLARA_MODEL = "claude-sonnet-5";
 export const CLARA_MAX_TOKENS = 1024;
@@ -8,10 +13,13 @@ export const CLARA_MAX_TOKENS = 1024;
  * The ONLY Anthropic-aware file in the runtime. Adapts the SDK's streaming
  * message API to the ModelClient port so every loop path stays unit-testable.
  *
- * `cache_control` on the system block marks the stable system+tools prefix as
- * cacheable — with an always-on toolbox that prefix is identical on every round
- * and every turn, which is what keeps the always-on strategy affordable
- * (spec §4.2).
+ * `cache_control` on the system block marks the system+tools prefix as
+ * cacheable. The prefix is per-user and per-day, not global — `buildSystemPrompt`
+ * embeds the first name, the food map and the date — so the win is cache reads
+ * across the rounds of one turn and across a user's turns that day, not a
+ * shared cache. Note also that a prefix below the model's minimum cacheable
+ * length (~1024 tokens) simply will not cache: harmless, silent, and likely for
+ * the no-toolbox variant.
  */
 export function createAnthropicClient(anthropic: Anthropic): ModelClient {
   return {
@@ -31,24 +39,43 @@ export function createAnthropicClient(anthropic: Anthropic): ModelClient {
       await stream.withResponse();
 
       return (async function* () {
-        for await (const event of stream) {
-          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-            yield { type: "text", text: event.delta.text };
+        let drained = false;
+        try {
+          for await (const event of stream) {
+            if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+              yield { type: "text", text: event.delta.text };
+            }
           }
+          drained = true;
+        } finally {
+          // Abort ONLY on early exit — a client disconnect abandons this
+          // generator mid-iteration. Aborting after a clean drain would break
+          // the finalMessage() call below. The SDK's iterator return() happens
+          // to abort today, but stating it here keeps the teardown guarantee
+          // local instead of resting on an implementation detail.
+          if (!drained && !stream.aborted) stream.abort();
         }
-        // tool_use inputs stream as partial JSON deltas, so a call is only
-        // complete once the message is: read them off the accumulated message.
+        // The accumulated message is the authoritative record of the round:
+        // tool_use inputs stream as partial JSON deltas and are only complete
+        // here, and the block list preserves real order and grouping (deltas
+        // do not). The loop replays this content verbatim.
         const final = await stream.finalMessage();
+        const content: ModelContentBlock[] = [];
         for (const block of final.content) {
-          if (block.type === "tool_use") {
-            yield {
+          if (block.type === "text") {
+            content.push({ type: "text", text: block.text });
+          } else if (block.type === "tool_use") {
+            content.push({
               type: "tool_use",
               id: block.id,
               name: block.name,
               input: (block.input ?? {}) as Record<string, unknown>,
-            };
+            });
           }
+          // Any other block kind (e.g. thinking) is deliberately dropped:
+          // thinking is disabled, and replaying unknown blocks risks a 400.
         }
+        yield { type: "end", content, stopReason: final.stop_reason ?? null };
       })();
     },
   };
