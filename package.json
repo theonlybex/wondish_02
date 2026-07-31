@@ -14,6 +14,7 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
+    "clara:routing-eval": "node --import tsx scripts/clara-routing-eval.mjs",
     "db:import-recipes": "node scripts/import-recipes.mjs",
     "db:fetch-nutrition": "node --import tsx scripts/fetch-nutrition.mjs"
   },
