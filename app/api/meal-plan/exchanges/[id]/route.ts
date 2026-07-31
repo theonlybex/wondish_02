@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   findExchangeById,
@@ -178,12 +179,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return source === "RESTAURANT"
         ? tx.restaurantPlanExchange.update({ where: { id: row.id }, data })
         : tx.fridgePlanExchange.update({ where: { id: row.id }, data });
-    });
+      // Serializable: the cross-table single-displacement check above is
+      // findFirst-then-write — at ReadCommitted two racing resolves on one
+      // menu both pass it (final-review Important 1).
+    }, { isolationLevel: "Serializable" });
     return NextResponse.json({ exchange: toExchangeDTO(updated, source, new Set()) });
   } catch (err) {
     if (err instanceof ResolveError) {
       const status = /not found/i.test(err.message) ? 404 : 409;
       return NextResponse.json({ error: err.message }, { status });
+    }
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      (err.code === "P2002" || err.code === "P2034")
+    ) {
+      // Lost a displacement race (same-table unique violation or
+      // serialization conflict) — same outcome as the in-transaction
+      // guard: the contract's 409, not a 500.
+      return NextResponse.json({ error: "That planned dish was already exchanged" }, { status: 409 });
     }
     throw err;
   }
