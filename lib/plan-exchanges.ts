@@ -200,3 +200,26 @@ export function parseFridgeExchangeInput(
     typeof r.fridgeRecipeId === "string" && r.fridgeRecipeId ? r.fridgeRecipeId : null;
   return { ok: true, value: { localDate: r.localDate, servings, recipe, fridgeRecipeId } };
 }
+
+// ── resolveGuard ────────────────────────────────────────────────────────────
+// Pure pre-write validation for the resolve action. Returns a user-facing
+// error string, or null when the exchange may claim the menu slot. The route
+// maps /not found/i → 404 and everything else → 409.
+export function resolveGuard(args: {
+  row: ExchangeRowLike;
+  activePlanVersion: number;
+  menu: { id: string; patientId: string; date: Date } | null;
+  patientId: string;
+  alreadyDisplaced: boolean;
+  menuEaten: boolean;
+}): string | null {
+  const { row, activePlanVersion, menu, patientId, alreadyDisplaced, menuEaten } = args;
+  if (row.status !== "PENDING") return "Exchange is not pending";
+  if (row.planVersion !== activePlanVersion) return "Your plan changed since this dish was added";
+  if (!menu || menu.patientId !== patientId) return "Menu not found";
+  const w = localDayWindow(row.localDate);
+  if (!w || menu.date < w.start || menu.date > w.end) return "That planned dish is on a different day";
+  if (alreadyDisplaced) return "That planned dish was already exchanged";
+  if (menuEaten) return "That planned dish is already eaten";
+  return null;
+}

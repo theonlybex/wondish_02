@@ -130,3 +130,33 @@ describe("parseFridgeExchangeInput", () => {
     assert.equal(parseFridgeExchangeInput({ localDate: "nope", recipe }).ok, false);
   });
 });
+
+// ── resolveGuard (Task E5) ──────────────────────────────────────────────────
+import { resolveGuard } from "./plan-exchanges";
+
+describe("resolveGuard", () => {
+  const row = { ...base };                                                    // PENDING, v3, 2026-07-30
+  const menu = { id: "m1", patientId: "p1", date: new Date(2026, 6, 30, 12) }; // July = month 6
+  const ok = { row, activePlanVersion: 3, menu, patientId: "p1", alreadyDisplaced: false, menuEaten: false };
+
+  it("passes the happy path", () => assert.equal(resolveGuard(ok), null));
+
+  it("rejects non-PENDING row", () =>
+    assert.match(resolveGuard({ ...ok, row: { ...row, status: "RESOLVED" as const } })!, /not pending/i));
+
+  it("rejects stale planVersion", () =>
+    assert.match(resolveGuard({ ...ok, activePlanVersion: 4 })!, /plan changed/i));
+
+  it("rejects missing/foreign menu", () => {
+    assert.match(resolveGuard({ ...ok, menu: null })!, /menu not found/i);
+    assert.match(resolveGuard({ ...ok, menu: { ...menu, patientId: "px" } })!, /menu not found/i);
+  });
+
+  it("rejects a menu outside the exchange's localDate", () =>
+    assert.match(resolveGuard({ ...ok, menu: { ...menu, date: new Date(2026, 6, 31, 12) } })!, /different day/i));
+
+  it("rejects already-displaced and already-eaten menus", () => {
+    assert.match(resolveGuard({ ...ok, alreadyDisplaced: true })!, /already exchanged/i);
+    assert.match(resolveGuard({ ...ok, menuEaten: true })!, /already eaten/i);
+  });
+});
