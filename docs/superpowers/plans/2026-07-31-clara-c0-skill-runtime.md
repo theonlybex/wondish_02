@@ -48,13 +48,15 @@ not to touch iOS.
   });
   ```
 
-**iOS impact:** still none this cycle. S1 adds `clientDate` + `tzOffsetMinutes` + `surface`
-to the iOS request body, at which point iOS gains the date sentence and its gap rows stop
-being filed as `surface: "unknown"`.
+**iOS impact:** superseded by the T1 amendment below — iOS now sends the fields in this
+same cycle, so it gets the date sentence and `surface: "ios"` attribution immediately. The
+null-date rule stays regardless: it is the correct behavior for any client that does not
+send a date (an older iOS build still in the wild, a future integration), and it is what
+makes the field's absence safe rather than silently wrong.
 
 ## Global Constraints
 
-- **Engine-only cycle.** No Clara (iOS) repo work. Every task lands in `wondish_02`.
+- ~~**Engine-only cycle.**~~ **AMENDED 2026-07-31 (user-directed):** the cycle also ships **T1** in the Clara iOS repo — the three additive body fields, so iOS gets an accurate date sentence and clean gap-ledger attribution from day one. E1–E7 land in `wondish_02`; T1 lands in `~/Desktop/BeTech/Clara`. The two repos have zero file overlap, so T1 may run in parallel with E1–E3 (cycle.md §3).
 - **Wire contract pinned.** For a valid existing body (`{"messages":[…]}`), the response stays `200 text/plain` with raw token deltas — no SSE, no sentinel, no JSON envelope. New body fields are **optional and additive**; absent fields must reproduce today's behavior exactly.
 - **No stream framing.** Tool activity surfaces only as prose Clara writes ("Let me check your logs…"). A second stream format is out of scope for this cycle and every skill cycle after it.
 - **Credit accounting.** One user message = one credit. The daily gate is checked **once**, before the first model call — `validate → gate → model call` ordering is preserved so a gated request spends zero tokens. Free accounts get `MAX_TOOL_ROUNDS_FREE = 2` tool-executing rounds, premium `MAX_TOOL_ROUNDS_PREMIUM = 5`; total model calls per turn is at most rounds + 1 (the forced final answer).
@@ -1896,10 +1898,179 @@ git commit -m "test(clara): routing eval harness + C0 fixture seed (C0 E7)"
 
 ---
 
+## Task T1 (Clara iOS): send the local date with every chat turn
+
+**Repo:** `~/Desktop/BeTech/Clara` — a separate work branch, merged and pushed alongside the engine branch.
+
+**Files:**
+- Modify: `Clara/Features/Chat/ChatWireMessage.swift` (extend `ChatWireRequestBody`, add the factory)
+- Modify: `Clara/Core/Networking/WondishAPIClient.swift:245-260` (`buildChatURLRequest`)
+- Test: `ClaraTests/StreamChatTests.swift` (append — **no new files**, so `project.pbxproj` is untouched; cycle.md §4.6)
+
+**Interfaces:**
+- Consumes: nothing new.
+- Produces: `ChatWireRequestBody.make(messages:now:timeZone:) -> ChatWireRequestBody`.
+
+**Design note — why the protocol signature does NOT change.** `streamChat(messages:)` is a
+`ChatStreaming` protocol method (`ChatViewModel.swift:14`) with a test double
+(`ClaraTests/Support/ScriptedChatStreaming.swift`). The local date is a property of the
+*transport*, not of a call site's arguments, so it is assembled inside
+`buildChatURLRequest`. `ChatViewModel` and `ScriptedChatStreaming` therefore have **zero
+diff**, and no existing chat test changes meaning.
+
+**Wire agreement with E4** (must match byte-for-byte):
+`clientDate` is `"YYYY-MM-DD"` in the device's current timezone · `tzOffsetMinutes` is
+minutes **east of UTC** (UTC-5 ⇒ `-300`, same sign convention as the web client's
+`-getTimezoneOffset()`) · `surface` is the literal `"ios"`.
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `ClaraTests/StreamChatTests.swift`:
+
+```swift
+// MARK: - Chat body date fields (C0 T1)
+
+func testBodyCarriesLocalDateInTheDeviceTimeZone() throws {
+    // 2026-07-31T00:30Z is still 2026-07-30 for a UTC-7 device — the exact
+    // case that made the server's UTC fallback say tomorrow.
+    let now = Date(timeIntervalSince1970: 1_785_198_600) // 2026-07-31T00:30:00Z
+    let tz = try XCTUnwrap(TimeZone(secondsFromGMT: -7 * 3600))
+    let body = ChatWireRequestBody.make(
+        messages: [ChatWireMessage(role: "user", content: "hi")],
+        now: now,
+        timeZone: tz
+    )
+    XCTAssertEqual(body.clientDate, "2026-07-30")
+    XCTAssertEqual(body.tzOffsetMinutes, -420)
+    XCTAssertEqual(body.surface, "ios")
+}
+
+func testBodyEncodesTheNewFieldsAlongsideMessages() throws {
+    let body = ChatWireRequestBody.make(
+        messages: [ChatWireMessage(role: "user", content: "hi")],
+        now: Date(timeIntervalSince1970: 1_785_198_600),
+        timeZone: try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+    )
+    let data = try JSONEncoder().encode(body)
+    let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    XCTAssertEqual(json["clientDate"] as? String, "2026-07-31")
+    XCTAssertEqual(json["tzOffsetMinutes"] as? Int, 0)
+    XCTAssertEqual(json["surface"] as? String, "ios")
+    XCTAssertEqual((json["messages"] as? [[String: String]])?.count, 1)
+}
+
+func testClientDateIsGregorianRegardlessOfDeviceLocale() throws {
+    // A non-Gregorian device calendar must not leak into the wire string.
+    let body = ChatWireRequestBody.make(
+        messages: [],
+        now: Date(timeIntervalSince1970: 1_785_198_600),
+        timeZone: try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+    )
+    XCTAssertEqual(body.clientDate, "2026-07-31")
+    XCTAssertEqual(body.clientDate.count, 10)
+}
+```
+
+- [ ] **Step 2: Run to verify they fail**
+
+```bash
+cd ~/Desktop/BeTech/Clara
+xcodebuild test -scheme Clara -destination 'platform=iOS Simulator,name=iPhone 16' \
+  -only-testing:ClaraTests/StreamChatTests 2>&1 | tail -30
+```
+Expected: compile failure — `ChatWireRequestBody.make` does not exist.
+
+- [ ] **Step 3: Extend `ChatWireRequestBody`**
+
+In `Clara/Features/Chat/ChatWireMessage.swift`, replace the `ChatWireRequestBody` struct with:
+
+```swift
+/// The `POST /api/dish-checker` request body. `messages` is the pinned field;
+/// `clientDate`/`tzOffsetMinutes`/`surface` are the additive extensions the C0
+/// skill runtime reads (server drops them if malformed, so an older build keeps
+/// working unchanged).
+///
+/// The date is assembled at request time from the device clock and timezone —
+/// it is a transport concern, which is why `ChatStreaming.streamChat(messages:)`
+/// keeps its signature.
+struct ChatWireRequestBody: Encodable {
+    let messages: [ChatWireMessage]
+    /// "YYYY-MM-DD" in the device's timezone. Clara resolves "two weeks ago"
+    /// against this; without it the server falls back to its own UTC date and
+    /// deliberately asserts no date at all.
+    let clientDate: String
+    /// Minutes east of UTC (UTC-5 ⇒ -300), matching the web client's
+    /// `-getTimezoneOffset()`. The server rejects anything beyond ±840.
+    let tzOffsetMinutes: Int
+    /// Attributes capability-gap rows to the iOS surface.
+    let surface: String
+
+    static func make(
+        messages: [ChatWireMessage],
+        now: Date = Date(),
+        timeZone: TimeZone = .current
+    ) -> ChatWireRequestBody {
+        let formatter = DateFormatter()
+        // POSIX locale + explicit Gregorian calendar: a device set to a
+        // non-Gregorian calendar would otherwise emit an unparseable string.
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+
+        return ChatWireRequestBody(
+            messages: messages,
+            clientDate: formatter.string(from: now),
+            tzOffsetMinutes: timeZone.secondsFromGMT(for: now) / 60,
+            surface: "ios"
+        )
+    }
+}
+```
+
+- [ ] **Step 4: Use the factory in the request builder**
+
+In `Clara/Core/Networking/WondishAPIClient.swift:258`, replace:
+
+```swift
+        urlRequest.httpBody = try encoder.encode(ChatWireRequestBody(messages: messages))
+```
+
+with:
+
+```swift
+        urlRequest.httpBody = try encoder.encode(ChatWireRequestBody.make(messages: messages))
+```
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+```bash
+xcodebuild test -scheme Clara -destination 'platform=iOS Simulator,name=iPhone 16' \
+  -only-testing:ClaraTests/StreamChatTests 2>&1 | tail -30
+```
+Expected: PASS, including the pre-existing `StreamChatTests` cases (the body gained fields; nothing it asserted was removed).
+
+- [ ] **Step 6: Run the whole suite**
+
+```bash
+xcodebuild test -scheme Clara -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
+```
+Expected: PASS — `ChatViewModelTests`, `StreamChatLoopbackIntegrationTests` and the rest are untouched by design.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add Clara/Features/Chat/ChatWireMessage.swift Clara/Core/Networking/WondishAPIClient.swift ClaraTests/StreamChatTests.swift
+git commit -m "feat(chat): send clientDate, tz offset and surface with each turn (C0 T1)"
+```
+
+---
+
 ## Cycle close-out (controller)
 
 - [ ] Final whole-branch review on the strongest model: contract walk of `app/api/dish-checker/route.ts` old vs new (byte-identical behavior for a valid legacy body), auth-scope check of every tool schema, migration additivity.
-- [ ] Audit: `npm test` full suite, `npx tsc --noEmit`, `npm run build`, and the routing-eval score recorded.
+- [ ] Audit: `npm test` full suite, `npx tsc --noEmit`, `npm run build`, the full `xcodebuild test` suite in the Clara repo, and the routing-eval score recorded.
+- [ ] Cross-repo contract walk: T1's encoded body vs E4's `parseClaraRequestOptions` — field names, the `tzOffsetMinutes` sign convention, and the `"ios"` surface literal.
 - [ ] Ledger close-out block in `.superpowers/sdd/progress.md`: commits, test counts, deviations, post-merge tickets.
 - [ ] Release gate: apply `20260731000000_clara_capability_requests` via `prisma migrate deploy` **before** any chat traffic hits the new tool; confirm `ANTHROPIC_API_KEY` in Vercel prod; decide whether `CLARA_SKILLS` is set (unset ⇒ profile + gap active); unauthenticated probe of `/api/admin/clara-gaps` returns JSON 401.
 - [ ] Memory update: the always-on `gap_report` contract and the `lib/clara/` one-file-per-skill rule.
