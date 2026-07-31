@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
 import { getPlanDayCalories } from "@/lib/meal-plan";
 import { accountHasActivePremium } from "@/lib/auth";
+import { getExchangesForRange, splitByStatus } from "@/lib/plan-exchanges";
 import { addDays } from "date-fns";
 
 export const maxDuration = 60;
@@ -89,7 +90,23 @@ export async function GET(req: NextRequest) {
     ? await getPlanDayCalories(patient.id, toLocalDateString(startDate))
     : null;
 
-  return NextResponse.json({ menus, mealPlanStartDate: patient.mealPlanStartDate, loggedRecipeIds, mealRatings, dailyCalorieTarget });
+  // Opt-in plan-exchange overlay (pinned wire contract: without the param the
+  // response stays byte-identical). Single-day requests only — the week view
+  // is unchanged this cycle (spec 2026-07-30-plan-exchanges-design.md).
+  let exchanges: ReturnType<typeof splitByStatus> | undefined;
+  if (!weekStartParam && searchParams.get("exchanges") === "1") {
+    const day = toLocalDateString(startDate);
+    exchanges = splitByStatus(await getExchangesForRange(patient.id, patient.activePlanVersion, day, day));
+  }
+
+  return NextResponse.json({
+    menus,
+    mealPlanStartDate: patient.mealPlanStartDate,
+    loggedRecipeIds,
+    mealRatings,
+    dailyCalorieTarget,
+    ...(exchanges ? { exchanges } : {}),
+  });
 }
 
 export async function POST(req: NextRequest) {

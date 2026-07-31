@@ -160,3 +160,15 @@ describe("resolveGuard", () => {
     assert.match(resolveGuard({ ...ok, menuEaten: true })!, /already eaten/i);
   });
 });
+
+// ── wire contract (Task E6) ─────────────────────────────────────────────────
+describe("wire contract", () => {
+  it("spreading an undefined exchanges key leaves the default body unchanged", () => {
+    const exchanges = undefined as { pending: unknown[] } | undefined;
+    const body = {
+      menus: [], mealPlanStartDate: null, loggedRecipeIds: [], mealRatings: {},
+      dailyCalorieTarget: null, ...(exchanges ? { exchanges } : {}),
+    };
+    assert.deepEqual(Object.keys(body), ["menus", "mealPlanStartDate", "loggedRecipeIds", "mealRatings", "dailyCalorieTarget"]);
+  });
+});

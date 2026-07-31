@@ -727,3 +727,37 @@ test("audit-T18: over-cap note and clientRequestId are rejected; at-cap pass", (
   const atCap = parseMealLogInput({ ...base, note: "x".repeat(MAX_NOTE), clientRequestId: "y".repeat(MAX_CLIENT_REQUEST_ID) });
   assert.equal(atCap.ok, true);
 });
+
+// ─── planExchangeId provenance (plan-exchanges cycle, Task E6) ──────────────
+
+test("parseMealLogInput: accepts optional planExchangeId on any source and echoes it", () => {
+  const r = parseMealLogInput({
+    source: "RESTAURANT", restaurantDishId: "d1", localDate: "2026-07-30",
+    mealType: "lunch", servings: 1, planExchangeId: "x1",
+  });
+  assert.ok(r.ok);
+  if (r.ok) assert.equal(r.value.planExchangeId, "x1");
+});
+
+test("parseMealLogInput: rejects a non-string planExchangeId", () => {
+  const r = parseMealLogInput({
+    source: "MANUAL", localDate: "2026-07-30", mealType: "lunch", name: "Toast",
+    servings: 1, perServing: { calories: 100 }, planExchangeId: 7,
+  });
+  assert.equal(r.ok, false);
+});
+
+test("buildMealLogCreateData: carries planExchangeId to the row (null when absent)", () => {
+  const parsed = parseMealLogInput({
+    source: "MANUAL", localDate: "2026-07-30", mealType: "lunch", name: "Toast",
+    servings: 1, perServing: { calories: 100 }, planExchangeId: "x9",
+  });
+  assert.ok(parsed.ok);
+  if (parsed.ok) {
+    const data = buildMealLogCreateData("p1", parsed.value, {
+      snapshot: { calories: 100, protein: 0, carbs: 0, fat: 0, fiber: 0, incomplete: false },
+      name: "Toast",
+    });
+    assert.equal(data.planExchangeId, "x9");
+  }
+});

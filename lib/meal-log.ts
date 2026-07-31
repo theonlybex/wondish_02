@@ -100,6 +100,7 @@ export interface ParsedMealLog {
   journalMealId?: string;
   pictureResultId?: string;
   fridgeRecipeId?: string;
+  planExchangeId?: string;
   note?: string;
   clientRequestId?: string;
 }
@@ -207,9 +208,17 @@ function validateItem(raw: unknown, localDate: string, mealType: MealType): Pars
     journalMealId: optionalString(raw.journalMealId),
     pictureResultId: optionalString(raw.pictureResultId),
     fridgeRecipeId: optionalString(raw.fridgeRecipeId),
+    planExchangeId: optionalString(raw.planExchangeId),
     note: optionalString(raw.note),
     clientRequestId: optionalString(raw.clientRequestId),
   };
+
+  // planExchangeId drives eaten-state on the plan-exchange overlay, so a
+  // malformed value is a hard 400 — unlike echo-only provenance fields,
+  // silently dropping it would leave an exchange permanently "uneaten".
+  if (raw.planExchangeId !== undefined && item.planExchangeId === undefined) {
+    return fail("planExchangeId must be a non-empty string");
+  }
 
   // name: required for MANUAL/PICTURE/FRIDGE; optional (server-defaulted) for RECIPE/CUSTOM/RESTAURANT.
   const nameProvided = raw.name !== undefined && raw.name !== null;
@@ -452,6 +461,7 @@ export interface MealLogCreateData {
   journalMealId: string | null;
   pictureResultId: string | null;
   fridgeRecipeId: string | null;
+  planExchangeId: string | null;
   note: string | null;
   clientRequestId: string | null;
 }
@@ -486,6 +496,7 @@ export function buildMealLogCreateData(
     journalMealId: input.journalMealId ?? null,
     pictureResultId: input.pictureResultId ?? null,
     fridgeRecipeId: input.fridgeRecipeId ?? null,
+    planExchangeId: input.planExchangeId ?? null,
     note: input.note ?? null,
     clientRequestId: input.clientRequestId ?? null,
   };
