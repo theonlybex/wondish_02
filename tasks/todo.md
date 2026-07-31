@@ -24,7 +24,7 @@ Working one by one. TDD (node:test via `npm test`) where the logic is pure; DB-c
 
 ## Clara dish-checker fixes (review 2026-07-02, items pending)
 
-- [ ] C1. ANTHROPIC_API_KEY missing from local .env (only in .env.example) — Clara cannot run in local dev; user adds the key themselves; verify prod host has it set. Re-verified 2026-07-19 (clara-backend-fixes branch): still no ANTHROPIC_API_KEY in .env/.env.local, only .env.example — unchanged, needs the user/prod host to set it.
+- [x] C1. ANTHROPIC_API_KEY missing from local .env (only in .env.example) — Clara cannot run in local dev; user adds the key themselves; verify prod host has it set. RESOLVED 2026-07-23: key confirmed ALREADY SET in Vercel prod env; local .env pulled via `vercel env pull` (gitignored).
 - [x] C2. Client sends the canned assistant greeting as messages[0] — API requires first message to be user → 400 on every conversation. Strip greeting client-side (history.slice(1)) or drop leading assistant messages in the route (app/api/dish-checker/route.ts) (7b2ddbb)
 - [x] C3. Route swallows mid-stream API errors: try/finally with no catch closes the stream as if successful → client gets HTTP 200 with empty body. Add catch → controller.error()/friendly message + typed Anthropic error handling (429/529) before streaming (7b2ddbb)
 - [x] C4. Client TextDecoder without { stream: true } — multi-byte chars (Clara's ✅/❌) split across chunks decode as � (components/dish-checker/DishCheckerClient.tsx) (7b2ddbb)
@@ -68,4 +68,50 @@ Testability refactors (would unlock unit tests for currently DB-bound logic):
 - Generator speed-up (single recipe-pool load) — suggestion-only, algorithm must stay unchanged.
 - Neon pooled (PgBouncer) connection string; reference-data + recipe-catalog caching.
 - Auto-retry on FAILED; stuck-job sweeper cron; Sentry.
-- Journal → calendar redesign — its own brainstorm/spec.
+- Journal → calendar redesign — its own brainstorm/spec. (DONE 2026-07-25: iOS journal calendar grid cycle, Clara main 8eef7fb.)
+
+# Remaining work (2026-07-27, distilled from .superpowers/sdd/progress.md)
+
+All build cycles through Journal Grid are complete, merged, and pushed; prod is deployed
+(migrations applied, routes verified JSON-401). What's left:
+
+## Active
+
+- [ ] Live prod smoke (user, in progress): one interactive sim sign-in, then sweep
+      Meal Plan / Supplements / Journal grid / Account stats / chat streaming against
+      www.wondish.io.
+- [ ] Journal shows "No history yet" despite logged meals (found 2026-07-26 during smoke).
+      Root cause: /api/journal/calendar reads only JournalMeal rows, which are created
+      solely by the like/dislike rating flow (POST /api/journal/log-meal) and the web
+      journal form. Meal Plan "Add to log", Restaurants "Add to today", and Fridge
+      "Log it" all write the separate MealLog table, which the journal never reads;
+      supplement history likewise only returns days with intake rows. Fix (own mini-cycle):
+      in the allMeals=1 iOS mode of /api/journal/calendar, merge MealLog rows
+      (deletedAt: null, grouped by localDate) into each day's meals — also unlocks real
+      logged-kcal for the day-detail ring (currently target vs plan max).
+
+## Blocked on user decisions
+
+- [ ] Paywall (Cycle 2b): monetization decisions D1-D4 (StoreKit-only? $14.99? 7-day
+      trial? quotas) + App Store Connect product setup (D9) + Apple root CA certs.
+- [ ] D13: account hard-delete cascades Subscription rows — legal/product sign-off pending.
+- [ ] Scan tab: real implementation (currently the "coming soon" stub inside Cook).
+- [ ] Stockton pilot ingredients are AI-inferred pending ops confirmation (D-INGREDIENTS)
+      — confirm/correct real menus before leaning on verdicts publicly.
+
+## Pre-launch gates (not needed for the smoke)
+
+- [ ] Promote Clerk from dev instance (real-mollusk-38, pk_test) to a pk_live production
+      instance — dev-instance session churn caused the "login every time" episode.
+- [ ] App Store prep: Assets.xcassets / AppIcon (deferred since Cycle 1; build setting
+      already expects "AppIcon").
+- [ ] Confirm whether scripts/backfill-meal-plan-weight.ts still needs its one-time prod
+      run (dev DB done 2026-07-02; prod Neon went live 2026-07-23 — may be moot for
+      accounts created after the fix).
+
+## Deferred niceties (accepted, on the record)
+
+- [ ] Journal "today" frozen at VM init — midnight staleness until the hub rebuilds
+      (future scenePhase refresh).
+- [ ] Session-expiry-while-foregrounded never flips the root gate (pre-existing posture).
+- [ ] USD-only price copy convention (revisit before any non-USD market).
