@@ -159,6 +159,9 @@ model Patient {
   mealLogs          MealLog[]
   supplements       Supplement[]
 
+  restaurantPlanExchanges RestaurantPlanExchange[]
+  fridgePlanExchanges     FridgePlanExchange[]
+
   profileCompleted Boolean  @default(false)
   tasteCompleted   Boolean  @default(false)
   createdAt        DateTime @default(now())
@@ -475,8 +478,9 @@ model RestaurantDish {
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
-  ingredients RestaurantDishIngredient[]
-  mealLogs    MealLog[]
+  ingredients   RestaurantDishIngredient[]
+  mealLogs      MealLog[]
+  planExchanges RestaurantPlanExchange[]
 
   @@index([restaurantId, status])
 }
@@ -512,7 +516,88 @@ model Menu {
   planVersion Int       @default(0)
   createdAt   DateTime  @default(now())
 
+  restaurantPlanExchange RestaurantPlanExchange?
+  fridgePlanExchange     FridgePlanExchange?
+
   @@index([patientId, planVersion, date])
+}
+
+// ─── Plan Exchanges (spec 2026-07-30-plan-exchanges-design.md) ───────────────
+// Day-scoped overlay rows; Menu rows are never mutated. Two tables — two
+// features flowing into one plan. displacedMenuId is @unique per table;
+// cross-table single-displacement is enforced in the resolve transaction.
+// CANCELLED rows must null displacedMenuId so the unique slot is freed.
+
+enum PlanExchangeStatus {
+  PENDING
+  RESOLVED
+  CANCELLED
+}
+
+model RestaurantPlanExchange {
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  localDate   String // "YYYY-MM-DD" local calendar date (MealLog convention)
+  planVersion Int // patient.activePlanVersion at creation
+  status      PlanExchangeStatus @default(PENDING)
+
+  displacedMenuId String? @unique
+  displacedMenu   Menu?   @relation(fields: [displacedMenuId], references: [id], onDelete: SetNull)
+
+  servings Float @default(1)
+
+  // Provenance + display; macros are a SERVER-PRICED whole-dish snapshot
+  // (RestaurantDish macros are whole-dish, not per-serving) stored unrounded.
+  restaurantDishId String?
+  restaurantDish   RestaurantDish? @relation(fields: [restaurantDishId], references: [id], onDelete: SetNull)
+  name             String
+  restaurantName   String
+  calories         Float?
+  protein          Float?
+  carbs            Float?
+  fat              Float?
+  fiber            Float?
+  incomplete       Boolean         @default(false) // any macro null at snapshot time
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([patientId, planVersion, localDate, status])
+}
+
+model FridgePlanExchange {
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  localDate   String
+  planVersion Int
+  status      PlanExchangeStatus @default(PENDING)
+
+  displacedMenuId String? @unique
+  displacedMenu   Menu?   @relation(fields: [displacedMenuId], references: [id], onDelete: SetNull)
+
+  servings Float @default(1)
+
+  // Full client-supplied snapshot — the generated recipe exists nowhere else.
+  fridgeRecipeId  String? // opaque provenance
+  name            String
+  emoji           String?
+  mealType        String?
+  usesIngredients String[]
+  steps           String[]
+  calories        Float
+  protein         Float
+  carbs           Float
+  fat             Float
+  fiber           Float
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([patientId, planVersion, localDate, status])
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
@@ -647,6 +732,9 @@ model MealLog {
   // two intake rows pointing at one completion row.
   pictureResultId    String? // opaque id echoed by Picture Mode
   fridgeRecipeId     String? // opaque id of the generated Fridge recipe
+  planExchangeId     String? // id of a RestaurantPlanExchange or FridgePlanExchange
+  // row this intake fulfills. Plain provenance (no FK — two possible tables);
+  // NEVER read for macro math. Presence of such a log = the exchange is eaten.
 
   note            String?
   clientRequestId String? // idempotency key for one-tap / offline replay;
