@@ -1243,3 +1243,18 @@ git commit -m "feat(plan-exchanges): Meal Plan pending strip, exchange picker, e
 - **Spec coverage:** data model → E1; composition → E2; endpoints → E3-E5; opt-in read + eaten provenance → E6; grocery/journal → E7; web parity → W1; iOS button/flows → T1-T4; testing distributed per task; regeneration behavior needs no code (planVersion filtering in E2 queries covers it).
 - **Deliberately out (matches spec):** provider surface, week-view composition, web exchange interaction, future-day exchanges.
 - **Type consistency check:** `PlanExchangeDTO` field list identical in types/index.ts (E2), route serializers (E3-E5 via `toExchangeDTO`), and Swift DTO (T1). `resolveGuard` name used in E5 only. `getExchangesForRange`/`getDisplacedMenuIdsForRange` names match between E2 and E6/E7.
+
+---
+
+AMENDMENT 2026-07-30 (execution, T4): "Eaten" moves server-side. The client
+cannot post the RESTAURANT meal-log itself — PlanExchangeDTO carries no
+restaurantDishId (by design) and standing rule 3 forbids client-priced
+macros. The PATCH endpoint therefore gains `{ action: "eat" }`: guards
+(RESOLVED, not already eaten) → in one transaction writes the MealLog row
+from the exchange's own snapshot (per-serving macros verbatim, servings from
+the row, mealType from the fridge row / displaced menu with "dinner"
+fallback, provenance ids + planExchangeId) → returns the DTO with
+eaten=true. iOS calls `eatExchange(id:)`; the MealLogging seam is untouched.
+Un-eat stays log-deletion (existing DELETE), out of iOS v1. Supersedes E5/E6's
+client-posts-planExchangeId flow for exchanges; the parser support added in
+E6 remains valid wire surface.
