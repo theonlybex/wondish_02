@@ -20,7 +20,10 @@ function sub(overrides: Partial<Record<string, unknown>> = {}) {
     plan: "PREMIUM",
     status: "ACTIVE",
     source: "STRIPE",
-    stripeCurrentPeriodEnd: new Date("2026-08-01T00:00:00.000Z"),
+    // Far-future on purpose: this was "2026-08-01", written as a future period
+    // end — and the suite went red the day the calendar caught up with it.
+    // A fixture date that must be in the future must not be near the present.
+    stripeCurrentPeriodEnd: new Date("2100-01-01T00:00:00.000Z"),
     trialEndsAt: null,
     canceledAt: null,
     ...overrides,
@@ -44,7 +47,7 @@ test("premium + active subscription: isPremium true, currentPeriodEnd is ISO, so
     plan: "PREMIUM",
     status: "ACTIVE",
     source: "STRIPE",
-    currentPeriodEnd: "2026-08-01T00:00:00.000Z",
+    currentPeriodEnd: "2100-01-01T00:00:00.000Z",
     trialEndsAt: null,
     canceledAt: null,
   });
@@ -114,10 +117,10 @@ test("currentPeriodEnd coalesces stripeCurrentPeriodEnd then appleExpiresAt", ()
       sub({
         source: "APPLE",
         stripeCurrentPeriodEnd: null,
-        appleExpiresAt: new Date("2026-09-15T00:00:00.000Z"),
+        appleExpiresAt: new Date("2100-06-15T00:00:00.000Z"), // far-future, same reason as sub()
       }),
     ]),
     completeProfile()
   );
-  assert.equal(dto.subscription?.currentPeriodEnd, "2026-09-15T00:00:00.000Z");
+  assert.equal(dto.subscription?.currentPeriodEnd, "2100-06-15T00:00:00.000Z");
 });
