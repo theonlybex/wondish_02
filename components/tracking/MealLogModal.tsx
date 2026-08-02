@@ -69,9 +69,14 @@ export default function MealLogModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // Manual entries carry editable macros; server-priced sources (RECIPE /
-  // CUSTOM / PICTURE / FRIDGE snapshots) are servings-scaled only.
-  const isManual = !initial || initial.source === "MANUAL";
+  // Caller-supplied sources carry editable macros; server-priced snapshots
+  // (RECIPE / CUSTOM / RESTAURANT) are servings-scaled only. CLARA joins the
+  // editable set (S1 review decision): an estimate is exactly the row type a
+  // user most wants to correct, and the API's PATCH gate
+  // (isCallerSuppliedMacroSource) already allows it. The row keeps
+  // source: CLARA after an edit — provenance means "Clara created this",
+  // not "these numbers are untouched".
+  const isManual = !initial || initial.source === "MANUAL" || initial.source === "CLARA";
 
   useEffect(() => {
     if (!open) return;
@@ -79,7 +84,7 @@ export default function MealLogModal({
     setMealType((initial?.mealType as MealType) ?? defaultMealType ?? "breakfast");
     setServings(initial?.servings ?? 1);
     setMacros(
-      initial && initial.source === "MANUAL"
+      initial && (initial.source === "MANUAL" || initial.source === "CLARA")
         ? {
             calories: macroToField(initial.perServing.calories),
             protein: macroToField(initial.perServing.protein),

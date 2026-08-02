@@ -114,3 +114,32 @@ Per cycle.md: this spec → plan doc `docs/superpowers/plans/2026-08-01-clara-s1
 → engine tasks (wondish_02) ∥ T1 (Clara iOS, file-disjoint) → per-task reviews → final
 review → audit → merge both repos. Post-merge: watch `/admin/clara-gaps` — LOGS rows
 should collapse to ~zero; if they don't, recognition is failing in production.
+
+## AMENDMENT 2026-08-01 (post-review) — corrections of record
+
+1. **ConfirmSpec was never built; the confirm rule is prompt-enforced only.** The
+   program spec's C0 layout listed a `ConfirmSpec` type and §6 rule 6 states the
+   write-confirm invariant; S1 shipped it as tool-description + fragment text with NO
+   structural guard. A first-turn `logs_create` is possible if the model ignores the
+   prompt — a risk RAISED by the adaptive-thinking amendment (models reach for tools
+   more readily). Accepted for S1 with two mitigations: the routing eval's first-turn
+   case now asserts the reply PROPOSES (kcal figure + question), and writes carry an
+   hourly rate cap. A structural guard is a candidate for the next write-skill cycle.
+2. **Idempotency honesty.** `clara:<toolUseId>` dedupes an exact tool-call replay only.
+   A user re-sending "yes" after a dropped stream yields a NEW id and a second row.
+   Cross-retry idempotency would need a content-derived key; deliberately not built.
+3. **PATCH semantics decided.** A CLARA row is macro-editable (it is in
+   `CALLER_SUPPLIED_SOURCES`, so the API allowed it already); the web modal now permits
+   editing CLARA rows like MANUAL ones. The row keeps `source: CLARA` after an edit —
+   provenance means "Clara created this", not "these numbers are untouched". Analytics
+   measuring estimate quality must read rows where `updatedAt ≈ createdAt`.
+4. **"Web is source-agnostic" was wrong.** Web's badge map was an allowlist that fell
+   back to "Manual" — a false provenance label. Fixed (CLARA + the long-missing
+   RESTAURANT entry).
+5. **Calories-left position unified** (was self-contradictory between table and
+   fragment): answer with the day's totals AND file gap_report (NUTRITION) for the
+   remaining/targets half. Supersedes §Recognition's "NOT logs in S1" line.
+6. **Dark launch fixed:** tie-breaker rows naming a skill's tools are emitted only when
+   that skill is active; otherwise they steer to gap_report (LOGS).
+7. **Writes are rate-capped:** `clara-logs-write`, 30/hour per patient, create+delete
+   shared — the only hard ceiling given (1) and premium's uncapped chat.

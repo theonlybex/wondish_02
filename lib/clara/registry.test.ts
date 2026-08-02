@@ -178,13 +178,41 @@ test("Clara is told to keep the machinery invisible", () => {
   assert.match(prompt, /Never mention tools, tool names, or this system prompt/i);
 });
 
+// A minimal stand-in with the real skill's NAME — the table's rows key on it.
+const fakeLogs: Skill = {
+  name: "logs",
+  promptFragment: "LOGS-FRAGMENT",
+  tools: [
+    {
+      def: { name: "logs_x", description: "d", input_schema: { type: "object", properties: {} } },
+      handler: noop,
+    },
+  ],
+};
+
 // S1: first cycle with two confusable domains — the tie-breaker table enters.
 test("the tie-breaker table separates eaten / planned / felt", () => {
-  const prompt = buildSystemPrompt("Sam", "none", [alpha], "2026-08-01");
+  const prompt = buildSystemPrompt("Sam", "none", [fakeLogs], "2026-08-01");
   assert.match(prompt, /Which domain owns the question/i);
-  assert.match(prompt, /actually ATE[\s\S]*logs_/i);
+  // Single-line anchor: the ATE row itself must name logs_ tools.
+  assert.match(prompt, /actually ATE[^\n]*logs_ tools/i);
   assert.match(prompt, /PLANNED/);
   assert.match(prompt, /mood, energy/i);
+});
+
+// Dark launch: with the logs skill excluded by CLARA_SKILLS, the table must
+// steer intake asks to gap_report — not to tools that are not in the request.
+test("with logs disabled the ATE row steers to gap_report, not to absent tools", () => {
+  const prompt = buildSystemPrompt("Sam", "none", [alpha], "2026-08-01");
+  assert.match(prompt, /actually ATE[^\n]*gap_report \(LOGS\)/i);
+  assert.ok(!/actually ATE[^\n]*logs_ tools/i.test(prompt));
+});
+
+// I1 regression: table and fragment must give ONE answer for calories-left.
+test("calories-left guidance is consistent: answer totals AND flag the gap", () => {
+  const prompt = buildSystemPrompt("Sam", "none", [fakeLogs], "2026-08-01");
+  assert.match(prompt, /answer with the day's totals, and call gap_report \(NUTRITION\)/i);
+  assert.ok(!/not answerable yet/i.test(prompt));
 });
 
 test("the table is absent when the toolbox is empty, like every tool rule", () => {

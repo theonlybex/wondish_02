@@ -26,7 +26,10 @@ if (!process.env.ANTHROPIC_API_KEY) {
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const active = [...ALL_SKILLS, ...RUNTIME_SKILLS];
 const tools = buildToolDefs(active);
-const system = buildSystemPrompt("Sam", "No allergies on file.", active, "2026-07-31");
+// The prompt date tracks the run date — a hardcoded literal made relative
+// phrases ("on Monday") resolve against a stale calendar.
+const TODAY = new Date().toISOString().slice(0, 10);
+const system = buildSystemPrompt("Sam", "No allergies on file.", active, TODAY);
 
 console.log(`routing-eval: ${ROUTING_FIXTURE.length} cases against ${tools.length} tools\n`);
 
@@ -60,7 +63,17 @@ for (const testCase of ROUTING_FIXTURE) {
     process.exit(2);
   }
   const called = message.content.find((b) => b.type === "tool_use")?.name ?? null;
-  if (called === testCase.expect) {
+  let caseOk = called === testCase.expect;
+  // expect:null + expectTextMatch: the reply must not just avoid tools, it
+  // must SAY the right kind of thing (e.g. propose an estimate, not refuse).
+  if (caseOk && testCase.expect === null && testCase.expectTextMatch) {
+    const text = message.content
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join(" ");
+    caseOk = new RegExp(testCase.expectTextMatch, "i").test(text);
+  }
+  if (caseOk) {
     pass += 1;
     process.stdout.write(".");
   } else {

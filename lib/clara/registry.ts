@@ -42,6 +42,29 @@ export function findTool(active: Skill[], name: string): SkillTool | null {
 }
 
 /**
+ * The domain tie-breaker table (spec §4.1 Layer 3, entered in S1). Each row
+ * whose tools belong to a skill is CONDITIONAL on that skill being active:
+ * with CLARA_SKILLS excluding "logs" (a dark launch), telling Clara "intake →
+ * logs_ tools" would steer her away from gap_report in exactly the
+ * configuration where the LOGS gap signal is the point.
+ */
+function buildTieBreakers(active: Skill[]): string {
+  const logsOn = active.some((s) => s.name === "logs");
+  const ateRow = logsOn
+    ? '- What they actually ATE — past meals, intake, "what did I eat", "how much protein today" → logs_ tools.'
+    : '- What they actually ATE — past meals, intake → you have no intake tools right now: gap_report (LOGS) and say so.';
+  const leftRow = logsOn
+    ? "- Calories LEFT or targets → logs_day_summary knows only what was eaten, not goals: answer with the day's totals, and call gap_report (NUTRITION) if they asked what's remaining."
+    : "- Calories LEFT or targets → no tools for this: gap_report (NUTRITION) and say so.";
+  return `Which domain owns the question (do not mix these up):
+${ateRow}
+- What is PLANNED — "what's for dinner", the meal plan, swapping dishes → you have no plan tools yet: gap_report (MEAL_PLAN) and say so.
+- How they FELT — mood, energy, sleep, symptoms, body weight notes → no journal tools yet: gap_report (JOURNAL).
+${leftRow}
+- Whether a dish FITS their profile → no tool; answer from the profile above.`;
+}
+
+/**
  * The system prompt is rebuilt per active skill set (spec §8 Q8): base persona,
  * the caller's date (only when they told us one), the runtime's tool-use rules,
  * then each active skill's fragment.
@@ -97,12 +120,7 @@ For every message, decide first: does answering need ${firstName}'s ACTUAL data 
 
 When a tool is needed, identify WHAT the question is about — their profile, their logs, their plan — and pick the tool whose description covers exactly that. Read the tool descriptions carefully; they state what each tool is for and what it is NOT for. If two could fit, prefer the more specific one. Use as few calls as possible: one well-chosen tool beats several speculative ones.
 
-Which domain owns the question (do not mix these up):
-- What they actually ATE — past meals, intake, "what did I eat", "how much protein today" → logs_ tools.
-- What is PLANNED — "what's for dinner", the meal plan, swapping dishes → you have no plan tools yet: gap_report (MEAL_PLAN) and say so.
-- How they FELT — mood, energy, sleep, symptoms, body weight notes → no journal tools yet: gap_report (JOURNAL).
-- Calories LEFT or targets → logs_day_summary knows only what was eaten, not goals: answer totals, and gap_report (NUTRITION) if they want remaining/targets.
-- Whether a dish FITS their profile → no tool; answer from the profile above.
+${buildTieBreakers(active)}
 
 Rules that always apply:
 - Always write one short sentence BEFORE you use a tool, saying what you are about to check ("Let me look at your profile…"). The user sees nothing while a tool runs, so silence reads as a freeze.

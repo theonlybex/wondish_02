@@ -45,7 +45,8 @@ const row = (over: Partial<MealLogRow> = {}): MealLogRow =>
 
 function fakeDeps(over: Partial<LogsDeps> = {}) {
   const writes: unknown[] = [];
-  const deletes: string[] = [];
+  const deletes: { id: string; patientId: string }[] = [];
+  let budgetCalls = 0;
   const deps: LogsDeps = {
     findRows: async () => [row()],
     findById: async (id) => (id === "log-1" ? row() : null),
@@ -53,12 +54,16 @@ function fakeDeps(over: Partial<LogsDeps> = {}) {
       writes.push(args);
       return row();
     },
-    softDelete: async (id) => {
-      deletes.push(id);
+    softDelete: async (id, patientId) => {
+      deletes.push({ id, patientId });
+    },
+    consumeWriteBudget: async () => {
+      budgetCalls += 1;
+      return true;
     },
     ...over,
   };
-  return { deps, writes, deletes };
+  return { deps, writes, deletes, budget: () => budgetCalls };
 }
 const h = (deps: LogsDeps) => makeLogsHandlers(deps);
 
@@ -172,7 +177,7 @@ test("delete tombstones an owned row", async () => {
   const { deps, deletes } = fakeDeps();
   const r = await h(deps).del(ctx, { logId: "log-1" });
   assert.ok(r.ok);
-  assert.deepEqual(deletes, ["log-1"]);
+  assert.deepEqual(deletes, [{ id: "log-1", patientId: "p1" }]);
 });
 
 test("delete of a missing or foreign row is NOT_FOUND", async () => {
@@ -187,4 +192,66 @@ test("delete of an already-deleted row is NOT_FOUND, not a second tombstone", as
   const r = await h(deps).del(ctx, { logId: "log-1" });
   assert.equal(!r.ok && r.reason, "NOT_FOUND");
   assert.deepEqual(deletes, []);
+});
+
+// ─── review fix wave (2026-08-01) — each test pins a reviewed defect ────────
+
+test("day summary uses canonical sumMealLogs and flags an overflowing day", async () => {
+  // 51 rows of 100 kcal: totals must cover exactly the 50 visible rows and
+  // say `truncated` — never silently sum a row the model can't see.
+  const rows = Array.from({ length: 51 }, (_, i) => row({ id: `log-${i}`, calories: 100, incomplete: false }));
+  const { deps } = fakeDeps({ findRows: async () => rows });
+  const r = await h(deps).daySummary(ctx, {});
+  assert.ok(r.ok);
+  const data = r.ok ? (r.data as { totals: { calories: number }; truncated: boolean; items: unknown[] }) : null!;
+  assert.equal(data.items.length, 50);
+  assert.equal(data.totals.calories, 5000); // 50 visible × 100, rounded once
+  assert.equal(data.truncated, true);
+});
+
+test("a missing toolUseId hard-fails create — no 'clara:unknown' collisions", async () => {
+  const { deps, writes } = fakeDeps();
+  const r = await h(deps).create(ctx, { name: "x", mealType: "lunch" });
+  assert.equal(!r.ok && r.reason, "FAILED");
+  assert.equal(writes.length, 0);
+});
+
+test("writes consume the hourly budget; over it they refuse without writing", async () => {
+  const { deps, writes, deletes } = fakeDeps({ consumeWriteBudget: async () => false });
+  const c = await h(deps).create(ctx, { name: "x", mealType: "lunch" }, "t1");
+  const d = await h(deps).del(ctx, { logId: "log-1" });
+  assert.equal(!c.ok && c.reason, "FAILED");
+  assert.equal(!d.ok && d.reason, "FAILED");
+  assert.equal(writes.length, 0);
+  assert.deepEqual(deletes, []);
+});
+
+test("a calendar-invalid date cannot bypass the 90-day cap via NaN", async () => {
+  const r = await h(fakeDeps().deps).search(ctx, { fromDate: "2026-13-45", toDate: "2026-08-01" });
+  assert.equal(r.ok, false); // rejected either as format or as range — never unbounded
+});
+
+test("an inverted range is an error, not 'you ate nothing'", async () => {
+  const r = await h(fakeDeps().deps).search(ctx, { fromDate: "2026-08-01", toDate: "2026-07-01" });
+  assert.equal(!r.ok && r.reason, "INVALID_INPUT");
+});
+
+test("an unrecognised mealType is rejected, not silently broadened", async () => {
+  const r = await h(fakeDeps().deps).search(ctx, { fromDate: "2026-08-01", toDate: "2026-08-01", mealType: "brunch" });
+  assert.equal(!r.ok && r.reason, "INVALID_INPUT");
+});
+
+test("search echoes the range it actually searched", async () => {
+  const r = await h(fakeDeps().deps).search(ctx, { fromDate: "2026-07-25", toDate: "2026-08-01" });
+  assert.ok(r.ok);
+  const data = r.ok ? (r.data as { fromDate: string; toDate: string }) : null!;
+  assert.equal(data.fromDate, "2026-07-25");
+  assert.equal(data.toDate, "2026-08-01");
+});
+
+test("bounds stay wired through the skill: giant note and servings reach INVALID_INPUT", async () => {
+  const big = await h(fakeDeps().deps).create(ctx, { name: "x", mealType: "lunch", note: "n".repeat(2001) }, "t");
+  assert.equal(!big.ok && big.reason, "INVALID_INPUT");
+  const many = await h(fakeDeps().deps).create(ctx, { name: "x", mealType: "lunch", servings: 51 }, "t");
+  assert.equal(!many.ok && many.reason, "INVALID_INPUT");
 });

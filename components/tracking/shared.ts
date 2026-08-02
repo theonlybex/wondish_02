@@ -49,6 +49,10 @@ export const SOURCE_META: Record<
   PICTURE: { label: "Photo", variant: "info" },
   FRIDGE: { label: "Fridge", variant: "success" },
   CUSTOM: { label: "Custom", variant: "warning" },
+  // S1: without this a Clara-logged row fell back to "Manual" — an actively
+  // false provenance claim on rows Clara estimated. Matches the iOS badge.
+  CLARA: { label: "Clara", variant: "info" },
+  RESTAURANT: { label: "Restaurant", variant: "success" }, // was missing since Restaurants shipped
 };
 
 // ─── Response envelopes (mirror app/api/meal-log contracts) ─────────────────

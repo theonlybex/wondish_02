@@ -15,6 +15,13 @@ export interface RoutingCase {
   /** Optional prior turns — for cases whose correct routing depends on
    *  conversation state (e.g. the confirm rule's second turn). */
   history?: { role: "user" | "assistant"; content: string }[];
+  /**
+   * For expect:null cases only — a regex (source) the assistant's TEXT must
+   * match for the case to pass. Without it, expect:null scores a PASS on any
+   * toolless reply, including "I can't do that", which would let the headline
+   * behavior break while the eval stays green.
+   */
+  expectTextMatch?: string;
 }
 
 export const ROUTING_FIXTURE: RoutingCase[] = [
@@ -41,6 +48,8 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
     utterance: "log that ramen for lunch",
     expect: null,
     note: "S1: confirm rule — Clara PROPOSES an estimate first; no tool on the first turn",
+    // Must actually propose: a kcal figure and a question — not refuse.
+    expectTextMatch: "\\d+\\s*(k?cal|calories)[\\s\\S]*\\?",
   },
 
   // ── S1 logs — direct hits ──
@@ -61,6 +70,14 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
     note: "totals are answerable; remaining is S2 — either way NOT a gap-only turn",
   },
   { utterance: "is ramen okay for me?", expect: null, note: "dish check — profile, no tool" },
+
+  // ── padding: unambiguous logs hits (keeps one flaky routing decision from
+  //    burning the whole ≥90% margin — 2 misses allowed at 29 cases) ──
+  { utterance: "what did I log for dinner on Tuesday?", expect: "logs_search" },
+  { utterance: "have I eaten pasta this month?", expect: "logs_search" },
+  { utterance: "list everything I ate yesterday", expect: "logs_search" },
+  { utterance: "what are my totals so far today?", expect: "logs_day_summary" },
+  { utterance: "how much fiber did I get today?", expect: "logs_day_summary" },
 
   // ── confirm flow, second turn ──
   {

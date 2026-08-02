@@ -748,4 +748,6 @@ git commit -m "feat(stats): deliberate Clara badge for CLARA-source meal logs (S
 - [ ] Per-task reviews (implementer diff per task), then final whole-branch review: contract walk of the E2 loop-signature change (old handlers unaffected), auth scope of all 4 tool schemas, migration additivity, prompt-fragment confirm rules.
 - [ ] Audit: `npm test` + `tsc` + build; iOS suite on iPhone 17 Pro; screenshot of the fixture day showing the Clara badge; routing eval over the WHOLE fixture with a real key — score in the ledger, ≥90% or Critical.
 - [ ] Ledger close-out; memory update (CLARA source semantics).
-- [ ] Release gate: `prisma migrate deploy` (the enum ALTER) BEFORE merge deploy reaches users; live smoke — "log that ramen for lunch" → confirm → row lands with `source: CLARA` and Clara's exact stated numbers; `/admin/clara-gaps` LOGS rows collapse over the following days.
+- [ ] Release gate: **confirm prod `CLARA_SKILLS` is unset or includes `logs`** — the
+  allowlist semantics mean a stale `CLARA_SKILLS=profile` ships this cycle completely
+  dead with no failing test; then `prisma migrate deploy` (the enum ALTER) BEFORE merge deploy reaches users; live smoke — "log that ramen for lunch" → confirm → row lands with `source: CLARA` and Clara's exact stated numbers; `/admin/clara-gaps` LOGS rows collapse over the following days.

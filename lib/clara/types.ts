@@ -54,9 +54,10 @@ export interface SkillTool {
   def: ToolDef;
   /**
    * `toolUseId` is the model's tool-call id, forwarded by the loop (S1
-   * amendment). Write handlers derive their idempotency key from it
-   * ("clara:<id>") so a retried round cannot double-execute; read handlers
-   * ignore it.
+   * amendment). Write handlers derive a dedupe key from it ("clara:<id>").
+   * HONEST SCOPE: this dedupes an exact tool-call replay only — a user
+   * re-sending "yes" after a dropped stream produces a NEW id and a second
+   * row. Cross-retry idempotency would need a content-derived key; not built.
    */
   handler: (
     ctx: ClaraContext,

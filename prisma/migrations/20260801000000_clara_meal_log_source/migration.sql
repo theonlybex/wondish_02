@@ -1,2 +1,2 @@
 -- AlterEnum
-ALTER TYPE "MealLogSource" ADD VALUE 'CLARA';
+ALTER TYPE "MealLogSource" ADD VALUE IF NOT EXISTS 'CLARA';

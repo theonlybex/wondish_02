@@ -11,10 +11,21 @@ import {
   type MealLogCreateData,
 } from "@/lib/meal-log";
 import { parseLocalDateStrict } from "@/lib/journal";
+import { rateLimit } from "@/lib/rate-limit";
+import { sumMealLogs } from "@/lib/macros";
 import type { ClaraContext, Skill, ToolResult } from "../types";
 
 export const MAX_SEARCH_DAYS = 90;
 export const MAX_SEARCH_ROWS = 50;
+/**
+ * Backstop on Clara-driven writes (create+delete share it). The confirm rule
+ * is prompt text, not code, and premium bypasses the chat quota — this is the
+ * only hard ceiling. Same in-handler shape as gap_report's cap; fails OPEN on
+ * a Redis outage (a telemetry-grade limit must not break chat).
+ */
+export const LOGS_WRITE_HOURLY_CAP = 30;
+export const LOGS_WRITE_RATE_LIMIT_NAME = "clara-logs-write";
+export const LOGS_WRITE_RATE_LIMIT_WINDOW_SEC = 3600;
 
 /** Effects, injected so every handler path is unit-tested without a DB. */
 export interface LogsDeps {
@@ -28,7 +39,9 @@ export interface LogsDeps {
   }) => Promise<MealLogRow[]>;
   findById: (id: string, patientId: string) => Promise<MealLogRow | null>;
   create: (args: ReturnType<typeof buildMealLogUpsertArgs>) => Promise<MealLogRow>;
-  softDelete: (id: string) => Promise<void>;
+  /** Ownership-scoped: id AND patientId in one atomic where. */
+  softDelete: (id: string, patientId: string) => Promise<void>;
+  consumeWriteBudget: (patientId: string) => Promise<boolean>;
 }
 
 const prismaDeps: LogsDeps = {
@@ -46,8 +59,21 @@ const prismaDeps: LogsDeps = {
     }),
   findById: async (id, patientId) => prisma.mealLog.findFirst({ where: { id, patientId } }),
   create: async (args) => prisma.mealLog.upsert(args),
-  softDelete: async (id) => {
-    await prisma.mealLog.update({ where: { id }, data: { deletedAt: new Date() } });
+  softDelete: async (id, patientId) => {
+    // updateMany so ownership + not-yet-deleted ride the same atomic where.
+    await prisma.mealLog.updateMany({
+      where: { id, patientId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+  },
+  consumeWriteBudget: async (patientId) => {
+    const { success } = await rateLimit(
+      LOGS_WRITE_RATE_LIMIT_NAME,
+      patientId,
+      LOGS_WRITE_HOURLY_CAP,
+      LOGS_WRITE_RATE_LIMIT_WINDOW_SEC
+    );
+    return success;
   },
 };
 
@@ -63,7 +89,14 @@ export function makeLogsHandlers(deps: LogsDeps = prismaDeps) {
     if (!parseLocalDateStrict(fromDate) || !parseLocalDateStrict(toDate)) {
       return invalid("fromDate/toDate must be YYYY-MM-DD");
     }
-    if (dayGap(fromDate, toDate) > MAX_SEARCH_DAYS) {
+    if (fromDate > toDate) {
+      return invalid("fromDate must not be after toDate");
+    }
+    const gap = dayGap(fromDate, toDate);
+    // NaN guard: a calendar-invalid date ("2026-13-45") passes the format
+    // check but Date.parse yields NaN, and NaN > cap is false — without this
+    // the cap would be silently skipped.
+    if (!Number.isFinite(gap) || gap > MAX_SEARCH_DAYS) {
       return {
         ok: false,
         reason: "OUT_OF_RANGE",
@@ -72,10 +105,12 @@ export function makeLogsHandlers(deps: LogsDeps = prismaDeps) {
     }
     const text =
       typeof input.text === "string" && input.text.trim() ? input.text.trim().slice(0, 80) : undefined;
-    const mealType =
-      typeof input.mealType === "string" && MEAL_TYPES.includes(input.mealType as never)
-        ? input.mealType
-        : undefined;
+    // An unrecognised mealType is an error, not a silent broadening — the
+    // create path rejects it, and search must be symmetric.
+    if (input.mealType !== undefined && !MEAL_TYPES.includes(input.mealType as never)) {
+      return invalid(`mealType must be one of: ${MEAL_TYPES.join(", ")}`);
+    }
+    const mealType = typeof input.mealType === "string" ? input.mealType : undefined;
     const rows = await deps.findRows({
       patientId: ctx.patientId,
       fromDate,
@@ -87,7 +122,12 @@ export function makeLogsHandlers(deps: LogsDeps = prismaDeps) {
     const truncated = rows.length > MAX_SEARCH_ROWS;
     return {
       ok: true,
+      // Echo the searched range: when the client sent no date the model was
+      // told none, so narrating "for Jul 25-Aug 1" is the only way a user
+      // catches a bad date assumption.
       data: {
+        fromDate,
+        toDate,
         items: rows.slice(0, MAX_SEARCH_ROWS).map((r) => serializeMealLog(r)),
         truncated,
       },
@@ -103,24 +143,22 @@ export function makeLogsHandlers(deps: LogsDeps = prismaDeps) {
       toDate: date,
       limit: MAX_SEARCH_ROWS + 1,
     });
-    const totals = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 };
-    let incompleteCount = 0;
-    for (const r of rows) {
-      const dto = serializeMealLog(r);
-      totals.calories += dto.totals.calories ?? 0;
-      totals.protein += dto.totals.protein ?? 0;
-      totals.carbs += dto.totals.carbs ?? 0;
-      totals.fat += dto.totals.fat ?? 0;
-      totals.fiber += dto.totals.fiber ?? 0;
-      if (r.incomplete) incompleteCount += 1;
-    }
+    const truncated = rows.length > MAX_SEARCH_ROWS;
+    const visible = rows.slice(0, MAX_SEARCH_ROWS);
+    // Canonical summation (lib/macros.ts): raw per-row scaling, rounded ONCE —
+    // a hand-rolled sum over already-rounded DTO totals drifted from the
+    // dashboard's numbers for the identical day. Totals cover exactly the rows
+    // the model sees; `truncated` tells it (and the user) the day overflowed.
+    const totals = sumMealLogs(visible);
+    const incompleteCount = visible.filter((r) => r.incomplete).length;
     return {
       ok: true,
       data: {
         date,
-        items: rows.slice(0, MAX_SEARCH_ROWS).map((r) => serializeMealLog(r)),
+        items: visible.map((r) => serializeMealLog(r)),
         totals,
         incompleteCount,
+        truncated,
       },
     };
   };
@@ -128,8 +166,17 @@ export function makeLogsHandlers(deps: LogsDeps = prismaDeps) {
   const create = async (
     ctx: ClaraContext,
     input: Record<string, unknown>,
-    toolUseId = "unknown"
+    toolUseId?: string
   ): Promise<ToolResult> => {
+    // Hard requirement, not a default: a fallback key like "clara:unknown"
+    // would upsert-collide across DIFFERENT meals and silently return the
+    // first row as if it had logged the second.
+    if (!toolUseId) {
+      return { ok: false, reason: "FAILED", message: "Internal: missing tool call id." };
+    }
+    if (!(await deps.consumeWriteBudget(ctx.patientId))) {
+      return { ok: false, reason: "FAILED", message: "Too many changes in a short time — try again later." };
+    }
     // Everything funnels through the ROUTE's own validator — the skill adds no
     // rules of its own. Source is forced CLARA and provenance ids are stripped:
     // a model input can never smuggle a server-priced source or a foreign row.
@@ -160,6 +207,9 @@ export function makeLogsHandlers(deps: LogsDeps = prismaDeps) {
   const del = async (ctx: ClaraContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const logId = typeof input.logId === "string" ? input.logId : "";
     if (!logId) return invalid("logId is required — find it with logs_search first");
+    if (!(await deps.consumeWriteBudget(ctx.patientId))) {
+      return { ok: false, reason: "FAILED", message: "Too many changes in a short time — try again later." };
+    }
     const row = await deps.findById(logId, ctx.patientId);
     if (!row || row.deletedAt) {
       return {
@@ -168,7 +218,7 @@ export function makeLogsHandlers(deps: LogsDeps = prismaDeps) {
         message: "No such log entry (it may already be deleted).",
       };
     }
-    await deps.softDelete(row.id);
+    await deps.softDelete(row.id, ctx.patientId);
     return {
       ok: true,
       data: { deleted: { id: row.id, name: row.name, localDate: row.localDate } },
@@ -183,7 +233,7 @@ const handlers = makeLogsHandlers();
 export const logsSkill: Skill = {
   name: "logs",
   promptFragment:
-    'About your logs_ tools: the meal log is the record of what the user ACTUALLY ATE (their intake), not what was planned. Use logs_search for any question about past eating; logs_day_summary for a single day\'s items and totals — it has no goals or targets, so questions about calories LEFT or targets are not answerable yet (call gap_report with category NUTRITION). To log a meal: first state your estimate and ask ("Around 550 kcal — want me to log it for lunch?"); only after they agree call logs_create with exactly the numbers you stated. Omit any macro you are genuinely unsure of rather than inventing it. To delete: find the row with logs_search, and if several match what they described, list them and ask which — never guess. logs_delete needs the id from a search result in this conversation.',
+    'About your logs_ tools: the meal log is the record of what the user ACTUALLY ATE (their intake), not what was planned. Use logs_search for any question about past eating; logs_day_summary for a single day\'s items and totals. It has no goals or targets: for "calories left"-type questions, answer with the day\'s totals and call gap_report (category NUTRITION) because the remaining/target part is not available yet. To log a meal: first state your estimate and ask ("Around 550 kcal — want me to log it for lunch?"); only after they agree call logs_create with exactly the numbers you stated. Omit any macro you are genuinely unsure of rather than inventing it. To delete: find the row with logs_search, and if several match what they described, list them and ask which — never guess. logs_delete needs the id from a search result in this conversation.',
   tools: [
     {
       def: {
