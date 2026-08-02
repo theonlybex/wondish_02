@@ -696,6 +696,7 @@ enum MealLogSource {
   FRIDGE // "I cooked this" on a Fridge Mode generated recipe
   CUSTOM // from a PatientCustomIngredient (premium)
   RESTAURANT // "Add to today" from a restaurant menu dish
+  CLARA // logged by Clara from chat (S1) — Clara's stated estimate is the snapshot
 }
 
 model MealLog {

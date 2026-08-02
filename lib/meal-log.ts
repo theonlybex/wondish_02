@@ -93,7 +93,7 @@ export interface ParsedMealLog {
   source: MealLogSource;
   name?: string; // absent → server defaults from recipe/custom-ingredient/dish (RECIPE/CUSTOM/RESTAURANT only)
   servings: number;
-  perServing?: PerServingInput; // MANUAL / PICTURE / FRIDGE
+  perServing?: PerServingInput; // MANUAL / PICTURE / FRIDGE / CLARA
   recipeId?: string;
   customIngredientId?: string;
   restaurantDishId?: string;
@@ -249,7 +249,7 @@ function validateItem(raw: unknown, localDate: string, mealType: MealType): Pars
     if (!restaurantDishId) return fail("restaurantDishId is required for source RESTAURANT");
     item.restaurantDishId = restaurantDishId;
   } else {
-    // MANUAL / PICTURE / FRIDGE — caller supplies per-serving macros and a name.
+    // MANUAL / PICTURE / FRIDGE / CLARA — caller supplies per-serving macros and a name.
     if (!nameProvided) return fail(`name is required for source ${source}`);
     const ps = checkPerServing(raw.perServing);
     if (!ps.ok) return ps;
@@ -393,7 +393,7 @@ export function resolveSnapshot(
     if (!dish) throw new Error("resolveSnapshot: RESTAURANT source requires a restaurantDish dep");
     return { snapshot: recipeToPerServing(dish), name: input.name ?? dish.name };
   }
-  // MANUAL / PICTURE / FRIDGE — name guaranteed present by validation.
+  // MANUAL / PICTURE / FRIDGE / CLARA — name guaranteed present by validation.
   return { snapshot: snapshotFromMacros(input.perServing ?? {}), name: input.name! };
 }
 
@@ -416,6 +416,7 @@ const CALLER_SUPPLIED_SOURCES: ReadonlySet<MealLogSource> = new Set([
   MealLogSource.MANUAL,
   MealLogSource.PICTURE,
   MealLogSource.FRIDGE,
+  MealLogSource.CLARA, // S1 — Clara-logged; her stated estimate is the snapshot
 ]);
 
 // True when the client owns this source's per-serving macros (create AND edit).

@@ -761,3 +761,47 @@ test("buildMealLogCreateData: carries planExchangeId to the row (null when absen
     assert.equal(data.planExchangeId, "x9");
   }
 });
+
+// ─── CLARA source (S1) — Clara-logged meals, caller-supplied macros ─────────
+
+test("CLARA is a caller-supplied macro source", () => {
+  assert.equal(isCallerSuppliedMacroSource("CLARA"), true);
+});
+
+test("parseMealLogInput accepts a CLARA row with MANUAL semantics", () => {
+  const r = parseMealLogInput({
+    localDate: "2026-08-01",
+    mealType: "lunch",
+    source: "CLARA",
+    name: "Tonkotsu ramen",
+    servings: 1,
+    perServing: { calories: 550, protein: 24 },
+    clientRequestId: "clara:toolu_abc",
+  });
+  assert.ok(r.ok);
+  assert.equal(r.ok && r.value.source, "CLARA");
+});
+
+test("a CLARA row without a name is rejected, like MANUAL", () => {
+  const r = parseMealLogInput({
+    localDate: "2026-08-01", mealType: "lunch", source: "CLARA", servings: 1,
+  });
+  assert.equal(r.ok, false);
+});
+
+test("CLARA create data stores stated macros; absent ones NULL + incomplete", () => {
+  const parsed = parseMealLogInput({
+    localDate: "2026-08-01", mealType: "lunch", source: "CLARA",
+    name: "Tonkotsu ramen", servings: 1, perServing: { calories: 550, protein: 24 },
+  });
+  assert.ok(parsed.ok);
+  if (!parsed.ok) return;
+  const resolved = resolveSnapshot(parsed.value, {});
+  const data = buildMealLogCreateData("patient-1", parsed.value, resolved);
+  assert.equal(data.source, "CLARA");
+  assert.equal(data.calories, 550);
+  assert.equal(data.protein, 24);
+  assert.equal(data.carbs, null); // unknown ≠ 0
+  assert.equal(data.incomplete, true);
+  assert.equal(data.name, "Tonkotsu ramen");
+});
