@@ -30,6 +30,7 @@ export const GAP_RATE_LIMIT_WINDOW_SEC = 86400;
  */
 export const CATEGORY_TO_SKILL: Partial<Record<(typeof GAP_CATEGORIES)[number], string>> = {
   FILTERS: "profile",
+  LOGS: "logs", // S1
 };
 
 /**

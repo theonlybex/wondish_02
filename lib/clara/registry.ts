@@ -1,12 +1,13 @@
 import type { Skill, SkillTool, ToolDef } from "./types";
 import { profileSkill } from "./skills/profile";
+import { logsSkill } from "./skills/logs";
 import { gapSkill } from "./gap";
 
 /**
  * Product skills — subject to CLARA_SKILLS. A skill cycle adds exactly one
  * import and one array entry here; nothing else in the runtime changes.
  */
-export const ALL_SKILLS: Skill[] = [profileSkill];
+export const ALL_SKILLS: Skill[] = [profileSkill, logsSkill];
 
 /**
  * Runtime skills are always active: gap_report is how we learn what to build

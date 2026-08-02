@@ -398,3 +398,21 @@ test("a failure mid-way through the first round's own stream also degrades to pr
   assert.match(out, /^Half a sen/);
   assert.match(out, /lost my train of thought/i);
 });
+
+test("the tool call id reaches execute — write skills derive idempotency from it", async () => {
+  const { client } = stubClient([
+    { content: [toolUse("toolu_42", "x_get")] },
+    { deltas: ["done"] },
+  ]);
+  const seenIds: string[] = [];
+  await drain(
+    await startClaraLoop({
+      client, system: "s", tools: [], messages: [], maxToolRounds: 2,
+      execute: async (_n, _i, id) => {
+        seenIds.push(id);
+        return { ok: true, data: null };
+      },
+    })
+  );
+  assert.deepEqual(seenIds, ["toolu_42"]);
+});

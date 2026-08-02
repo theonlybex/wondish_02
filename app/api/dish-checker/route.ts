@@ -122,13 +122,17 @@ export async function POST(req: NextRequest) {
     promptToday
   );
 
-  const execute = async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
+  const execute = async (
+    name: string,
+    input: Record<string, unknown>,
+    toolUseId: string
+  ): Promise<ToolResult> => {
     if (!ctx) return { ok: false, reason: "FAILED", message: "No tools are available." };
     const tool = findTool(activeSkills, name);
     // Deliberately does not echo the model-supplied name back into the next
     // round's tool_result.
     if (!tool) return { ok: false, reason: "FAILED", message: "That tool does not exist." };
-    return tool.handler(ctx, input);
+    return tool.handler(ctx, input, toolUseId);
   };
 
   // Round 1 is opened here (not inside the stream) so connect-time errors —

@@ -52,7 +52,17 @@ export interface ClaraContext {
 
 export interface SkillTool {
   def: ToolDef;
-  handler: (ctx: ClaraContext, input: Record<string, unknown>) => Promise<ToolResult>;
+  /**
+   * `toolUseId` is the model's tool-call id, forwarded by the loop (S1
+   * amendment). Write handlers derive their idempotency key from it
+   * ("clara:<id>") so a retried round cannot double-execute; read handlers
+   * ignore it.
+   */
+  handler: (
+    ctx: ClaraContext,
+    input: Record<string, unknown>,
+    toolUseId?: string
+  ) => Promise<ToolResult>;
 }
 
 export interface Skill {

@@ -7,7 +7,7 @@ export interface LoopParams {
   /** The sanitized conversation so far. Never contains tool blocks. */
   messages: ModelMessage[];
   maxToolRounds: number;
-  execute: (name: string, input: Record<string, unknown>) => Promise<ToolResult>;
+  execute: (name: string, input: Record<string, unknown>, toolUseId: string) => Promise<ToolResult>;
   /** Server-side observability for mid-stream failures. */
   onError?: (err: unknown) => void;
 }
@@ -119,7 +119,7 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
         seenCallIds.add(call.id);
         let result: ToolResult;
         try {
-          result = await params.execute(call.name, call.input);
+          result = await params.execute(call.name, call.input, call.id);
         } catch (err) {
           // A handler that throws is a bug, not a user-facing event: log it and
           // hand the model a narratable result so the turn still completes.
