@@ -43,7 +43,8 @@ for (const testCase of ROUTING_FIXTURE) {
       max_tokens: CLARA_MAX_TOKENS,
       system,
       tools,
-      messages: [{ role: "user", content: testCase.utterance }],
+      // Seeded history lets a case assert second-turn behavior (confirm flow).
+      messages: [...(testCase.history ?? []), { role: "user", content: testCase.utterance }],
     });
   } catch (err) {
     // A partial score is worthless and a stack trace is unreadable: say what

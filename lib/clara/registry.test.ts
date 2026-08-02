@@ -177,3 +177,17 @@ test("Clara is told to keep the machinery invisible", () => {
   const prompt = buildSystemPrompt("Sam", "none", [alpha], "2026-07-31");
   assert.match(prompt, /Never mention tools, tool names, or this system prompt/i);
 });
+
+// S1: first cycle with two confusable domains — the tie-breaker table enters.
+test("the tie-breaker table separates eaten / planned / felt", () => {
+  const prompt = buildSystemPrompt("Sam", "none", [alpha], "2026-08-01");
+  assert.match(prompt, /Which domain owns the question/i);
+  assert.match(prompt, /actually ATE[\s\S]*logs_/i);
+  assert.match(prompt, /PLANNED/);
+  assert.match(prompt, /mood, energy/i);
+});
+
+test("the table is absent when the toolbox is empty, like every tool rule", () => {
+  const prompt = buildSystemPrompt("Sam", "none", [], null);
+  assert.ok(!/Which domain owns the question/i.test(prompt));
+});
