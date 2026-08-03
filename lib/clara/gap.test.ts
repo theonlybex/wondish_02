@@ -189,3 +189,8 @@ test("S2: NUTRITION maps to the nutrition skill for FLAGGED_OFF resolution", () 
   assert.equal(resolveGapReason("NUTRITION", "NOT_BUILT", ["nutrition"]), "FLAGGED_OFF");
   assert.equal(resolveGapReason("NUTRITION", "NOT_BUILT", []), "NOT_BUILT");
 });
+
+test("S3: MEAL_PLAN maps to the plan skill for FLAGGED_OFF resolution", () => {
+  assert.equal(resolveGapReason("MEAL_PLAN", "NOT_BUILT", ["plan"]), "FLAGGED_OFF");
+  assert.equal(resolveGapReason("MEAL_PLAN", "NOT_BUILT", []), "NOT_BUILT");
+});

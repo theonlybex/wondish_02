@@ -32,6 +32,7 @@ export const CATEGORY_TO_SKILL: Partial<Record<(typeof GAP_CATEGORIES)[number], 
   FILTERS: "profile",
   LOGS: "logs", // S1
   NUTRITION: "nutrition", // S2
+  MEAL_PLAN: "plan", // S3
 };
 
 /**

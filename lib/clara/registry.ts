@@ -2,13 +2,14 @@ import type { Skill, SkillTool, ToolDef } from "./types";
 import { profileSkill } from "./skills/profile";
 import { logsSkill } from "./skills/logs";
 import { nutritionSkill } from "./skills/nutrition";
+import { planSkill } from "./skills/plan";
 import { gapSkill } from "./gap";
 
 /**
  * Product skills — subject to CLARA_SKILLS. A skill cycle adds exactly one
  * import and one array entry here; nothing else in the runtime changes.
  */
-export const ALL_SKILLS: Skill[] = [profileSkill, logsSkill, nutritionSkill];
+export const ALL_SKILLS: Skill[] = [profileSkill, logsSkill, nutritionSkill, planSkill];
 
 /**
  * Runtime skills are always active: gap_report is how we learn what to build
@@ -60,12 +61,24 @@ function buildTieBreakers(active: Skill[]): string {
     : logsOn
       ? "- Calories LEFT or targets → logs_day_summary knows only what was eaten, not goals: answer with the day's totals, and call gap_report (NUTRITION) if they asked what's remaining."
       : "- Calories LEFT or targets → no tools for this: gap_report (NUTRITION) and say so.";
-  return `Which domain owns the question (do not mix these up):
-${ateRow}
-- What is PLANNED — "what's for dinner", the meal plan, swapping dishes → you have no plan tools yet: gap_report (MEAL_PLAN) and say so.
-- How they FELT — mood, energy, sleep, symptoms, body weight notes → no journal tools yet: gap_report (JOURNAL).
-${leftRow}
-- Whether a dish FITS their profile → no tool; answer from the profile above.`;
+  const planOn = active.some((s) => s.name === "plan");
+  const plannedRow = planOn
+    ? '- What is PLANNED — "what\'s for dinner", the meal plan, swapping a planned dish for another recipe → plan_ tools (plan_get first; plan_alternatives before proposing a swap). Exchanging a planned dish for a RESTAURANT or FRIDGE meal is not a swap you can do: gap_report (EXCHANGES).'
+    : '- What is PLANNED — "what\'s for dinner", the meal plan, swapping dishes → you have no plan tools yet: gap_report (MEAL_PLAN) and say so.';
+  const atePlannedRow = !planOn
+    ? null
+    : logsOn
+      ? '- "I ate the planned dish" → plan_mark_done (completion; ask once about also logging intake via plan_log_eaten). Unplanned food they ate → logs_create.'
+      : '- "I ate the planned dish" → plan_mark_done. For unplanned food you have no intake tools: gap_report (LOGS).';
+  return [
+    "Which domain owns the question (do not mix these up):",
+    ateRow,
+    plannedRow,
+    ...(atePlannedRow ? [atePlannedRow] : []),
+    "- How they FELT — mood, energy, sleep, symptoms, body weight notes → no journal tools yet: gap_report (JOURNAL).",
+    leftRow,
+    "- Whether a dish FITS their profile → no tool; answer from the profile above.",
+  ].join("\n");
 }
 
 /**

@@ -262,3 +262,37 @@ test("S2: logs-off/nutrition-on emits a coherent table (intake row steers to gap
   assert.match(prompt, /gap_report \(LOGS\)/);
   assert.match(prompt, /Calories LEFT[\s\S]*nutrition_day/);
 });
+
+// ── S3 plan wiring ──
+
+test("S3: unset CLARA_SKILLS activates plan; its five tools are in the defs", () => {
+  const active = resolveActiveSkills(ALL_SKILLS, undefined);
+  const names = buildToolDefs(active).map((d) => d.name);
+  for (const n of ["plan_get", "plan_alternatives", "plan_mark_done", "plan_log_eaten", "plan_swap_dish"]) {
+    assert.equal(names.includes(n), true, `missing ${n}`);
+  }
+});
+
+test("S3: plan off — no plan_ tool named anywhere, PLANNED row steers to gap_report (MEAL_PLAN)", () => {
+  const active = resolveActiveSkills(ALL_SKILLS, "profile,logs,nutrition");
+  const prompt = buildSystemPrompt("Sam", "profile text", active, "2026-08-03");
+  assert.equal(prompt.includes("plan_"), false);
+  assert.match(prompt, /gap_report \(MEAL_PLAN\)/);
+});
+
+test("S3: plan on — PLANNED row routes to plan_ tools, notes the EXCHANGES boundary, and the ate-planned row appears", () => {
+  const active = resolveActiveSkills(ALL_SKILLS, undefined);
+  const prompt = buildSystemPrompt("Sam", "profile text", active, "2026-08-03");
+  assert.match(prompt, /PLANNED[\s\S]*plan_get first/);
+  assert.match(prompt, /gap_report \(EXCHANGES\)/);
+  assert.match(prompt, /I ate the planned dish[\s\S]*plan_mark_done/);
+  assert.match(prompt, /plan_log_eaten/);
+  assert.equal(prompt.includes("gap_report (MEAL_PLAN)"), false);
+});
+
+test("S3: plan on / logs off — ate-planned row steers unplanned intake to gap_report (LOGS)", () => {
+  const active = resolveActiveSkills(ALL_SKILLS, "profile,plan");
+  const prompt = buildSystemPrompt("Sam", "profile text", active, "2026-08-03");
+  assert.match(prompt, /I ate the planned dish[\s\S]*plan_mark_done/);
+  assert.match(prompt, /unplanned food you have no intake tools: gap_report \(LOGS\)/i);
+});
