@@ -66,8 +66,8 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
   { utterance: "how was my energy this week?", expect: "gap_report", note: "JOURNAL" },
   {
     utterance: "how many calories do I have left today?",
-    expect: "logs_day_summary",
-    note: "totals are answerable; remaining is S2 — either way NOT a gap-only turn",
+    expect: "nutrition_day",
+    note: "S2: flipped from logs_day_summary — remaining is now a real tool",
   },
   { utterance: "is ramen okay for me?", expect: null, note: "dish check — profile, no tool" },
 
@@ -93,4 +93,34 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
       },
     ],
   },
+
+  // ── S2 nutrition — direct hits ──
+  { utterance: "how much protein do I have left today?", expect: "nutrition_day" },
+  { utterance: "did I go over my calories yesterday?", expect: "nutrition_day" },
+  { utterance: "do I have room for a burger tonight?", expect: "nutrition_day" },
+  { utterance: "am I hitting my protein target this week?", expect: "nutrition_range_summary" },
+  { utterance: "how have my calories looked over the past two weeks?", expect: "nutrition_range_summary" },
+  { utterance: "what are my daily macros supposed to be?", expect: "nutrition_targets" },
+  { utterance: "what's my calorie target?", expect: "nutrition_targets" },
+
+  // ── S2 adversarial neighbours — boundaries that must hold ──
+  {
+    utterance: "how much protein have I had so far today?",
+    expect: "logs_day_summary",
+    note: "ate ≠ left — must NOT drift to nutrition_day now that it exists",
+  },
+  {
+    utterance: "am I on track to reach my goal weight?",
+    expect: "gap_report",
+    note: "trend/prediction is S11 PROGRESS, not a 31-day adherence read",
+  },
+  {
+    utterance: "change my calorie target to 2000",
+    expect: "gap_report",
+    note: "BODY_GOALS write — out of scope until post-S6; refuse + hand off",
+  },
+
+  // ── padding: unambiguous S2 hits (protects the ≥90% margin) ──
+  { utterance: "how many carbs do I have left for the day?", expect: "nutrition_day" },
+  { utterance: "how much protein should I be getting according to my plan?", expect: "nutrition_targets" },
 ];
