@@ -1,9 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { resolveMacroProfile, getMacroPercentages } from "@/lib/caloric-engine";
-import { macroDeviation } from "@/lib/macros";
-import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { validateSwapCandidate } from "@/lib/meal-plan";
 
 export async function PATCH(
   req: NextRequest,
@@ -46,42 +45,9 @@ export async function PATCH(
   });
   if (!newRecipe) return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
 
-  // Meal type must match
-  if (menu.mealTypeId && newRecipe.mealTypeId !== menu.mealTypeId) {
-    return NextResponse.json({ error: "Recipe not suitable for this meal slot" }, { status: 400 });
-  }
-
-  // Banned ingredient check — word-boundary allergy blocking + exact-name
-  // avoid/condition/preference/motivation matching, via the shared engine.
-  const { allergyNames, exactBanned } = derivePatientBans(patient);
-  const matchers = buildDietMatchers({ allergyNames, exactBanned });
-  const { passed } = evaluateDishAgainstProfile(
-    newRecipe.ingredients.map((ri) => ri.ingredient.name),
-    matchers
-  );
-  if (!passed) {
-    return NextResponse.json({ error: "Recipe contains ingredients you cannot eat" }, { status: 400 });
-  }
-
-  // Macro alignment check — replacement must not deviate more than 50 percentage
-  // points (summed across protein/carbs/fat) from the patient's macro profile.
-  const conditionNames  = patient.healthConditions.map((hc) => hc.condition.name);
-  const motivationNames = patient.motivations.map((pm) => pm.motivation.name);
-  const macroTarget     = getMacroPercentages(resolveMacroProfile(conditionNames, motivationNames));
-  if (newRecipe.calories && newRecipe.calories > 0) {
-    const deviation = macroDeviation(
-      { calories: newRecipe.calories, protein: newRecipe.protein, carbs: newRecipe.carbs, fat: newRecipe.fat },
-      macroTarget
-    );
-    if (deviation > 0.50) {
-      return NextResponse.json(
-        { error: "Recipe macros do not align with your nutrition profile" },
-        { status: 400 }
-      );
-    }
-  }
-
-  // Family / subfamily constraints — check against all other menus on the same day
+  // Shared swap gate (S3 extraction — lib/meal-plan.ts validateSwapCandidate):
+  // meal-type match, diet bans, macro alignment, same-day family (beverage
+  // exemption) and same-meal sub-family rules, exact route-era messages.
   const dayStart = new Date(menu.date);
   dayStart.setHours(0, 0, 0, 0);
   const dayEnd = new Date(menu.date);
@@ -105,43 +71,9 @@ export async function PATCH(
     },
   });
 
-  // Family rule: same family cannot appear twice on the same day.
-  // Exception: beverages not tagged fruity/veggie.
-  if (newRecipe.family) {
-    const dishTypeName = newRecipe.dishType?.name?.toLowerCase() ?? "";
-    const familyLower  = newRecipe.family.toLowerCase();
-    const exempt = dishTypeName === "beverage" &&
-      !familyLower.includes("fruity") && !familyLower.includes("veggie");
-
-    if (!exempt) {
-      const familyConflict = sameDayMenus.some((m) => {
-        if (m.recipe.family !== newRecipe.family) return false;
-        const otherDishType = m.recipe.dishType?.name?.toLowerCase() ?? "";
-        const otherFamily   = m.recipe.family?.toLowerCase() ?? "";
-        const otherExempt   = otherDishType === "beverage" &&
-          !otherFamily.includes("fruity") && !otherFamily.includes("veggie");
-        return !otherExempt;
-      });
-      if (familyConflict) {
-        return NextResponse.json(
-          { error: "A dish from the same family is already in today's plan" },
-          { status: 400 }
-        );
-      }
-    }
-  }
-
-  // Sub-family rule: same sub-family cannot appear twice within the same meal type.
-  if (newRecipe.subFamily) {
-    const sameMealConflict = sameDayMenus.some(
-      (m) => m.mealTypeId === menu.mealTypeId && m.recipe.subFamily === newRecipe.subFamily
-    );
-    if (sameMealConflict) {
-      return NextResponse.json(
-        { error: "A dish from the same sub-family is already in this meal" },
-        { status: 400 }
-      );
-    }
+  const verdict = validateSwapCandidate(patient, menu, newRecipe, sameDayMenus);
+  if (!verdict.ok) {
+    return NextResponse.json({ error: verdict.message }, { status: 400 });
   }
 
   const updated = await prisma.menu.update({

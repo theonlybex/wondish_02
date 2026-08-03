@@ -764,3 +764,140 @@ test("deriveLoggedRecipeIds: either side empty passes the other through", async 
   assert.deepEqual(deriveLoggedRecipeIds(["r1"], []), ["r1"]);
   assert.deepEqual(deriveLoggedRecipeIds([], []), []);
 });
+
+// ─── S3 E1: swap validation + alternatives (extracted from routes) ───────────
+
+// Dynamic import via the shared modPromise: a hoisted static import would load
+// @/lib/db BEFORE the globalThis.prisma stub assignment at the top of this
+// file, binding the singleton to a real client (the stub comment explains).
+import type { AlternativesDb, SwapPatientLike } from "./meal-plan";
+// CJS transform forbids top-level await: each test awaits the shared
+// modPromise (stub-safe, see the comment at its definition).
+
+const dietPatient: SwapPatientLike = {
+  foodAllergies: [],
+  foodToAvoid: [],
+  foodPreferences: [],
+  healthConditions: [],
+  motivations: [],
+};
+
+const withAllergy = (name: string): SwapPatientLike => ({
+  ...dietPatient,
+  foodAllergies: [{ food: { name, bannedIngredients: [] } }],
+});
+
+const swapRecipe = (over: Record<string, unknown> = {}) => ({
+  mealTypeId: "mt-lunch" as string | null,
+  calories: 500 as number | null,
+  protein: 30 as number | null,
+  carbs: 50 as number | null,
+  fat: 15 as number | null,
+  family: null as string | null,
+  subFamily: null as string | null,
+  dishType: null as { name: string } | null,
+  ingredients: [] as { ingredient: { name: string } }[],
+  ...over,
+});
+
+test("swap: meal-type mismatch is rejected first", async () => {
+  const { validateSwapCandidate } = await modPromise;
+  const res = validateSwapCandidate(dietPatient, { mealTypeId: "mt-dinner" }, swapRecipe(), []);
+  assert.deepEqual(res, { ok: false, code: "MEAL_TYPE_MISMATCH", message: "Recipe not suitable for this meal slot" });
+});
+
+test("swap: banned ingredient is rejected with the route's message", async () => {
+  const { validateSwapCandidate } = await modPromise;
+  const recipe = swapRecipe({ ingredients: [{ ingredient: { name: "shrimp" } }] });
+  const res = validateSwapCandidate(withAllergy("shrimp"), { mealTypeId: "mt-lunch" }, recipe, []);
+  assert.equal(res.ok, false);
+  assert.equal((res as { code: string }).code, "BANNED_INGREDIENTS");
+  assert.equal((res as { message: string }).message, "Recipe contains ingredients you cannot eat");
+});
+
+test("swap: macro deviation over 50pp is rejected; zero-calorie recipes skip the check", async () => {
+  const { validateSwapCandidate } = await modPromise;
+  const skewed = swapRecipe({ calories: 500, protein: 0, carbs: 0, fat: 55.6 });
+  const res = validateSwapCandidate(dietPatient, { mealTypeId: "mt-lunch" }, skewed, []);
+  assert.equal(res.ok, false);
+  assert.equal((res as { code: string }).code, "MACRO_MISALIGNED");
+  const zeroCal = swapRecipe({ calories: 0 });
+  assert.equal(validateSwapCandidate(dietPatient, { mealTypeId: "mt-lunch" }, zeroCal, []).ok, true);
+});
+
+test("swap: same family twice a day is rejected — beverage exemption honored", async () => {
+  const { validateSwapCandidate } = await modPromise;
+  const sameDay = [{ mealTypeId: "mt-dinner", recipe: { family: "chicken", subFamily: null, dishType: null } }];
+  const conflict = swapRecipe({ family: "chicken" });
+  const res = validateSwapCandidate(dietPatient, { mealTypeId: "mt-lunch" }, conflict, sameDay);
+  assert.equal(res.ok, false);
+  assert.equal((res as { code: string }).code, "FAMILY_CONFLICT");
+  const beverage = swapRecipe({ family: "chicken", dishType: { name: "Beverage" } });
+  assert.equal(validateSwapCandidate(dietPatient, { mealTypeId: "mt-lunch" }, beverage, sameDay).ok, true);
+});
+
+test("swap: an exempt beverage row on the same day does not conflict", async () => {
+  const { validateSwapCandidate } = await modPromise;
+  const sameDay = [
+    { mealTypeId: "mt-dinner", recipe: { family: "chicken", subFamily: null, dishType: { name: "Beverage" } } },
+  ];
+  const candidate = swapRecipe({ family: "chicken" });
+  assert.equal(validateSwapCandidate(dietPatient, { mealTypeId: "mt-lunch" }, candidate, sameDay).ok, true);
+});
+
+test("swap: same sub-family within the same meal type is rejected", async () => {
+  const { validateSwapCandidate } = await modPromise;
+  const sameDay = [{ mealTypeId: "mt-lunch", recipe: { family: null, subFamily: "noodle-soup", dishType: null } }];
+  const conflict = swapRecipe({ subFamily: "noodle-soup" });
+  const res = validateSwapCandidate(dietPatient, { mealTypeId: "mt-lunch" }, conflict, sameDay);
+  assert.equal(res.ok, false);
+  assert.equal((res as { code: string }).code, "SUBFAMILY_CONFLICT");
+  const otherMeal = [{ mealTypeId: "mt-dinner", recipe: { family: null, subFamily: "noodle-soup", dishType: null } }];
+  assert.equal(validateSwapCandidate(dietPatient, { mealTypeId: "mt-lunch" }, conflict, otherMeal).ok, true);
+});
+
+test("swap: clean candidate passes", async () => {
+  const { validateSwapCandidate } = await modPromise;
+  assert.deepEqual(validateSwapCandidate(dietPatient, { mealTypeId: "mt-lunch" }, swapRecipe(), []), { ok: true });
+});
+
+test("alternatives: ban-filtered and sliced to 3", async () => {
+  const { findAlternatives } = await modPromise;
+  const mk = (id: string, ing: string) => ({
+    id, name: id, calories: 500 as number | null, protein: 30 as number | null,
+    carbs: 50 as number | null, fat: 15 as number | null,
+    mealType: null, dishType: null,
+    ingredients: [{ ingredient: { name: ing } }],
+  });
+  const seen: unknown[] = [];
+  const db: AlternativesDb = {
+    findCandidates: async (q) => {
+      seen.push(q);
+      return [mk("a", "rice"), mk("b", "shrimp"), mk("c", "beans"), mk("d", "oats"), mk("e", "corn")];
+    },
+  };
+  const out = await findAlternatives(withAllergy("shrimp"), { mealTypeId: "mt-lunch", currentCalories: 500 }, db);
+  assert.deepEqual(out.map((r) => r.id), ["a", "c", "d"]);
+  assert.deepEqual(seen[0], {
+    mealTypeId: "mt-lunch",
+    excludeRecipeId: undefined,
+    calorieBand: { gte: 250, lte: 750 },
+  });
+});
+
+test("alternatives: no bans returns first 3 candidates unfiltered; no calorie band when 0", async () => {
+  const { findAlternatives } = await modPromise;
+  const seen: unknown[] = [];
+  const db: AlternativesDb = {
+    findCandidates: async (q) => {
+      seen.push(q);
+      return [1, 2, 3, 4].map((n) => ({
+        id: `r${n}`, name: `r${n}`, calories: null, protein: null, carbs: null, fat: null,
+        mealType: null, dishType: null, ingredients: [],
+      }));
+    },
+  };
+  const out = await findAlternatives(dietPatient, { mealTypeId: "mt-lunch" }, db);
+  assert.equal(out.length, 3);
+  assert.deepEqual(seen[0], { mealTypeId: "mt-lunch", excludeRecipeId: undefined });
+});

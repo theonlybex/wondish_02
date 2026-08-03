@@ -91,3 +91,87 @@ test("filterCalendarMeals: allMeals keeps every non-skipped meal", () => {
     { skipped: false, rating: null },
   ]);
 });
+
+// ─── S3 E1: upsertMealCompletion (extracted from /api/journal/log-meal) ──────
+
+import { upsertMealCompletion, type CompletionDb } from "./journal";
+
+function fakeCompletionDb(existingMeals: { id: string; recipeId: string | null; skipped: boolean; rating: number | null }[] | null) {
+  const ops: string[] = [];
+  const db: CompletionDb = {
+    findEntry: async () => (existingMeals === null ? null : { id: "entry-1", meals: existingMeals }),
+    createEntry: async () => {
+      ops.push("createEntry");
+      return { id: "entry-new" };
+    },
+    createMeal: async (data) => {
+      ops.push(`createMeal:${data.recipeId}:${String(data.rating)}`);
+      return { id: "meal-new" };
+    },
+    updateMealRating: async (id, rating) => {
+      ops.push(`update:${id}:${String(rating)}`);
+    },
+    deleteMeal: async (id) => {
+      ops.push(`delete:${id}`);
+    },
+  };
+  return { db, ops };
+}
+
+test("completion: invalid date returns null, no effects", async () => {
+  const { db, ops } = fakeCompletionDb(null);
+  const res = await upsertMealCompletion("p1", { recipeId: "r1", date: "not-a-date", rating: 1 }, db);
+  assert.equal(res, null);
+  assert.equal(ops.length, 0);
+});
+
+test("completion: no entry → entry + meal created with the rating", async () => {
+  const { db, ops } = fakeCompletionDb(null);
+  const res = await upsertMealCompletion("p1", { recipeId: "r1", mealTypeName: "Dinner", date: "2026-08-03", rating: 1 }, db);
+  assert.deepEqual(res, { action: "created", journalMealId: "meal-new", rating: 1 });
+  assert.deepEqual(ops, ["createEntry", "createMeal:r1:1"]);
+});
+
+test("completion: toggle mode + same rating removes the row (route parity)", async () => {
+  const { db, ops } = fakeCompletionDb([{ id: "m1", recipeId: "r1", skipped: false, rating: 1 }]);
+  const res = await upsertMealCompletion("p1", { recipeId: "r1", date: "2026-08-03", rating: 1, toggle: true }, db);
+  assert.deepEqual(res, { action: "removed", journalMealId: null, rating: null });
+  assert.deepEqual(ops, ["delete:m1"]);
+});
+
+test("completion: NON-toggle + same rating is unchanged — Clara re-marking done must never undo", async () => {
+  const { db, ops } = fakeCompletionDb([{ id: "m1", recipeId: "r1", skipped: false, rating: 1 }]);
+  const res = await upsertMealCompletion("p1", { recipeId: "r1", date: "2026-08-03", rating: 1 }, db);
+  assert.deepEqual(res, { action: "unchanged", journalMealId: "m1", rating: 1 });
+  assert.deepEqual(ops, []);
+});
+
+test("completion: different rating updates (both modes)", async () => {
+  for (const toggle of [true, false]) {
+    const { db, ops } = fakeCompletionDb([{ id: "m1", recipeId: "r1", skipped: false, rating: 1 }]);
+    const res = await upsertMealCompletion("p1", { recipeId: "r1", date: "2026-08-03", rating: -1, toggle }, db);
+    assert.deepEqual(res, { action: "updated", journalMealId: "m1", rating: -1 });
+    assert.deepEqual(ops, ["update:m1:-1"]);
+  }
+});
+
+test("completion: null rating creates an unrated row when missing", async () => {
+  const { db, ops } = fakeCompletionDb([]);
+  const res = await upsertMealCompletion("p1", { recipeId: "r1", date: "2026-08-03", rating: null }, db);
+  assert.deepEqual(res, { action: "created", journalMealId: "meal-new", rating: null });
+  assert.deepEqual(ops, ["createMeal:r1:null"]);
+});
+
+test("completion: null rating NEVER clears an existing rating", async () => {
+  const { db, ops } = fakeCompletionDb([{ id: "m1", recipeId: "r1", skipped: false, rating: -1 }]);
+  const res = await upsertMealCompletion("p1", { recipeId: "r1", date: "2026-08-03", rating: null }, db);
+  assert.deepEqual(res, { action: "unchanged", journalMealId: "m1", rating: -1 });
+  assert.deepEqual(ops, []);
+});
+
+test("completion: skipped rows are invisible to matching (a skipped dinner can be re-completed)", async () => {
+  const { db, ops } = fakeCompletionDb([{ id: "m1", recipeId: "r1", skipped: true, rating: null }]);
+  const res = await upsertMealCompletion("p1", { recipeId: "r1", date: "2026-08-03", rating: 1 }, db);
+  assert.equal(res?.action, "created");
+  assert.deepEqual(ops, ["createMeal:r1:1"]);
+});

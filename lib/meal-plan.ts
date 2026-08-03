@@ -578,3 +578,165 @@ export function deriveLoggedRecipeIds(
   }
   return out;
 }
+
+// ─── S3 extractions: alternatives + swap validation (shared route/Clara) ─────
+// Behavior parity with the original route blocks is pinned by lib tests; the
+// routes now delegate here, and the Clara plan skill reuses the same gates.
+
+export type DietPatientLike = Parameters<typeof derivePatientBans>[0];
+
+export interface AlternativeRecipe {
+  id: string;
+  name: string;
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  mealType: unknown;
+  dishType: unknown;
+  ingredients: { ingredient: { name: string } }[];
+}
+
+export interface AlternativesDb {
+  findCandidates(q: {
+    mealTypeId: string;
+    excludeRecipeId?: string;
+    calorieBand?: { gte: number; lte: number };
+  }): Promise<AlternativeRecipe[]>;
+}
+
+const prismaAlternativesDb: AlternativesDb = {
+  findCandidates: async (q) =>
+    prisma.recipe.findMany({
+      where: {
+        mealTypeId: q.mealTypeId,
+        isPublic: true,
+        ...(q.excludeRecipeId ? { id: { not: q.excludeRecipeId } } : {}),
+        ...(q.calorieBand ? { calories: q.calorieBand } : {}),
+      },
+      take: 30,
+      orderBy: { createdAt: "desc" },
+      include: { mealType: true, dishType: true, ingredients: { include: { ingredient: true } } },
+    }) as unknown as Promise<AlternativeRecipe[]>,
+};
+
+/** Route-parity: ±250 kcal band when currentCalories > 0, ban filter in-memory, ≤3. */
+export async function findAlternatives(
+  patient: DietPatientLike,
+  q: { mealTypeId: string; excludeRecipeId?: string; currentCalories?: number },
+  db: AlternativesDb = prismaAlternativesDb
+): Promise<AlternativeRecipe[]> {
+  const { allergyNames, exactBanned } = derivePatientBans(patient);
+  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const candidates = await db.findCandidates({
+    mealTypeId: q.mealTypeId,
+    excludeRecipeId: q.excludeRecipeId,
+    ...(q.currentCalories && q.currentCalories > 0
+      ? { calorieBand: { gte: q.currentCalories - 250, lte: q.currentCalories + 250 } }
+      : {}),
+  });
+  const hasBans = matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
+  return (
+    !hasBans
+      ? candidates
+      : candidates.filter(
+          (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed
+        )
+  ).slice(0, 3);
+}
+
+export type SwapRejection =
+  | "MEAL_TYPE_MISMATCH"
+  | "BANNED_INGREDIENTS"
+  | "MACRO_MISALIGNED"
+  | "FAMILY_CONFLICT"
+  | "SUBFAMILY_CONFLICT";
+
+export interface SwapCandidateRecipe {
+  mealTypeId?: string | null;
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  family: string | null;
+  subFamily: string | null;
+  dishType: { name: string } | null;
+  ingredients: { ingredient: { name: string } }[];
+}
+
+export interface SameDayMenuLike {
+  mealTypeId: string | null;
+  recipe: { family: string | null; subFamily: string | null; dishType: { name: string } | null };
+}
+
+// Omit-override (not a plain intersection): intersecting two array-typed
+// fields leaves element access on the FIRST shape, hiding `.name`.
+export type SwapPatientLike = Omit<DietPatientLike, "healthConditions" | "motivations"> & {
+  healthConditions: { condition: { name: string; bannedIngredients: { name: string }[] } }[];
+  motivations: { motivation: { name: string; bannedIngredients: { name: string }[] } }[];
+};
+
+const beverageExempt = (family: string | null, dishTypeName: string | null | undefined): boolean => {
+  const fam = (family ?? "").toLowerCase();
+  return (dishTypeName ?? "").toLowerCase() === "beverage" && !fam.includes("fruity") && !fam.includes("veggie");
+};
+
+/**
+ * Pure swap gate — EXACT route order and messages (parity pinned by tests):
+ * meal-type → bans → macro deviation (>0.50, skipped when calories<=0) →
+ * family (same-day, beverage exemption both sides) → sub-family (same meal).
+ */
+export function validateSwapCandidate(
+  patient: SwapPatientLike,
+  menu: { mealTypeId: string | null },
+  recipe: SwapCandidateRecipe,
+  sameDayMenus: SameDayMenuLike[]
+): { ok: true } | { ok: false; code: SwapRejection; message: string } {
+  if (menu.mealTypeId && recipe.mealTypeId !== menu.mealTypeId) {
+    return { ok: false, code: "MEAL_TYPE_MISMATCH", message: "Recipe not suitable for this meal slot" };
+  }
+
+  const { allergyNames, exactBanned } = derivePatientBans(patient);
+  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const { passed } = evaluateDishAgainstProfile(
+    recipe.ingredients.map((ri) => ri.ingredient.name),
+    matchers
+  );
+  if (!passed) {
+    return { ok: false, code: "BANNED_INGREDIENTS", message: "Recipe contains ingredients you cannot eat" };
+  }
+
+  const conditionNames = patient.healthConditions.map((hc) => hc.condition.name);
+  const motivationNames = patient.motivations.map((pm) => pm.motivation.name);
+  const macroTarget = getMacroPercentages(resolveMacroProfile(conditionNames, motivationNames));
+  if (recipe.calories && recipe.calories > 0) {
+    const deviation = macroDeviation(
+      { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: recipe.fat },
+      macroTarget
+    );
+    if (deviation > 0.5) {
+      return { ok: false, code: "MACRO_MISALIGNED", message: "Recipe macros do not align with your nutrition profile" };
+    }
+  }
+
+  if (recipe.family && !beverageExempt(recipe.family, recipe.dishType?.name)) {
+    const familyConflict = sameDayMenus.some((m) => {
+      if (m.recipe.family !== recipe.family) return false;
+      return !beverageExempt(m.recipe.family, m.recipe.dishType?.name);
+    });
+    if (familyConflict) {
+      return { ok: false, code: "FAMILY_CONFLICT", message: "A dish from the same family is already in today's plan" };
+    }
+  }
+
+  if (recipe.subFamily) {
+    const sameMealConflict = sameDayMenus.some(
+      (m) => m.mealTypeId === menu.mealTypeId && m.recipe.subFamily === recipe.subFamily
+    );
+    if (sameMealConflict) {
+      return { ok: false, code: "SUBFAMILY_CONFLICT", message: "A dish from the same sub-family is already in this meal" };
+    }
+  }
+
+  return { ok: true };
+}
