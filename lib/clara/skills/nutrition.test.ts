@@ -140,11 +140,14 @@ test("range: spans over MAX_RANGE_DAYS are OUT_OF_RANGE", async () => {
 });
 
 test("range: calendar-invalid date that survives a format check cannot skip the cap (NaN guard)", async () => {
-  // parseLocalDateStrict may reject this outright — either way the result
-  // must be a typed failure, never a query with an unbounded range.
+  // The invalid month goes in toDate: in fromDate the from>to string compare
+  // fires first and the guard is never reached (review finding — the original
+  // version of this test exercised the wrong branch). parseLocalDateStrict's
+  // constructor rolls "2026-13-45" over, so only Date.parse's NaN catches it.
   const h = makeNutritionHandlers(fakeDeps().deps);
-  const res = await h.range(ctx, { fromDate: "2026-13-45", toDate: "2026-08-01" });
+  const res = await h.range(ctx, { fromDate: "2026-08-01", toDate: "2026-13-45" });
   assert.equal(res.ok, false);
+  assert.equal((res as { ok: false; reason: string }).reason, "INVALID_INPUT");
 });
 
 test("range: groups rows by day, sums via sumMealLogs, sorts ascending, excludes empty days from the average", async () => {
@@ -179,6 +182,62 @@ test("range: groups rows by day, sums via sumMealLogs, sorts ascending, excludes
   // avgRemaining = target − average, signed.
   assert.equal(data.avgRemaining.calories, 800);
   assert.deepEqual(data.target, TARGET);
+});
+
+test("range: a day whose EVERY row is incomplete is quarantined from the average (dashboard parity)", async () => {
+  const rows = [
+    slim({ localDate: "2026-07-28", calories: 600, protein: 40 }),
+    // All-incomplete day: no usable macros — sums to ~0 and would drag the
+    // average into "you're way under target" territory (lib/journey.ts rule).
+    slim({ localDate: "2026-07-29", calories: null, protein: null, carbs: null, fat: null, fiber: null, incomplete: true }),
+  ];
+  const { deps } = fakeDeps({ findSlimRows: async () => rows });
+  const h = makeNutritionHandlers(deps);
+  const res = await h.range(ctx, { fromDate: "2026-07-27", toDate: "2026-08-02" });
+  assert.equal(res.ok, true);
+  const data = (res as { ok: true; data: Record<string, unknown> }).data as {
+    daysLogged: number;
+    daysAllIncomplete: number;
+    days: { date: string; incomplete: boolean }[];
+    avgPerLoggedDay: Record<string, number>;
+    avgRemaining: Record<string, number>;
+  };
+  // Still visible and counted as logged — just never averaged.
+  assert.equal(data.daysLogged, 2);
+  assert.equal(data.daysAllIncomplete, 1);
+  assert.equal(data.days.length, 2);
+  assert.equal(data.days[1].incomplete, true);
+  assert.equal(data.avgPerLoggedDay.calories, 600); // NOT (600+0)/2
+  assert.equal(data.avgRemaining.calories, 1200);
+});
+
+test("range: partially-incomplete days still count toward the average (only all-incomplete is quarantined)", async () => {
+  const rows = [
+    slim({ localDate: "2026-07-28", calories: 600 }),
+    slim({ localDate: "2026-07-29", calories: 400 }),
+    slim({ localDate: "2026-07-29", calories: null, incomplete: true }), // one bad row, day still priced
+  ];
+  const { deps } = fakeDeps({ findSlimRows: async () => rows });
+  const h = makeNutritionHandlers(deps);
+  const res = await h.range(ctx, { fromDate: "2026-07-28", toDate: "2026-07-29" });
+  const data = (res as { ok: true; data: Record<string, unknown> }).data as {
+    daysAllIncomplete: number;
+    avgPerLoggedDay: Record<string, number>;
+  };
+  assert.equal(data.daysAllIncomplete, 0);
+  assert.equal(data.avgPerLoggedDay.calories, 500); // (600 + 400) / 2
+});
+
+test("range: every logged day all-incomplete leaves averages null", async () => {
+  const rows = [slim({ localDate: "2026-07-28", calories: null, incomplete: true })];
+  const { deps } = fakeDeps({ findSlimRows: async () => rows });
+  const h = makeNutritionHandlers(deps);
+  const res = await h.range(ctx, { fromDate: "2026-07-28", toDate: "2026-07-29" });
+  const data = (res as { ok: true; data: Record<string, unknown> }).data;
+  assert.equal(data.daysLogged, 1);
+  assert.equal(data.daysAllIncomplete, 1);
+  assert.equal(data.avgPerLoggedDay, null);
+  assert.equal(data.avgRemaining, null);
 });
 
 test("range: steady-state target — getTarget called with usePlanRamp=false", async () => {

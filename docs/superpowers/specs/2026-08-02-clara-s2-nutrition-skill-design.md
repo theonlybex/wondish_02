@@ -155,3 +155,41 @@ Per cycle.md: this spec → plan doc `docs/superpowers/plans/2026-08-02-clara-s2
 → engine tasks (wondish_02 only, branch `cycle-clara-s2-nutrition`) → per-task reviews →
 final review → audit → merge. Post-merge: watch `/admin/clara-gaps` — NUTRITION rows
 should collapse to ~zero; if they don't, recognition is failing in production.
+
+## AMENDMENT 2026-08-02 (post-review) — corrections of record
+
+1. **All-incomplete days are quarantined from range averages** (was unspecified).
+   A day whose every row is `incomplete` sums to ~0 kcal and drags the average
+   into "you're way under target" — the same misleading-advice failure the
+   empty-day rule guards against. `nutrition_range_summary` now mirrors the
+   dashboard's `computeMacroStats` (lib/journey.ts): such days stay visible in
+   `days` (flagged) and count in `daysLogged`, but are excluded from
+   `avgPerLoggedDay`/`avgRemaining`; a new `daysAllIncomplete` count lets Clara
+   narrate the exclusion. The fragment instructs her to.
+2. **Taxonomy split for the NaN guard.** A calendar-invalid date that survives
+   `parseLocalDateStrict` (constructor rollover, e.g. "2026-13-45") is
+   `INVALID_INPUT`, not `OUT_OF_RANGE` — the cap message only fires for real
+   ranges over 31 days. (S1's logs skill still reports OUT_OF_RANGE for this
+   path; parity deliberately broken in favor of the spec's own taxonomy.)
+3. **The goal-change refusal edge files the gap first.** The fragment's
+   "cannot change targets" rule now says call `gap_report` (BODY_GOALS), THEN
+   hand off to profile settings — matching the profile skill's precedent and
+   the fixture's expectation; without it the specific fragment instruction
+   would out-compete the base prompt's generic gap rule and the BODY_GOALS
+   demand signal would never be recorded.
+4. **A C0 fixture case flipped beyond the promised set.** "how much protein
+   should I eat a day?" (expect null, "general knowledge") became
+   `nutrition_targets` — the personalized answer now exists, and a
+   near-identical S2 padding case expected the tool, making the old
+   expectation a systematic eval miss. A depersonalized general-knowledge
+   case replaces the null exemplar. Accumulated fixture: 42 cases.
+5. **Accepted (recorded, not fixed):** nutrition tool descriptions statically
+   name `logs_day_summary`/`logs_search` even in a logs-off configuration —
+   §4.1 Layer 1 mandates naming the sibling owner and descriptions are static
+   by C0 design; the ATE tie-breaker row covers that configuration and Layer-4
+   recovery absorbs a stray call.
+6. **Carried to post-merge tickets:** `parseLocalDateStrict` is format-strict
+   but not calendar-strict (rollover dates pass; shared surface — fix at lib
+   level, not in a skill); S1's logs NaN-guard test exercises the from>to
+   branch, not the guard (logs.test.ts); `dayGap` now has two copies — lift to
+   shared C0 surface if S3 needs a third.

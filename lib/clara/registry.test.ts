@@ -245,6 +245,10 @@ test("S2: with nutrition active the calories-LEFT row routes to nutrition_ tools
   const active = resolveActiveSkills(ALL_SKILLS, undefined);
   const prompt = buildSystemPrompt("Sam", "profile text", active, "2026-08-02");
   assert.match(prompt, /Calories LEFT[\s\S]*nutrition_day/);
+  // The row is the only place the prompt teaches the day/range/targets grain
+  // split — pin all three so a "simplifying" edit cannot silently drop one.
+  assert.match(prompt, /Calories LEFT[\s\S]*nutrition_range_summary/);
+  assert.match(prompt, /Calories LEFT[\s\S]*nutrition_targets/);
   // The logs fragment must no longer steer "calories left" to gap_report.
   assert.equal(prompt.includes("because the remaining/target part is not available yet"), false);
   // And the two skills' fragments must not contradict: only the tie-breaker

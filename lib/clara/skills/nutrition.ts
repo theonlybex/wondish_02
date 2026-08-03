@@ -108,9 +108,15 @@ export function makeNutritionHandlers(deps: NutritionDeps = prismaDeps) {
     }
     if (fromDate > toDate) return invalid("fromDate must not be after toDate");
     const gap = dayGap(fromDate, toDate);
-    // NaN guard (S1 lesson): a calendar-invalid date that survives the format
-    // check yields NaN, and NaN > cap is false — the cap would silently skip.
-    if (!Number.isFinite(gap) || gap > MAX_RANGE_DAYS) {
+    // NaN guard (S1 lesson): a calendar-invalid date like "2026-13-45" rolls
+    // over in parseLocalDateStrict's constructor and survives the format
+    // check, but Date.parse yields NaN — and NaN > cap is false, so without
+    // this the cap would be silently skipped. A bad date is INVALID_INPUT
+    // (spec taxonomy), not a too-long range.
+    if (!Number.isFinite(gap)) {
+      return invalid("fromDate/toDate must be real calendar dates");
+    }
+    if (gap > MAX_RANGE_DAYS) {
       return {
         ok: false,
         reason: "OUT_OF_RANGE",
@@ -143,11 +149,22 @@ export function makeNutritionHandlers(deps: NutritionDeps = prismaDeps) {
     const daysLogged = days.length;
     const daysInRange = gap + 1;
 
+    // Quarantine rule (review fix, mirrors computeMacroStats in lib/journey.ts):
+    // a day whose EVERY row is incomplete sums to ~0 kcal and would drag the
+    // average down while looking wildly under target — the exact misleading-
+    // advice failure the empty-day rule exists to prevent. Such days stay
+    // visible in `days` (flagged) but are never averaged.
+    const pricedDays = days.filter((d) => {
+      const group = byDate.get(d.date);
+      return group !== undefined && !group.every((r) => r.incomplete);
+    });
+    const daysAllIncomplete = daysLogged - pricedDays.length;
+
     let avgPerLoggedDay: Omit<MacroSnapshot, "incomplete"> | null = null;
     let avgRemaining: ReturnType<typeof computeRemaining> = null;
-    if (daysLogged > 0) {
+    if (pricedDays.length > 0) {
       const sum = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 };
-      for (const d of days) {
+      for (const d of pricedDays) {
         sum.calories += d.totals.calories;
         sum.protein += d.totals.protein;
         sum.carbs += d.totals.carbs;
@@ -155,11 +172,11 @@ export function makeNutritionHandlers(deps: NutritionDeps = prismaDeps) {
         sum.fiber += d.totals.fiber;
       }
       avgPerLoggedDay = {
-        calories: r1(sum.calories / daysLogged),
-        protein: r1(sum.protein / daysLogged),
-        carbs: r1(sum.carbs / daysLogged),
-        fat: r1(sum.fat / daysLogged),
-        fiber: r1(sum.fiber / daysLogged),
+        calories: r1(sum.calories / pricedDays.length),
+        protein: r1(sum.protein / pricedDays.length),
+        carbs: r1(sum.carbs / pricedDays.length),
+        fat: r1(sum.fat / pricedDays.length),
+        fiber: r1(sum.fiber / pricedDays.length),
       };
       avgRemaining = computeRemaining(target, { ...avgPerLoggedDay, incomplete: false });
     }
@@ -171,6 +188,7 @@ export function makeNutritionHandlers(deps: NutritionDeps = prismaDeps) {
         toDate,
         daysInRange,
         daysLogged,
+        daysAllIncomplete,
         days,
         avgPerLoggedDay,
         target,
@@ -196,7 +214,7 @@ const handlers = makeNutritionHandlers();
 export const nutritionSkill: Skill = {
   name: "nutrition",
   promptFragment:
-    "About your nutrition_ tools: they interpret intake against the user's daily targets. nutrition_day returns one day's totals PLUS the target and what is remaining — use it for any 'calories left', 'did I go over', 'do I have room for X' question, and never compute or derive remaining yourself from logs results; the tool returns it. nutrition_range_summary answers 'am I hitting my protein this week': its averages cover only days that have logs — when daysLogged is below daysInRange, say how many days had no logs. nutrition_targets is for 'what are my targets supposed to be'; its basis field tells you whether the number comes from the active meal plan (plan-ramp) or the steady-state calculation — explain in plain words. Targets have no fiber value — never invent a fiber target. If the target comes back null, relay the note: their profile setup is incomplete. You cannot change targets or goals — for that, send them to the app's profile settings.",
+    "About your nutrition_ tools: they interpret intake against the user's daily targets. nutrition_day returns one day's totals PLUS the target and what is remaining — use it for any 'calories left', 'did I go over', 'do I have room for X' question, and never compute or derive remaining yourself from logs results; the tool returns it. nutrition_range_summary answers 'am I hitting my protein this week': its averages cover only days that have logs with usable macros — when daysLogged is below daysInRange, say how many days had no logs, and when daysAllIncomplete is nonzero, say those days were logged without nutrition numbers and left out of the average. nutrition_targets is for 'what are my targets supposed to be'; its basis field tells you whether the number comes from the active meal plan (plan-ramp) or the steady-state calculation — explain in plain words. Targets have no fiber value — never invent a fiber target. If the target comes back null, relay the note: their profile setup is incomplete. You cannot change targets or goals — call gap_report (category BODY_GOALS) once, then send them to the app's profile settings.",
   tools: [
     {
       def: {

@@ -32,7 +32,16 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
 
   // ── no tool: Clara's native dish check and general knowledge ──
   { utterance: "is a chicken burrito okay for me?", expect: null, note: "answers from the prompt snapshot" },
-  { utterance: "how much protein should I eat a day?", expect: null, note: "general knowledge" },
+  {
+    utterance: "how much protein should I eat a day?",
+    expect: "nutrition_targets",
+    note: "S2: flipped from null — the personalized target now exists and beats generic advice",
+  },
+  {
+    utterance: "is 100g of protein a day too much for the average person?",
+    expect: null,
+    note: "general knowledge — depersonalized, NOT about the user's own targets",
+  },
   { utterance: "thanks Clara!", expect: null },
 
   // ── gaps: capabilities that do not exist yet ──
@@ -72,11 +81,11 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
   { utterance: "is ramen okay for me?", expect: null, note: "dish check — profile, no tool" },
 
   // ── padding: unambiguous logs hits (keeps one flaky routing decision from
-  //    burning the whole ≥90% margin — 2 misses allowed at 29 cases) ──
+  //    burning the whole ≥90% margin — 4 misses allowed at 42 cases) ──
   { utterance: "what did I log for dinner on Tuesday?", expect: "logs_search" },
   { utterance: "have I eaten pasta this month?", expect: "logs_search" },
   { utterance: "list everything I ate yesterday", expect: "logs_search" },
-  { utterance: "what are my totals so far today?", expect: "logs_day_summary" },
+  { utterance: "show my meals and totals so far today", expect: "logs_day_summary", note: "reworded in S2: bare 'totals' now also matches nutrition_day's description" },
   { utterance: "how much fiber did I get today?", expect: "logs_day_summary" },
 
   // ── confirm flow, second turn ──

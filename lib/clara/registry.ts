@@ -52,7 +52,7 @@ export function findTool(active: Skill[], name: string): SkillTool | null {
 function buildTieBreakers(active: Skill[]): string {
   const logsOn = active.some((s) => s.name === "logs");
   const ateRow = logsOn
-    ? '- What they actually ATE — past meals, intake, "what did I eat", "how much protein today" → logs_ tools.'
+    ? '- What they actually ATE — past meals, intake, "what did I eat", "how much protein have I had" → logs_ tools.'
     : '- What they actually ATE — past meals, intake → you have no intake tools right now: gap_report (LOGS) and say so.';
   const nutritionOn = active.some((s) => s.name === "nutrition");
   const leftRow = nutritionOn
