@@ -257,3 +257,23 @@ test("a fully drained round is NOT aborted — that would break finalMessage", a
   await collect(await client.openRound({ system: "S", messages: [], tools: [] }));
   assert.equal(wasAborted(), false);
 });
+
+test("S3: runtime-only tool metadata (isWrite) is stripped from the wire payload", async () => {
+  const { anthropic, sent } = fakeAnthropic({ deltas: ["ok"] });
+  const client = createAnthropicClient(anthropic as never);
+  const stream = await client.openRound({
+    system: "s",
+    messages: [{ role: "user", content: "hi" }],
+    tools: [
+      {
+        name: "x_write",
+        description: "d",
+        input_schema: { type: "object", properties: {} },
+        isWrite: true,
+      },
+    ],
+  });
+  for await (const _ of stream) void _;
+  const wireTools = (sent[0] as { tools: Record<string, unknown>[] }).tools;
+  assert.deepEqual(Object.keys(wireTools[0]).sort(), ["description", "input_schema", "name"]);
+});

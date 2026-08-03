@@ -167,3 +167,55 @@ file, E3 guard+wiring, E4 fixture) → per-task reviews → final whole-branch r
 (write-path reviewer required this cycle) → audit → merge. Post-merge: watch
 `/admin/clara-gaps` — MEAL_PLAN rows should collapse; NUTRITION rows are the S2
 control.
+
+## AMENDMENT 2026-08-03 (post-review) — corrections of record
+
+1. **`isWrite` was leaking onto the Anthropic wire** — the adapter spread
+   `req.tools` verbatim and the Messages API rejects unknown tool keys, which
+   would have 400'd every Clara request with logs or plan active, invisible to
+   the stubbed test suite and the placeholder local key. The adapter now strips
+   to `{name, description, input_schema}` at the wire boundary (runtime flags
+   stay on the port type), pinned by an adapter test on the sent payload.
+2. **`plan_log_eaten` was pricing whole dishes as per-serving** — recipe
+   columns are whole-dish totals divided by `Recipe.servings`
+   (`recipeToPerServing`); the skill's selects omitted `servings`, silently
+   logging N× the canonical web pricing for multi-serving recipes.
+   `PlanMenuRow.recipe.servings` is now required and both selects carry it;
+   test pins 520/4 → 130.
+3. **Completion day-state re-read races duplicate JournalEntry rows** —
+   `JournalEntry` has no unique (patientId, date); `CompletionResult` now
+   returns `journalEntryId` and the log-meal route re-reads meals by that id
+   instead of a second `findFirst`.
+4. **Swap validated against a possibly different plan version** —
+   `resolveForWrite` now returns the meta it fetched and `plan_swap_dish`
+   reuses it for the same-day query (no second `getPlanMeta`).
+5. **`plan_log_eaten` date is calendar-strict** — round-trip validation
+   (`toLocalDateString(localMidnight(date)) === date`); format-only checks let
+   "2026-02-30" become a phantom `localDate`.
+6. **Tie-breaker rows steer to flows, never bare write tools** — the
+   ATE-PLANNED row said "→ plan_mark_done" / "→ logs_create" with no
+   propose/confirm framing, contradicting the confirm-first protocol exactly
+   where the structural guard cannot reach (mid-conversation). Both variants
+   now name the sequence (plan_get → PROPOSE → write after their yes); a base
+   rule tells the model how to treat a CONFIRM_REQUIRED result; registry tests
+   pin the flow framing with single-line anchors (the [\s\S]* spans were
+   satisfiable by the fragment alone).
+7. **Fixture now exercises the write half** — two history-seeded cases
+   (proposal → "yes, mark it done" → `plan_mark_done`; alternatives listed →
+   pick → `plan_swap_dish`), per the spec's own promise. Two pre-S3 cases
+   whose anchors decayed ("show me today's meals", "according to my plan")
+   reworded with notes. Fixture: 56 cases, 5-miss margin.
+8. **Fragment/description gaps closed** — plan_get explicitly the finder for
+   menuIds ("NOT for logging unplanned food"); added refusal edge for
+   add/remove/reschedule (gap_report MEAL_PLAN); ate-planned flow states the
+   full sequence; gap_report pinned never-isWrite by test.
+9. **Accepted (recorded, not fixed):** swap route now always runs the
+   same-day query before validation (one wasted query on early rejects,
+   responses identical); write budget burns on NOT_FOUND menuIds (documented
+   order); "rate yesterday's lunch 4 stars" → plan_get is a known margin
+   consumer (fragment says "map or ask"); OUT_OF_SCOPE for regeneration
+   undercounts ledger demand for a real feature (spec's own choice).
+10. **Carried to post-merge tickets:** active toolbox is now 14 defs — one
+    skill from the program spec's ~15 tiered-disclosure trigger (§4.2); S4
+    planning must open with that decision. Audit should record per-case
+    misses for the two reworded sensor cases even if the aggregate passes.

@@ -40,7 +40,18 @@ export function createAnthropicClient(anthropic: Anthropic): ModelClient {
         model: CLARA_MODEL,
         max_tokens: CLARA_MAX_TOKENS,
         system: [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }],
-        ...(req.tools.length > 0 ? { tools: req.tools } : {}),
+        // Strip runtime-only metadata (isWrite, and whatever flags come later)
+        // at the wire boundary: the Messages API rejects unknown tool keys, so
+        // a leaked flag would 400 every request whose toolbox carries it.
+        ...(req.tools.length > 0
+          ? {
+              tools: req.tools.map(({ name, description, input_schema }) => ({
+                name,
+                description,
+                input_schema,
+              })),
+            }
+          : {}),
         messages: req.messages as Anthropic.MessageParam[],
       });
 

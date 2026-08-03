@@ -33,7 +33,7 @@ const menuRow = (over: Partial<PlanMenuRow> = {}): PlanMenuRow => ({
   date: new Date(2026, 7, 3), // 2026-08-03 local midnight
   mealTypeId: "mt-dinner",
   mealTypeName: "Dinner",
-  recipe: { id: "rec-1", name: "Grilled salmon", calories: 520, protein: 38, carbs: 30, fat: 24, fiber: 4 },
+  recipe: { id: "rec-1", name: "Grilled salmon", calories: 520, protein: 38, carbs: 30, fat: 24, fiber: 4, servings: 1 },
   ...over,
 });
 
@@ -103,7 +103,7 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
     },
     upsertCompletion: async (_p, args) => {
       track("upsertCompletion", args);
-      return { action: "created", journalMealId: "jm-1", rating: args.rating };
+      return { action: "created", journalMealId: "jm-1", rating: args.rating, journalEntryId: "je-1" };
     },
     createMealLog: async (args) => {
       track("createMealLog", args);
@@ -321,6 +321,41 @@ test("log_eaten: unmappable menu meal type without an input mealType is INVALID_
   assert.equal(reasonOf(res), "INVALID_INPUT");
   const ok = await h.logEaten(ctx, { menuId: "menu-1", mealType: "lunch" }, "toolu_3");
   assert.equal(ok.ok, true);
+});
+
+
+test("log_eaten: recipe servings divide whole-dish macros (dashboard pricing parity)", async () => {
+  const { deps, calls } = fakeDeps({
+    findMenuById: async () =>
+      menuRow({
+        recipe: { id: "rec-1", name: "Family stew", calories: 520, protein: 40, carbs: 60, fat: 20, fiber: 8, servings: 4 },
+      }),
+  });
+  const h = makePlanHandlers(deps);
+  const res = await h.logEaten(ctx, { menuId: "menu-1" }, "toolu_s4");
+  assert.equal(res.ok, true);
+  const args = calls.createMealLog?.[0] as unknown as { create: Record<string, unknown> };
+  assert.equal(args.create.calories, 130); // 520 whole-dish / 4 servings — NOT 520
+  assert.equal(args.create.protein, 10);
+});
+
+test("log_eaten: calendar-invalid date is INVALID_INPUT, not a phantom row", async () => {
+  const h = makePlanHandlers(fakeDeps().deps);
+  const res = await h.logEaten(ctx, { menuId: "menu-1", date: "2026-02-30" }, "toolu_s5");
+  assert.equal(reasonOf(res), "INVALID_INPUT");
+});
+
+test("log_eaten: a smuggled recipeId or macros are ignored — the menu's recipe is the source", async () => {
+  const { deps, calls } = fakeDeps();
+  const h = makePlanHandlers(deps);
+  await h.logEaten(
+    ctx,
+    { menuId: "menu-1", recipeId: "evil", calories: 1, protein: 1, perServing: { calories: 1 } },
+    "toolu_s6"
+  );
+  const args = calls.createMealLog?.[0] as unknown as { create: Record<string, unknown> };
+  assert.equal(args.create.recipeId, "rec-1");
+  assert.equal(args.create.calories, 520);
 });
 
 // ── plan_swap_dish ──

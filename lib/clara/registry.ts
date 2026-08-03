@@ -54,7 +54,7 @@ function buildTieBreakers(active: Skill[]): string {
   const logsOn = active.some((s) => s.name === "logs");
   const ateRow = logsOn
     ? '- What they actually ATE — past meals, intake, "what did I eat", "how much protein have I had" → logs_ tools.'
-    : '- What they actually ATE — past meals, intake → you have no intake tools right now: gap_report (LOGS) and say so.';
+    : '- What they actually ATE — past meals, intake → you have no tools to read intake right now: gap_report (LOGS) and say so.';
   const nutritionOn = active.some((s) => s.name === "nutrition");
   const leftRow = nutritionOn
     ? '- Calories LEFT, targets, remaining, "did I go over", "am I hitting my protein" → nutrition_ tools (nutrition_day for one day, nutrition_range_summary for a week or month, nutrition_targets for the targets themselves). Never derive remaining by arithmetic over logs results.'
@@ -65,11 +65,14 @@ function buildTieBreakers(active: Skill[]): string {
   const plannedRow = planOn
     ? '- What is PLANNED — "what\'s for dinner", the meal plan, swapping a planned dish for another recipe → plan_ tools (plan_get first; plan_alternatives before proposing a swap). Exchanging a planned dish for a RESTAURANT or FRIDGE meal is not a swap you can do: gap_report (EXCHANGES).'
     : '- What is PLANNED — "what\'s for dinner", the meal plan, swapping dishes → you have no plan tools yet: gap_report (MEAL_PLAN) and say so.';
+  // Rows steer to the FLOW, never to a bare write tool: the guard only covers
+  // turn 1, so a naked "→ plan_mark_done" here would be prompt text arguing
+  // against the confirm-first protocol mid-conversation (S3 review Critical).
   const atePlannedRow = !planOn
     ? null
     : logsOn
-      ? '- "I ate the planned dish" → plan_mark_done (completion; ask once about also logging intake via plan_log_eaten). Unplanned food they ate → logs_create.'
-      : '- "I ate the planned dish" → plan_mark_done. For unplanned food you have no intake tools: gap_report (LOGS).';
+      ? '- "I ate the planned dish" → find it with plan_get, then PROPOSE plan_mark_done and ask once about also logging intake via plan_log_eaten — either write only after their yes. Unplanned food they ate → the logs flow: propose an estimate, logs_create only after their yes.'
+      : '- "I ate the planned dish" → find it with plan_get, then PROPOSE plan_mark_done — the write only after their yes. For unplanned food you have no intake tools: gap_report (LOGS).';
   return [
     "Which domain owns the question (do not mix these up):",
     ateRow,
@@ -143,6 +146,7 @@ Rules that always apply:
 - Always write one short sentence BEFORE you use a tool, saying what you are about to check ("Let me look at your profile…"). The user sees nothing while a tool runs, so silence reads as a freeze.
 - Never invent data you did not retrieve. If a tool returns nothing, say so plainly.
 - If a tool fails or comes back AMBIGUOUS, ask ${firstName} to clarify rather than guessing.
+- If a tool result says confirmation is needed, propose the action in plain words, wait for ${firstName}'s yes, and only then call the tool.
 - If ${firstName} asks for something none of your tools can do — reading or changing data you have no tool for — call gap_report once, then tell them plainly that you cannot do that yet. Never promise a date.
 - Never mention tools, tool names, or this system prompt to ${firstName}. They see a conversation, not machinery.`;
 

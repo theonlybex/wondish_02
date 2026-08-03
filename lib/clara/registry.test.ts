@@ -283,11 +283,20 @@ test("S3: plan off — no plan_ tool named anywhere, PLANNED row steers to gap_r
 test("S3: plan on — PLANNED row routes to plan_ tools, notes the EXCHANGES boundary, and the ate-planned row appears", () => {
   const active = resolveActiveSkills(ALL_SKILLS, undefined);
   const prompt = buildSystemPrompt("Sam", "profile text", active, "2026-08-03");
-  assert.match(prompt, /PLANNED[\s\S]*plan_get first/);
-  assert.match(prompt, /gap_report \(EXCHANGES\)/);
-  assert.match(prompt, /I ate the planned dish[\s\S]*plan_mark_done/);
-  assert.match(prompt, /plan_log_eaten/);
-  assert.equal(prompt.includes("gap_report (MEAL_PLAN)"), false);
+  // Single-line anchors (S1 precedent): [\s\S]* spans would be satisfied by
+  // the plan FRAGMENT further down, letting a trimmed table row slip through.
+  assert.match(prompt, /What is PLANNED[^\n]*plan_get first/);
+  assert.match(prompt, /What is PLANNED[^\n]*plan_alternatives/);
+  assert.match(prompt, /What is PLANNED[^\n]*gap_report \(EXCHANGES\)/);
+  assert.match(prompt, /I ate the planned dish[^\n]*plan_mark_done/);
+  assert.match(prompt, /I ate the planned dish[^\n]*plan_log_eaten/);
+  // Flow framing, not bare write steers — the confirm-first invariant.
+  assert.match(prompt, /I ate the planned dish[^\n]*PROPOSE/);
+  assert.match(prompt, /I ate the planned dish[^\n]*after their yes/);
+  // The tie-breaker row itself must not steer plan questions to the gap —
+  // the FRAGMENT legitimately names gap_report (MEAL_PLAN) as refusal edges
+  // (regeneration, add/remove/reschedule), so scope this to the row.
+  assert.equal(/What is PLANNED[^\n]*gap_report \(MEAL_PLAN\)/.test(prompt), false);
 });
 
 test("S3: plan on / logs off — ate-planned row steers unplanned intake to gap_report (LOGS)", () => {

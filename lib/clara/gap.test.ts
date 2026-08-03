@@ -194,3 +194,9 @@ test("S3: MEAL_PLAN maps to the plan skill for FLAGGED_OFF resolution", () => {
   assert.equal(resolveGapReason("MEAL_PLAN", "NOT_BUILT", ["plan"]), "FLAGGED_OFF");
   assert.equal(resolveGapReason("MEAL_PLAN", "NOT_BUILT", []), "NOT_BUILT");
 });
+
+test("S3: gap_report must NEVER carry isWrite — first-turn gap flows depend on it", () => {
+  for (const t of gapSkill.tools) {
+    assert.equal(t.def.isWrite, undefined, `${t.def.name} must not be guard-flagged`);
+  }
+});

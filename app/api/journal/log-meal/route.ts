@@ -39,11 +39,6 @@ export async function POST(req: NextRequest) {
   if (!parsedDate) {
     return NextResponse.json({ error: "date must be a YYYY-MM-DD string" }, { status: 400 });
   }
-  const y = parsedDate.getFullYear();
-  const m = parsedDate.getMonth() + 1;
-  const d = parsedDate.getDate();
-  const entryDate = new Date(y, m - 1, d, 0, 0, 0, 0);
-  const dateEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
 
   // Shared completion write path (S3 extraction — lib/journal.ts). Toggle mode
   // preserves this route's UI contract: same rating again = undo.
@@ -58,16 +53,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "date must be a YYYY-MM-DD string" }, { status: 400 });
   }
 
-  // Return updated state for the day (entry exists after the upsert).
-  const entry = await prisma.journalEntry.findFirst({
-    where: { patientId: patient.id, date: { gte: entryDate, lte: dateEnd } },
+  // Day state by the entry id the helper actually wrote to: JournalEntry has
+  // no unique (patientId, date), so a second findFirst could pick a different
+  // duplicate row and report the just-written meal as missing.
+  const updated = await prisma.journalMeal.findMany({
+    where: { journalEntryId: result.journalEntryId, skipped: false },
+    select: { recipeId: true, rating: true },
   });
-  const updated = entry
-    ? await prisma.journalMeal.findMany({
-        where: { journalEntryId: entry.id, skipped: false },
-        select: { recipeId: true, rating: true },
-      })
-    : [];
 
   const loggedRecipeIds = updated.map((m) => m.recipeId).filter(Boolean) as string[];
   const mealRatings: Record<string, number> = {};

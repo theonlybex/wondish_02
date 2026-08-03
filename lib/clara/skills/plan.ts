@@ -43,6 +43,13 @@ export interface PlanMenuRow {
     carbs: number | null;
     fat: number | null;
     fiber: number | null;
+    /**
+     * Recipe columns are WHOLE-DISH totals; recipeToPerServing divides by
+     * this. Omitting it from a select silently prices whole dishes as
+     * per-serving (S3 review Critical) — it is required here so structural
+     * typing cannot hide the omission again.
+     */
+    servings: number | null;
   };
 }
 
@@ -100,7 +107,7 @@ const prismaDeps: PlanDeps = {
       where: { patientId, planVersion, date: { gte: start, lte: end } },
       include: {
         recipe: {
-          select: { id: true, name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true },
+          select: { id: true, name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, servings: true },
         },
         mealType: { select: { name: true } },
       },
@@ -119,7 +126,7 @@ const prismaDeps: PlanDeps = {
       where: { id: menuId, patientId, planVersion },
       include: {
         recipe: {
-          select: { id: true, name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true },
+          select: { id: true, name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, servings: true },
         },
         mealType: { select: { name: true } },
       },
@@ -203,7 +210,9 @@ export function makePlanHandlers(deps: PlanDeps = prismaDeps) {
   const resolveForWrite = async (
     ctx: ClaraContext,
     input: Record<string, unknown>
-  ): Promise<{ ok: true; menu: PlanMenuRow } | { ok: false; result: ToolResult }> => {
+  ): Promise<
+    { ok: true; menu: PlanMenuRow; meta: { activePlanVersion: number } } | { ok: false; result: ToolResult }
+  > => {
     const menuId = typeof input.menuId === "string" ? input.menuId : "";
     if (!menuId) return { ok: false, result: invalid("menuId is required — find it with plan_get first") };
     if (!(await deps.consumeWriteBudget(ctx.patientId))) {
@@ -216,7 +225,7 @@ export function makePlanHandlers(deps: PlanDeps = prismaDeps) {
     if (!meta) return { ok: false, result: notFound("No profile found.") };
     const menu = await deps.findMenuById(menuId, ctx.patientId, meta.activePlanVersion);
     if (!menu) return { ok: false, result: notFound("No such planned meal — find it with plan_get first.") };
-    return { ok: true, menu };
+    return { ok: true, menu, meta };
   };
 
   const get = async (ctx: ClaraContext, input: Record<string, unknown>): Promise<ToolResult> => {
@@ -377,6 +386,12 @@ export function makePlanHandlers(deps: PlanDeps = prismaDeps) {
     if (!pre.ok) return pre.result;
 
     const date = typeof input.date === "string" ? input.date : ctx.today;
+    // Calendar-strict, not just format-strict: parseMealLogInput's regex lets
+    // "2026-02-30" through and JS Date rolls it over without NaN — a phantom
+    // localDate invisible to day summaries. Round-trip closes both holes.
+    if (!parseLocalDateStrict(date) || toLocalDateString(localMidnight(date)) !== date) {
+      return invalid("date must be a real calendar date (YYYY-MM-DD)");
+    }
     const menuMealType = pre.menu.mealTypeName?.toLowerCase();
     const inputMealType = typeof input.mealType === "string" ? input.mealType : undefined;
     const mealType =
@@ -412,9 +427,10 @@ export function makePlanHandlers(deps: PlanDeps = prismaDeps) {
     if (!recipe) return notFound("That recipe isn't available — pick one from the alternatives offered.");
     const patient = await deps.findDietPatient(ctx.patientId);
     if (!patient) return notFound("No profile found.");
-    const meta = await deps.getPlanMeta(ctx.patientId);
-    if (!meta) return notFound("No profile found.");
-    const sameDay = await deps.findSameDayMenus(ctx.patientId, meta.activePlanVersion, pre.menu.date, pre.menu.id);
+    // Reuse resolveForWrite's meta: a second fetch could straddle a plan
+    // regeneration and validate family/sub-family against the WRONG version's
+    // day (S3 review).
+    const sameDay = await deps.findSameDayMenus(ctx.patientId, pre.meta.activePlanVersion, pre.menu.date, pre.menu.id);
     const verdict = validateSwapCandidate(patient, { mealTypeId: pre.menu.mealTypeId }, recipe, sameDay);
     if (!verdict.ok) return invalid(verdict.message);
     await deps.swapMenuRecipe(pre.menu.id, recipe.id);
@@ -432,13 +448,13 @@ const handlers = makePlanHandlers();
 export const planSkill: Skill = {
   name: "plan",
   promptFragment:
-    "About your plan_ tools: the meal plan is what is SCHEDULED, not what was eaten. plan_get shows the planned dishes for a day (or a week with weekStart) — including days where the user exchanged a planned dish for a restaurant or fridge meal; present the exchanged-in dish as the day's actual meal and mention it replaced the original. To swap a dish: plan_get to find the meal, then plan_alternatives for up to three valid options, present them, and only after the user picks and confirms call plan_swap_dish. When the user says they ate a planned dish: propose marking it done (plan_mark_done, rating optional — the app only knows liked or disliked, so map or ask; star ratings do not exist), and ask ONCE whether they also want it counted in their intake numbers — if yes, plan_log_eaten; never assume one implies the other. You cannot regenerate or rebuild the plan — send them to the Meal Plan tab and call gap_report (category MEAL_PLAN, reason OUT_OF_SCOPE). Marking a meal as skipped is not something you can do yet: gap_report (JOURNAL).",
+    "About your plan_ tools: the meal plan is what is SCHEDULED, not what was eaten. plan_get shows the planned dishes for a day (or a week with weekStart) — including days where the user exchanged a planned dish for a restaurant or fridge meal; present the exchanged-in dish as the day's actual meal and mention it replaced the original. To swap a dish: plan_get to find the meal, then plan_alternatives for up to three valid options, present them, and only after the user picks and confirms call plan_swap_dish. When the user says they ate a planned dish: find it with plan_get first, then propose marking it done (plan_mark_done, rating optional — the app only knows liked or disliked, so map or ask; star ratings do not exist), and ask ONCE whether they also want it counted in their intake numbers — if yes, plan_log_eaten; never assume one implies the other, and execute either only after their yes. You cannot regenerate or rebuild the plan — send them to the Meal Plan tab and call gap_report (category MEAL_PLAN, reason OUT_OF_SCOPE). You also cannot add, remove, or reschedule planned meals: gap_report (MEAL_PLAN). Marking a meal as skipped is not something you can do yet: gap_report (JOURNAL).",
   tools: [
     {
       def: {
         name: "plan_get",
         description:
-          "The user's planned meals for one day (default today) or a week (weekStart). Includes swaps-in-progress and restaurant/fridge exchanges. Use for 'what's for dinner', 'what's planned'. NOT for what they actually ate — logs_ tools own intake.",
+          "The user's planned meals for one day (default today) or a week (weekStart). Includes swaps-in-progress and restaurant/fridge exchanges. Use for 'what's for dinner', 'what's planned' — and to FIND a planned meal (its menuId) before marking it done or swapping it. NOT for logging unplanned food or listing what was eaten — logs_ tools own intake.",
         input_schema: {
           type: "object",
           properties: {

@@ -128,21 +128,21 @@ test("completion: invalid date returns null, no effects", async () => {
 test("completion: no entry → entry + meal created with the rating", async () => {
   const { db, ops } = fakeCompletionDb(null);
   const res = await upsertMealCompletion("p1", { recipeId: "r1", mealTypeName: "Dinner", date: "2026-08-03", rating: 1 }, db);
-  assert.deepEqual(res, { action: "created", journalMealId: "meal-new", rating: 1 });
+  assert.deepEqual(res, { action: "created", journalMealId: "meal-new", rating: 1, journalEntryId: "entry-new" });
   assert.deepEqual(ops, ["createEntry", "createMeal:r1:1"]);
 });
 
 test("completion: toggle mode + same rating removes the row (route parity)", async () => {
   const { db, ops } = fakeCompletionDb([{ id: "m1", recipeId: "r1", skipped: false, rating: 1 }]);
   const res = await upsertMealCompletion("p1", { recipeId: "r1", date: "2026-08-03", rating: 1, toggle: true }, db);
-  assert.deepEqual(res, { action: "removed", journalMealId: null, rating: null });
+  assert.deepEqual(res, { action: "removed", journalMealId: null, rating: null, journalEntryId: "entry-1" });
   assert.deepEqual(ops, ["delete:m1"]);
 });
 
 test("completion: NON-toggle + same rating is unchanged — Clara re-marking done must never undo", async () => {
   const { db, ops } = fakeCompletionDb([{ id: "m1", recipeId: "r1", skipped: false, rating: 1 }]);
   const res = await upsertMealCompletion("p1", { recipeId: "r1", date: "2026-08-03", rating: 1 }, db);
-  assert.deepEqual(res, { action: "unchanged", journalMealId: "m1", rating: 1 });
+  assert.deepEqual(res, { action: "unchanged", journalMealId: "m1", rating: 1, journalEntryId: "entry-1" });
   assert.deepEqual(ops, []);
 });
 
@@ -150,7 +150,7 @@ test("completion: different rating updates (both modes)", async () => {
   for (const toggle of [true, false]) {
     const { db, ops } = fakeCompletionDb([{ id: "m1", recipeId: "r1", skipped: false, rating: 1 }]);
     const res = await upsertMealCompletion("p1", { recipeId: "r1", date: "2026-08-03", rating: -1, toggle }, db);
-    assert.deepEqual(res, { action: "updated", journalMealId: "m1", rating: -1 });
+    assert.deepEqual(res, { action: "updated", journalMealId: "m1", rating: -1, journalEntryId: "entry-1" });
     assert.deepEqual(ops, ["update:m1:-1"]);
   }
 });
@@ -158,14 +158,14 @@ test("completion: different rating updates (both modes)", async () => {
 test("completion: null rating creates an unrated row when missing", async () => {
   const { db, ops } = fakeCompletionDb([]);
   const res = await upsertMealCompletion("p1", { recipeId: "r1", date: "2026-08-03", rating: null }, db);
-  assert.deepEqual(res, { action: "created", journalMealId: "meal-new", rating: null });
+  assert.deepEqual(res, { action: "created", journalMealId: "meal-new", rating: null, journalEntryId: "entry-1" });
   assert.deepEqual(ops, ["createMeal:r1:null"]);
 });
 
 test("completion: null rating NEVER clears an existing rating", async () => {
   const { db, ops } = fakeCompletionDb([{ id: "m1", recipeId: "r1", skipped: false, rating: -1 }]);
   const res = await upsertMealCompletion("p1", { recipeId: "r1", date: "2026-08-03", rating: null }, db);
-  assert.deepEqual(res, { action: "unchanged", journalMealId: "m1", rating: -1 });
+  assert.deepEqual(res, { action: "unchanged", journalMealId: "m1", rating: -1, journalEntryId: "entry-1" });
   assert.deepEqual(ops, []);
 });
 

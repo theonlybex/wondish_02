@@ -65,7 +65,7 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
   { utterance: "what did I have for breakfast yesterday?", expect: "logs_search" },
   { utterance: "did I eat any fish last week?", expect: "logs_search" },
   { utterance: "how much protein have I had today?", expect: "logs_day_summary" },
-  { utterance: "show me today's meals", expect: "logs_day_summary" },
+  { utterance: "show me what I've logged today", expect: "logs_day_summary", note: "reworded in S3: bare 'today's meals' became ambiguous once plan_get existed" },
   { utterance: "how many calories did I eat on Monday?", expect: "logs_day_summary" },
   { utterance: "delete the snack I logged twice", expect: "logs_search", note: "find candidates first, then confirm" },
 
@@ -81,7 +81,7 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
   { utterance: "is ramen okay for me?", expect: null, note: "dish check — profile, no tool" },
 
   // ── padding: unambiguous logs hits (keeps one flaky routing decision from
-  //    burning the whole ≥90% margin — 5 misses allowed at 55 cases) ──
+  //    burning the whole ≥90% margin — 5 misses allowed at 56 cases) ──
   { utterance: "what did I log for dinner on Tuesday?", expect: "logs_search" },
   { utterance: "have I eaten pasta this month?", expect: "logs_search" },
   { utterance: "list everything I ate yesterday", expect: "logs_search" },
@@ -131,7 +131,7 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
 
   // ── padding: unambiguous S2 hits (protects the ≥90% margin) ──
   { utterance: "how many carbs do I have left for the day?", expect: "nutrition_day" },
-  { utterance: "how much protein should I be getting according to my plan?", expect: "nutrition_targets" },
+  { utterance: "what protein target should I be hitting each day?", expect: "nutrition_targets", note: "reworded in S3: 'according to my plan' became a literal tool domain" },
 
   // ── S3 plan — direct hits ──
   { utterance: "what's for dinner tonight?", expect: "plan_get" },
@@ -154,4 +154,33 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
   // ── padding: unambiguous S3 hits ──
   { utterance: "what's planned for lunch tomorrow?", expect: "plan_get" },
   { utterance: "is there anything I can have instead of tomorrow's breakfast?", expect: "plan_get" },
+
+  // ── S3 confirm flow, second turn — the write half of the skill must be
+  //    visible to the eval (S3 review: no case ever expected a plan write) ──
+  {
+    utterance: "yes, mark it done — liked",
+    expect: "plan_mark_done",
+    note: "S3: proposal happened last turn; the id came from plan_get earlier",
+    history: [
+      { role: "user", content: "I ate today's planned dinner" },
+      {
+        role: "assistant",
+        content:
+          "Tonight's plan was the grilled salmon (meal id menu-1). Shall I mark it done — and would you say liked or disliked? I can also add it to your intake numbers if you want.",
+      },
+    ],
+  },
+  {
+    utterance: "the chicken bowl please",
+    expect: "plan_swap_dish",
+    note: "S3: alternatives were listed with ids last turn; the pick is the confirmation",
+    history: [
+      { role: "user", content: "swap tonight's dinner for something else" },
+      {
+        role: "assistant",
+        content:
+          "Tonight is grilled salmon (meal id menu-1). Good swaps that fit your profile: the chicken bowl (recipe id rec-alt, 500 kcal) or the tofu stir-fry (recipe id rec-t2, 460 kcal). Which one shall I swap in?",
+      },
+    ],
+  },
 ];

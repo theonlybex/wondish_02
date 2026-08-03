@@ -127,6 +127,10 @@ export interface CompletionResult {
   action: "created" | "updated" | "removed" | "unchanged";
   journalMealId: string | null;
   rating: number | null;
+  /** JournalEntry has NO unique (patientId, date) constraint — callers must
+   *  re-read day state by THIS id, not by a second findFirst that may pick a
+   *  different duplicate row (S3 review). */
+  journalEntryId: string;
 }
 
 const prismaCompletionDb: CompletionDb = {
@@ -170,12 +174,12 @@ export async function upsertMealCompletion(
     if (args.rating === null || existing.rating === args.rating) {
       if (args.toggle && args.rating !== null && existing.rating === args.rating) {
         await db.deleteMeal(existing.id); // route contract: same button = undo
-        return { action: "removed", journalMealId: null, rating: null };
+        return { action: "removed", journalMealId: null, rating: null, journalEntryId: entry.id };
       }
-      return { action: "unchanged", journalMealId: existing.id, rating: existing.rating };
+      return { action: "unchanged", journalMealId: existing.id, rating: existing.rating, journalEntryId: entry.id };
     }
     await db.updateMealRating(existing.id, args.rating);
-    return { action: "updated", journalMealId: existing.id, rating: args.rating };
+    return { action: "updated", journalMealId: existing.id, rating: args.rating, journalEntryId: entry.id };
   }
 
   const meal = await db.createMeal({
@@ -185,5 +189,5 @@ export async function upsertMealCompletion(
     skipped: false,
     rating: args.rating,
   });
-  return { action: "created", journalMealId: meal.id, rating: args.rating };
+  return { action: "created", journalMealId: meal.id, rating: args.rating, journalEntryId: entry.id };
 }
