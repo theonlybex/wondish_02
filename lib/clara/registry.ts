@@ -1,13 +1,14 @@
 import type { Skill, SkillTool, ToolDef } from "./types";
 import { profileSkill } from "./skills/profile";
 import { logsSkill } from "./skills/logs";
+import { nutritionSkill } from "./skills/nutrition";
 import { gapSkill } from "./gap";
 
 /**
  * Product skills — subject to CLARA_SKILLS. A skill cycle adds exactly one
  * import and one array entry here; nothing else in the runtime changes.
  */
-export const ALL_SKILLS: Skill[] = [profileSkill, logsSkill];
+export const ALL_SKILLS: Skill[] = [profileSkill, logsSkill, nutritionSkill];
 
 /**
  * Runtime skills are always active: gap_report is how we learn what to build
@@ -53,9 +54,12 @@ function buildTieBreakers(active: Skill[]): string {
   const ateRow = logsOn
     ? '- What they actually ATE — past meals, intake, "what did I eat", "how much protein today" → logs_ tools.'
     : '- What they actually ATE — past meals, intake → you have no intake tools right now: gap_report (LOGS) and say so.';
-  const leftRow = logsOn
-    ? "- Calories LEFT or targets → logs_day_summary knows only what was eaten, not goals: answer with the day's totals, and call gap_report (NUTRITION) if they asked what's remaining."
-    : "- Calories LEFT or targets → no tools for this: gap_report (NUTRITION) and say so.";
+  const nutritionOn = active.some((s) => s.name === "nutrition");
+  const leftRow = nutritionOn
+    ? '- Calories LEFT, targets, remaining, "did I go over", "am I hitting my protein" → nutrition_ tools (nutrition_day for one day, nutrition_range_summary for a week or month, nutrition_targets for the targets themselves). Never derive remaining by arithmetic over logs results.'
+    : logsOn
+      ? "- Calories LEFT or targets → logs_day_summary knows only what was eaten, not goals: answer with the day's totals, and call gap_report (NUTRITION) if they asked what's remaining."
+      : "- Calories LEFT or targets → no tools for this: gap_report (NUTRITION) and say so.";
   return `Which domain owns the question (do not mix these up):
 ${ateRow}
 - What is PLANNED — "what's for dinner", the meal plan, swapping dishes → you have no plan tools yet: gap_report (MEAL_PLAN) and say so.

@@ -11,6 +11,14 @@ import {
 import type { ClaraContext } from "../types";
 import type { DayEnvelope } from "@/lib/meal-log";
 import { sumMealLogs } from "@/lib/macros";
+import { startClaraLoop } from "../loop";
+import { resolveActiveSkills, findTool, ALL_SKILLS } from "../registry";
+import type {
+  ModelClient,
+  ModelContentBlock,
+  ModelRoundEvent,
+  ModelRoundRequest,
+} from "../types";
 
 const ctx: ClaraContext = {
   patientId: "p1",
@@ -249,4 +257,64 @@ test("skill shape: name, three tools, schemas carry no identity params", () => {
 test("fragment: carries the fiber caveat and the no-mental-math rule", () => {
   assert.match(nutritionSkill.promptFragment, /fiber/i);
   assert.match(nutritionSkill.promptFragment, /never .*(compute|derive|do the math)/i);
+});
+
+// ── loop round-trip (C0 stub pattern, no DB, no network) ──
+
+test("loop round-trip: 'calories left' → nutrition_day executes and the answer streams", async () => {
+  const rounds: { deltas?: string[]; content?: ModelContentBlock[] }[] = [
+    {
+      deltas: ["Let me check today. "],
+      content: [
+        { type: "text", text: "Let me check today. " },
+        { type: "tool_use", id: "t1", name: "nutrition_day", input: {} },
+      ],
+    },
+    { deltas: ["You have 480 kcal left."] },
+  ];
+  const seen: ModelRoundRequest[] = [];
+  let i = 0;
+  const client: ModelClient = {
+    async openRound(req) {
+      seen.push(structuredClone(req));
+      const round = rounds[i++] ?? { deltas: [] };
+      const content =
+        round.content ?? [{ type: "text" as const, text: (round.deltas ?? []).join("") }];
+      return (async function* () {
+        for (const d of round.deltas ?? []) yield { type: "text", text: d } as ModelRoundEvent;
+        yield { type: "end", content, stopReason: null } as ModelRoundEvent;
+      })();
+    },
+  };
+
+  const active = resolveActiveSkills(ALL_SKILLS, undefined);
+  const { deps } = fakeDeps();
+  const testHandlers = makeNutritionHandlers(deps);
+  const execute = async (name: string, input: Record<string, unknown>) => {
+    // Route through the registry so a rename breaks THIS test, then execute
+    // with injected deps (no DB in unit tests).
+    const hit = findTool(active, name);
+    assert.ok(hit, `registry has no tool ${name}`);
+    if (name === "nutrition_day") return testHandlers.day(ctx, input);
+    throw new Error(`unexpected tool ${name}`);
+  };
+
+  let out = "";
+  const gen = await startClaraLoop({
+    client,
+    system: "s",
+    tools: nutritionSkill.tools.map((t) => t.def),
+    messages: [{ role: "user", content: "how many calories do I have left?" }],
+    maxToolRounds: 2,
+    execute,
+  });
+  for await (const chunk of gen) out += chunk;
+
+  assert.equal(out, "Let me check today. You have 480 kcal left.");
+  assert.equal(seen.length, 2);
+  // tool_result content is itself a JSON string, so its quotes are escaped in
+  // the outer stringify — match the substance, not the quoting.
+  const replayed = JSON.stringify(seen[1].messages);
+  assert.match(replayed, /remaining/);
+  assert.match(replayed, /480/);
 });

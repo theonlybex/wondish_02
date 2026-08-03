@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveActiveSkills, buildToolDefs, buildSystemPrompt, findTool } from "./registry";
+import { resolveActiveSkills, buildToolDefs, buildSystemPrompt, findTool, ALL_SKILLS } from "./registry";
 import type { Skill, ToolResult, ClaraContext } from "./types";
 
 const noop = async (): Promise<ToolResult> => ({ ok: true, data: null });
@@ -218,4 +218,43 @@ test("calories-left guidance is consistent: answer totals AND flag the gap", () 
 test("the table is absent when the toolbox is empty, like every tool rule", () => {
   const prompt = buildSystemPrompt("Sam", "none", [], null);
   assert.ok(!/Which domain owns the question/i.test(prompt));
+});
+
+// ── S2 nutrition wiring ──
+
+test("S2: unset CLARA_SKILLS activates nutrition; its three tools are in the defs", () => {
+  const active = resolveActiveSkills(ALL_SKILLS, undefined);
+  const names = buildToolDefs(active).map((d) => d.name);
+  for (const n of ["nutrition_day", "nutrition_range_summary", "nutrition_targets"]) {
+    assert.equal(names.includes(n), true, `missing ${n}`);
+  }
+});
+
+test("S2: CLARA_SKILLS without nutrition hides the tools AND the tie-breaker names none of them", () => {
+  const active = resolveActiveSkills(ALL_SKILLS, "profile,logs");
+  const names = buildToolDefs(active).map((d) => d.name);
+  assert.equal(names.some((n) => n.startsWith("nutrition_")), false);
+  const prompt = buildSystemPrompt("Sam", "profile text", active, "2026-08-02");
+  // Dark-launch discipline (S1 amendment 6): no row may name absent tools.
+  assert.equal(prompt.includes("nutrition_"), false);
+  // Falls back to the S1 text: totals + gap_report for the remaining half.
+  assert.match(prompt, /gap_report \(NUTRITION\)/);
+});
+
+test("S2: with nutrition active the calories-LEFT row routes to nutrition_ tools and the stale logs sentence is gone", () => {
+  const active = resolveActiveSkills(ALL_SKILLS, undefined);
+  const prompt = buildSystemPrompt("Sam", "profile text", active, "2026-08-02");
+  assert.match(prompt, /Calories LEFT[\s\S]*nutrition_day/);
+  // The logs fragment must no longer steer "calories left" to gap_report.
+  assert.equal(prompt.includes("because the remaining/target part is not available yet"), false);
+  // And the two skills' fragments must not contradict: only the tie-breaker
+  // may mention gap_report (NUTRITION), and only in its inactive branch.
+  assert.equal(prompt.includes("gap_report (NUTRITION)"), false);
+});
+
+test("S2: logs-off/nutrition-on emits a coherent table (intake row steers to gap_report, LEFT row to nutrition)", () => {
+  const active = resolveActiveSkills(ALL_SKILLS, "profile,nutrition");
+  const prompt = buildSystemPrompt("Sam", "profile text", active, "2026-08-02");
+  assert.match(prompt, /gap_report \(LOGS\)/);
+  assert.match(prompt, /Calories LEFT[\s\S]*nutrition_day/);
 });

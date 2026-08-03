@@ -184,3 +184,8 @@ test("the handler stores the server-resolved reason, not the model's", async () 
 test("a LOGS gap while the logs skill is disabled is FLAGGED_OFF", () => {
   assert.equal(resolveGapReason("LOGS", "NOT_BUILT", ["logs"]), "FLAGGED_OFF");
 });
+
+test("S2: NUTRITION maps to the nutrition skill for FLAGGED_OFF resolution", () => {
+  assert.equal(resolveGapReason("NUTRITION", "NOT_BUILT", ["nutrition"]), "FLAGGED_OFF");
+  assert.equal(resolveGapReason("NUTRITION", "NOT_BUILT", []), "NOT_BUILT");
+});

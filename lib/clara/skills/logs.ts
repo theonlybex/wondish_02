@@ -233,7 +233,7 @@ const handlers = makeLogsHandlers();
 export const logsSkill: Skill = {
   name: "logs",
   promptFragment:
-    'About your logs_ tools: the meal log is the record of what the user ACTUALLY ATE (their intake), not what was planned. Use logs_search for any question about past eating; logs_day_summary for a single day\'s items and totals. It has no goals or targets: for "calories left"-type questions, answer with the day\'s totals and call gap_report (category NUTRITION) because the remaining/target part is not available yet. To log a meal: first state your estimate and ask ("Around 550 kcal — want me to log it for lunch?"); only after they agree call logs_create with exactly the numbers you stated. Omit any macro you are genuinely unsure of rather than inventing it. To delete: find the row with logs_search, and if several match what they described, list them and ask which — never guess. logs_delete needs the id from a search result in this conversation.',
+    'About your logs_ tools: the meal log is the record of what the user ACTUALLY ATE (their intake), not what was planned. Use logs_search for any question about past eating; logs_day_summary for a single day\'s items and totals. To log a meal: first state your estimate and ask ("Around 550 kcal — want me to log it for lunch?"); only after they agree call logs_create with exactly the numbers you stated. Omit any macro you are genuinely unsure of rather than inventing it. To delete: find the row with logs_search, and if several match what they described, list them and ask which — never guess. logs_delete needs the id from a search result in this conversation.',
   tools: [
     {
       def: {
