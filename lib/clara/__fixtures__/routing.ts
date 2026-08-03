@@ -46,7 +46,7 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
 
   // ── gaps: capabilities that do not exist yet ──
   { utterance: "add shellfish to my allergies", expect: "gap_report", note: "S6 not built; profile_get is read-only" },
-  { utterance: "what's for dinner tomorrow?", expect: "gap_report", note: "S3 not built" },
+  { utterance: "what's for dinner tomorrow?", expect: "plan_get", note: "S3: flipped from gap_report" },
   { utterance: "is oat milk on my grocery list?", expect: "gap_report", note: "S7 not built" },
   { utterance: "cancel my subscription", expect: "gap_report", note: "OUT_OF_SCOPE, still recorded" },
 
@@ -70,7 +70,7 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
   { utterance: "delete the snack I logged twice", expect: "logs_search", note: "find candidates first, then confirm" },
 
   // ── adversarial neighbours — must NOT hit logs ──
-  { utterance: "swap Wednesday's lunch for something else", expect: "gap_report", note: "MEAL_PLAN" },
+  { utterance: "swap Wednesday's lunch for something else", expect: "plan_get", note: "S3: flipped — find the menu first, alternatives second" },
   { utterance: "when did I last note feeling bloated?", expect: "gap_report", note: "felt ≠ eaten (JOURNAL)" },
   { utterance: "how was my energy this week?", expect: "gap_report", note: "JOURNAL" },
   {
@@ -81,7 +81,7 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
   { utterance: "is ramen okay for me?", expect: null, note: "dish check — profile, no tool" },
 
   // ── padding: unambiguous logs hits (keeps one flaky routing decision from
-  //    burning the whole ≥90% margin — 4 misses allowed at 42 cases) ──
+  //    burning the whole ≥90% margin — 5 misses allowed at 55 cases) ──
   { utterance: "what did I log for dinner on Tuesday?", expect: "logs_search" },
   { utterance: "have I eaten pasta this month?", expect: "logs_search" },
   { utterance: "list everything I ate yesterday", expect: "logs_search" },
@@ -132,4 +132,26 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
   // ── padding: unambiguous S2 hits (protects the ≥90% margin) ──
   { utterance: "how many carbs do I have left for the day?", expect: "nutrition_day" },
   { utterance: "how much protein should I be getting according to my plan?", expect: "nutrition_targets" },
+
+  // ── S3 plan — direct hits ──
+  { utterance: "what's for dinner tonight?", expect: "plan_get" },
+  { utterance: "what's on my meal plan this week?", expect: "plan_get" },
+  { utterance: "what am I supposed to have for breakfast tomorrow?", expect: "plan_get" },
+  { utterance: "show me alternatives for tonight's dinner", expect: "plan_get", note: "must locate the menu row before plan_alternatives" },
+  {
+    utterance: "I ate today's planned dinner",
+    expect: "plan_get",
+    note: "confirm rule: find the dish, then PROPOSE marking done — the write needs a yes first",
+  },
+
+  // ── S3 adversarial neighbours ──
+  { utterance: "regenerate my meal plan", expect: "gap_report", note: "OUT_OF_SCOPE refusal edge — link to Meal Plan tab" },
+  { utterance: "skip tonight's dinner", expect: "gap_report", note: "JOURNAL (S4) owns skipped" },
+  { utterance: "swap Friday's dinner for a restaurant meal", expect: "gap_report", note: "EXCHANGES (S10), not plan_swap_dish" },
+  { utterance: "what should I buy for this week's plan?", expect: "gap_report", note: "GROCERY (S7)" },
+  { utterance: "rate yesterday's lunch 4 stars", expect: "plan_get", note: "find the meal; the proposal must map stars → liked/disliked" },
+
+  // ── padding: unambiguous S3 hits ──
+  { utterance: "what's planned for lunch tomorrow?", expect: "plan_get" },
+  { utterance: "is there anything I can have instead of tomorrow's breakfast?", expect: "plan_get" },
 ];
