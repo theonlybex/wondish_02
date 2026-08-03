@@ -41,6 +41,13 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
   // Copy: the caller's history array is theirs, and the loop appends to its own.
   const messages: ModelMessage[] = [...params.messages];
 
+  // S3 structural confirm guard: a first-turn conversation (no assistant turn
+  // in the CLIENT-SENT history) cannot contain a proposed+confirmed write —
+  // whatever the model thinks. Zero false positives: any real confirm flow has
+  // at least one prior assistant message. Checked against params.messages, NOT
+  // the loop's growing copy (which gains assistant turns every round).
+  const hasPriorAssistantTurn = params.messages.some((m) => m.role === "assistant");
+
   const firstRound = await params.client.openRound({
     system: params.system,
     messages,
@@ -118,13 +125,23 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
         if (seenCallIds.has(call.id)) continue;
         seenCallIds.add(call.id);
         let result: ToolResult;
-        try {
-          result = await params.execute(call.name, call.input, call.id);
-        } catch (err) {
-          // A handler that throws is a bug, not a user-facing event: log it and
-          // hand the model a narratable result so the turn still completes.
-          params.onError?.(err);
-          result = { ok: false, reason: "FAILED", message: "The tool did not respond." };
+        const def = params.tools.find((t) => t.name === call.name);
+        if (def?.isWrite && !hasPriorAssistantTurn) {
+          result = {
+            ok: false,
+            reason: "CONFIRM_REQUIRED",
+            message:
+              "This change needs the user's explicit confirmation first. Propose it in plain words and wait for their yes.",
+          };
+        } else {
+          try {
+            result = await params.execute(call.name, call.input, call.id);
+          } catch (err) {
+            // A handler that throws is a bug, not a user-facing event: log it and
+            // hand the model a narratable result so the turn still completes.
+            params.onError?.(err);
+            result = { ok: false, reason: "FAILED", message: "The tool did not respond." };
+          }
         }
         results.push({
           type: "tool_result",

@@ -416,3 +416,78 @@ test("the tool call id reaches execute — write skills derive idempotency from 
   );
   assert.deepEqual(seenIds, ["toolu_42"]);
 });
+
+// ─── S3 E2: structural confirm guard ─────────────────────────────────────────
+
+const WRITE_TOOLS = [
+  { name: "x_write", description: "d", input_schema: { type: "object" as const, properties: {} }, isWrite: true },
+  { name: "x_get", description: "d", input_schema: { type: "object" as const, properties: {} } },
+];
+
+test("guard: a write tool on the first turn is refused, not executed", async () => {
+  let executed = 0;
+  const { client, seen } = stubClient([
+    { deltas: ["Logging it. "], content: [textBlock("Logging it. "), toolUse("t1", "x_write")] },
+    { deltas: ["Actually — shall I log it?"] },
+  ]);
+  const out = await drain(
+    await startClaraLoop({
+      client,
+      system: "s",
+      tools: WRITE_TOOLS,
+      messages: [{ role: "user", content: "log that ramen" }], // no assistant turn
+      maxToolRounds: 2,
+      execute: async () => {
+        executed += 1;
+        return { ok: true, data: null };
+      },
+    })
+  );
+  assert.equal(executed, 0);
+  const replay = JSON.stringify(seen[1].messages);
+  assert.match(replay, /CONFIRM_REQUIRED/);
+  assert.match(out, /shall I log it/i);
+});
+
+test("guard: the same write executes once the history has an assistant turn", async () => {
+  let executed = 0;
+  const { client } = stubClient([
+    { deltas: ["On it. "], content: [textBlock("On it. "), toolUse("t1", "x_write")] },
+    { deltas: ["Logged."] },
+  ]);
+  await drain(
+    await startClaraLoop({
+      client,
+      system: "s",
+      tools: WRITE_TOOLS,
+      messages: [
+        { role: "user", content: "log that ramen" },
+        { role: "assistant", content: "About 550 kcal — want me to log it?" },
+        { role: "user", content: "yes" },
+      ],
+      maxToolRounds: 2,
+      execute: async () => {
+        executed += 1;
+        return { ok: true, data: null };
+      },
+    })
+  );
+  assert.equal(executed, 1);
+});
+
+test("guard: read tools are untouched on the first turn", async () => {
+  let executed = 0;
+  const { client } = stubClient([
+    { deltas: ["Checking. "], content: [textBlock("Checking. "), toolUse("t1", "x_get")] },
+    { deltas: ["Here."] },
+  ]);
+  await drain(
+    await startClaraLoop({
+      client, system: "s", tools: WRITE_TOOLS,
+      messages: [{ role: "user", content: "what did I eat?" }],
+      maxToolRounds: 2,
+      execute: async () => { executed += 1; return { ok: true, data: null }; },
+    })
+  );
+  assert.equal(executed, 1);
+});

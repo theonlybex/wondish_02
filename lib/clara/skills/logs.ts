@@ -272,6 +272,7 @@ export const logsSkill: Skill = {
     {
       def: {
         name: "logs_create",
+        isWrite: true,
         description:
           "Log a meal the user actually ate, AFTER they have confirmed your stated estimate in conversation. Pass exactly the macro numbers you told them; omit any you did not state. Never call it on the same turn the meal is first mentioned.",
         input_schema: {
@@ -296,6 +297,7 @@ export const logsSkill: Skill = {
     {
       def: {
         name: "logs_delete",
+        isWrite: true,
         description:
           "Delete one meal-log entry, AFTER the user confirmed which one. logId must come from a logs_search/logs_day_summary result in this conversation. If several entries matched their description, ask which — do not pick one.",
         input_schema: {

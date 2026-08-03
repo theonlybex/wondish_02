@@ -255,3 +255,13 @@ test("bounds stay wired through the skill: giant note and servings reach INVALID
   const many = await h(fakeDeps().deps).create(ctx, { name: "x", mealType: "lunch", servings: 51 }, "t");
   assert.equal(!many.ok && many.reason, "INVALID_INPUT");
 });
+
+test("S3: both logs write tools carry the structural-guard flag; reads do not", () => {
+  const flags = Object.fromEntries(logsSkill.tools.map((t) => [t.def.name, t.def.isWrite === true]));
+  assert.deepEqual(flags, {
+    logs_search: false,
+    logs_day_summary: false,
+    logs_create: true,
+    logs_delete: true,
+  });
+});

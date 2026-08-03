@@ -9,7 +9,14 @@ export type ToolResult =
   | { ok: true; data: unknown }
   | {
       ok: false;
-      reason: "NOT_FOUND" | "AMBIGUOUS" | "OUT_OF_RANGE" | "INVALID_INPUT" | "NEEDS_PREMIUM" | "FAILED";
+      reason:
+        | "NOT_FOUND"
+        | "AMBIGUOUS"
+        | "OUT_OF_RANGE"
+        | "INVALID_INPUT"
+        | "NEEDS_PREMIUM"
+        | "CONFIRM_REQUIRED"
+        | "FAILED";
       message: string;
     };
 
@@ -17,6 +24,12 @@ export type ToolResult =
 export interface ToolDef {
   name: string;
   description: string;
+  /**
+   * S3 structural confirm guard: the loop refuses to execute a flagged tool
+   * when the request history holds no assistant turn (nothing can have been
+   * proposed+confirmed yet). Every write tool MUST set this.
+   */
+  isWrite?: boolean;
   input_schema: {
     type: "object";
     properties: Record<string, unknown>;
