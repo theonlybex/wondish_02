@@ -319,6 +319,13 @@ export interface DishRow {
   section: string;
   sortOrder: number;
   isRecommended: boolean;
+  // Whole-dish macros (nullable columns). Optional on the row type so
+  // callers built before 2026-08-04 still typecheck; serialized as null.
+  calories?: number | null;
+  protein?: number | null;
+  carbs?: number | null;
+  fat?: number | null;
+  fiber?: number | null;
 }
 
 export interface DishDTO {
@@ -332,6 +339,12 @@ export interface DishDTO {
   sortOrder: number;
   isRecommended: boolean;
   verdict: Verdict | null;
+  // Whole-dish macros, additive (2026-08-04) — null means unknown, never 0.
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  fiber: number | null;
 }
 
 export function serializeDish(
@@ -350,5 +363,10 @@ export function serializeDish(
     sortOrder: row.sortOrder,
     isRecommended: row.isRecommended,
     verdict: computeVerdict(ingredientNames, matchers),
+    calories: row.calories ?? null,
+    protein: row.protein ?? null,
+    carbs: row.carbs ?? null,
+    fat: row.fat ?? null,
+    fiber: row.fiber ?? null,
   };
 }

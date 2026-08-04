@@ -282,6 +282,11 @@ test("serializeDish: no profile → verdict null, price formatted, ingredients s
     section: "Starters",
     sortOrder: 0,
     isRecommended: false,
+    calories: 320,
+    protein: 12,
+    carbs: 28,
+    fat: 18,
+    fiber: 6,
   };
   const dish = serializeDish(row, ["Tahini", "Chickpeas"], null);
   assert.deepEqual(dish, {
@@ -295,6 +300,13 @@ test("serializeDish: no profile → verdict null, price formatted, ingredients s
     sortOrder: 0,
     isRecommended: false,
     verdict: null,
+    // Whole-dish macros surfaced additively (2026-08-04) so the app's menu
+    // can show calories; null column → null field, never a fabricated 0.
+    calories: 320,
+    protein: 12,
+    carbs: 28,
+    fat: 18,
+    fiber: 6,
   });
 });
 

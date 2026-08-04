@@ -36,6 +36,11 @@
  *     restaurant (ideally against a physical/current menu, or by phone —
  *     see per-restaurant `sourceUrls` in the JSON) before any real
  *     allergy-sensitive user is shown a verdict computed against them.
+ *   - NUTRITION IS AI-ESTIMATED (2026-08-04). Whole-dish calories/macros
+ *     were estimated from menu names/descriptions and typical recipes —
+ *     none are restaurant-provided. They exist so demo dishes price
+ *     correctly in the meal-log / plan-exchange flows; restaurant-verify
+ *     before presenting as authoritative nutrition facts.
  *   - PRICES MAY BE STALE. Freshness varies by restaurant/source — Thai Me
  *     Up and La Palma prices came from the restaurants' own websites
  *     (freshest); Dumpling U from an active BeyondMenu ordering listing;
@@ -76,6 +81,11 @@ interface SeedDish {
   price: string | null;
   currency?: string;
   isRecommended?: boolean;
+  // Whole-dish macros (RestaurantDish convention — NOT per-serving).
+  // AI-ESTIMATED from menu names/descriptions/typical recipes, same pilot
+  // provenance caveat as the inferred ingredient lists: restaurant-verify
+  // before treating as authoritative.
+  nutrition?: { calories: number; protein: number; carbs: number; fat: number; fiber: number };
   ingredients: SeedIngredient[];
 }
 
@@ -112,6 +122,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         sortOrder: 1,
         price: "15.07",
         isRecommended: true,
+        nutrition: { calories: 560, protein: 28, carbs: 62, fat: 22, fiber: 3 },
         ingredients: [
           { name: "Pork" },
           { name: "Wheat flour wrapper" },
@@ -128,6 +139,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Handcrafted",
         sortOrder: 2,
         price: "17.23",
+        nutrition: { calories: 520, protein: 30, carbs: 60, fat: 18, fiber: 3 },
         ingredients: [
           { name: "Shrimp" },
           { name: "Pork" },
@@ -143,6 +155,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Handcrafted",
         sortOrder: 3,
         price: "13.50",
+        nutrition: { calories: 640, protein: 26, carbs: 58, fat: 34, fiber: 3 },
         ingredients: [
           { name: "Pork" },
           { name: "Wheat flour wrapper" },
@@ -159,6 +172,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Handcrafted",
         sortOrder: 4,
         price: "9.67",
+        nutrition: { calories: 460, protein: 10, carbs: 38, fat: 30, fiber: 2 },
         ingredients: [
           { name: "Cream cheese" },
           { name: "Wonton wrapper (wheat, egg)" },
@@ -173,6 +187,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Appetizer",
         sortOrder: 1,
         price: "9.67",
+        nutrition: { calories: 120, protein: 3, carbs: 12, fat: 7, fiber: 2 },
         ingredients: [
           { name: "Cucumber" },
           { name: "Garlic" },
@@ -188,6 +203,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Appetizer",
         sortOrder: 2,
         price: "15.07",
+        nutrition: { calories: 620, protein: 42, carbs: 28, fat: 38, fiber: 2 },
         ingredients: [
           { name: "Pork chop" },
           { name: "Wheat flour batter" },
@@ -203,6 +219,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Noodles and Rice",
         sortOrder: 1,
         price: "15.07",
+        nutrition: { calories: 560, protein: 14, carbs: 88, fat: 16, fiber: 4 },
         ingredients: [
           { name: "Wheat noodles" },
           { name: "Garlic" },
@@ -218,6 +235,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Noodles and Rice",
         sortOrder: 2,
         price: "16.15",
+        nutrition: { calories: 680, protein: 38, carbs: 78, fat: 22, fiber: 5 },
         ingredients: [
           { name: "Beef" },
           { name: "Wheat noodles" },
@@ -234,6 +252,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Main Course",
         sortOrder: 1,
         price: "18.90",
+        nutrition: { calories: 780, protein: 28, carbs: 60, fat: 48, fiber: 3 },
         ingredients: [
           { name: "Shrimp" },
           { name: "Walnuts" },
@@ -265,6 +284,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         sortOrder: 1,
         price: "18.50",
         isRecommended: true,
+        nutrition: { calories: 720, protein: 38, carbs: 68, fat: 32, fiber: 6 },
         ingredients: [
           { name: "Tilapia" },
           { name: "Breading (wheat flour)" },
@@ -281,6 +301,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Seafood | Mariscos",
         sortOrder: 2,
         price: "19.50",
+        nutrition: { calories: 480, protein: 36, carbs: 20, fat: 28, fiber: 4 },
         ingredients: [
           { name: "Shrimp" },
           { name: "Dried chili peppers" },
@@ -296,6 +317,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Appetizers | Botana",
         sortOrder: 1,
         price: "13.95",
+        nutrition: { calories: 980, protein: 45, carbs: 78, fat: 54, fiber: 10 },
         ingredients: [
           { name: "Corn tortilla chips" },
           { name: "Carne asada (beef)" },
@@ -313,6 +335,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "La Palma Platters | Platillos a La Palma",
         sortOrder: 1,
         price: "17.95",
+        nutrition: { calories: 850, protein: 48, carbs: 72, fat: 40, fiber: 10 },
         ingredients: [
           { name: "Chicken" },
           { name: "Dried chili peppers" },
@@ -331,6 +354,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         sortOrder: 2,
         price: "14.95",
         isRecommended: true,
+        nutrition: { calories: 750, protein: 42, carbs: 52, fat: 40, fiber: 4 },
         ingredients: [
           { name: "Beef birria" },
           { name: "Corn tortilla" },
@@ -346,6 +370,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "La Palma Platters | Platillos a La Palma",
         sortOrder: 3,
         price: "17.95",
+        nutrition: { calories: 780, protein: 48, carbs: 62, fat: 34, fiber: 8 },
         ingredients: [
           { name: "Chicken or beef" },
           { name: "Bell pepper" },
@@ -361,6 +386,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Breakfast | Desayuno",
         sortOrder: 1,
         price: "13.95",
+        nutrition: { calories: 740, protein: 34, carbs: 70, fat: 36, fiber: 10 },
         ingredients: [
           { name: "Eggs" },
           { name: "Corn tortilla" },
@@ -378,6 +404,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "La Palma Platters | Platillos a La Palma",
         sortOrder: 4,
         price: "15.95",
+        nutrition: { calories: 760, protein: 44, carbs: 62, fat: 36, fiber: 9 },
         ingredients: [
           { name: "Pork" },
           { name: "Tomatillo" },
@@ -412,6 +439,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         sortOrder: 1,
         price: "18.99",
         isRecommended: true,
+        nutrition: { calories: 800, protein: 32, carbs: 95, fat: 30, fiber: 5 },
         ingredients: [
           { name: "Rice noodles" },
           { name: "Choice of protein" },
@@ -430,6 +458,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Curries",
         sortOrder: 1,
         price: "18.99",
+        nutrition: { calories: 550, protein: 28, carbs: 22, fat: 40, fiber: 5 },
         ingredients: [
           { name: "Green curry paste" },
           { name: "Coconut milk" },
@@ -446,6 +475,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Salads",
         sortOrder: 1,
         price: "19.50",
+        nutrition: { calories: 420, protein: 34, carbs: 16, fat: 24, fiber: 3 },
         ingredients: [
           { name: "Beef" },
           { name: "Toasted rice powder" },
@@ -463,6 +493,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Salads",
         sortOrder: 2,
         price: "18.50",
+        nutrition: { calories: 380, protein: 34, carbs: 14, fat: 20, fiber: 3 },
         ingredients: [
           { name: "Grilled beef" },
           { name: "Cucumber" },
@@ -479,6 +510,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Appetizers",
         sortOrder: 1,
         price: "17.50",
+        nutrition: { calories: 480, protein: 24, carbs: 32, fat: 28, fiber: 2 },
         ingredients: [
           { name: "Shrimp" },
           { name: "Red curry paste" },
@@ -494,6 +526,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Curries",
         sortOrder: 2,
         price: "18.99",
+        nutrition: { calories: 620, protein: 30, carbs: 24, fat: 46, fiber: 5 },
         ingredients: [
           { name: "Panang curry paste" },
           { name: "Coconut milk" },
@@ -509,6 +542,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Appetizers",
         sortOrder: 2,
         price: "12.50",
+        nutrition: { calories: 380, protein: 16, carbs: 30, fat: 22, fiber: 3 },
         ingredients: [
           { name: "Tofu (soy)" },
           { name: "Cornstarch" },
@@ -523,6 +557,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Desserts",
         sortOrder: 1,
         price: "13.00",
+        nutrition: { calories: 520, protein: 7, carbs: 92, fat: 14, fiber: 4 },
         ingredients: [
           { name: "Sticky rice" },
           { name: "Mango" },
@@ -552,6 +587,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         sortOrder: 1,
         price: "10.50",
         isRecommended: true,
+        nutrition: { calories: 300, protein: 14, carbs: 38, fat: 10, fiber: 2 },
         ingredients: [
           { name: "Tuna" },
           { name: "Sushi rice" },
@@ -567,6 +603,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Sushi Rolls",
         sortOrder: 2,
         price: "7.50",
+        nutrition: { calories: 260, protein: 8, carbs: 38, fat: 8, fiber: 3 },
         ingredients: [
           { name: "Imitation crab" },
           { name: "Avocado" },
@@ -581,6 +618,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Sushi Rolls",
         sortOrder: 3,
         price: "12.00",
+        nutrition: { calories: 400, protein: 16, carbs: 46, fat: 17, fiber: 3 },
         ingredients: [
           { name: "Soft-shell crab (shellfish)" },
           { name: "Lettuce" },
@@ -597,6 +635,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Sushi Rolls",
         sortOrder: 4,
         price: "15.00",
+        nutrition: { calories: 380, protein: 22, carbs: 42, fat: 12, fiber: 3 },
         ingredients: [
           { name: "Imitation crab" },
           { name: "Avocado" },
@@ -612,6 +651,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Appetizers",
         sortOrder: 1,
         price: "6.00",
+        nutrition: { calories: 280, protein: 12, carbs: 20, fat: 17, fiber: 1 },
         ingredients: [
           { name: "Parmesan cheese (dairy)" },
           { name: "Bay shrimp (shellfish)" },
@@ -625,6 +665,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Appetizers",
         sortOrder: 2,
         price: "12.00",
+        nutrition: { calories: 420, protein: 8, carbs: 46, fat: 23, fiber: 4 },
         ingredients: [
           { name: "Seasonal vegetables" },
           { name: "Tempura batter (wheat, egg)" },
@@ -638,6 +679,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Donburi (Rice Bowls)",
         sortOrder: 1,
         price: "10.00",
+        nutrition: { calories: 650, protein: 38, carbs: 88, fat: 14, fiber: 3 },
         ingredients: [
           { name: "Chicken" },
           { name: "Onion" },
@@ -652,6 +694,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Donburi (Rice Bowls)",
         sortOrder: 2,
         price: "14.00",
+        nutrition: { calories: 700, protein: 32, carbs: 96, fat: 20, fiber: 3 },
         ingredients: [
           { name: "Unagi (eel)" },
           { name: "Teriyaki sauce (soy)" },
@@ -682,6 +725,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         sortOrder: 1,
         price: "5.75",
         isRecommended: true,
+        nutrition: { calories: 820, protein: 45, carbs: 44, fat: 50, fiber: 3 },
         ingredients: [
           { name: "Ground chuck beef" },
           { name: "Cheese (dairy)" },
@@ -700,6 +744,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Sandwiches",
         sortOrder: 1,
         price: "4.25",
+        nutrition: { calories: 520, protein: 18, carbs: 44, fat: 31, fiber: 8 },
         ingredients: [
           { name: "Honey wheat bread (gluten)" },
           { name: "Mayonnaise (egg)" },
@@ -716,6 +761,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Sandwiches",
         sortOrder: 2,
         price: "5.75",
+        nutrition: { calories: 560, protein: 32, carbs: 42, fat: 28, fiber: 6 },
         ingredients: [
           { name: "Sourdough bread (gluten)" },
           { name: "Tuna (fish)" },
@@ -732,6 +778,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Sandwiches",
         sortOrder: 3,
         price: "5.75",
+        nutrition: { calories: 460, protein: 16, carbs: 40, fat: 26, fiber: 5 },
         ingredients: [
           { name: "Apple smoked bacon" },
           { name: "Lettuce" },
@@ -746,6 +793,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "From the Sea",
         sortOrder: 1,
         price: "10.95",
+        nutrition: { calories: 720, protein: 22, carbs: 68, fat: 40, fiber: 4 },
         ingredients: [
           { name: "Pacific oysters (shellfish)" },
           { name: "Batter (wheat flour, egg)" },
@@ -760,6 +808,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "From the Sea",
         sortOrder: 2,
         price: "5.25",
+        nutrition: { calories: 440, protein: 28, carbs: 42, fat: 18, fiber: 3 },
         ingredients: [
           { name: "Red snapper (fish)" },
           { name: "Sourdough bun (gluten)" },
@@ -773,6 +822,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "From the Grill",
         sortOrder: 2,
         price: "5.50",
+        nutrition: { calories: 680, protein: 40, carbs: 48, fat: 36, fiber: 7 },
         ingredients: [
           { name: "Ground chuck beef" },
           { name: "Homemade chili (beef, beans)" },
@@ -788,6 +838,7 @@ const RESTAURANTS: SeedRestaurant[] = [
         section: "Salads",
         sortOrder: 1,
         price: "7.95",
+        nutrition: { calories: 480, protein: 34, carbs: 14, fat: 32, fiber: 6 },
         ingredients: [
           { name: "Lettuce" },
           { name: "Sprouts" },
@@ -885,6 +936,14 @@ async function main() {
               price: dish.price,
               currency: dish.currency ?? "USD",
               isRecommended: dish.isRecommended ?? false,
+              // Macros are display scalars (same re-seed posture as price):
+              // updated on match so a re-run backfills dishes seeded before
+              // nutrition existed (2026-08-04).
+              calories: dish.nutrition?.calories ?? null,
+              protein: dish.nutrition?.protein ?? null,
+              carbs: dish.nutrition?.carbs ?? null,
+              fat: dish.nutrition?.fat ?? null,
+              fiber: dish.nutrition?.fiber ?? null,
             },
           });
         } else {
@@ -900,6 +959,11 @@ async function main() {
               status: "PUBLISHED",
               isRecommended: dish.isRecommended ?? false,
               available: true,
+              calories: dish.nutrition?.calories ?? null,
+              protein: dish.nutrition?.protein ?? null,
+              carbs: dish.nutrition?.carbs ?? null,
+              fat: dish.nutrition?.fat ?? null,
+              fiber: dish.nutrition?.fiber ?? null,
               ingredients: dish.ingredients.length
                 ? {
                     create: dish.ingredients.map((i) => ({
