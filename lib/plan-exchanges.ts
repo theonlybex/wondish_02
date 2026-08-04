@@ -236,6 +236,14 @@ export function eatGuard(args: { row: ExchangeRowLike; alreadyEaten: boolean }):
   return null;
 }
 
+// Eaten is toggleable (user request 2026-08-04): uneat tombstones the intake
+// MealLog the eat action wrote, so the exchanged dish reads un-logged again.
+// No status check — a log's existence implies the row was RESOLVED when eaten.
+export function uneatGuard(args: { alreadyEaten: boolean }): string | null {
+  if (!args.alreadyEaten) return "Not marked eaten yet";
+  return null;
+}
+
 const VALID_MEAL_TYPES = new Set(["breakfast", "lunch", "dinner", "snack"]);
 
 export function mealTypeForExchange(args: {

@@ -6,6 +6,7 @@ import {
   findExchangeById,
   resolveGuard,
   eatGuard,
+  uneatGuard,
   mealTypeForExchange,
   toExchangeDTO,
   localDayWindow,
@@ -31,8 +32,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
   const { action, menuId } = (body ?? {}) as { action?: unknown; menuId?: unknown };
-  if (action !== "resolve" && action !== "cancel" && action !== "eat") {
-    return NextResponse.json({ error: "action must be 'resolve', 'cancel' or 'eat'" }, { status: 400 });
+  if (action !== "resolve" && action !== "cancel" && action !== "eat" && action !== "uneat") {
+    return NextResponse.json({ error: "action must be 'resolve', 'cancel', 'eat' or 'uneat'" }, { status: 400 });
   }
   if (action === "resolve" && (typeof menuId !== "string" || !menuId)) {
     return NextResponse.json({ error: "menuId is required to resolve" }, { status: 400 });
@@ -131,6 +132,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       }
       throw err;
     }
+  }
+
+  if (action === "uneat") {
+    // Eaten-toggle undo (user request 2026-08-04): tombstones the intake
+    // MealLog(s) the eat action wrote, mirroring DELETE /api/meal-log's
+    // soft-delete semantics so delta sync still sees the row.
+    const eatenLogs = await prisma.mealLog.findMany({
+      where: { patientId: patient.id, planExchangeId: row.id, deletedAt: null },
+      select: { id: true },
+    });
+    const err = uneatGuard({ alreadyEaten: eatenLogs.length > 0 });
+    if (err) return NextResponse.json({ error: err }, { status: 409 });
+    await prisma.mealLog.updateMany({
+      where: { id: { in: eatenLogs.map((l) => l.id) } },
+      data: { deletedAt: new Date() },
+    });
+    return NextResponse.json({ exchange: toExchangeDTO(row, source, new Set()) });
   }
 
   // action === "resolve"

@@ -188,6 +188,16 @@ describe("eatGuard", () => {
     assert.match(eatGuard({ row: resolved, alreadyEaten: true })!, /already/i));
 });
 
+// ── uneatGuard (eaten toggle, user request 2026-08-04) ──────────────────────
+import { uneatGuard } from "./plan-exchanges";
+
+describe("uneatGuard", () => {
+  it("passes an eaten exchange", () =>
+    assert.equal(uneatGuard({ alreadyEaten: true }), null));
+  it("rejects when nothing was eaten", () =>
+    assert.match(uneatGuard({ alreadyEaten: false })!, /not marked eaten/i));
+});
+
 describe("mealTypeForExchange", () => {
   it("fridge rows use their own valid mealType", () =>
     assert.equal(mealTypeForExchange({ rowMealType: "breakfast", menuMealTypeName: null }), "breakfast"));
