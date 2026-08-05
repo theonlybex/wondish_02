@@ -42,7 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
   const matchers: DietMatchers | null = patient ? buildDietMatchers(derivePatientBans(patient)) : null;
 
   const dishRows = await prisma.restaurantDish.findMany({
-    where: { restaurantId: restaurant.id, status: "PUBLISHED", available: true },
+    where: { restaurantId: restaurant.id, status: "PUBLISHED", available: true, deletedAt: null },
     orderBy: [{ section: "asc" }, { sortOrder: "asc" }, { id: "asc" }], // deterministic
     include: { ingredients: { select: { name: true } } },
   });

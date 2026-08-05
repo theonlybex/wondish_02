@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   // Serving parity with app/api/restaurants/[slug]/route.ts — the dish and its
   // restaurant must both be PUBLISHED (and the dish available) to be accepted.
   const dish = await prisma.restaurantDish.findFirst({
-    where: { id: parsed.value.restaurantDishId, status: "PUBLISHED", available: true },
+    where: { id: parsed.value.restaurantDishId, status: "PUBLISHED", available: true, deletedAt: null },
     include: {
       restaurant: { select: { name: true, status: true } },
       ingredients: { select: { name: true } },

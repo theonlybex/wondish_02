@@ -36,6 +36,7 @@ model Account {
   patient           Patient?
   subscriptions     Subscription[]
   couponRedemptions CouponRedemption[]
+  restaurantStaff   RestaurantStaff[]
 }
 
 model Role {
@@ -159,7 +160,7 @@ model Patient {
   mealLogs          MealLog[]
 
   claraCapabilityRequests ClaraCapabilityRequest[]
-  supplements       Supplement[]
+  supplements             Supplement[]
 
   restaurantPlanExchanges RestaurantPlanExchange[]
   fridgePlanExchanges     FridgePlanExchange[]
@@ -364,14 +365,15 @@ model Recipe {
 }
 
 model Ingredient {
-  id       String             @id @default(cuid())
-  name     String             @unique
-  unit     String?
-  calories Float?
-  protein  Float?
-  carbs    Float?
-  fat      Float?
-  recipes  RecipeIngredient[]
+  id             String                     @id @default(cuid())
+  name           String                     @unique
+  unit           String?
+  calories       Float?
+  protein        Float?
+  carbs          Float?
+  fat            Float?
+  recipes        RecipeIngredient[]
+  restaurantUses RestaurantDishIngredient[]
 }
 
 model RecipeIngredient {
@@ -418,6 +420,7 @@ enum RestaurantStatus {
 
 enum RestaurantDishStatus {
   DRAFT
+  PENDING_REVIEW // staff publish awaiting ops approval (Phase 6a §7)
   PUBLISHED
 }
 
@@ -446,7 +449,10 @@ model Restaurant {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 
-  dishes RestaurantDish[]
+  dishes    RestaurantDish[]
+  staff     RestaurantStaff[]
+  invites   RestaurantInvite[]
+  auditLogs RestaurantAuditLog[]
 
   @@index([status, neighborhood])
 }
@@ -474,11 +480,16 @@ model RestaurantDish {
   fat      Float?
   fiber    Float?
 
-  isRecommended Boolean              @default(false)
-  available     Boolean              @default(true)
-  status        RestaurantDishStatus @default(DRAFT)
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  isRecommended  Boolean              @default(false)
+  available      Boolean              @default(true)
+  status         RestaurantDishStatus @default(DRAFT)
+  // Phase 6a: stamped on staff publish/verify — drives menu freshness.
+  lastVerifiedAt DateTime?
+  // Phase 6a: staff removals soft-delete (MealLog provenance survives);
+  // every serving query filters deletedAt: null.
+  deletedAt      DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   ingredients   RestaurantDishIngredient[]
   mealLogs      MealLog[]
@@ -494,7 +505,90 @@ model RestaurantDishIngredient {
   quantity Float?
   unit     String?
 
+  // Phase 6a: optional link to the site ingredient catalog. `name` stays
+  // the denormalized display string and the verdict input; free-text rows
+  // (ingredientId null) remain valid and get mapped by ops later.
+  ingredientId String?
+  ingredient   Ingredient? @relation(fields: [ingredientId], references: [id])
+
   @@id([dishId, name])
+}
+
+// ─── Restaurant self-service (Phase 6a, design doc
+// docs/restaurants/phase-6a-restaurant-admin-design.md) ──────────────────────
+
+enum RestaurantStaffRole {
+  OWNER // full control incl. staff management
+  MANAGER // menu + profile edits
+}
+
+model RestaurantStaff {
+  id           String              @id @default(cuid())
+  accountId    String
+  account      Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  restaurantId String
+  restaurant   Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  role         RestaurantStaffRole @default(MANAGER)
+  invitedById  String? // Account.id of the inviter (admin or OWNER)
+  createdAt    DateTime            @default(now())
+
+  @@unique([accountId, restaurantId])
+  @@index([restaurantId])
+}
+
+enum RestaurantInviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+model RestaurantInvite {
+  id                String                 @id @default(cuid())
+  restaurantId      String
+  restaurant        Restaurant             @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  email             String
+  role              RestaurantStaffRole    @default(OWNER)
+  status            RestaurantInviteStatus @default(PENDING)
+  clerkInvitationId String? // set when Clerk sent the email
+  invitedById       String // Account.id
+  createdAt         DateTime               @default(now())
+  acceptedAt        DateTime?
+
+  @@index([restaurantId, status])
+  @@index([email])
+}
+
+model RestaurantAuditLog {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  accountId    String // who acted (staff or SUPER)
+  entity       String // "restaurant" | "dish" | "ingredients" | "staff" | "invite"
+  entityId     String?
+  action       String // "create" | "update" | "publish" | "revoke" | ...
+  diff         Json?
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId, createdAt])
+}
+
+enum IngredientRequestStatus {
+  PENDING
+  MAPPED
+  REJECTED
+}
+
+model IngredientRequest {
+  id           String                  @id @default(cuid())
+  name         String
+  restaurantId String
+  requestedBy  String // Account.id
+  status       IngredientRequestStatus @default(PENDING)
+  mappedToId   String? // Ingredient.id once ops resolves it
+  createdAt    DateTime                @default(now())
+
+  @@index([status])
 }
 
 // ─── Meal Planning ────────────────────────────────────────────────────────────

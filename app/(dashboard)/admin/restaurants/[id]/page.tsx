@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import RestaurantDishManager, { DishRow } from "@/components/admin/RestaurantDishManager";
+import RestaurantStaffPanel from "@/components/admin/RestaurantStaffPanel";
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   const restaurant = await prisma.restaurant.findUnique({ where: { id: params.id } });
@@ -87,6 +88,10 @@ export default async function AdminRestaurantDishesPage({ params }: { params: { 
           dishTypes={dishTypes}
           mealTypes={mealTypes}
         />
+      </div>
+
+      <div className="ov mt-8" style={{ animationDelay: "160ms" }}>
+        <RestaurantStaffPanel restaurantId={restaurant.id} />
       </div>
     </div>
   );

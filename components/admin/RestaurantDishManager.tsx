@@ -23,7 +23,7 @@ export interface DishRow {
   fiber: number | null;
   isRecommended: boolean;
   available: boolean;
-  status: "DRAFT" | "PUBLISHED";
+  status: "DRAFT" | "PENDING_REVIEW" | "PUBLISHED";
   ingredients: { name: string; quantity: number | null; unit: string | null }[];
 }
 
@@ -115,7 +115,10 @@ export default function RestaurantDishManager({
     fiber: d.fiber != null ? String(d.fiber) : "",
     isRecommended: d.isRecommended,
     available: d.available,
-    status: d.status,
+    // The admin form's status select offers DRAFT/PUBLISHED only; an
+    // in-review dish (Phase 6a M3) edits as DRAFT here — the review queue,
+    // not this form, is the surface that resolves PENDING_REVIEW.
+    status: d.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
     ingredients: d.ingredients.map((i) => ({
       name: i.name,
       quantity: i.quantity != null ? String(i.quantity) : "",
@@ -166,7 +169,7 @@ export default function RestaurantDishManager({
                 </td>
                 <td className="py-3 px-4 hidden lg:table-cell text-[#848181]">{d.ingredients.length}</td>
                 <td className="py-3 px-4">
-                  <Badge variant={d.status === "PUBLISHED" ? "success" : "neutral"}>{d.status}</Badge>
+                  <Badge variant={d.status === "PUBLISHED" ? "success" : d.status === "PENDING_REVIEW" ? "warning" : "neutral"}>{d.status === "PENDING_REVIEW" ? "IN REVIEW" : d.status}</Badge>
                 </td>
                 <td className="py-3 px-4">
                   <div className="flex items-center gap-2 justify-end">

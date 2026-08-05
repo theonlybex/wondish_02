@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
   const dishesByRestaurant = new Map<string, string[][]>();
   if (matchers && pageRows.length > 0) {
     const dishRows = await prisma.restaurantDish.findMany({
-      where: { restaurantId: { in: pageRows.map((r) => r.id) }, status: "PUBLISHED", available: true },
+      where: { restaurantId: { in: pageRows.map((r) => r.id) }, status: "PUBLISHED", available: true, deletedAt: null },
       select: { restaurantId: true, ingredients: { select: { name: true } } },
     });
     for (const dish of dishRows) {
