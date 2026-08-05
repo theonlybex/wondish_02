@@ -82,6 +82,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const clerkInvite = await client.invitations.createInvitation({
           emailAddress: email,
           publicMetadata: { restaurantInviteId: invite.id },
+          // Post-signup landing: the accept page claims the invite and
+          // routes into the portal (design §4A step 3).
+          redirectUrl: `${req.nextUrl.origin}/restaurant/accept?inviteId=${invite.id}`,
           ignoreExisting: true,
         });
         await prisma.restaurantInvite.update({
