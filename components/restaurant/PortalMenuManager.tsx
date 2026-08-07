@@ -21,6 +21,20 @@ const STATUS_BADGE: Record<string, { label: string; variant: "success" | "warnin
 
 type PortalDishWithReview = PortalDishDTO & { pendingRevision?: DishRevisionDTO | null };
 
+// The editor must prefill from the staged-over-live view: the form resends
+// name+ingredients on every save, so prefilling from live data would make a
+// routine price tweak read as "revert my staged edits" and silently withdraw
+// the pending revision (audit fix).
+function withStagedOverlay(dish: PortalDishWithReview): PortalDishWithReview {
+  const staged = dish.pendingRevision;
+  if (!staged || staged.kind !== "EDIT") return dish;
+  return {
+    ...dish,
+    name: staged.name ?? dish.name,
+    ingredients: staged.ingredients ?? dish.ingredients,
+  };
+}
+
 export default function PortalMenuManager({
   restaurantId,
   initialDishes,
@@ -71,6 +85,8 @@ export default function PortalMenuManager({
           d.id === dish.id ? { ...body.dish, pendingRevision: body.pendingRevision ?? null } : d
         )
       );
+    } catch {
+      setError(`${dish.name}: network error — try again`);
     } finally {
       setBusyId(null);
     }
@@ -90,6 +106,8 @@ export default function PortalMenuManager({
         return;
       }
       setDishes((prev) => prev.filter((d) => d.id !== dish.id));
+    } catch {
+      setError(`${dish.name}: network error — try again`);
     } finally {
       setBusyId(null);
     }
@@ -188,7 +206,7 @@ export default function PortalMenuManager({
                         size="sm"
                         disabled={busy}
                         onClick={() => {
-                          setEditing(dish);
+                          setEditing(withStagedOverlay(dish));
                           setModalOpen(true);
                         }}
                       >

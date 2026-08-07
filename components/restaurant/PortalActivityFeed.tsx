@@ -51,6 +51,8 @@ export default function PortalActivityFeed({
       }
       setEntries((prev) => [...prev, ...(body.entries ?? [])]);
       setCursor(body.nextCursor ?? null);
+    } catch {
+      setError("Network error — try again.");
     } finally {
       setLoading(false);
     }

@@ -130,10 +130,15 @@ export interface ReviewOutcome {
 
 // Transition rules for an ops decision on a PENDING revision. The route owns
 // the actual writes; this owns what is allowed and what must happen.
+// `staged.stagedIngredientCount` is the EDIT payload's list length (null =
+// ingredients not staged): the publish gate ("never live with zero
+// ingredients") must hold at EDIT approval exactly as it does at publish —
+// an empty ingredient list verdicts as safe for every allergy profile.
 export function reviewDecision(
   kind: "PUBLISH" | "EDIT",
   action: "approve" | "reject",
-  dish: { status: string; deletedAt: Date | null; ingredientCount: number }
+  dish: { status: string; deletedAt: Date | null; ingredientCount: number },
+  staged?: { stagedIngredientCount: number | null }
 ): PortalParseResult<ReviewOutcome> {
   if (dish.deletedAt !== null) return fail("This dish has been removed by the restaurant");
 
@@ -152,6 +157,9 @@ export function reviewDecision(
 
   // EDIT — the dish stays live either way; approval swaps the payload in.
   if (action === "approve") {
+    if (staged && staged.stagedIngredientCount === 0) {
+      return fail("Cannot approve changes that would leave a live dish with no ingredients");
+    }
     return ok({ dishStatus: null, applyStaged: true, stampVerified: true });
   }
   return ok({ dishStatus: null, applyStaged: false, stampVerified: false });

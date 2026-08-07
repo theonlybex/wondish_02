@@ -169,10 +169,27 @@ export async function PATCH(
     }
     const instantIngredients = split.instant.ingredients ?? null;
 
-    const pendingRevision = dish.revisions[0] ?? null;
+    // The publish gate holds while live too: a PUBLISHED dish can never have
+    // its ingredient list staged down to zero (an empty list verdicts as
+    // safe for every allergy profile). Unpublish first.
+    if (split.staged && split.staged.ingredients !== null && split.staged.ingredients.length === 0) {
+      return NextResponse.json(
+        { error: "A live dish can't have its ingredient list emptied — unpublish it first" },
+        { status: 400 }
+      );
+    }
+
     const staging = effectiveStatus === "PUBLISHED" && (requestedName !== undefined || parsedIngredients !== null);
+    let stagedEffect = false; // did this request actually stage or withdraw anything?
 
     const updated = await prisma.$transaction(async (tx) => {
+      // Re-read the pending revision inside the transaction — the outer read
+      // can go stale under concurrent PATCHes, and the partial unique index
+      // (one PENDING per dish) turns a lost race into a P2002 → 409 below.
+      const pendingRevision = await tx.restaurantDishRevision.findFirst({
+        where: { dishId: dish.id, status: "PENDING" },
+        orderBy: { createdAt: "desc" },
+      });
       if (instantIngredients) {
         await tx.restaurantDishIngredient.deleteMany({ where: { dishId: dish.id } });
         if (instantIngredients.length) {
@@ -209,12 +226,14 @@ export async function PATCH(
 
         if (nextName === null && nextIngredients === null) {
           if (priorEdit) {
+            stagedEffect = true; // withdrawal is a real effect
             await tx.restaurantDishRevision.update({
               where: { id: priorEdit.id },
               data: { status: "CANCELLED" },
             });
           }
         } else if (priorEdit) {
+          stagedEffect = true;
           await tx.restaurantDishRevision.update({
             where: { id: priorEdit.id },
             data: {
@@ -224,6 +243,7 @@ export async function PATCH(
             },
           });
         } else {
+          stagedEffect = true;
           await tx.restaurantDishRevision.create({
             data: {
               dishId: dish.id,
@@ -235,13 +255,22 @@ export async function PATCH(
             },
           });
         }
-        diff.staged = {
-          name: nextName,
-          ingredients: nextIngredients ? nextIngredients.map((i) => i.name) : null,
-        };
+        if (stagedEffect) {
+          diff.staged = {
+            name: nextName,
+            ingredients: nextIngredients ? nextIngredients.map((i) => i.name) : null,
+          };
+        }
       }
 
       if (action === "submit") {
+        // A stranded pending revision (e.g. an EDIT left by pre-fix data)
+        // would collide with the one-PENDING-per-dish index; a submit
+        // re-reviews the dish's current data anyway, so it supersedes.
+        await tx.restaurantDishRevision.updateMany({
+          where: { dishId: dish.id, status: "PENDING" },
+          data: { status: "CANCELLED" },
+        });
         await tx.restaurantDishRevision.create({
           data: {
             dishId: dish.id,
@@ -256,8 +285,12 @@ export async function PATCH(
         if (pendingRevision.kind === "EDIT") {
           // The dish is leaving the menu — staged edits apply now so the
           // staff's work survives; the next submit reviews the whole dish.
-          if (pendingRevision.name) data.name = pendingRevision.name;
-          const stagedRows = pendingRevision.ingredients as unknown as PortalIngredientInput[] | null;
+          // Fields this request supplied explicitly always win over the
+          // older staged values (they were applied instantly above).
+          if (pendingRevision.name && requestedName === undefined) data.name = pendingRevision.name;
+          const stagedRows = parsedIngredients
+            ? null
+            : (pendingRevision.ingredients as unknown as PortalIngredientInput[] | null);
           if (stagedRows) {
             await tx.restaurantDishIngredient.deleteMany({ where: { dishId: dish.id } });
             if (stagedRows.length) {
@@ -292,10 +325,17 @@ export async function PATCH(
         accountId: ctx.account.id,
         entity: parsedIngredients ? "ingredients" : "dish",
         entityId: dish.id,
-        action: action ?? (staging ? "stage" : "update"),
+        action: action ?? (stagedEffect ? "stage" : "update"),
         diff: diff as never,
       });
       return row;
+    }).catch((err: unknown) => {
+      // The one-PENDING-per-dish unique index turns a concurrent staging
+      // race into a clean retry instead of a duplicate revision.
+      if (err && typeof err === "object" && (err as { code?: string }).code === "P2002") {
+        throw new Error("CONCURRENT_EDIT");
+      }
+      throw err;
     });
 
     if (parsedIngredients) {
@@ -309,6 +349,12 @@ export async function PATCH(
       staged: staging && Boolean(split.staged),
     });
   } catch (err) {
+    if (err instanceof Error && err.message === "CONCURRENT_EDIT") {
+      return NextResponse.json(
+        { error: "Someone else just edited this dish — reload and try again" },
+        { status: 409 }
+      );
+    }
     return adminErrorResponse(err);
   }
 }

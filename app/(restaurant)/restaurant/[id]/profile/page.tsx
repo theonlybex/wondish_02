@@ -16,6 +16,11 @@ export default async function RestaurantProfilePage({ params }: { params: { id: 
   const restaurant = await prisma.restaurant.findUnique({ where: { id: params.id } });
   if (!restaurant) notFound();
 
+  // Ops can store structured hours JSON via the admin API; the portal's v1
+  // hours editor is free text only. A locked field keeps a profile save from
+  // silently nulling structured data it can't render (audit fix).
+  const hoursLocked = restaurant.hours !== null && typeof restaurant.hours !== "string";
+
   return (
     <div>
       <div className="mb-8">
@@ -42,6 +47,7 @@ export default async function RestaurantProfilePage({ params }: { params: { id: 
             imageUrl: restaurant.imageUrl,
             logoUrl: restaurant.logoUrl,
           }}
+          hoursLocked={hoursLocked}
         />
       </div>
     </div>

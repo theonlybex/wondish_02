@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
 export default async function RestaurantStaffPage({ params }: { params: { id: string } }) {
   const gate = await getPortalPageContext(params.id);
   if (!gate.allowed) redirect(gate.redirectTo);
-  if (gate.ctx.membership && gate.ctx.membership.role !== "OWNER") {
+  if (!gate.ctx.isSuper && gate.ctx.membership && gate.ctx.membership.role !== "OWNER") {
     redirect(`/restaurant/${params.id}`);
   }
 

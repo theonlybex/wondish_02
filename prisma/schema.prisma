@@ -613,6 +613,9 @@ model RestaurantDishRevision {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
+  // NOTE: a partial unique index (not expressible in Prisma schema) enforces
+  // at most one PENDING revision per dish — see migration
+  // 20260807000000_revision_single_pending. Writers catch P2002 on create.
   @@index([status, createdAt])
   @@index([restaurantId, status, reviewedAt])
   @@index([dishId, status])

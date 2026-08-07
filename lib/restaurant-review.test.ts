@@ -184,3 +184,33 @@ describe("reviewDecision", () => {
     assert.equal(reviewDecision("PUBLISH", "reject", gone).ok, false);
   });
 });
+
+describe("reviewDecision — staged-empty guard (audit fix)", () => {
+  it("approve EDIT fails when the staged list would empty a live dish", () => {
+    const res = reviewDecision(
+      "EDIT",
+      "approve",
+      { status: "PUBLISHED", deletedAt: null, ingredientCount: 3 },
+      { stagedIngredientCount: 0 }
+    );
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.match(res.error, /ingredient/i);
+  });
+
+  it("approve EDIT passes with a non-empty staged list or no staged list (name-only)", () => {
+    const live = { status: "PUBLISHED", deletedAt: null, ingredientCount: 3 };
+    assert.ok(reviewDecision("EDIT", "approve", live, { stagedIngredientCount: 2 }).ok);
+    assert.ok(reviewDecision("EDIT", "approve", live, { stagedIngredientCount: null }).ok);
+    assert.ok(reviewDecision("EDIT", "approve", live).ok);
+  });
+
+  it("reject EDIT is unaffected by an empty staged list", () => {
+    const res = reviewDecision(
+      "EDIT",
+      "reject",
+      { status: "PUBLISHED", deletedAt: null, ingredientCount: 3 },
+      { stagedIngredientCount: 0 }
+    );
+    assert.ok(res.ok);
+  });
+});

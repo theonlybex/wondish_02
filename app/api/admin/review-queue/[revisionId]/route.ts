@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin";
 import { auditRestaurantChange } from "@/lib/restaurant-audit";
@@ -11,6 +12,21 @@ import type { PortalIngredientInput } from "@/lib/restaurant-portal";
 // reject → dish untouched. Rejections carry a note the portal shows the
 // restaurant. Every decision is audited and (on approve) stamps
 // lastVerifiedAt — ops just verified the list.
+//
+// Audit-fix invariants: the revision is CLAIMED inside the transaction
+// (status PENDING → terminal via a guarded updateMany), and the dish is
+// re-read + re-validated inside the same transaction, so a concurrent staff
+// unpublish/delete/PATCH or a second admin's decision aborts with 409
+// instead of overwriting a terminal state or applying a stale payload.
+
+class DecisionConflict extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+  }
+}
 
 export async function POST(
   req: NextRequest,
@@ -26,87 +42,148 @@ export async function POST(
 
     const revision = await prisma.restaurantDishRevision.findUnique({
       where: { id: params.revisionId },
-      include: {
-        dish: {
-          include: { ingredients: { select: { name: true } } },
-        },
-      },
+      select: { id: true, status: true },
     });
     if (!revision) return NextResponse.json({ error: "Revision not found" }, { status: 404 });
     if (revision.status !== "PENDING") {
       return NextResponse.json({ error: "This revision has already been decided" }, { status: 409 });
     }
 
-    const decision = reviewDecision(revision.kind, action, {
-      status: revision.dish.status,
-      deletedAt: revision.dish.deletedAt,
-      ingredientCount: revision.dish.ingredients.length,
-    });
-    if (!decision.ok) return NextResponse.json({ error: decision.error }, { status: 400 });
-    const outcome = decision.value;
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Claim first — terminal states are never overwritten. A concurrent
+        // decision, or a staff unpublish/delete that cancelled the revision,
+        // makes this a no-op and the whole transaction rolls back.
+        const claimed = await tx.restaurantDishRevision.updateMany({
+          where: { id: params.revisionId, status: "PENDING" },
+          data: {
+            status: action === "approve" ? "APPROVED" : "REJECTED",
+            reviewNote: note,
+            reviewedBy: admin.id,
+            reviewedAt: new Date(),
+          },
+        });
+        if (claimed.count === 0) {
+          throw new DecisionConflict("This revision has already been decided", 409);
+        }
 
-    const stagedIngredients =
-      (revision.ingredients as unknown as PortalIngredientInput[] | null) ?? null;
+        // Re-read revision payload + dish state inside the claim.
+        const rev = await tx.restaurantDishRevision.findUniqueOrThrow({
+          where: { id: params.revisionId },
+          include: {
+            dish: { include: { ingredients: { select: { name: true } } } },
+          },
+        });
+        const stagedIngredients =
+          (rev.ingredients as unknown as PortalIngredientInput[] | null) ?? null;
 
-    await prisma.$transaction(async (tx) => {
-      const dishData: Record<string, unknown> = {};
-      if (outcome.dishStatus) dishData.status = outcome.dishStatus;
-      if (outcome.stampVerified) dishData.lastVerifiedAt = new Date();
+        const decision = reviewDecision(
+          rev.kind,
+          action,
+          {
+            status: rev.dish.status,
+            deletedAt: rev.dish.deletedAt,
+            ingredientCount: rev.dish.ingredients.length,
+          },
+          { stagedIngredientCount: stagedIngredients ? stagedIngredients.length : null }
+        );
+        if (!decision.ok) throw new DecisionConflict(decision.error, 400);
+        const outcome = decision.value;
 
-      if (outcome.applyStaged) {
-        if (revision.name) dishData.name = revision.name;
-        if (stagedIngredients) {
-          await tx.restaurantDishIngredient.deleteMany({ where: { dishId: revision.dishId } });
-          if (stagedIngredients.length) {
-            await tx.restaurantDishIngredient.createMany({
-              data: stagedIngredients.map((i) => ({
-                dishId: revision.dishId,
-                name: i.name,
-                quantity: i.quantity,
-                unit: i.unit,
-                ingredientId: i.ingredientId,
-              })),
-            });
+        const dishData: Record<string, unknown> = {};
+        if (outcome.dishStatus) dishData.status = outcome.dishStatus;
+        if (outcome.stampVerified) dishData.lastVerifiedAt = new Date();
+
+        if (outcome.applyStaged) {
+          if (rev.name) dishData.name = rev.name;
+          if (stagedIngredients) {
+            // Free-text rows staged before ops mapped their name get the
+            // catalog link now: exact-name catalog match first, then a
+            // MAPPED IngredientRequest (covers synonym mappings), so an
+            // approval can't revert rows the mapping queue already fixed.
+            const rows = await resolveStagedCatalogLinks(tx, stagedIngredients);
+            await tx.restaurantDishIngredient.deleteMany({ where: { dishId: rev.dishId } });
+            if (rows.length) {
+              await tx.restaurantDishIngredient.createMany({
+                data: rows.map((i) => ({
+                  dishId: rev.dishId,
+                  name: i.name,
+                  quantity: i.quantity,
+                  unit: i.unit,
+                  ingredientId: i.ingredientId,
+                })),
+                skipDuplicates: true,
+              });
+            }
           }
         }
-      }
 
-      if (Object.keys(dishData).length) {
-        await tx.restaurantDish.update({ where: { id: revision.dishId }, data: dishData });
-      }
+        if (Object.keys(dishData).length) {
+          await tx.restaurantDish.update({ where: { id: rev.dishId }, data: dishData });
+        }
 
-      await tx.restaurantDishRevision.update({
-        where: { id: revision.id },
-        data: {
-          status: action === "approve" ? "APPROVED" : "REJECTED",
-          reviewNote: note,
-          reviewedBy: admin.id,
-          reviewedAt: new Date(),
-        },
+        await auditRestaurantChange(tx, {
+          restaurantId: rev.restaurantId,
+          accountId: admin.id,
+          entity: rev.kind === "EDIT" ? "ingredients" : "dish",
+          entityId: rev.dishId,
+          action: action === "approve" ? "approve" : "reject",
+          diff: {
+            revisionId: rev.id,
+            kind: rev.kind,
+            note,
+            ...(outcome.applyStaged
+              ? {
+                  name: rev.name,
+                  ingredients: stagedIngredients ? stagedIngredients.map((i) => i.name) : null,
+                }
+              : {}),
+          },
+        });
       });
-
-      await auditRestaurantChange(tx, {
-        restaurantId: revision.restaurantId,
-        accountId: admin.id,
-        entity: revision.kind === "EDIT" ? "ingredients" : "dish",
-        entityId: revision.dishId,
-        action: action === "approve" ? "approve" : "reject",
-        diff: {
-          revisionId: revision.id,
-          kind: revision.kind,
-          note,
-          ...(outcome.applyStaged
-            ? {
-                name: revision.name,
-                ingredients: stagedIngredients ? stagedIngredients.map((i) => i.name) : null,
-              }
-            : {}),
-        },
-      });
-    });
+    } catch (err) {
+      if (err instanceof DecisionConflict) {
+        return NextResponse.json({ error: err.message }, { status: err.status });
+      }
+      throw err;
+    }
 
     return NextResponse.json({ ok: true, status: action === "approve" ? "APPROVED" : "REJECTED" });
   } catch (err) {
     return adminErrorResponse(err);
   }
+}
+
+async function resolveStagedCatalogLinks(
+  tx: Prisma.TransactionClient,
+  rows: PortalIngredientInput[]
+): Promise<PortalIngredientInput[]> {
+  const freeNames = rows.filter((r) => r.ingredientId === null).map((r) => r.name);
+  if (freeNames.length === 0) return rows;
+
+  const [catalog, mapped] = await Promise.all([
+    tx.ingredient.findMany({
+      where: { OR: freeNames.map((n) => ({ name: { equals: n, mode: "insensitive" as const } })) },
+      select: { id: true, name: true },
+    }),
+    tx.ingredientRequest.findMany({
+      where: {
+        status: "MAPPED",
+        mappedToId: { not: null },
+        OR: freeNames.map((n) => ({ name: { equals: n, mode: "insensitive" as const } })),
+      },
+      select: { name: true, mappedToId: true },
+    }),
+  ]);
+  const byName = new Map<string, string>();
+  for (const m of mapped) {
+    if (m.mappedToId) byName.set(m.name.toLowerCase(), m.mappedToId);
+  }
+  for (const c of catalog) byName.set(c.name.toLowerCase(), c.id); // exact match wins
+
+  return rows.map((r) =>
+    r.ingredientId === null
+      ? { ...r, ingredientId: byName.get(r.name.toLowerCase()) ?? null }
+      : r
+  );
 }

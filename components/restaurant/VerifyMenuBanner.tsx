@@ -29,6 +29,8 @@ export default function VerifyMenuBanner({
         return;
       }
       router.refresh();
+    } catch {
+      setError("Network error — try again.");
     } finally {
       setBusy(false);
     }

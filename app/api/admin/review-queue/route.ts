@@ -11,8 +11,20 @@ import type { PortalIngredientInput } from "@/lib/restaurant-portal";
 
 // M2 shipped submits before revision rows existed, so a dish can sit in
 // PENDING_REVIEW with no pending revision. Backfill those lazily — the queue
-// is the only surface that cares, and this keeps it complete.
+// is the only surface that cares, and this keeps it complete. Also the
+// inverse self-heal: a PENDING PUBLISH revision whose dish left
+// PENDING_REVIEW (or was deleted) is undecidable — reviewDecision rejects
+// both verdicts — so cancel it rather than show a stuck card.
 async function backfillLegacyPublishSubmits() {
+  await prisma.restaurantDishRevision.updateMany({
+    where: {
+      status: "PENDING",
+      kind: "PUBLISH",
+      dish: { OR: [{ status: { not: "PENDING_REVIEW" } }, { deletedAt: { not: null } }] },
+    },
+    data: { status: "CANCELLED" },
+  });
+
   const orphans = await prisma.restaurantDish.findMany({
     where: {
       status: "PENDING_REVIEW",
@@ -22,14 +34,21 @@ async function backfillLegacyPublishSubmits() {
     select: { id: true, restaurantId: true },
   });
   for (const dish of orphans) {
-    await prisma.restaurantDishRevision.create({
-      data: {
-        dishId: dish.id,
-        restaurantId: dish.restaurantId,
-        kind: "PUBLISH",
-        submittedBy: "system-backfill", // pre-M3 submit; submitter unknown
-      },
-    });
+    try {
+      await prisma.restaurantDishRevision.create({
+        data: {
+          dishId: dish.id,
+          restaurantId: dish.restaurantId,
+          kind: "PUBLISH",
+          submittedBy: "system-backfill", // pre-M3 submit; submitter unknown
+        },
+      });
+    } catch (err) {
+      // Concurrent queue GET won the one-PENDING-per-dish index — fine.
+      if (!(err && typeof err === "object" && (err as { code?: string }).code === "P2002")) {
+        throw err;
+      }
+    }
   }
 }
 

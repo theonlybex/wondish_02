@@ -56,6 +56,8 @@ function ImageUploadField({
         return;
       }
       onChange(body.url);
+    } catch {
+      onError("Upload failed — check your connection and try again.");
     } finally {
       setUploading(false);
     }
@@ -87,12 +89,20 @@ function ImageUploadField({
               variant="secondary"
               size="sm"
               loading={uploading}
+              aria-label={`${value ? "Replace" : "Upload"} ${label.toLowerCase()}`}
               onClick={() => inputRef.current?.click()}
             >
               {value ? "Replace" : "Upload"}
             </Button>
             {value && (
-              <Button type="button" variant="secondary" size="sm" disabled={uploading} onClick={() => onChange(null)}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={uploading}
+                aria-label={`Remove ${label.toLowerCase()}`}
+                onClick={() => onChange(null)}
+              >
                 Remove
               </Button>
             )}
@@ -117,7 +127,15 @@ function ImageUploadField({
   );
 }
 
-export default function PortalProfileForm({ initial }: { initial: PortalProfileDTO }) {
+export default function PortalProfileForm({
+  initial,
+  hoursLocked = false,
+}: {
+  initial: PortalProfileDTO;
+  // True when ops stored structured hours JSON the portal can't edit — the
+  // field renders read-only and is omitted from the save payload.
+  hoursLocked?: boolean;
+}) {
   const [form, setForm] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -145,7 +163,7 @@ export default function PortalProfileForm({ initial }: { initial: PortalProfileD
           postalCode: form.postalCode,
           phone: form.phone,
           website: form.website,
-          hours: form.hours,
+          ...(hoursLocked ? {} : { hours: form.hours }),
           imageUrl: form.imageUrl,
           logoUrl: form.logoUrl,
         }),
@@ -156,6 +174,8 @@ export default function PortalProfileForm({ initial }: { initial: PortalProfileD
         return;
       }
       setSaved(true);
+    } catch {
+      setError("Network error — check your connection and try again.");
     } finally {
       setSaving(false);
     }
@@ -283,17 +303,25 @@ export default function PortalProfileForm({ initial }: { initial: PortalProfileD
         <label className={labelClass} htmlFor="profile-hours">
           Hours
         </label>
-        <textarea
-          id="profile-hours"
-          value={form.hours ?? ""}
-          onChange={(e) => set("hours", e.target.value)}
-          rows={3}
-          className={fieldClass}
-          placeholder={"Mon–Fri 11:00–21:00\nSat–Sun 12:00–22:00"}
-        />
-        <p className="text-[11px] mt-1" style={{ color: "#ABA6A6" }}>
-          Free text — shown to diners exactly as written.
-        </p>
+        {hoursLocked ? (
+          <p className="text-sm bg-[#F9F7ED] border border-[#EAE4CA] rounded-xl px-4 py-3" style={{ color: "#848181" }}>
+            Your hours are managed by your Wondish contact — ask them to make changes.
+          </p>
+        ) : (
+          <>
+            <textarea
+              id="profile-hours"
+              value={form.hours ?? ""}
+              onChange={(e) => set("hours", e.target.value)}
+              rows={3}
+              className={fieldClass}
+              placeholder={"Mon–Fri 11:00–21:00\nSat–Sun 12:00–22:00"}
+            />
+            <p className="text-[11px] mt-1" style={{ color: "#ABA6A6" }}>
+              Free text — e.g. one line per set of days.
+            </p>
+          </>
+        )}
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">

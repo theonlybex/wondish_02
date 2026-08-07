@@ -37,6 +37,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const { success } = await rateLimit("restaurant-portal-write", ctx.account.id, 60, 60);
     if (!success) return NextResponse.json({ error: "Too many requests. Please slow down." }, { status: 429 });
 
+    // Staff membership implies the restaurant exists, but SUPER bypasses —
+    // check explicitly so a bad id 404s instead of hitting the FK.
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: params.id },
+      select: { id: true },
+    });
+    if (!restaurant) return NextResponse.json({ error: "Restaurant not found" }, { status: 404 });
+
     const [staffCount, pendingCount] = await Promise.all([
       prisma.restaurantStaff.count({ where: { restaurantId: params.id } }),
       prisma.restaurantInvite.count({ where: { restaurantId: params.id, status: "PENDING" } }),

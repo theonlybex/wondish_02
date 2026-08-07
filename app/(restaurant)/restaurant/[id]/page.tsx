@@ -58,14 +58,17 @@ export default async function RestaurantDashboardPage({ params }: { params: { id
   const inReview = dishes.filter((d) => d.status === "PENDING_REVIEW").length;
   const missingNutrition = dishes.filter((d) => d.calories == null).length;
 
-  // Freshness (design §7): newest verification across live dishes drives the
-  // quarterly nudge.
-  const lastVerified = dishes
-    .filter((d) => d.status === "PUBLISHED")
-    .reduce<Date | null>(
-      (max, d) => (d.lastVerifiedAt && (!max || d.lastVerifiedAt > max) ? d.lastVerifiedAt : max),
-      null
-    );
+  // Freshness (design §7): the OLDEST verification across live dishes drives
+  // the quarterly nudge — newest-wins would let one freshly approved dish
+  // reset the whole menu's clock while older ingredient lists go stale
+  // (audit fix). A live dish never stamped counts as "never verified".
+  const liveDishes = dishes.filter((d) => d.status === "PUBLISHED");
+  const lastVerified = liveDishes.some((d) => d.lastVerifiedAt === null)
+    ? null
+    : liveDishes.reduce<Date | null>(
+        (min, d) => (d.lastVerifiedAt && (!min || d.lastVerifiedAt < min) ? d.lastVerifiedAt : min),
+        null
+      );
   const showVerifyNudge = needsVerifyNudge(lastVerified, published, new Date());
 
   const cards = [

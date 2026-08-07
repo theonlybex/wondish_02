@@ -70,6 +70,8 @@ export default function PortalStaffPanel({
       );
       setEmail("");
       await reloadInvites();
+    } catch {
+      setError("Network error — try again.");
     } finally {
       setBusy(null);
     }
@@ -96,6 +98,8 @@ export default function PortalStaffPanel({
         return;
       }
       setInvites((prev) => prev.map((i) => (i.id === row.id ? { ...i, status: "REVOKED" } : i)));
+    } catch {
+      setError("Network error — try again.");
     } finally {
       setBusy(null);
     }
@@ -117,6 +121,8 @@ export default function PortalStaffPanel({
         return;
       }
       setStaff((prev) => prev.filter((s) => s.id !== row.id));
+    } catch {
+      setError("Network error — try again.");
     } finally {
       setBusy(null);
     }
