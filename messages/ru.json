@@ -168,6 +168,8 @@
     "parameters": "Параметры",
     "coupons": "Купоны",
     "claraGaps": "Запросы Clara",
+    "reviewQueue": "Очередь проверки",
+    "ingredientRequests": "Запросы ингредиентов",
     "signOut": "Выйти"
   },
   "dashboardHeader": {

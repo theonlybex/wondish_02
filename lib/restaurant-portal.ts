@@ -103,7 +103,7 @@ export function parsePortalMacros(raw: unknown): PortalParseResult<PortalMacros>
 
 // Staff status transitions (design §7). Submitting runs the Phase-1
 // ingredient publish gate; approval to PUBLISHED is the admin review
-// queue's job (M3 — until then ops flips status in the admin dish form).
+// queue's job (/admin/review-queue).
 export function portalStatusAction(
   action: "submit" | "unpublish",
   currentStatus: string,

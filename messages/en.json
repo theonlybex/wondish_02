@@ -168,6 +168,8 @@
     "parameters": "Parameters",
     "coupons": "Coupons",
     "claraGaps": "Clara demand",
+    "reviewQueue": "Review queue",
+    "ingredientRequests": "Ingredient requests",
     "signOut": "Sign out"
   },
   "dashboardHeader": {

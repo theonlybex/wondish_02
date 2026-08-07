@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import PortalMenuManager from "@/components/restaurant/PortalMenuManager";
-import { serializePortalDish } from "@/lib/restaurant-portal-server";
+import { serializePortalDish, serializeDishRevision } from "@/lib/restaurant-portal-server";
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   const restaurant = await prisma.restaurant.findUnique({ where: { id: params.id } });
@@ -33,7 +33,10 @@ export default async function RestaurantMenuPage({ params }: { params: { id: str
   const dishes = await prisma.restaurantDish.findMany({
     where: { restaurantId: params.id, deletedAt: null },
     orderBy: [{ section: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
-    include: { ingredients: { select: { name: true, quantity: true, unit: true, ingredientId: true } } },
+    include: {
+      ingredients: { select: { name: true, quantity: true, unit: true, ingredientId: true } },
+      revisions: { where: { status: "PENDING" }, orderBy: { createdAt: "desc" }, take: 1 },
+    },
   });
 
   return (
@@ -51,7 +54,10 @@ export default async function RestaurantMenuPage({ params }: { params: { id: str
 
       <PortalMenuManager
         restaurantId={restaurant.id}
-        initialDishes={dishes.map(serializePortalDish)}
+        initialDishes={dishes.map((d) => ({
+          ...serializePortalDish(d),
+          pendingRevision: d.revisions[0] ? serializeDishRevision(d.revisions[0]) : null,
+        }))}
       />
     </div>
   );

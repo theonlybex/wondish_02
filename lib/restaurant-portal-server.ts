@@ -47,6 +47,33 @@ export function serializePortalDish(d: PortalDishRowLike) {
 
 export type PortalDishDTO = ReturnType<typeof serializePortalDish>;
 
+export interface DishRevisionRowLike {
+  id: string;
+  kind: string;
+  status: string;
+  name: string | null;
+  ingredients: unknown; // Json column — PortalIngredientInput[] | null
+  reviewNote: string | null;
+  createdAt: Date;
+  reviewedAt: Date | null;
+}
+
+// Phase 6a M3 — a staged change awaiting (or back from) ops review.
+export function serializeDishRevision(r: DishRevisionRowLike) {
+  return {
+    id: r.id,
+    kind: r.kind,
+    status: r.status,
+    name: r.name,
+    ingredients: (r.ingredients as PortalIngredientInput[] | null) ?? null,
+    reviewNote: r.reviewNote,
+    createdAt: r.createdAt.toISOString(),
+    reviewedAt: r.reviewedAt ? r.reviewedAt.toISOString() : null,
+  };
+}
+
+export type DishRevisionDTO = ReturnType<typeof serializeDishRevision>;
+
 // Free-text ingredient rows (no catalog id) file an IngredientRequest so ops
 // can grow the catalog (design §5.4). Deduped against open requests.
 export async function fileIngredientRequests(

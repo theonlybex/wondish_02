@@ -5,11 +5,17 @@ import { requireRestaurantStaff } from "@/lib/restaurant-auth";
 import { auditRestaurantChange } from "@/lib/restaurant-audit";
 import { coercePrice } from "@/lib/admin-restaurants";
 import { parsePortalIngredients, parsePortalMacros } from "@/lib/restaurant-portal";
-import { serializePortalDish, fileIngredientRequests } from "@/lib/restaurant-portal-server";
+import {
+  serializePortalDish,
+  serializeDishRevision,
+  fileIngredientRequests,
+} from "@/lib/restaurant-portal-server";
 import { rateLimit } from "@/lib/rate-limit";
 
-// Phase 6a M2 — staff dish list + create (design §5.2/§5.3/§6). Creates are
-// always DRAFT; going live is PATCH { action: "submit" } + ops approval.
+// Phase 6a M2/M3 — staff dish list + create (design §5.2/§5.3/§6). Creates
+// are always DRAFT; going live is PATCH { action: "submit" } + ops approval
+// in /admin/review-queue. Each dish carries its pending revision (if any) so
+// the menu manager can show "edits in review".
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -20,9 +26,17 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const dishes = await prisma.restaurantDish.findMany({
       where: { restaurantId: params.id, deletedAt: null },
       orderBy: [{ section: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
-      include: { ingredients: { select: { name: true, quantity: true, unit: true, ingredientId: true } } },
+      include: {
+        ingredients: { select: { name: true, quantity: true, unit: true, ingredientId: true } },
+        revisions: { where: { status: "PENDING" }, orderBy: { createdAt: "desc" }, take: 1 },
+      },
     });
-    return NextResponse.json({ dishes: dishes.map(serializePortalDish) });
+    return NextResponse.json({
+      dishes: dishes.map((d) => ({
+        ...serializePortalDish(d),
+        pendingRevision: d.revisions[0] ? serializeDishRevision(d.revisions[0]) : null,
+      })),
+    });
   } catch (err) {
     return adminErrorResponse(err);
   }

@@ -1,15 +1,17 @@
 "use client";
 
-// Phase 6a M2 — staff menu manager (design §5.2): dishes grouped by section
-// with status chips, availability toggle (the "86 it" switch), edit modal,
-// submit-for-publishing, unpublish, and soft remove.
+// Phase 6a M2/M3 — staff menu manager (design §5.2): dishes grouped by
+// section with status chips, availability toggle (the "86 it" switch), edit
+// modal, submit-for-publishing, unpublish, and soft remove. M3: edits to a
+// live dish's name/ingredients wait for ops review — the "Edits in review"
+// chip shows while the previous list stays live.
 
 import { useMemo, useState } from "react";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import PortalDishForm from "@/components/restaurant/PortalDishForm";
-import type { PortalDishDTO } from "@/lib/restaurant-portal-server";
+import type { PortalDishDTO, DishRevisionDTO } from "@/lib/restaurant-portal-server";
 
 const STATUS_BADGE: Record<string, { label: string; variant: "success" | "warning" | "neutral" }> = {
   PUBLISHED: { label: "Live", variant: "success" },
@@ -17,21 +19,23 @@ const STATUS_BADGE: Record<string, { label: string; variant: "success" | "warnin
   DRAFT: { label: "Draft", variant: "neutral" },
 };
 
+type PortalDishWithReview = PortalDishDTO & { pendingRevision?: DishRevisionDTO | null };
+
 export default function PortalMenuManager({
   restaurantId,
   initialDishes,
 }: {
   restaurantId: string;
-  initialDishes: PortalDishDTO[];
+  initialDishes: PortalDishWithReview[];
 }) {
-  const [dishes, setDishes] = useState<PortalDishDTO[]>(initialDishes);
+  const [dishes, setDishes] = useState<PortalDishWithReview[]>(initialDishes);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<PortalDishDTO | null>(null);
+  const [editing, setEditing] = useState<PortalDishWithReview | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const sections = useMemo(() => {
-    const bySection = new Map<string, PortalDishDTO[]>();
+    const bySection = new Map<string, PortalDishWithReview[]>();
     for (const d of dishes) {
       const list = bySection.get(d.section) ?? [];
       list.push(d);
@@ -48,7 +52,7 @@ export default function PortalMenuManager({
     }
   };
 
-  const patch = async (dish: PortalDishDTO, payload: Record<string, unknown>) => {
+  const patch = async (dish: PortalDishWithReview, payload: Record<string, unknown>) => {
     setBusyId(dish.id);
     setError(null);
     try {
@@ -62,13 +66,17 @@ export default function PortalMenuManager({
         setError(`${dish.name}: ${body.error ?? "Update failed"}`);
         return;
       }
-      setDishes((prev) => prev.map((d) => (d.id === dish.id ? body.dish : d)));
+      setDishes((prev) =>
+        prev.map((d) =>
+          d.id === dish.id ? { ...body.dish, pendingRevision: body.pendingRevision ?? null } : d
+        )
+      );
     } finally {
       setBusyId(null);
     }
   };
 
-  const remove = async (dish: PortalDishDTO) => {
+  const remove = async (dish: PortalDishWithReview) => {
     if (!confirm(`Remove "${dish.name}" from your menu? Wondish keeps a record, and ops can restore it.`)) return;
     setBusyId(dish.id);
     setError(null);
@@ -133,6 +141,9 @@ export default function PortalMenuManager({
                       <div className="flex items-center gap-2">
                         <p className="font-semibold text-sm text-[#1E1A1A] truncate">{dish.name}</p>
                         <Badge variant={badge.variant}>{badge.label}</Badge>
+                        {dish.pendingRevision?.kind === "EDIT" && (
+                          <Badge variant="warning">Edits in review</Badge>
+                        )}
                         {!dish.available && <Badge variant="error">86&apos;d</Badge>}
                       </div>
                       <p className="text-xs mt-0.5 truncate" style={{ color: "#848181" }}>

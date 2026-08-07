@@ -37,6 +37,21 @@ export default async function RestaurantDashboardPage({ params }: { params: { id
     where: { restaurantId: params.id, deletedAt: null },
     select: { status: true, available: true, calories: true },
   });
+
+  // M3 — recent ops decisions (design §7): approvals confirm, rejections
+  // carry the note staff need to act on.
+  const decisionWindow = new Date();
+  decisionWindow.setDate(decisionWindow.getDate() - 30);
+  const decisions = await prisma.restaurantDishRevision.findMany({
+    where: {
+      restaurantId: params.id,
+      status: { in: ["APPROVED", "REJECTED"] },
+      reviewedAt: { gte: decisionWindow },
+    },
+    orderBy: { reviewedAt: "desc" },
+    take: 5,
+    include: { dish: { select: { name: true } } },
+  });
   const published = dishes.filter((d) => d.status === "PUBLISHED").length;
   const inReview = dishes.filter((d) => d.status === "PENDING_REVIEW").length;
   const missingNutrition = dishes.filter((d) => d.calories == null).length;
@@ -78,6 +93,44 @@ export default async function RestaurantDashboardPage({ params }: { params: { id
           </div>
         ))}
       </div>
+
+      {decisions.length > 0 && (
+        <div className="mb-6">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] mb-2" style={{ color: "#848181" }}>
+            Review decisions
+          </p>
+          <div className="space-y-2">
+            {decisions.map((d) => {
+              const approved = d.status === "APPROVED";
+              const what = d.kind === "PUBLISH" ? "publish" : "menu changes";
+              return (
+                <div
+                  key={d.id}
+                  className={`rounded-2xl px-4 py-3 text-sm border ${
+                    approved
+                      ? "bg-success/5 border-success/20 text-[#1E1A1A]"
+                      : "bg-error/5 border-error/20 text-[#1E1A1A]"
+                  }`}
+                >
+                  <span className="font-semibold">{d.dish.name}</span>
+                  {approved ? ` — ${what} approved` : ` — ${what} rejected`}
+                  {d.reviewedAt && (
+                    <span className="text-xs" style={{ color: "#848181" }}>
+                      {" "}
+                      · {d.reviewedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </span>
+                  )}
+                  {!approved && d.reviewNote && (
+                    <p className="text-xs mt-1 leading-relaxed" style={{ color: "#848181" }}>
+                      &ldquo;{d.reviewNote}&rdquo; — fix it in the menu editor and resubmit.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {missingNutrition > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-6 text-sm text-amber-800">

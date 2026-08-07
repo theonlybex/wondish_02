@@ -449,10 +449,11 @@ model Restaurant {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 
-  dishes    RestaurantDish[]
-  staff     RestaurantStaff[]
-  invites   RestaurantInvite[]
-  auditLogs RestaurantAuditLog[]
+  dishes        RestaurantDish[]
+  staff         RestaurantStaff[]
+  invites       RestaurantInvite[]
+  auditLogs     RestaurantAuditLog[]
+  dishRevisions RestaurantDishRevision[]
 
   @@index([status, neighborhood])
 }
@@ -494,6 +495,7 @@ model RestaurantDish {
   ingredients   RestaurantDishIngredient[]
   mealLogs      MealLog[]
   planExchanges RestaurantPlanExchange[]
+  revisions     RestaurantDishRevision[]
 
   @@index([restaurantId, status])
 }
@@ -571,6 +573,49 @@ model RestaurantAuditLog {
   createdAt    DateTime   @default(now())
 
   @@index([restaurantId, createdAt])
+}
+
+// Phase 6a M3 — review workflow (design §7). One row per staff submission
+// that needs ops eyes: PUBLISH = first publish of a dish (the dish row
+// itself is the payload, held in PENDING_REVIEW), EDIT = staged
+// name/ingredient changes on a PUBLISHED dish (dish stays live on its old
+// data until approval swaps the payload in).
+enum DishRevisionKind {
+  PUBLISH
+  EDIT
+}
+
+enum DishRevisionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED // withdrawn by unpublish/delete, or superseded
+}
+
+model RestaurantDishRevision {
+  id           String             @id @default(cuid())
+  dishId       String
+  dish         RestaurantDish     @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  restaurantId String // denormalized for queue + portal-banner queries
+  restaurant   Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  kind         DishRevisionKind
+  status       DishRevisionStatus @default(PENDING)
+  submittedBy  String // Account.id
+
+  // EDIT payload — null field = unchanged. PUBLISH rows carry no payload
+  // (the dish row is reviewed as-is).
+  name        String?
+  ingredients Json? // [{ name, quantity, unit, ingredientId }]
+
+  reviewNote String? // ops note (required on reject)
+  reviewedBy String? // Account.id
+  reviewedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([restaurantId, status, reviewedAt])
+  @@index([dishId, status])
 }
 
 enum IngredientRequestStatus {
