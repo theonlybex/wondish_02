@@ -74,6 +74,82 @@ export function serializeDishRevision(r: DishRevisionRowLike) {
 
 export type DishRevisionDTO = ReturnType<typeof serializeDishRevision>;
 
+// Phase 6a M4 — one activity page (design §5.7), shared by the activity API
+// route and the server-rendered first page. Newest first; humanized lines;
+// cursor = last audit id of the previous page.
+import { formatAuditEntry } from "@/lib/restaurant-activity";
+
+const ACTIVITY_PAGE_SIZE = 30;
+
+export interface ActivityEntryDTO {
+  id: string;
+  actor: string;
+  line: string;
+  createdAt: string;
+}
+
+export async function getActivityPage(
+  restaurantId: string,
+  cursor: string | null
+): Promise<{ entries: ActivityEntryDTO[]; nextCursor: string | null }> {
+  const rows = await prisma.restaurantAuditLog.findMany({
+    where: { restaurantId },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: ACTIVITY_PAGE_SIZE + 1, // one extra decides nextCursor deterministically
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  });
+  const page = rows.slice(0, ACTIVITY_PAGE_SIZE);
+  const nextCursor = rows.length > ACTIVITY_PAGE_SIZE ? page[page.length - 1].id : null;
+
+  // Resolve dish names + actor labels in two batched lookups. Deleted or
+  // renamed dishes still resolve — soft delete keeps the row.
+  const dishIds = Array.from(
+    new Set(
+      page
+        .filter((r) => (r.entity === "dish" || r.entity === "ingredients") && r.entityId)
+        .map((r) => r.entityId as string)
+    )
+  );
+  const accountIds = Array.from(new Set(page.map((r) => r.accountId)));
+  const [dishes, accounts] = await Promise.all([
+    prisma.restaurantDish.findMany({
+      where: { id: { in: dishIds } },
+      select: { id: true, name: true },
+    }),
+    prisma.account.findMany({
+      where: { id: { in: accountIds } },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        roles: { select: { role: { select: { name: true } } } },
+      },
+    }),
+  ]);
+  const dishName = new Map(dishes.map((d) => [d.id, d.name]));
+  const actorLabel = new Map(
+    accounts.map((a) => {
+      const isOps = a.roles.some((r) => r.role.name === "SUPER");
+      const name = `${a.firstName} ${a.lastName}`.trim();
+      return [a.id, isOps ? "Wondish ops" : name || a.email];
+    })
+  );
+
+  return {
+    entries: page.map((r) => ({
+      id: r.id,
+      actor: actorLabel.get(r.accountId) ?? "Someone",
+      line: formatAuditEntry(
+        { entity: r.entity, action: r.action, diff: r.diff },
+        r.entityId ? (dishName.get(r.entityId) ?? null) : null
+      ),
+      createdAt: r.createdAt.toISOString(),
+    })),
+    nextCursor,
+  };
+}
+
 // Free-text ingredient rows (no catalog id) file an IngredientRequest so ops
 // can grow the catalog (design §5.4). Deduped against open requests.
 export async function fileIngredientRequests(

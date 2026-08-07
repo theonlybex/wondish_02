@@ -29,7 +29,7 @@ const BUCKET = process.env.AWS_S3_BUCKET ?? "infoatuvera";
 export async function uploadFile(
   buffer: Buffer,
   mimeType: string,
-  folder: "avatars" | "recipes" | "misc" = "misc"
+  folder: "avatars" | "recipes" | "restaurants" | "misc" = "misc"
 ): Promise<string> {
   const ext = mimeType.split("/")[1] ?? "bin";
   const key = `${folder}/${crypto.randomUUID()}.${ext}`;

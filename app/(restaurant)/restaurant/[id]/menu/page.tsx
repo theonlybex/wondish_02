@@ -42,10 +42,7 @@ export default async function RestaurantMenuPage({ params }: { params: { id: str
   return (
     <div>
       <div className="mb-8">
-        <Link href={`/restaurant/${restaurant.id}`} className="text-xs font-semibold text-primary hover:underline">
-          ← {restaurant.name}
-        </Link>
-        <h1 className="text-3xl font-bold text-[#1E1A1A] mt-3">Menu</h1>
+        <h1 className="text-3xl font-bold text-[#1E1A1A]">Menu</h1>
         <p className="text-xs mt-1.5" style={{ color: "#848181" }}>
           List what&apos;s in each dish — you never share how it&apos;s made. Ingredients power
           allergy safety for diners; nutrition helps them fit your dishes into their day.

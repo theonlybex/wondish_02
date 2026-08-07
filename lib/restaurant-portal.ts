@@ -101,6 +101,68 @@ export function parsePortalMacros(raw: unknown): PortalParseResult<PortalMacros>
   return ok(out);
 }
 
+// Restaurant-profile allowlist for staff PATCH (design §5.5). Deliberately
+// excludes name (display-only in v1 — renames go through ops), status/slug
+// (ops levers), ethnicId and geo (ops/Phase-7). `neighborhood` is the only
+// required column here; everything else nulls out when blanked.
+const PROFILE_TEXT_FIELDS = [
+  "description", "addressLine", "city", "state", "postalCode",
+  "phone", "website", "hours",
+] as const;
+const PROFILE_URL_FIELDS = ["imageUrl", "logoUrl"] as const;
+const PROFILE_MAX_LEN = 2000;
+
+export type PortalProfilePatch = Partial<
+  Record<(typeof PROFILE_TEXT_FIELDS)[number] | (typeof PROFILE_URL_FIELDS)[number], string | null> & {
+    neighborhood: string;
+  }
+>;
+
+export function parsePortalProfile(raw: unknown): PortalParseResult<PortalProfilePatch> {
+  if (!isObj(raw)) return fail("body must be an object");
+  const out: Record<string, string | null> = {};
+
+  if ("neighborhood" in raw) {
+    const v = raw.neighborhood;
+    if (typeof v !== "string" || !v.trim()) return fail("neighborhood must be a non-empty string");
+    if (v.length > PROFILE_MAX_LEN) return fail("neighborhood is too long");
+    out.neighborhood = v.trim();
+  }
+
+  for (const key of PROFILE_TEXT_FIELDS) {
+    if (!(key in raw)) continue;
+    const v = raw[key];
+    if (v === null) {
+      out[key] = null;
+      continue;
+    }
+    if (typeof v !== "string") return fail(`${key} must be a string or null`);
+    if (v.length > PROFILE_MAX_LEN) return fail(`${key} is too long`);
+    out[key] = v.trim() || null;
+  }
+
+  for (const key of PROFILE_URL_FIELDS) {
+    if (!(key in raw)) continue;
+    const v = raw[key];
+    if (v === null) {
+      out[key] = null;
+      continue;
+    }
+    if (typeof v !== "string") return fail(`${key} must be a string or null`);
+    const trimmed = v.trim();
+    if (!trimmed) {
+      out[key] = null;
+      continue;
+    }
+    if (!/^https?:\/\//.test(trimmed) || trimmed.length > PROFILE_MAX_LEN) {
+      return fail(`${key} must be an http(s) URL`);
+    }
+    out[key] = trimmed;
+  }
+
+  return ok(out as PortalProfilePatch);
+}
+
 // Staff status transitions (design §7). Submitting runs the Phase-1
 // ingredient publish gate; approval to PUBLISHED is the admin review
 // queue's job (/admin/review-queue).

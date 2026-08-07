@@ -5,6 +5,7 @@ import {
   parsePortalIngredients,
   parsePortalMacros,
   portalStatusAction,
+  parsePortalProfile,
 } from "./restaurant-portal";
 
 // Phase 6a M2 (docs/restaurants/phase-6a-restaurant-admin-design.md §5.3,
@@ -88,5 +89,64 @@ describe("portalStatusAction", () => {
     assert.ok(fromReview.ok);
     assert.equal(fromReview.value, "DRAFT");
     assert.equal(portalStatusAction("unpublish", "DRAFT", 3).ok, false);
+  });
+});
+
+describe("parsePortalProfile", () => {
+  it("accepts the §5.5 profile fields, trims strings, blanks become null", () => {
+    const res = parsePortalProfile({
+      description: "  Family Thai kitchen  ",
+      neighborhood: "Miracle Mile",
+      addressLine: "2324 Pacific Ave",
+      city: "Stockton",
+      state: "CA",
+      postalCode: "95204",
+      phone: "",
+      website: "https://thaimeup.example",
+      hours: "Tue–Sun 11–9",
+      imageUrl: "https://cdn.wondish.io/restaurants/x.webp",
+      logoUrl: null,
+    });
+    assert.ok(res.ok);
+    assert.deepEqual(res.value, {
+      description: "Family Thai kitchen",
+      neighborhood: "Miracle Mile",
+      addressLine: "2324 Pacific Ave",
+      city: "Stockton",
+      state: "CA",
+      postalCode: "95204",
+      phone: null,
+      website: "https://thaimeup.example",
+      hours: "Tue–Sun 11–9",
+      imageUrl: "https://cdn.wondish.io/restaurants/x.webp",
+      logoUrl: null,
+    });
+  });
+
+  it("silently drops fields outside the allowlist (name, status, slug, isRecommended)", () => {
+    const res = parsePortalProfile({ name: "New Name", status: "ARCHIVED", slug: "x", phone: "209" });
+    assert.ok(res.ok);
+    assert.deepEqual(Object.keys(res.value), ["phone"]);
+  });
+
+  it("rejects an empty neighborhood — the column is required", () => {
+    assert.equal(parsePortalProfile({ neighborhood: "  " }).ok, false);
+  });
+
+  it("rejects non-http image and logo urls", () => {
+    assert.equal(parsePortalProfile({ imageUrl: "javascript:alert(1)" }).ok, false);
+    assert.equal(parsePortalProfile({ logoUrl: "ftp://x" }).ok, false);
+  });
+
+  it("rejects non-string values and over-long text", () => {
+    assert.equal(parsePortalProfile({ phone: 209 }).ok, false);
+    assert.equal(parsePortalProfile({ description: "x".repeat(2001) }).ok, false);
+    assert.equal(parsePortalProfile(null).ok, false);
+  });
+
+  it("returns an empty object when nothing recognized was sent", () => {
+    const res = parsePortalProfile({ nonsense: true });
+    assert.ok(res.ok);
+    assert.deepEqual(res.value, {});
   });
 });

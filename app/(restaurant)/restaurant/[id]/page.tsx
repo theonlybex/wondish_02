@@ -2,7 +2,9 @@ import { auth } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { needsVerifyNudge } from "@/lib/restaurant-activity";
 import Badge from "@/components/ui/Badge";
+import VerifyMenuBanner from "@/components/restaurant/VerifyMenuBanner";
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   const restaurant = await prisma.restaurant.findUnique({ where: { id: params.id } });
@@ -35,7 +37,7 @@ export default async function RestaurantDashboardPage({ params }: { params: { id
 
   const dishes = await prisma.restaurantDish.findMany({
     where: { restaurantId: params.id, deletedAt: null },
-    select: { status: true, available: true, calories: true },
+    select: { status: true, available: true, calories: true, lastVerifiedAt: true },
   });
 
   // M3 — recent ops decisions (design §7): approvals confirm, rejections
@@ -55,22 +57,33 @@ export default async function RestaurantDashboardPage({ params }: { params: { id
   const published = dishes.filter((d) => d.status === "PUBLISHED").length;
   const inReview = dishes.filter((d) => d.status === "PENDING_REVIEW").length;
   const missingNutrition = dishes.filter((d) => d.calories == null).length;
-  const unavailable = dishes.filter((d) => !d.available).length;
+
+  // Freshness (design §7): newest verification across live dishes drives the
+  // quarterly nudge.
+  const lastVerified = dishes
+    .filter((d) => d.status === "PUBLISHED")
+    .reduce<Date | null>(
+      (max, d) => (d.lastVerifiedAt && (!max || d.lastVerifiedAt > max) ? d.lastVerifiedAt : max),
+      null
+    );
+  const showVerifyNudge = needsVerifyNudge(lastVerified, published, new Date());
 
   const cards = [
     { label: "Dishes live", value: `${published} / ${dishes.length}` },
     { label: "Awaiting review", value: String(inReview) },
     { label: "Missing nutrition", value: String(missingNutrition) },
-    { label: "Marked unavailable", value: String(unavailable) },
+    {
+      label: "Menu verified",
+      value: lastVerified
+        ? lastVerified.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+        : "—",
+    },
   ];
 
   return (
     <div>
       <div className="mb-8">
-        <Link href="/restaurant" className="text-xs font-semibold text-primary hover:underline">
-          ← Your restaurants
-        </Link>
-        <div className="flex items-start justify-between mt-3">
+        <div className="flex items-start justify-between">
           <div>
             <h1 className="text-3xl font-bold text-[#1E1A1A]">{restaurant.name}</h1>
             <p className="text-xs mt-1.5" style={{ color: "#848181" }}>
@@ -130,6 +143,13 @@ export default async function RestaurantDashboardPage({ params }: { params: { id
             })}
           </div>
         </div>
+      )}
+
+      {showVerifyNudge && (
+        <VerifyMenuBanner
+          restaurantId={restaurant.id}
+          lastVerified={lastVerified ? lastVerified.toISOString() : null}
+        />
       )}
 
       {missingNutrition > 0 && (

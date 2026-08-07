@@ -58,6 +58,14 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
         section: row.section,
         sortOrder: row.sortOrder,
         isRecommended: row.isRecommended,
+        // Whole-dish macros (additive 2026-08-04): the DTO declared these on
+        // day one, but this call predates them — without the passthrough the
+        // menu served calories: null for every dish that has real numbers.
+        calories: row.calories,
+        protein: row.protein,
+        carbs: row.carbs,
+        fat: row.fat,
+        fiber: row.fiber,
       },
       row.ingredients.map((i) => i.name),
       matchers
