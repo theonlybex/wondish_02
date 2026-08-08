@@ -242,6 +242,17 @@ screens.)*
 ### 5.1 Entry & dashboard — `/restaurant`
 - Zero restaurants → friendly "ask your Wondish contact for an invite" page.
 - One restaurant → straight to its dashboard. Multiple → switcher.
+- **Back affordance (amended 2026-08-08).** Because of that redirect,
+  `/restaurant` is not a safe universal "back" target: for the common
+  single-membership account it bounces straight back into the restaurant,
+  so a "← Your restaurants" link is a dead control that silently stacks
+  browser-history entries. The scoped layout now asks `portalBackLink`
+  (pure, unit-tested in `lib/restaurant-portal-nav.ts`) for a destination
+  that actually renders: switcher at 2+ memberships, `/admin/restaurants`
+  for ops, `/overview` for staff who are also onboarded patients, and no
+  link at all for portal-only staff — the portal is their home. It must
+  never offer `/overview` to a non-onboarded staff account, which the
+  dashboard onboarding gate would bounce back here (§5).
 - Dashboard cards: publish state ("14 of 16 dishes live"), **nutrition
   coverage** ("3 dishes missing calories"), **freshness** ("menu last
   verified 2026-05-02 — verify now"), pending review items, recent activity.

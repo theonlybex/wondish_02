@@ -9,6 +9,13 @@ export interface PortalPageContext {
   accountId: string;
   membership: { id: string; role: "OWNER" | "MANAGER" } | null; // null = SUPER bypass
   isSuper: boolean;
+  /// Memberships across ALL restaurants, not just this one — the portal's
+  /// back link needs it, because /restaurant only renders a switcher at 2+.
+  membershipCount: number;
+  /// Cached onboarding flag. The dashboard layout heals a stale `false` on
+  /// its next visit; here a stale `false` only costs a hidden back link,
+  /// which is the safe direction to be wrong in (never link into a bounce).
+  onboardedPatient: boolean;
 }
 
 export type PortalPageGate =
@@ -24,6 +31,8 @@ export async function getPortalPageContext(restaurantId: string): Promise<Portal
     include: {
       roles: { include: { role: true } },
       restaurantStaff: { where: { restaurantId } },
+      // Unfiltered — `restaurantStaff` above is scoped to this restaurant.
+      _count: { select: { restaurantStaff: true } },
     },
   });
   const isSuper = account?.roles.some((r) => r.role.name === "SUPER") ?? false;
@@ -36,6 +45,8 @@ export async function getPortalPageContext(restaurantId: string): Promise<Portal
       accountId: account.id,
       membership: membership ? { id: membership.id, role: membership.role } : null,
       isSuper,
+      membershipCount: account._count.restaurantStaff,
+      onboardedPatient: account.onboardingComplete,
     },
   };
 }
