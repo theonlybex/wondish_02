@@ -174,9 +174,16 @@ Open self-signup needs ownership verification we don't have an answer for
    transaction: create `RestaurantStaff`, grant `RESTAURANT_ADMIN` role,
    mark invite ACCEPTED, write audit row. Redirect to the portal.
 
-**B. Owners invite their own staff.** Same flow, initiated from the portal's
-Staff screen, restricted to `role: MANAGER`, capped (e.g. 10 active staff
-per restaurant), revocable. OWNER role can only be granted by Wondish ops.
+**B. Owners add their own staff — email-free (amended 2026-08-08).** From
+the portal's Staff screen, an owner adds a manager by typing the teammate's
+Wondish account email: direct assignment via the same mechanics as §4D
+(`POST /api/restaurant-portal/[id]/staff`, `allowInviteFallback: false`).
+No invites and no emails originate from the portal — if the email has no
+Wondish account yet, the owner gets "ask them to sign up first, then add
+them here." Restricted to `role: MANAGER`, capped at 10 seats per
+restaurant (active staff + any ops-created pending invites), removable.
+OWNER role can only be granted by Wondish ops. *(Supersedes the original
+owner-invite email flow; only ops originates invites now.)*
 
 **C. Edge cases, decided now:**
 - Email already registered → invite is claimable in-app: a banner on
@@ -201,12 +208,17 @@ account to a restaurant without the invite→accept round-trip:
   happened. On assign, one transaction mirroring the accept-invite path in
   `lib/restaurant-invites-server.ts`: create `RestaurantStaff`
   (`invitedById` = the acting admin), upsert the global `RESTAURANT_ADMIN`
-  role, mark any PENDING `RestaurantInvite` for the same email+restaurant
-  ACCEPTED (so it can't dangle and be claimed again), and write the audit
-  row (`entity: "staff"`, `action: "assign"`). Tier rules mirror
+  role, supersede PENDING `RestaurantInvite`s for the same email+restaurant
+  **at or below the assigned tier** (marked REVOKED — nobody accepted
+  anything; a higher-tier pending invite stays claimable and just promotes
+  later), and write the audit row (`entity: "staff"`, `action: "assign"`,
+  superseded invite ids in the diff). Live Clerk email links of superseded
+  invites are best-effort revoked after the transaction. Tier rules mirror
   accept-invite: a MANAGER is promoted by an OWNER assignment, never
-  demoted; already at (or above) the requested tier → 409. Decision rules
-  are pure (`planDirectAssign` in `lib/restaurant-invites.ts`, unit-tested).
+  demoted; already at (or above) the requested tier → 409. Account lookup
+  is case-insensitive (Clerk stores emails verbatim). Decision rules are
+  pure (`planDirectAssign`, `supersedableInviteRoles` in
+  `lib/restaurant-invites.ts`, unit-tested).
 - Admin UI: the Staff tab's "Invite" form generalizes to **"Add staff"** —
   one email field + role select; the server direct-assigns when the account
   exists and falls back to creating an invite when it doesn't, and the

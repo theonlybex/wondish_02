@@ -7,6 +7,8 @@ import MealStreakGrid, { GridDay } from "@/components/MealStreakGrid";
 import CaloricProfileCard from "@/components/dashboard/CaloricProfileCard";
 import QuickJournalLog from "@/components/dashboard/QuickJournalLog";
 import DailyLogCard from "@/components/tracking/DailyLogCard";
+import PendingInviteBanner from "@/components/restaurant/PendingInviteBanner";
+import { findClaimableInvites } from "@/lib/restaurant-pending-invites-server";
 
 export const metadata = { title: "Overview" };
 
@@ -20,6 +22,10 @@ export default async function OverviewPage() {
   ]);
 
   if (!account) redirect("/login");
+
+  // Phase 6a §4C — restaurant invites for existing accounts send no email;
+  // the claim banner on the dashboard home is how they find out.
+  const pendingRestaurantInvites = await findClaimableInvites(account.email);
 
   // ── Streak grid ────────────────────────────────────────────────────────────
   const gridDays: GridDay[] = [];
@@ -111,6 +117,19 @@ export default async function OverviewPage() {
         }
         .ov { animation: ov-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
       `}</style>
+
+      {pendingRestaurantInvites.length > 0 && (
+        <div className="ov">
+          {pendingRestaurantInvites.map((invite) => (
+            <PendingInviteBanner
+              key={invite.id}
+              inviteId={invite.id}
+              restaurantName={invite.restaurant.name}
+              role={invite.role}
+            />
+          ))}
+        </div>
+      )}
 
       {/* ── Bento grid ───────────────────────────────────────────── */}
       {/*

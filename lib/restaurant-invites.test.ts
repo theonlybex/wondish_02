@@ -7,6 +7,7 @@ import {
   validateInviteAcceptance,
   normalizeEmail,
   planDirectAssign,
+  supersedableInviteRoles,
 } from "./restaurant-invites";
 
 // Phase 6a M1 (docs/restaurants/phase-6a-restaurant-admin-design.md §4):
@@ -100,5 +101,24 @@ describe("planDirectAssign", () => {
   it("never demotes: an existing OWNER with MANAGER requested is already-staff", () => {
     const plan = planDirectAssign({ accountExists: true, existingRole: "OWNER", requestedRole: "MANAGER" });
     assert.equal(plan.action, "already");
+  });
+
+  it("names the existing role in the already-staff error", () => {
+    const plan = planDirectAssign({ accountExists: true, existingRole: "OWNER", requestedRole: "MANAGER" });
+    assert.equal(plan.action, "already");
+    if (plan.action === "already") assert.match(plan.error, /OWNER/);
+  });
+});
+
+// A direct assignment supersedes pending invites only at or below the
+// assigned tier — a pending OWNER invite outranks a MANAGER assignment and
+// stays claimable (accepting it later promotes; promote-only semantics).
+describe("supersedableInviteRoles", () => {
+  it("an OWNER assignment supersedes both OWNER and MANAGER invites", () => {
+    assert.deepEqual([...supersedableInviteRoles("OWNER")].sort(), ["MANAGER", "OWNER"]);
+  });
+
+  it("a MANAGER assignment supersedes only MANAGER invites", () => {
+    assert.deepEqual(supersedableInviteRoles("MANAGER"), ["MANAGER"]);
   });
 });

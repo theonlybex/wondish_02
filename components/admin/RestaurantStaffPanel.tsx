@@ -99,6 +99,8 @@ export default function RestaurantStaffPanel({ restaurantId }: { restaurantId: s
       );
       setEmail("");
       await load();
+    } catch {
+      setError("Network error — try again.");
     } finally {
       setSubmitting(false);
     }

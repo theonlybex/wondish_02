@@ -5,7 +5,13 @@ import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import BrandLogo from "@/components/BrandLogo";
 
-export default function DashboardSidebar({ isAdmin }: { isAdmin: boolean }) {
+export default function DashboardSidebar({
+  isAdmin,
+  isRestaurantStaff = false,
+}: {
+  isAdmin: boolean;
+  isRestaurantStaff?: boolean;
+}) {
   const pathname = usePathname();
   const t = useTranslations("sidebar");
 
@@ -63,6 +69,26 @@ export default function DashboardSidebar({ isAdmin }: { isAdmin: boolean }) {
             );
           })}
         </div>
+
+        {/* Phase 6a — portal entry for accounts that are restaurant staff
+            AND patients: without it, only staff-only accounts (redirected
+            at sign-in) would ever find /restaurant. */}
+        {isRestaurantStaff && (
+          <>
+            <div className="mx-3 my-4 h-px bg-white/[0.06]" />
+            {/* No active-state: /restaurant renders its own portal layout,
+                never this sidebar. */}
+            <div className="space-y-0.5">
+              <Link
+                href="/restaurant"
+                className="relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 text-white/50 hover:text-white/90 hover:bg-white/[0.05]"
+              >
+                <span className="text-base w-5 text-center leading-none">🏪</span>
+                {t("myRestaurant")}
+              </Link>
+            </div>
+          </>
+        )}
 
         {isAdmin && (
           <>

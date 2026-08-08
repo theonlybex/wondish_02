@@ -23,7 +23,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 // Phase 6a §4D — ops adds staff by email. Direct-assigns when the email
 // already has a Wondish account (no invite round-trip), otherwise falls
 // back to the invite flow; `mode` in the response says which happened.
-// Admin is the trust root and may grant OWNER (design §4A).
+// Admin is the trust root and may grant OWNER (design §4A). The portal's
+// 10-seat cap deliberately does NOT apply here — the cap bounds
+// owner-driven growth, not ops.
 
 const STAFF_ROLES = new Set(["OWNER", "MANAGER"]);
 

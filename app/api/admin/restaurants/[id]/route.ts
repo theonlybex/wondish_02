@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdmin, adminErrorResponse, pickFields } from "@/lib/admin";
 import { isRestaurantStatus, RESTAURANT_MUTABLE_FIELDS } from "@/lib/admin-restaurants";
+import { RESTAURANT_ADMIN_ROLE } from "@/lib/restaurant-auth";
 
 function isUniqueConstraintViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
@@ -51,7 +52,35 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   try {
     await requireAdmin();
 
-    await prisma.restaurant.delete({ where: { id: params.id } });
+    // Staff rows die with the restaurant (onDelete: Cascade), which skips
+    // removeStaffMember's last-restaurant role cleanup — without this, an
+    // account whose only restaurant was deleted keeps RESTAURANT_ADMIN and
+    // gets routed to a portal it can never enter.
+    await prisma.$transaction(async (tx) => {
+      const staff = await tx.restaurantStaff.findMany({
+        where: { restaurantId: params.id },
+        select: { accountId: true },
+      });
+
+      await tx.restaurant.delete({ where: { id: params.id } });
+
+      const accountIds = Array.from(new Set(staff.map((s) => s.accountId)));
+      if (accountIds.length > 0) {
+        const orphaned = [];
+        for (const accountId of accountIds) {
+          const remaining = await tx.restaurantStaff.count({ where: { accountId } });
+          if (remaining === 0) orphaned.push(accountId);
+        }
+        if (orphaned.length > 0) {
+          const role = await tx.role.findUnique({ where: { name: RESTAURANT_ADMIN_ROLE } });
+          if (role) {
+            await tx.accountRole.deleteMany({
+              where: { accountId: { in: orphaned }, roleId: role.id },
+            });
+          }
+        }
+      }
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     return adminErrorResponse(err);

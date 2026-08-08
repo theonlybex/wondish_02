@@ -5,7 +5,11 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { normalizeEmail, planDirectAssign } from "@/lib/restaurant-invites";
+import {
+  normalizeEmail,
+  planDirectAssign,
+  supersedableInviteRoles,
+} from "@/lib/restaurant-invites";
 import { RESTAURANT_ADMIN_ROLE } from "@/lib/restaurant-auth";
 import { auditRestaurantChange } from "@/lib/restaurant-audit";
 
@@ -26,9 +30,10 @@ export async function createStaffInvite(args: {
     return { ok: false, status: 400, error: "A valid email is required" };
   }
 
-  // Already on staff → nothing to invite.
-  const existingAccount = await prisma.account.findUnique({
-    where: { email },
+  // Already on staff → nothing to invite. Account.email is stored verbatim
+  // from Clerk (mixed case possible), so match case-insensitively.
+  const existingAccount = await prisma.account.findFirst({
+    where: { email: { equals: email, mode: "insensitive" } },
     select: { id: true, restaurantStaff: { where: { restaurantId: args.restaurantId } } },
   });
   if (existingAccount && existingAccount.restaurantStaff.length > 0) {
@@ -87,18 +92,21 @@ export async function createStaffInvite(args: {
   return { ok: true, invite, emailSent };
 }
 
-// Phase 6a §4D — ops attaches an EXISTING account to a restaurant without
-// the invite round-trip; when no account exists for the email it falls back
-// to createStaffInvite so the admin form is one "Add staff" action either
-// way. Assign/promote path is one transaction mirroring accept-invite:
-// staff row + RESTAURANT_ADMIN role + pending invites for the email
-// resolved (they must not stay claimable after a direct grant) + audit.
+// Phase 6a §4D — attaches an EXISTING account to a restaurant without the
+// invite round-trip. When no account exists for the email: admin callers
+// fall back to createStaffInvite (ops onboards brand-new owners by email),
+// portal callers get a plain error instead — owners adding managers is
+// deliberately email-free (allowInviteFallback: false). Assign/promote path
+// is one transaction mirroring accept-invite: staff row + RESTAURANT_ADMIN
+// role + pending invites for the email resolved (they must not stay
+// claimable after a direct grant) + audit.
 export async function assignStaffDirect(args: {
   restaurantId: string;
   rawEmail: unknown;
   role: "OWNER" | "MANAGER";
   actorId: string;
   origin: string;
+  allowInviteFallback?: boolean;
 }): Promise<
   | InviteFailure
   | { ok: true; mode: "invited"; emailSent: boolean }
@@ -109,8 +117,11 @@ export async function assignStaffDirect(args: {
     return { ok: false, status: 400, error: "A valid email is required" };
   }
 
-  const account = await prisma.account.findUnique({
-    where: { email },
+  // Case-insensitive: Account.email is stored verbatim from Clerk, and an
+  // exact-match miss here would silently reroute a direct assignment into
+  // the invite path for an account that plainly exists.
+  const account = await prisma.account.findFirst({
+    where: { email: { equals: email, mode: "insensitive" } },
     select: {
       id: true,
       restaurantStaff: {
@@ -127,6 +138,13 @@ export async function assignStaffDirect(args: {
   });
 
   if (plan.action === "invite") {
+    if (args.allowInviteFallback === false) {
+      return {
+        ok: false,
+        status: 404,
+        error: `No Wondish account exists for ${email} yet — ask them to sign up first, then add them here.`,
+      };
+    }
     const invited = await createStaffInvite({
       restaurantId: args.restaurantId,
       rawEmail: email,
@@ -142,7 +160,7 @@ export async function assignStaffDirect(args: {
   }
 
   try {
-    const staff = await prisma.$transaction(async (tx) => {
+    const { staff, superseded } = await prisma.$transaction(async (tx) => {
       const role = await tx.role.upsert({
         where: { name: RESTAURANT_ADMIN_ROLE },
         update: {},
@@ -167,10 +185,25 @@ export async function assignStaffDirect(args: {
               },
             });
 
-      await tx.restaurantInvite.updateMany({
-        where: { restaurantId: args.restaurantId, email, status: "PENDING" },
-        data: { status: "ACCEPTED", acceptedAt: new Date() },
+      // Supersede pending invites at or below the assigned tier so they
+      // can't dangle — REVOKED, not ACCEPTED: nobody accepted anything. A
+      // higher-tier invite (pending OWNER vs a MANAGER assignment) stays
+      // PENDING and claimable; accepting it later just promotes.
+      const supersededInvites = await tx.restaurantInvite.findMany({
+        where: {
+          restaurantId: args.restaurantId,
+          email,
+          status: "PENDING",
+          role: { in: supersedableInviteRoles(args.role) },
+        },
+        select: { id: true, clerkInvitationId: true },
       });
+      if (supersededInvites.length > 0) {
+        await tx.restaurantInvite.updateMany({
+          where: { id: { in: supersededInvites.map((i) => i.id) } },
+          data: { status: "REVOKED" },
+        });
+      }
 
       await auditRestaurantChange(tx, {
         restaurantId: args.restaurantId,
@@ -178,11 +211,29 @@ export async function assignStaffDirect(args: {
         entity: "staff",
         entityId: row.id,
         action: "assign",
-        diff: { email, role: args.role, promoted: plan.action === "promote" },
+        diff: {
+          email,
+          role: args.role,
+          promoted: plan.action === "promote",
+          supersededInviteIds: supersededInvites.map((i) => i.id),
+        },
       });
 
-      return row;
+      return { staff: row, superseded: supersededInvites };
     });
+
+    // Best-effort: kill any live Clerk email links for superseded invites
+    // (same pattern as revokeStaffInvite; a failure just leaves a link that
+    // dead-ends on "no longer valid").
+    for (const invite of superseded) {
+      if (!invite.clerkInvitationId) continue;
+      try {
+        const client = await clerkClient();
+        await client.invitations.revokeInvitation(invite.clerkInvitationId);
+      } catch (err) {
+        console.error("[restaurant-invites] Clerk revoke after direct assign failed", err);
+      }
+    }
 
     return {
       ok: true,
@@ -190,10 +241,16 @@ export async function assignStaffDirect(args: {
       staff: { id: staff.id, role: staff.role },
     };
   } catch (err) {
-    // Lost race with a concurrent accept/assign on @@unique(accountId,
-    // restaurantId) — same outcome as "already", surface it that way.
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      return { ok: false, status: 409, error: "That email is already a staff member" };
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      // Lost race with a concurrent accept/assign on @@unique(accountId,
+      // restaurantId) — same outcome as "already", surface it that way.
+      if (err.code === "P2002") {
+        return { ok: false, status: 409, error: "That email is already a staff member" };
+      }
+      // Promote raced a concurrent removal: the staff row is gone.
+      if (err.code === "P2025") {
+        return { ok: false, status: 409, error: "That staff member was just removed — try again" };
+      }
     }
     throw err;
   }

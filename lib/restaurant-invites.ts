@@ -44,7 +44,19 @@ export function planDirectAssign(args: {
   if (DIRECT_ASSIGN_RANK[args.existingRole] < DIRECT_ASSIGN_RANK[args.requestedRole]) {
     return { action: "promote" };
   }
-  return { action: "already", error: "That email is already a staff member" };
+  return {
+    action: "already",
+    error: `That email is already ${args.existingRole} of this restaurant`,
+  };
+}
+
+/// Invite tiers a direct assignment may resolve: only at or below the
+/// assigned role. A higher-tier pending invite outranks the assignment and
+/// stays claimable — accepting it later just promotes (promote-only rules).
+export function supersedableInviteRoles(
+  assignedRole: "OWNER" | "MANAGER"
+): ("OWNER" | "MANAGER")[] {
+  return assignedRole === "OWNER" ? ["OWNER", "MANAGER"] : ["MANAGER"];
 }
 
 /// null when the signed-in user may accept `invite`; otherwise a user-facing

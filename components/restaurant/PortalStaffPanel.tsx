@@ -1,8 +1,10 @@
 "use client";
 
-// Phase 6a M4 — owner-facing staff management (design §4B/§5.7): roster,
-// manager invites (capped server-side), pending-invite revocation. OWNER
-// seats are granted and removed by Wondish ops only.
+// Phase 6a M4 + §4D — owner-facing staff management (design §4B/§5.7):
+// roster, email-free "add a manager" (direct assignment of an existing
+// Wondish account, capped server-side), pending-invite revocation for any
+// historical/ops-created invites. OWNER seats are granted and removed by
+// Wondish ops only.
 
 import { useState } from "react";
 import Badge from "@/components/ui/Badge";
@@ -44,32 +46,32 @@ export default function PortalStaffPanel({
   const [staff, setStaff] = useState(initialStaff);
   const [invites, setInvites] = useState(initialInvites);
   const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState<string | null>(null); // "invite" | row id
+  const [busy, setBusy] = useState<string | null>(null); // "add" | row id
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const invite = async () => {
-    setBusy("invite");
+  // §4D — email-free: attaches an existing Wondish account as MANAGER; the
+  // server rejects unknown emails with a "ask them to sign up first" error.
+  const addManager = async () => {
+    setBusy("add");
     setError(null);
     setNotice(null);
     try {
-      const res = await fetch(`/api/restaurant-portal/${restaurantId}/invites`, {
+      const res = await fetch(`/api/restaurant-portal/${restaurantId}/staff`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(body?.error ?? "Invite failed.");
+        setError(body?.error ?? "Couldn't add that person.");
         return;
       }
       setNotice(
-        body.emailSent
-          ? `Invite sent to ${email.trim().toLowerCase()}.`
-          : `${email.trim().toLowerCase()} already has a Wondish account — they'll see the invite when they sign in.`
+        `${email.trim().toLowerCase()} added as a manager — they can open the portal right away.`
       );
       setEmail("");
-      await reloadInvites();
+      await reloadStaff();
     } catch {
       setError("Network error — try again.");
     } finally {
@@ -77,11 +79,11 @@ export default function PortalStaffPanel({
     }
   };
 
-  const reloadInvites = async () => {
-    const res = await fetch(`/api/restaurant-portal/${restaurantId}/invites`);
+  const reloadStaff = async () => {
+    const res = await fetch(`/api/restaurant-portal/${restaurantId}/staff`);
     if (res.ok) {
       const body = await res.json();
-      setInvites(body.invites ?? []);
+      setStaff(body.staff ?? []);
     }
   };
 
@@ -180,22 +182,22 @@ export default function PortalStaffPanel({
       <section className="bg-white border border-[#EAE4CA] rounded-2xl overflow-hidden">
         <div className="px-5 py-3.5 border-b border-[#EAE4CA]" style={{ background: "#F9F7ED" }}>
           <h2 className="text-[9px] tracking-[0.22em] uppercase font-bold" style={{ color: "#ABA6A6" }}>
-            Invite a manager
+            Add a manager
           </h2>
         </div>
         <form
           className="px-5 py-4 flex flex-wrap items-end gap-3"
           onSubmit={(e) => {
             e.preventDefault();
-            void invite();
+            void addManager();
           }}
         >
           <div className="flex-1 min-w-[220px]">
-            <label htmlFor="invite-email" className="block text-sm font-medium text-[#1E1A1A] mb-1.5">
-              Email
+            <label htmlFor="add-manager-email" className="block text-sm font-medium text-[#1E1A1A] mb-1.5">
+              Their Wondish account email
             </label>
             <input
-              id="invite-email"
+              id="add-manager-email"
               type="email"
               required
               value={email}
@@ -204,12 +206,13 @@ export default function PortalStaffPanel({
               placeholder="chef@example.com"
             />
           </div>
-          <Button type="submit" loading={busy === "invite"} disabled={!email.trim()}>
-            Send invite
+          <Button type="submit" loading={busy === "add"} disabled={!email.trim()}>
+            Add manager
           </Button>
           <p className="w-full text-[11px]" style={{ color: "#ABA6A6" }}>
-            Managers can edit the menu and profile; they can&rsquo;t manage staff. Menu changes to
-            live dishes still go through Wondish review.
+            They need a Wondish account first — once they&rsquo;ve signed up, add their email here
+            and they get access immediately. Managers can edit the menu and profile; they
+            can&rsquo;t manage staff. Menu changes to live dishes still go through Wondish review.
           </p>
         </form>
 

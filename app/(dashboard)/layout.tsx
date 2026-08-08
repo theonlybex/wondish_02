@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import { isProfileComplete } from "@/lib/onboarding";
 import { accountHasActivePremium } from "@/lib/auth";
+import { RESTAURANT_ADMIN_ROLE } from "@/lib/restaurant-auth";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import PremiumGuard from "@/components/PremiumGuard";
@@ -21,6 +22,8 @@ export default async function DashboardLayout({
   const pathname = (await headers()).get("x-pathname") ?? "";
 
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
+  const isRestaurantStaff =
+    account?.roles?.some((r) => r.role.name === RESTAURANT_ADMIN_ROLE) ?? false;
   const isPremium = accountHasActivePremium(account?.subscriptions ?? []);
 
   // ── Onboarding gate (single source of truth) ───────────────────────────────
@@ -50,7 +53,17 @@ export default async function DashboardLayout({
         onboarded = true;
       }
     }
-    if (!onboarded) redirect("/profile?onboarding=true");
+    if (!onboarded) {
+      // Restaurant staff are not patients (Phase 6a design §5): an account
+      // that exists to manage a restaurant must never be trapped in patient
+      // onboarding or premium. Portal-only accounts land here after sign-in
+      // (/login falls back to /overview) — route them to their portal.
+      // Invited-but-not-yet-staff accounts are NOT redirected (they may be
+      // patients who happen to hold a stray invite); they see the claim
+      // banner on the onboarding page instead.
+      if (isRestaurantStaff) redirect("/restaurant");
+      redirect("/profile?onboarding=true");
+    }
   }
 
   // New-premium onboarding: redirect to Dish Tinder only if user hasn't seen taste setup yet.
@@ -79,7 +92,7 @@ export default async function DashboardLayout({
   return (
     <div className="flex h-screen bg-surface overflow-hidden">
       <div className="hidden lg:block">
-        <DashboardSidebar isAdmin={isAdmin} />
+        <DashboardSidebar isAdmin={isAdmin} isRestaurantStaff={isRestaurantStaff} />
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 lg:ml-64">

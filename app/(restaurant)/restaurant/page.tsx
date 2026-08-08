@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { findClaimableInvites } from "@/lib/restaurant-pending-invites-server";
 import Badge from "@/components/ui/Badge";
 import PendingInviteBanner from "@/components/restaurant/PendingInviteBanner";
 
@@ -30,13 +31,7 @@ export default async function RestaurantEntryPage() {
   const memberships = account?.restaurantStaff ?? [];
   if (memberships.length === 1) redirect(`/restaurant/${memberships[0].restaurant.id}`);
 
-  const pendingInvites = account
-    ? await prisma.restaurantInvite.findMany({
-        where: { email: account.email.toLowerCase(), status: "PENDING" },
-        include: { restaurant: { select: { name: true } } },
-        orderBy: { createdAt: "desc" },
-      })
-    : [];
+  const pendingInvites = account ? await findClaimableInvites(account.email) : [];
 
   return (
     <div className="max-w-3xl mx-auto">

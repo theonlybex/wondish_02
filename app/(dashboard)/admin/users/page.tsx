@@ -46,7 +46,7 @@ export default function AdminUsersPage() {
   // §4D — assign a user to a restaurant (staff row via the admin staff
   // endpoint; the server handles assign/promote/invite-fallback).
   const [assignUser, setAssignUser] = useState<{ id: string; email: string; name: string } | null>(null);
-  const [restaurants, setRestaurants] = useState<{ id: string; name: string }[] | null>(null);
+  const [restaurants, setRestaurants] = useState<{ id: string; name: string; status: string }[] | null>(null);
   const [assignRestaurantId, setAssignRestaurantId] = useState("");
   const [assignRole, setAssignRole] = useState<"OWNER" | "MANAGER">("OWNER");
   const [assigning, setAssigning] = useState(false);
@@ -105,7 +105,11 @@ export default function AdminUsersPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Failed to load restaurants");
         setRestaurants(
-          (data.items as { id: string; name: string }[]).map((r) => ({ id: r.id, name: r.name }))
+          (data.items as { id: string; name: string; status: string }[]).map((r) => ({
+            id: r.id,
+            name: r.name,
+            status: r.status,
+          }))
         );
       } catch (e) {
         setAssignError(e instanceof Error ? e.message : "Failed to load restaurants");
@@ -134,10 +138,14 @@ export default function AdminUsersPage() {
       setNotice(
         body.mode === "promoted"
           ? `${assignUser.email} promoted to ${body.staff.role} of ${restaurantName}.`
-          : `${assignUser.email} is now ${body.staff?.role ?? assignRole} of ${restaurantName} — they can open the portal at /restaurant.`
+          : body.mode === "invited"
+            ? `${assignUser.email} couldn't be attached directly — an invite was created instead${body.emailSent ? " and emailed" : ""}; they're not staff until they accept it.`
+            : `${assignUser.email} is now ${body.staff.role} of ${restaurantName} — they can open the portal at /restaurant.`
       );
       setAssignUser(null);
       await loadUsers(search || undefined);
+    } catch {
+      setAssignError("Network error — try again.");
     } finally {
       setAssigning(false);
     }
@@ -327,7 +335,10 @@ export default function AdminUsersPage() {
               value={assignRestaurantId}
               onChange={(e) => setAssignRestaurantId(e.target.value)}
               placeholder={restaurants === null ? "Loading restaurants…" : "Choose a restaurant…"}
-              options={(restaurants ?? []).map((r) => ({ value: r.id, label: r.name }))}
+              options={(restaurants ?? []).map((r) => ({
+                value: r.id,
+                label: r.status === "PUBLISHED" ? r.name : `${r.name} (${r.status})`,
+              }))}
             />
 
             <Select

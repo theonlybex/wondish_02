@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import { isProfileComplete } from "@/lib/onboarding";
+import { findClaimableInvites } from "@/lib/restaurant-pending-invites-server";
 import ProfileForm from "@/components/profile/ProfileForm";
+import PendingInviteBanner from "@/components/restaurant/PendingInviteBanner";
 
 export const metadata = { title: "Profile" };
 
@@ -51,6 +53,8 @@ export default async function ProfilePage({
     ),
   ]);
 
+  const pendingRestaurantInvites = account ? await findClaimableInvites(account.email) : [];
+
   // Old accounts predate the onboarding flag. If the profile is already complete
   // but they were forced here, heal the cached flag and return them to the
   // dashboard instead of making them redo onboarding.
@@ -73,6 +77,22 @@ export default async function ProfilePage({
         }
         .ov { animation: ov-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
       `}</style>
+
+      {/* Phase 6a §4C — invited-but-not-yet-staff accounts land here via
+          the onboarding gate; the claim banner is how they find the invite
+          without being locked out of patient onboarding. */}
+      {pendingRestaurantInvites.length > 0 && (
+        <div className="ov mb-6">
+          {pendingRestaurantInvites.map((invite) => (
+            <PendingInviteBanner
+              key={invite.id}
+              inviteId={invite.id}
+              restaurantName={invite.restaurant.name}
+              role={invite.role}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
         <p
