@@ -2,6 +2,7 @@
 // Mirrors requireRestaurantStaff's decision (SUPER bypasses; otherwise a
 // RestaurantStaff row for this restaurant) but returns a redirect target
 // instead of throwing, which is what pages need.
+import { cache } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 
@@ -22,7 +23,12 @@ export type PortalPageGate =
   | { allowed: false; redirectTo: string }
   | { allowed: true; ctx: PortalPageContext };
 
-export async function getPortalPageContext(restaurantId: string): Promise<PortalPageGate> {
+/// Wrapped in React `cache` so the layout's gate and the page's own guard
+/// share ONE account lookup per request instead of issuing the same query
+/// twice. Defense in depth costs nothing when it's deduplicated.
+export const getPortalPageContext = cache(async function getPortalPageContext(
+  restaurantId: string
+): Promise<PortalPageGate> {
   const { userId } = await auth();
   if (!userId) return { allowed: false, redirectTo: "/login" };
 
@@ -49,4 +55,4 @@ export async function getPortalPageContext(restaurantId: string): Promise<Portal
       onboardedPatient: account.onboardingComplete,
     },
   };
-}
+});

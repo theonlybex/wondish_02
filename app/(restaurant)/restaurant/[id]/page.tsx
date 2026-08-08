@@ -1,13 +1,22 @@
-import { auth } from "@clerk/nextjs/server";
+import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { getPortalPageContext } from "@/lib/restaurant-portal-page";
 import { needsVerifyNudge } from "@/lib/restaurant-activity";
 import Badge from "@/components/ui/Badge";
 import VerifyMenuBanner from "@/components/restaurant/VerifyMenuBanner";
 
+// generateMetadata and the page body both need the restaurant; `cache` makes
+// that one query per request instead of two. The database is a network hop
+// away (~100ms from a dev laptop), so duplicate round trips are the dominant
+// cost of a page render, not the queries themselves.
+const getRestaurant = cache((id: string) =>
+  prisma.restaurant.findUnique({ where: { id }, include: { ethnic: { select: { name: true } } } })
+);
+
 export async function generateMetadata({ params }: { params: { id: string } }) {
-  const restaurant = await prisma.restaurant.findUnique({ where: { id: params.id } });
+  const restaurant = await getRestaurant(params.id);
   return { title: restaurant ? `${restaurant.name} · Portal` : "Restaurant" };
 }
 
@@ -15,45 +24,34 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
 // coverage, review status, and the door into the menu manager. Server-gated
 // by staff membership (SUPER bypasses).
 export default async function RestaurantDashboardPage({ params }: { params: { id: string } }) {
-  const { userId } = await auth();
-  if (!userId) redirect("/login");
-
-  const account = await prisma.account.findUnique({
-    where: { clerkId: userId },
-    include: {
-      roles: { include: { role: true } },
-      restaurantStaff: { where: { restaurantId: params.id } },
-    },
-  });
-  const isSuper = account?.roles.some((r) => r.role.name === "SUPER") ?? false;
-  const membership = account?.restaurantStaff[0] ?? null;
-  if (!account || (!membership && !isSuper)) redirect("/restaurant");
-
-  const restaurant = await prisma.restaurant.findUnique({
-    where: { id: params.id },
-    include: { ethnic: { select: { name: true } } },
-  });
-  if (!restaurant) notFound();
-
-  const dishes = await prisma.restaurantDish.findMany({
-    where: { restaurantId: params.id, deletedAt: null },
-    select: { status: true, available: true, calories: true, lastVerifiedAt: true },
-  });
+  // Shares the layout's gate via React `cache` — same guarantee, one query.
+  const gate = await getPortalPageContext(params.id);
+  if (!gate.allowed) redirect(gate.redirectTo);
 
   // M3 — recent ops decisions (design §7): approvals confirm, rejections
   // carry the note staff need to act on.
   const decisionWindow = new Date();
   decisionWindow.setDate(decisionWindow.getDate() - 30);
-  const decisions = await prisma.restaurantDishRevision.findMany({
-    where: {
-      restaurantId: params.id,
-      status: { in: ["APPROVED", "REJECTED"] },
-      reviewedAt: { gte: decisionWindow },
-    },
-    orderBy: { reviewedAt: "desc" },
-    take: 5,
-    include: { dish: { select: { name: true } } },
-  });
+
+  // Independent of each other — one round trip's worth of latency, not three.
+  const [restaurant, dishes, decisions] = await Promise.all([
+    getRestaurant(params.id),
+    prisma.restaurantDish.findMany({
+      where: { restaurantId: params.id, deletedAt: null },
+      select: { status: true, available: true, calories: true, lastVerifiedAt: true },
+    }),
+    prisma.restaurantDishRevision.findMany({
+      where: {
+        restaurantId: params.id,
+        status: { in: ["APPROVED", "REJECTED"] },
+        reviewedAt: { gte: decisionWindow },
+      },
+      orderBy: { reviewedAt: "desc" },
+      take: 5,
+      include: { dish: { select: { name: true } } },
+    }),
+  ]);
+  if (!restaurant) notFound();
   const published = dishes.filter((d) => d.status === "PUBLISHED").length;
   const inReview = dishes.filter((d) => d.status === "PENDING_REVIEW").length;
   const missingNutrition = dishes.filter((d) => d.calories == null).length;
@@ -92,7 +90,9 @@ export default async function RestaurantDashboardPage({ params }: { params: { id
             <p className="text-xs mt-1.5" style={{ color: "#848181" }}>
               {restaurant.neighborhood}
               {restaurant.ethnic?.name ? ` · ${restaurant.ethnic.name}` : ""}
-              {membership ? ` · you are ${membership.role === "OWNER" ? "an owner" : "a manager"}` : " · Wondish ops"}
+              {gate.ctx.membership
+                ? ` · you are ${gate.ctx.membership.role === "OWNER" ? "an owner" : "a manager"}`
+                : " · Wondish ops"}
             </p>
           </div>
           <Badge variant={restaurant.status === "PUBLISHED" ? "success" : "neutral"}>
