@@ -37,6 +37,11 @@ export async function GET(req: NextRequest) {
           subscriptions: { where: { source: "STRIPE" }, select: { plan: true, status: true } },
           roles: { include: { role: true } },
           company: { select: { name: true } },
+          // Phase 6a §4D — which restaurants each account manages, so the
+          // Users screen can show memberships and offer "Assign restaurant".
+          restaurantStaff: {
+            select: { id: true, role: true, restaurant: { select: { id: true, name: true } } },
+          },
         },
       }),
       prisma.account.count({ where }),

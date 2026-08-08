@@ -3,8 +3,9 @@
 // Callers own authorization; these own the mechanics so both surfaces stay
 // behaviorally identical.
 import { clerkClient } from "@clerk/nextjs/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { normalizeEmail } from "@/lib/restaurant-invites";
+import { normalizeEmail, planDirectAssign } from "@/lib/restaurant-invites";
 import { RESTAURANT_ADMIN_ROLE } from "@/lib/restaurant-auth";
 import { auditRestaurantChange } from "@/lib/restaurant-audit";
 
@@ -84,6 +85,118 @@ export async function createStaffInvite(args: {
   });
 
   return { ok: true, invite, emailSent };
+}
+
+// Phase 6a §4D — ops attaches an EXISTING account to a restaurant without
+// the invite round-trip; when no account exists for the email it falls back
+// to createStaffInvite so the admin form is one "Add staff" action either
+// way. Assign/promote path is one transaction mirroring accept-invite:
+// staff row + RESTAURANT_ADMIN role + pending invites for the email
+// resolved (they must not stay claimable after a direct grant) + audit.
+export async function assignStaffDirect(args: {
+  restaurantId: string;
+  rawEmail: unknown;
+  role: "OWNER" | "MANAGER";
+  actorId: string;
+  origin: string;
+}): Promise<
+  | InviteFailure
+  | { ok: true; mode: "invited"; emailSent: boolean }
+  | { ok: true; mode: "assigned" | "promoted"; staff: { id: string; role: "OWNER" | "MANAGER" } }
+> {
+  const email = normalizeEmail(typeof args.rawEmail === "string" ? args.rawEmail : "");
+  if (!EMAIL_RE.test(email)) {
+    return { ok: false, status: 400, error: "A valid email is required" };
+  }
+
+  const account = await prisma.account.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      restaurantStaff: {
+        where: { restaurantId: args.restaurantId },
+        select: { id: true, role: true },
+      },
+    },
+  });
+
+  const plan = planDirectAssign({
+    accountExists: account !== null,
+    existingRole: account?.restaurantStaff[0]?.role ?? null,
+    requestedRole: args.role,
+  });
+
+  if (plan.action === "invite") {
+    const invited = await createStaffInvite({
+      restaurantId: args.restaurantId,
+      rawEmail: email,
+      role: args.role,
+      invitedById: args.actorId,
+      origin: args.origin,
+    });
+    if (!invited.ok) return invited;
+    return { ok: true, mode: "invited", emailSent: invited.emailSent };
+  }
+  if (plan.action === "already") {
+    return { ok: false, status: 409, error: plan.error };
+  }
+
+  try {
+    const staff = await prisma.$transaction(async (tx) => {
+      const role = await tx.role.upsert({
+        where: { name: RESTAURANT_ADMIN_ROLE },
+        update: {},
+        create: { name: RESTAURANT_ADMIN_ROLE },
+      });
+      await tx.accountRole.upsert({
+        where: { accountId_roleId: { accountId: account!.id, roleId: role.id } },
+        update: {},
+        create: { accountId: account!.id, roleId: role.id },
+      });
+
+      const existing = account!.restaurantStaff[0];
+      const row =
+        plan.action === "promote"
+          ? await tx.restaurantStaff.update({ where: { id: existing.id }, data: { role: args.role } })
+          : await tx.restaurantStaff.create({
+              data: {
+                accountId: account!.id,
+                restaurantId: args.restaurantId,
+                role: args.role,
+                invitedById: args.actorId,
+              },
+            });
+
+      await tx.restaurantInvite.updateMany({
+        where: { restaurantId: args.restaurantId, email, status: "PENDING" },
+        data: { status: "ACCEPTED", acceptedAt: new Date() },
+      });
+
+      await auditRestaurantChange(tx, {
+        restaurantId: args.restaurantId,
+        accountId: args.actorId,
+        entity: "staff",
+        entityId: row.id,
+        action: "assign",
+        diff: { email, role: args.role, promoted: plan.action === "promote" },
+      });
+
+      return row;
+    });
+
+    return {
+      ok: true,
+      mode: plan.action === "promote" ? "promoted" : "assigned",
+      staff: { id: staff.id, role: staff.role },
+    };
+  } catch (err) {
+    // Lost race with a concurrent accept/assign on @@unique(accountId,
+    // restaurantId) — same outcome as "already", surface it that way.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return { ok: false, status: 409, error: "That email is already a staff member" };
+    }
+    throw err;
+  }
 }
 
 export async function revokeStaffInvite(args: {

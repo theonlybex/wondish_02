@@ -1,7 +1,8 @@
 "use client";
 
-// Phase 6a M1 — admin Staff tab (design §4A/§5.7): roster of staff members
-// and invites for one restaurant, with invite / revoke / remove actions.
+// Phase 6a M1 — admin Staff tab (design §4A/§4D/§5.7): roster of staff
+// members and invites for one restaurant, with add-staff (direct-assign or
+// invite fallback) / revoke / remove actions.
 // Conventions follow RestaurantDishManager: client component, fetch + local
 // state, dismissible inline error banner, ui/* primitives.
 
@@ -67,26 +68,34 @@ export default function RestaurantStaffPanel({ restaurantId }: { restaurantId: s
     void load();
   }, [load]);
 
-  const handleInvite = async (e: React.FormEvent) => {
+  // §4D: one "Add staff" action — the server direct-assigns when the email
+  // already has an account, falls back to an invite when it doesn't, and
+  // `mode` says which path happened.
+  const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     setNotice(null);
     try {
-      const res = await fetch(`/api/admin/restaurants/${restaurantId}/invites`, {
+      const res = await fetch(`/api/admin/restaurants/${restaurantId}/staff`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, role }),
       });
       const body = await res.json();
       if (!res.ok) {
-        setError(body.error ?? "Failed to send invite");
+        setError(body.error ?? "Failed to add staff");
         return;
       }
+      const addr = email.trim().toLowerCase();
       setNotice(
-        body.emailSent
-          ? `Invite emailed to ${email.trim().toLowerCase()}.`
-          : `Invite created for ${email.trim().toLowerCase()} — they already have a Wondish account and can accept it in-app.`
+        body.mode === "assigned"
+          ? `${addr} added as ${body.staff.role} — they can open the portal now.`
+          : body.mode === "promoted"
+            ? `${addr} promoted to ${body.staff.role}.`
+            : body.emailSent
+              ? `No account for ${addr} yet — invite emailed instead.`
+              : `No account for ${addr} yet — invite created; they can accept it in-app after signing up.`
       );
       setEmail("");
       await load();
@@ -161,8 +170,8 @@ export default function RestaurantStaffPanel({ restaurantId }: { restaurantId: s
         </div>
       )}
 
-      {/* Invite form */}
-      <form onSubmit={handleInvite} className="flex flex-wrap items-end gap-2 mb-5">
+      {/* Add-staff form (§4D): direct-assign for existing accounts, invite fallback */}
+      <form onSubmit={handleAddStaff} className="flex flex-wrap items-end gap-2 mb-5">
         <label className="flex-1 min-w-[220px]">
           <span className="block text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "#848181" }}>
             Email
@@ -190,7 +199,7 @@ export default function RestaurantStaffPanel({ restaurantId }: { restaurantId: s
           </select>
         </label>
         <Button type="submit" size="sm" loading={submitting}>
-          Send invite
+          Add staff
         </Button>
       </form>
 

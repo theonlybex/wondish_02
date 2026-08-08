@@ -189,6 +189,36 @@ per restaurant), revocable. OWNER role can only be granted by Wondish ops.
 - An account can be staff of multiple restaurants (chains): portal shows a
   restaurant switcher (§5.1).
 
+**D. Direct assignment by ops (shipped with the M3/M4 fix wave follow-up).**
+For internal testing and hand-onboarding, admin can attach an *existing*
+account to a restaurant without the invite→accept round-trip:
+
+- `POST /api/admin/restaurants/[id]/staff` with `{ email, role }`,
+  `requireAdmin()`-gated (admin is already the trust root and may grant
+  OWNER). Looks up the account by email; when none exists it falls back to
+  `createStaffInvite` so the admin form is one action either way — the
+  response's `mode` (`assigned` / `promoted` / `invited`) says which path
+  happened. On assign, one transaction mirroring the accept-invite path in
+  `lib/restaurant-invites-server.ts`: create `RestaurantStaff`
+  (`invitedById` = the acting admin), upsert the global `RESTAURANT_ADMIN`
+  role, mark any PENDING `RestaurantInvite` for the same email+restaurant
+  ACCEPTED (so it can't dangle and be claimed again), and write the audit
+  row (`entity: "staff"`, `action: "assign"`). Tier rules mirror
+  accept-invite: a MANAGER is promoted by an OWNER assignment, never
+  demoted; already at (or above) the requested tier → 409. Decision rules
+  are pure (`planDirectAssign` in `lib/restaurant-invites.ts`, unit-tested).
+- Admin UI: the Staff tab's "Invite" form generalizes to **"Add staff"** —
+  one email field + role select; the server direct-assigns when the account
+  exists and falls back to creating an invite when it doesn't, and the
+  response says which path happened ("Added directly — they can open the
+  portal now" vs "Invite created").
+- Scoping is inherent, nothing new to build: membership is the
+  `RestaurantStaff (accountId, restaurantId)` row, so an assignment grants
+  exactly one restaurant (e.g. "Dumpling U admin"); the global role only
+  unlocks the portal shell, and every portal page/API re-checks the staff
+  row. Removal already exists (§4C) and drops the global role with the
+  last restaurant.
+
 ## 5. The portal — `app/(restaurant)/…`
 
 Desktop-first (menu management is a laptop job), same design system as the
@@ -328,7 +358,11 @@ existing consumer endpoints already serve. Later, additive: freshness/
    ingredient-request mapping queue.
 4. **M4 — polish:** profile + uploads, preview-as-diner, staff management
    UI, freshness nudges, activity screen.
-5. **Pilot:** invite the 5 Stockton restaurants; their first job is
+5. **M5 — ops direct staff assignment (§4D):** admin attaches an existing
+   account as OWNER/MANAGER of a single restaurant, no invite round-trip.
+   Unblocks internal workflow testing (e.g. make a test account the
+   Dumpling U admin) before real invites go out.
+6. **Pilot:** invite the 5 Stockton restaurants; their first job is
    confirming the AI-inferred ingredient lists and AI-estimated nutrition —
    which retires the two standing provenance caveats in
    `scripts/seed-restaurants.ts`.

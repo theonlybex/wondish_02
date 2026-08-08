@@ -3,6 +3,14 @@
 import { useEffect, useState } from "react";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import Modal from "@/components/ui/Modal";
+import Select from "@/components/ui/Select";
+
+interface StaffMembership {
+  id: string;
+  role: "OWNER" | "MANAGER";
+  restaurant: { id: string; name: string };
+}
 
 const ANIM = `
   @keyframes ov-rise {
@@ -34,6 +42,16 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [planTogglingId, setPlanTogglingId] = useState<string | null>(null);
+
+  // §4D — assign a user to a restaurant (staff row via the admin staff
+  // endpoint; the server handles assign/promote/invite-fallback).
+  const [assignUser, setAssignUser] = useState<{ id: string; email: string; name: string } | null>(null);
+  const [restaurants, setRestaurants] = useState<{ id: string; name: string }[] | null>(null);
+  const [assignRestaurantId, setAssignRestaurantId] = useState("");
+  const [assignRole, setAssignRole] = useState<"OWNER" | "MANAGER">("OWNER");
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const loadUsers = async (q?: string) => {
     setLoading(true);
@@ -76,6 +94,55 @@ export default function AdminUsersPage() {
     setPlanTogglingId(null);
   };
 
+  const openAssign = async (user: { id: string; email: string; name: string }) => {
+    setAssignUser(user);
+    setAssignRestaurantId("");
+    setAssignRole("OWNER");
+    setAssignError(null);
+    if (restaurants === null) {
+      try {
+        const res = await fetch("/api/admin/restaurants");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Failed to load restaurants");
+        setRestaurants(
+          (data.items as { id: string; name: string }[]).map((r) => ({ id: r.id, name: r.name }))
+        );
+      } catch (e) {
+        setAssignError(e instanceof Error ? e.message : "Failed to load restaurants");
+      }
+    }
+  };
+
+  const handleAssign = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignUser || !assignRestaurantId) return;
+    setAssigning(true);
+    setAssignError(null);
+    try {
+      const res = await fetch(`/api/admin/restaurants/${assignRestaurantId}/staff`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: assignUser.email, role: assignRole }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setAssignError(body.error ?? "Failed to assign");
+        return;
+      }
+      const restaurantName =
+        restaurants?.find((r) => r.id === assignRestaurantId)?.name ?? "the restaurant";
+      setNotice(
+        body.mode === "promoted"
+          ? `${assignUser.email} promoted to ${body.staff.role} of ${restaurantName}.`
+          : `${assignUser.email} is now ${body.staff?.role ?? assignRole} of ${restaurantName} — they can open the portal at /restaurant.`
+      );
+      setAssignUser(null);
+      await loadUsers(search || undefined);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   return (
     <>
       <style>{ANIM}</style>
@@ -112,6 +179,15 @@ export default function AdminUsersPage() {
             />
           </div>
         </div>
+
+        {notice && (
+          <div className="flex items-start justify-between gap-3 bg-success/10 border border-success/20 rounded-xl px-3 py-2 mb-4 text-xs text-success">
+            <span>{notice}</span>
+            <button onClick={() => setNotice(null)} aria-label="Dismiss notice" className="font-bold">
+              ×
+            </button>
+          </div>
+        )}
 
         {/* User list */}
         <div
@@ -161,6 +237,15 @@ export default function AdminUsersPage() {
                       <p className="text-[10px] font-medium mt-0.5 leading-snug" style={{ color: "#ABA6A6" }}>
                         {u.email as string}
                       </p>
+                      {((u.restaurantStaff as StaffMembership[] | undefined) ?? []).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {(u.restaurantStaff as StaffMembership[]).map((m) => (
+                            <Badge key={m.id} variant="info">
+                              🍜 {m.restaurant.name} · {m.role}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="hidden md:block">
@@ -176,6 +261,15 @@ export default function AdminUsersPage() {
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() =>
+                          openAssign({ id: u.id as string, email: u.email as string, name: fullName })
+                        }
+                      >
+                        Assign restaurant
+                      </Button>
                       {isProtected ? (
                         <span
                           className="text-[10px] font-medium px-2 py-1 rounded-lg"
@@ -212,6 +306,53 @@ export default function AdminUsersPage() {
           )}
         </div>
       </div>
+
+      {/* §4D — assign-to-restaurant modal */}
+      <Modal
+        open={assignUser !== null}
+        onClose={() => setAssignUser(null)}
+        title="Assign to restaurant"
+        size="sm"
+      >
+        {assignUser && (
+          <form onSubmit={handleAssign} className="flex flex-col gap-4">
+            <p className="text-sm" style={{ color: "#848181" }}>
+              Give <span className="font-semibold text-[#1E1A1A]">{assignUser.email}</span> access
+              to manage one restaurant&apos;s menu in the portal.
+            </p>
+
+            <Select
+              label="Restaurant"
+              required
+              value={assignRestaurantId}
+              onChange={(e) => setAssignRestaurantId(e.target.value)}
+              placeholder={restaurants === null ? "Loading restaurants…" : "Choose a restaurant…"}
+              options={(restaurants ?? []).map((r) => ({ value: r.id, label: r.name }))}
+            />
+
+            <Select
+              label="Role"
+              value={assignRole}
+              onChange={(e) => setAssignRole(e.target.value as "OWNER" | "MANAGER")}
+              options={[
+                { value: "OWNER", label: "Owner — full control, including staff" },
+                { value: "MANAGER", label: "Manager — menu and profile" },
+              ]}
+            />
+
+            {assignError && <p className="text-error text-xs">{assignError}</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="secondary" size="sm" onClick={() => setAssignUser(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" loading={assigning} disabled={!assignRestaurantId}>
+                Assign
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </>
   );
 }

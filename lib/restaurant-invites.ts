@@ -22,6 +22,31 @@ export interface InviteLike {
   createdAt: Date;
 }
 
+// Phase 6a §4D — ops direct staff assignment, decision rules. Mirrors
+// accept-invite's tier semantics: assignments only ever raise the tier,
+// never demote. "invite" means no account exists for the email, so the
+// caller falls back to the invite flow.
+export type DirectAssignPlan =
+  | { action: "invite" }
+  | { action: "assign" }
+  | { action: "promote" }
+  | { action: "already"; error: string };
+
+const DIRECT_ASSIGN_RANK: Record<"OWNER" | "MANAGER", number> = { MANAGER: 0, OWNER: 1 };
+
+export function planDirectAssign(args: {
+  accountExists: boolean;
+  existingRole: "OWNER" | "MANAGER" | null;
+  requestedRole: "OWNER" | "MANAGER";
+}): DirectAssignPlan {
+  if (!args.accountExists) return { action: "invite" };
+  if (args.existingRole === null) return { action: "assign" };
+  if (DIRECT_ASSIGN_RANK[args.existingRole] < DIRECT_ASSIGN_RANK[args.requestedRole]) {
+    return { action: "promote" };
+  }
+  return { action: "already", error: "That email is already a staff member" };
+}
+
 /// null when the signed-in user may accept `invite`; otherwise a user-facing
 /// error string. Email comparison is case-insensitive; a mismatch names the
 /// invited address (the invitee knows it — it's in their inbox) so they can

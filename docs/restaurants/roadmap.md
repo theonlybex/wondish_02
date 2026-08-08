@@ -40,6 +40,7 @@
 **Ships:**
 - **Phase 5** — cuisine rotation + ratings (activates `ratingBoost`; "top-rated per cuisine").
 - **Phase 6** — restaurant self-serve portal (owners manage their own menus — scales past hand-onboarding), paid placement (activates capped, labeled `sponsorBoost`), and the recommended-dish discount + reconciliation.
+  - *Status note:* the self-serve half shipped early as **Phase 6a** (portal M1–M4 + review workflow, merged 2026-08). Remaining 6a addendum: **ops direct staff assignment** (phase-6a design §4D) — admin attaches an existing account as OWNER/MANAGER of exactly one restaurant (e.g. a test account as the Dumpling U admin), no invite round-trip; needed for internal workflow testing before pilot invites go out.
 
 **Gated on business answers:** paid-placement pricing/ranking model + dish-discount reconciliation rail (overview.md §8 Q3-4).
 
