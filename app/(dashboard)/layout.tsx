@@ -4,6 +4,7 @@ import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import { isProfileComplete } from "@/lib/onboarding";
+import { resolveOnboardingRedirect } from "@/lib/onboarding-gate";
 import { accountHasActivePremium } from "@/lib/auth";
 import { RESTAURANT_ADMIN_ROLE } from "@/lib/restaurant-auth";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
@@ -33,6 +34,7 @@ export default async function DashboardLayout({
   // /profile is exempt so users can actually finish onboarding.
   if (!pathname.startsWith("/profile")) {
     let onboarded = account?.onboardingComplete ?? false;
+    let hasPatientRow = false;
     if (!onboarded && account) {
       const p = await prisma.patient.findUnique({
         where: { accountId: account.id },
@@ -45,6 +47,7 @@ export default async function DashboardLayout({
           physicalActivityId: true,
         },
       });
+      hasPatientRow = p !== null;
       if (isProfileComplete(p)) {
         await prisma.account.update({
           where: { id: account.id },
@@ -53,17 +56,14 @@ export default async function DashboardLayout({
         onboarded = true;
       }
     }
-    if (!onboarded) {
-      // Restaurant staff are not patients (Phase 6a design §5): an account
-      // that exists to manage a restaurant must never be trapped in patient
-      // onboarding or premium. Portal-only accounts land here after sign-in
-      // (/login falls back to /overview) — route them to their portal.
-      // Invited-but-not-yet-staff accounts are NOT redirected (they may be
-      // patients who happen to hold a stray invite); they see the claim
-      // banner on the onboarding page instead.
-      if (isRestaurantStaff) redirect("/restaurant");
-      redirect("/profile?onboarding=true");
-    }
+    // Portal-only staff go to their portal (never trapped in patient
+    // onboarding); staff who have STARTED a patient profile finish it instead
+    // — bouncing them to the portal stranded them, since the portal shows no
+    // back link for an account that is not yet an onboarded patient.
+    // Invited-but-not-yet-staff accounts are not staff, so they are unaffected
+    // and see the claim banner on the onboarding page.
+    const target = resolveOnboardingRedirect({ onboarded, isRestaurantStaff, hasPatientRow });
+    if (target) redirect(target);
   }
 
   // New-premium onboarding: redirect to Dish Tinder only if user hasn't seen taste setup yet.
