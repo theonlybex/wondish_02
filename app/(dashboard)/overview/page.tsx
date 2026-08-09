@@ -16,16 +16,18 @@ export default async function OverviewPage() {
   const { userId } = await auth();
   if (!userId) redirect("/login");
 
-  const [account, patient] = await Promise.all([
+  // Phase 6a §4C — restaurant invites for existing accounts send no email;
+  // the claim banner on the dashboard home is how they find out. It needs the
+  // account's email, so it chains off getAccount rather than running as a
+  // serial round trip afterwards — this is the dashboard's landing page.
+  // getAccount is React-cached, so the chained call shares the same lookup.
+  const [account, patient, pendingRestaurantInvites] = await Promise.all([
     getAccount(userId),
     getOverviewPatient(userId),
+    getAccount(userId).then((a) => (a ? findClaimableInvites(a.email) : [])),
   ]);
 
   if (!account) redirect("/login");
-
-  // Phase 6a §4C — restaurant invites for existing accounts send no email;
-  // the claim banner on the dashboard home is how they find out.
-  const pendingRestaurantInvites = await findClaimableInvites(account.email);
 
   // ── Streak grid ────────────────────────────────────────────────────────────
   const gridDays: GridDay[] = [];

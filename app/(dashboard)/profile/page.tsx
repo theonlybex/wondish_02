@@ -19,7 +19,7 @@ export default async function ProfilePage({
 
   const isOnboarding = searchParams.onboarding === "true";
 
-  const [account, patient, refData] = await Promise.all([
+  const [account, patient, refData, pendingRestaurantInvites] = await Promise.all([
     getAccount(userId),
     prisma.patient.findFirst({
       where: { account: { clerkId: userId } },
@@ -51,9 +51,12 @@ export default async function ProfilePage({
         foodAllergies,
       })
     ),
+    // Needs the account's email, so it cannot start until getAccount resolves
+    // — but chaining it here overlaps that wait with the patient/refData
+    // queries instead of adding a serial round trip after all of them.
+    // getAccount is React-cached, so this shares the lookup above.
+    getAccount(userId).then((a) => (a ? findClaimableInvites(a.email) : [])),
   ]);
-
-  const pendingRestaurantInvites = account ? await findClaimableInvites(account.email) : [];
 
   // Old accounts predate the onboarding flag. If the profile is already complete
   // but they were forced here, heal the cached flag and return them to the
