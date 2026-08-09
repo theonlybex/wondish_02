@@ -239,13 +239,15 @@ export async function assignStaffDirect(args: {
     // Best-effort: kill any live Clerk email links for superseded invites
     // (same pattern as revokeStaffInvite; a failure just leaves a link that
     // dead-ends on "no longer valid").
-    for (const invite of superseded) {
-      if (!invite.clerkInvitationId) continue;
-      try {
-        const client = await clerkClient();
-        await client.invitations.revokeInvitation(invite.clerkInvitationId);
-      } catch (err) {
-        console.error("[restaurant-invites] Clerk revoke after direct assign failed", err);
+    const revocable = superseded.filter((i) => i.clerkInvitationId);
+    if (revocable.length > 0) {
+      const client = await clerkClient();
+      for (const invite of revocable) {
+        try {
+          await client.invitations.revokeInvitation(invite.clerkInvitationId!);
+        } catch (err) {
+          console.error("[restaurant-invites] Clerk revoke after direct assign failed", err);
+        }
       }
     }
 

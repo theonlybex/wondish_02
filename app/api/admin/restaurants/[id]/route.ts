@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin, adminErrorResponse, pickFields } from "@/lib/admin";
 import { isRestaurantStatus, RESTAURANT_MUTABLE_FIELDS } from "@/lib/admin-restaurants";
 import { RESTAURANT_ADMIN_ROLE } from "@/lib/restaurant-auth";
+import { orphanedStaffAccountIds } from "@/lib/restaurant-staff-cleanup";
 
 function isUniqueConstraintViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
@@ -66,11 +67,18 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 
       const accountIds = Array.from(new Set(staff.map((s) => s.accountId)));
       if (accountIds.length > 0) {
-        const orphaned = [];
-        for (const accountId of accountIds) {
-          const remaining = await tx.restaurantStaff.count({ where: { accountId } });
-          if (remaining === 0) orphaned.push(accountId);
-        }
+        // One groupBy, not a count per account: this runs inside an
+        // interactive transaction, which has a wall-clock timeout that a
+        // per-account round trip would eat into on a big roster.
+        const remaining = await tx.restaurantStaff.groupBy({
+          by: ["accountId"],
+          where: { accountId: { in: accountIds } },
+          _count: { _all: true },
+        });
+        const orphaned = orphanedStaffAccountIds(
+          accountIds,
+          remaining.map((r) => ({ accountId: r.accountId, count: r._count._all }))
+        );
         if (orphaned.length > 0) {
           const role = await tx.role.findUnique({ where: { name: RESTAURANT_ADMIN_ROLE } });
           if (role) {
