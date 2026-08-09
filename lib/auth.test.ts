@@ -69,6 +69,44 @@ test("does not claim a row already owned by a different clerk user (no silent re
     { action: "conflict" });
 });
 
+// ─── Orphaned rows (2026-08-08) ─────────────────────────────────────────────
+// A Clerk user deleted out-of-band (Clerk dashboard, or a crash between the
+// two deletes in DELETE /api/me) leaves the Account row pointing at a clerkId
+// that no longer exists. The row is neither claimable nor usable: getAccount
+// looks up BY clerkId so the person reads as brand new, while this function
+// called the row "owned by someone else" and refused it — a permanent lockout
+// with no self-service recovery. When the previous owner is confirmed GONE and
+// the incoming email is verified, the row may be re-claimed.
+//
+// previousOwnerExists is only consulted for a row held by a different clerkId,
+// and the caller must leave it undefined unless it actually checked.
+
+test("re-claims an orphaned row when the previous Clerk user is gone and the email is verified", () => {
+  assert.deepEqual(
+    resolveAccountClaim({ id: "a1", clerkId: "user_deleted", email: "x@y.com" }, "user_123", true, false),
+    { action: "claim", accountId: "a1", clerkId: "user_123" });
+});
+test("does NOT re-claim an orphaned row on an unverified email (takeover guard still applies)", () => {
+  assert.deepEqual(
+    resolveAccountClaim({ id: "a1", clerkId: "user_deleted", email: "x@y.com" }, "user_123", false, false),
+    { action: "conflict" });
+});
+test("does NOT re-claim when the previous Clerk user still exists", () => {
+  assert.deepEqual(
+    resolveAccountClaim({ id: "a1", clerkId: "user_other", email: "x@y.com" }, "user_123", true, true),
+    { action: "conflict" });
+});
+test("does NOT re-claim when the previous owner was never checked (unknown stays a conflict)", () => {
+  assert.deepEqual(
+    resolveAccountClaim({ id: "a1", clerkId: "user_other", email: "x@y.com" }, "user_123", true, undefined),
+    { action: "conflict" });
+});
+test("previousOwnerExists never resurrects the unverified-email guard on an UNCLAIMED row", () => {
+  assert.deepEqual(
+    resolveAccountClaim({ id: "a1", clerkId: null, email: "x@y.com" }, "user_123", false, false),
+    { action: "conflict" });
+});
+
 // ─── 2026-07-24 logic-audit Task 9: period-end backstop ─────────────────────
 //
 // Entitlement was 100% webhook-dependent: one missed subscription.deleted

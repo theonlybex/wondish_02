@@ -76,16 +76,31 @@ export type AccountClaimDecision =
 // Clerk user ONLY when the incoming Clerk email is verified — otherwise
 // anyone who merely types someone else's (unverified) email at sign-up could
 // take over that person's account and its premium/coupon entitlements.
+//
+// `previousOwnerExists` covers rows held by a DIFFERENT clerkId. A Clerk user
+// deleted out-of-band (Clerk dashboard, or a crash between the two deletes in
+// DELETE /api/me) strands the row: getAccount looks up by clerkId, so the
+// person reads as brand new, while this function called the row taken and
+// refused it — a permanent lockout no one can self-serve out of. Pass `false`
+// ONLY after confirming with Clerk that the previous owner is gone; leave it
+// undefined when unchecked, which keeps the conservative conflict.
 export function resolveAccountClaim(
   existingByEmail: ClaimTarget,
   userId: string,
-  emailVerified: boolean
+  emailVerified: boolean,
+  previousOwnerExists?: boolean
 ): AccountClaimDecision {
   if (!existingByEmail) return { action: "create" };
   if (existingByEmail.clerkId === userId) {
     return { action: "none", accountId: existingByEmail.id };
   }
   if (existingByEmail.clerkId === null && emailVerified) {
+    return { action: "claim", accountId: existingByEmail.id, clerkId: userId };
+  }
+  // Orphaned row: the recorded owner no longer exists in Clerk. Re-claiming is
+  // safe here precisely because there is no one left to take it from — and the
+  // verified-email requirement is unchanged, so this is not a takeover path.
+  if (existingByEmail.clerkId !== null && previousOwnerExists === false && emailVerified) {
     return { action: "claim", accountId: existingByEmail.id, clerkId: userId };
   }
   // Unverified email on an unclaimed row (takeover guard), or the row is
@@ -106,6 +121,24 @@ function isUniqueConstraintViolation(err: unknown): boolean {
 // branch). Carries only the normalized email that collided — never the other
 // account's id/clerkId — so callers can surface a diagnosable error without
 // leaking which account owns the address.
+/// Does this Clerk user still exist? Any answer other than a definite 404 is
+/// reported as "still exists" — a transient Clerk outage must never be read as
+/// "the owner is gone" and hand someone else's account away.
+async function clerkUserExists(
+  client: Awaited<ReturnType<typeof clerkClient>>,
+  clerkId: string
+): Promise<boolean> {
+  try {
+    await client.users.getUser(clerkId);
+    return true;
+  } catch (err) {
+    const status = (err as { status?: number })?.status;
+    if (status === 404) return false;
+    console.error("[auth] could not verify previous Clerk user; treating as present", err);
+    return true;
+  }
+}
+
 export class AccountClaimConflictError extends Error {
   readonly email: string;
   constructor(email: string) {
@@ -136,13 +169,23 @@ export async function getOrCreateAccount(userId: string) {
   const photoUrl = u.imageUrl ?? null;
 
   const existingByEmail = email ? await prisma.account.findUnique({ where: { email } }) : null;
-  const decision = resolveAccountClaim(
-    existingByEmail
-      ? { id: existingByEmail.id, clerkId: existingByEmail.clerkId, email: existingByEmail.email }
-      : null,
-    userId,
-    emailVerified
-  );
+  const target = existingByEmail
+    ? { id: existingByEmail.id, clerkId: existingByEmail.clerkId, email: existingByEmail.email }
+    : null;
+  let decision = resolveAccountClaim(target, userId, emailVerified);
+
+  // Only reachable once we are already about to fail, so the happy path never
+  // pays for this: a row held by a clerkId that no longer exists in Clerk is
+  // orphaned, and a verified email may re-claim it instead of being locked out.
+  if (decision.action === "conflict" && emailVerified && target?.clerkId) {
+    const previousOwnerExists = await clerkUserExists(client, target.clerkId);
+    decision = resolveAccountClaim(target, userId, emailVerified, previousOwnerExists);
+    if (decision.action === "claim") {
+      console.warn(
+        `[auth] re-claiming orphaned account ${target.id}: previous Clerk user ${target.clerkId} no longer exists`
+      );
+    }
+  }
 
   if (decision.action === "conflict") {
     // Never reach findUniqueOrThrow below — no row exists (or ever will) for
