@@ -53,6 +53,45 @@ export default function AdminUsersPage() {
   const [assignError, setAssignError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // Removal is the counterpart of "Assign restaurant" — an admin who can
+  // grant a restaurant from this screen must be able to take it back here
+  // too, instead of hunting for the restaurant's own Staff tab.
+  const [removeTarget, setRemoveTarget] = useState<{
+    staffId: string;
+    restaurantId: string;
+    restaurantName: string;
+    role: string;
+    email: string;
+  } | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  const handleRemoveStaff = async () => {
+    if (!removeTarget) return;
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      const res = await fetch(
+        `/api/admin/restaurants/${removeTarget.restaurantId}/staff/${removeTarget.staffId}`,
+        { method: "DELETE" }
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRemoveError(body?.error ?? "Failed to remove.");
+        return;
+      }
+      setNotice(
+        `${removeTarget.email} is no longer ${removeTarget.role} of ${removeTarget.restaurantName}.`
+      );
+      setRemoveTarget(null);
+      await loadUsers(search || undefined);
+    } catch {
+      setRemoveError("Network error — try again.");
+    } finally {
+      setRemoving(false);
+    }
+  };
+
   const loadUsers = async (q?: string) => {
     setLoading(true);
     const url = `/api/admin/users?${q ? `search=${q}&` : ""}limit=50`;
@@ -246,11 +285,32 @@ export default function AdminUsersPage() {
                         {u.email as string}
                       </p>
                       {((u.restaurantStaff as StaffMembership[] | undefined) ?? []).length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
+                        <div className="flex flex-wrap items-center gap-1 mt-1.5">
                           {(u.restaurantStaff as StaffMembership[]).map((m) => (
-                            <Badge key={m.id} variant="info">
-                              🍜 {m.restaurant.name} · {m.role}
-                            </Badge>
+                            <span key={m.id} className="inline-flex items-center gap-0.5">
+                              <Badge variant="info">
+                                🍜 {m.restaurant.name} · {m.role}
+                              </Badge>
+                              <button
+                                type="button"
+                                aria-label={`Remove ${u.email as string} as ${m.role} of ${m.restaurant.name}`}
+                                title="Remove from this restaurant"
+                                onClick={() =>
+                                  setRemoveTarget({
+                                    staffId: m.id,
+                                    restaurantId: m.restaurant.id,
+                                    restaurantName: m.restaurant.name,
+                                    role: m.role,
+                                    email: u.email as string,
+                                  })
+                                }
+                                className="inline-flex items-center justify-center w-6 h-6 rounded-md text-[#ABA6A6] hover:text-error hover:bg-error/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40 transition-colors"
+                              >
+                                <span aria-hidden="true" className="text-sm leading-none">
+                                  &times;
+                                </span>
+                              </button>
+                            </span>
                           ))}
                         </div>
                       )}
@@ -362,6 +422,49 @@ export default function AdminUsersPage() {
               </Button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      {/* Removing restaurant access is destructive and silent from the
+          person's side — confirm it, and name exactly what is being taken. */}
+      <Modal
+        open={removeTarget !== null}
+        onClose={() => setRemoveTarget(null)}
+        title="Remove restaurant access"
+        size="sm"
+      >
+        {removeTarget && (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm" style={{ color: "#848181" }}>
+              Remove <span className="font-semibold text-[#1E1A1A]">{removeTarget.email}</span> as{" "}
+              <span className="font-semibold text-[#1E1A1A]">{removeTarget.role}</span> of{" "}
+              <span className="font-semibold text-[#1E1A1A]">{removeTarget.restaurantName}</span>?
+              They lose portal access immediately. Their Wondish account and any other restaurants
+              are untouched.
+            </p>
+
+            {removeError && <p className="text-error text-xs">{removeError}</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setRemoveTarget(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                loading={removing}
+                onClick={handleRemoveStaff}
+              >
+                Remove access
+              </Button>
+            </div>
+          </div>
         )}
       </Modal>
     </>

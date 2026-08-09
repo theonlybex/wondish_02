@@ -9,6 +9,7 @@ import {
   normalizeEmail,
   planDirectAssign,
   supersedableInviteRoles,
+  isClaimedAccount,
 } from "@/lib/restaurant-invites";
 import { RESTAURANT_ADMIN_ROLE } from "@/lib/restaurant-auth";
 import { auditRestaurantChange } from "@/lib/restaurant-audit";
@@ -34,7 +35,11 @@ export async function createStaffInvite(args: {
   // from Clerk (mixed case possible), so match case-insensitively.
   const existingAccount = await prisma.account.findFirst({
     where: { email: { equals: email, mode: "insensitive" } },
-    select: { id: true, restaurantStaff: { where: { restaurantId: args.restaurantId } } },
+    select: {
+      id: true,
+      clerkId: true,
+      restaurantStaff: { where: { restaurantId: args.restaurantId } },
+    },
   });
   if (existingAccount && existingAccount.restaurantStaff.length > 0) {
     return { ok: false, status: 409, error: "That email is already a staff member" };
@@ -60,8 +65,12 @@ export async function createStaffInvite(args: {
   // Clerk sends the email for addresses with no Wondish account yet; an
   // existing account claims the invite in-app instead (design §4C). A Clerk
   // failure must not lose the invite — it stays claimable in-app.
+  //
+  // "Has an account" means CLAIMED. An unclaimed shell row would otherwise
+  // suppress the email while there is no one signed in to see the in-app
+  // banner, and the invite would reach nobody.
   let emailSent = false;
-  if (!existingAccount) {
+  if (!isClaimedAccount(existingAccount)) {
     try {
       const client = await clerkClient();
       const clerkInvite = await client.invitations.createInvitation({
@@ -124,6 +133,7 @@ export async function assignStaffDirect(args: {
     where: { email: { equals: email, mode: "insensitive" } },
     select: {
       id: true,
+      clerkId: true,
       restaurantStaff: {
         where: { restaurantId: args.restaurantId },
         select: { id: true, role: true },
@@ -131,8 +141,12 @@ export async function assignStaffDirect(args: {
     },
   });
 
+  // An unclaimed shell row is NOT someone we can hand a restaurant to: the
+  // grant would succeed while the person has no way to sign in, and the
+  // admin would be told it worked. Route them through the invite path
+  // instead, which is what actually gets them an account.
   const plan = planDirectAssign({
-    accountExists: account !== null,
+    accountExists: isClaimedAccount(account),
     existingRole: account?.restaurantStaff[0]?.role ?? null,
     requestedRole: args.role,
   });

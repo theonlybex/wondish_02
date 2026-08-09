@@ -8,6 +8,7 @@ import {
   normalizeEmail,
   planDirectAssign,
   supersedableInviteRoles,
+  isClaimedAccount,
 } from "./restaurant-invites";
 
 // Phase 6a M1 (docs/restaurants/phase-6a-restaurant-admin-design.md §4):
@@ -113,6 +114,23 @@ describe("planDirectAssign", () => {
 // A direct assignment supersedes pending invites only at or below the
 // assigned tier — a pending OWNER invite outranks a MANAGER assignment and
 // stays claimable (accepting it later promotes; promote-only semantics).
+// An Account row with clerkId null is a shell nobody has signed up for.
+// Staff tooling must not count it as an existing account, or it reports
+// success for a person who then cannot sign in.
+describe("isClaimedAccount", () => {
+  it("accepts a row that a Clerk user has claimed", () => {
+    assert.equal(isClaimedAccount({ clerkId: "user_123" }), true);
+  });
+
+  it("rejects a shell row nobody has signed up for", () => {
+    assert.equal(isClaimedAccount({ clerkId: null }), false);
+  });
+
+  it("rejects a missing row", () => {
+    assert.equal(isClaimedAccount(null), false);
+  });
+});
+
 describe("supersedableInviteRoles", () => {
   it("an OWNER assignment supersedes both OWNER and MANAGER invites", () => {
     assert.deepEqual([...supersedableInviteRoles("OWNER")].sort(), ["MANAGER", "OWNER"]);

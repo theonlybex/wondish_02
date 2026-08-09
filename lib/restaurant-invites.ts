@@ -50,6 +50,16 @@ export function planDirectAssign(args: {
   };
 }
 
+/// An Account ROW is not a usable account. Rows exist with `clerkId: null`
+/// — imported/provisioned shells nobody has ever signed up for. Treating one
+/// as "the account exists" makes staff tooling lie twice: a direct assign
+/// reports success for someone who cannot sign in, and the invite path skips
+/// the Clerk email because it thinks they already have an account, so the
+/// invite is never delivered. Only a claimed row means a real person.
+export function isClaimedAccount(account: { clerkId: string | null } | null): boolean {
+  return account !== null && account.clerkId !== null;
+}
+
 /// Invite tiers a direct assignment may resolve: only at or below the
 /// assigned role. A higher-tier pending invite outranks the assignment and
 /// stays claimable — accepting it later just promotes (promote-only rules).
