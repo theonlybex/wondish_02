@@ -95,6 +95,27 @@ All build cycles through Journal Grid are complete, merged, and pushed; prod is 
 - [ ] Paywall (Cycle 2b): monetization decisions D1-D4 (StoreKit-only? $14.99? 7-day
       trial? quotas) + App Store Connect product setup (D9) + Apple root CA certs.
 - [ ] D13: account hard-delete cascades Subscription rows — legal/product sign-off pending.
+- [ ] Orphaned Account rows when a Clerk user is deleted out-of-band (found 2026-08-08,
+      hit live on itsbebox@gmail.com). Account.clerkId still pointed at a deleted Clerk
+      user, so `getAccount` (lookup BY clerkId) returned null and the dashboard gate read
+      that as "not onboarded" → endless "complete your profile"; saving the profile then
+      called getOrCreateAccount, which found the row by email, saw a different clerkId,
+      and returned `conflict` → "failed to create account". Two misleading errors, no
+      self-service recovery, and a stranded restaurant OWNER row silently leaves a
+      restaurant ownerless. Repaired by hand (repointed clerkId to the live Clerk user;
+      profile/role/staff row all came back — nothing was recreated).
+      Causes: (1) deleting a user in the CLERK DASHBOARD, which bypasses the app's
+      cleanup — this is what happened, during testing; (2) a crash between the two
+      deletes in DELETE /api/me (Clerk user deleted first by design, then the Account
+      row) — narrow window but real in prod; (3) any out-of-band Clerk deletion.
+      Proposed fix (cheapest, recommended over a webhook): in resolveAccountClaim's
+      `conflict` branch ONLY, check whether the stored clerkId still exists in Clerk —
+      if it doesn't, the row is orphaned and a verified-email user may re-claim it.
+      Zero cost on the happy path (fires only in an already-failing case), no webhook or
+      Clerk config needed, and the takeover guard stays intact (still requires a verified
+      email AND a genuinely absent previous owner).
+      OPERATIONAL GOTCHA until then: delete accounts through the app, never from the
+      Clerk dashboard.
 - [ ] Scan tab: real implementation (currently the "coming soon" stub inside Cook).
 - [ ] Stockton pilot ingredients are AI-inferred pending ops confirmation (D-INGREDIENTS)
       — confirm/correct real menus before leaning on verdicts publicly.
