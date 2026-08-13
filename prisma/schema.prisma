@@ -35,8 +35,9 @@ model Account {
   roles             AccountRole[]
   patient           Patient?
   subscriptions     Subscription[]
-  couponRedemptions CouponRedemption[]
-  restaurantStaff   RestaurantStaff[]
+  couponRedemptions   CouponRedemption[]
+  restaurantStaff     RestaurantStaff[]
+  restaurantReferrals RestaurantReferral[]
 }
 
 model Role {
@@ -454,6 +455,8 @@ model Restaurant {
   invites       RestaurantInvite[]
   auditLogs     RestaurantAuditLog[]
   dishRevisions RestaurantDishRevision[]
+  qrCodes       RestaurantQrCode[]
+  referrals     RestaurantReferral[]
 
   @@index([status, neighborhood])
 }
@@ -619,6 +622,43 @@ model RestaurantDishRevision {
   @@index([status, createdAt])
   @@index([restaurantId, status, reviewedAt])
   @@index([dishId, status])
+}
+
+// Phase 3 §1 — a scannable code placed in a restaurant. One code or one per
+// table; `label` is how ops tells them apart ("Table 7", "Front window").
+// Counters are denormalised so the ops strip needs no aggregate scan.
+model RestaurantQrCode {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  token        String     @unique // the value encoded in the QR image
+  label        String
+  active       Boolean    @default(true)
+  scans        Int        @default(0)
+  signups      Int        @default(0)
+  createdAt    DateTime   @default(now())
+
+  referrals RestaurantReferral[]
+
+  @@index([restaurantId, active])
+}
+
+// Phase 3 §2 — the attribution spine: which restaurant earned which account.
+// Unique per (account, restaurant) so a re-scan can never double-attribute.
+// The QR pointer is nullable and SetNull: retiring a code must not erase the
+// sign-ups it earned.
+model RestaurantReferral {
+  id                 String            @id @default(cuid())
+  accountId          String
+  account            Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  restaurantId       String
+  restaurant         Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurantQrCodeId String?
+  qrCode             RestaurantQrCode? @relation(fields: [restaurantQrCodeId], references: [id], onDelete: SetNull)
+  signedUpAt         DateTime          @default(now())
+
+  @@unique([accountId, restaurantId])
+  @@index([restaurantId, signedUpAt])
 }
 
 enum IngredientRequestStatus {
