@@ -22,6 +22,35 @@ Turn the Phase-1 evaluation API into the core user experience: a **restaurant pa
 - **Nav:** add a "Restaurants" entry to the dashboard sidebar — requires an i18n key in `messages/en.json`, `es.json`, `ru.json` (sidebar nav is i18n-keyed).
 - Signed-out visitors see the menu with a "sign in to see what fits you" prompt (verdicts require a profile).
 
+> **Web slice as-built (2026-08-13).** Shipped: `/restaurants` directory
+> (cuisine chips, per-user match bars) and `/restaurants/[slug]` menu
+> (sections, verdicts, ingredients, macros, freshness note, safety note),
+> sidebar entry, `/restaurants(.*)` made public. Four deviations from the
+> text above, each deliberate:
+> 1. **Route group `(main)`, not bare `app/restaurants`** — that is where this
+>    codebase keeps public pages (`/dishes`, `/pricing`), and it supplies the
+>    Navbar/Footer shell a signed-out QR visitor needs.
+> 2. **New `MenuDishCard`, not an extended `DishCard`.** The web `DishCard` is
+>    bound to the recipe domain (`Dish`/`MealTypeKey`, `getRecipeEmoji`,
+>    `AddToLogButton(recipeId)`); a restaurant dish has sections, prices,
+>    ingredients and a verdict instead. Extending it would have contorted both.
+> 3. **Pages read Prisma directly** through `lib/restaurants-page-server.ts`
+>    rather than calling `/api/restaurants` — that endpoint 401s signed out,
+>    which is exactly the visitor this surface exists for. Verdicts still come
+>    from the same pure serializers, so the two surfaces cannot drift.
+> 4. **Sidebar label "Eat Out"** (new `sidebar.eatOut` key, en/es/ru) — the
+>    admin nav already uses `sidebar.restaurants` for managing them.
+>
+> Not built (web): "Add to today" logging from a restaurant dish. The plan
+> scopes that under iOS; `MealLogSource.RESTAURANT` already exists, so the web
+> affordance is additive whenever it is wanted.
+>
+> **Known gap, unchanged by this slice:** `Verdict.caution` is hard-coded
+> `false` in `lib/restaurants.ts`, so the "unverified ingredient ⇒ caution,
+> never fits" rule below is not yet enforced — a dish passes on the ingredient
+> list as given. That is Phase-1 verdict logic, not presentation; the UI
+> already renders a third state and will show it the moment the rule lands.
+
 ### Cross-cutting safety (required on every verdict surface — see coherence.md #4)
 - A **persistent safety disclaimer** wherever a verdict shows: the Wondish verdict is a decision aid, **not a guarantee** — "always confirm with restaurant staff, especially for severe allergies." Non-dismissible on the menu; the app makes allergy-relevant claims about third-party food and must never imply certainty.
 - A dish is marked **`fits` only on positive evidence** of its (required, structured) ingredient list; any absent/unverified ingredient yields **`caution`, never `fits`**. Menu freshness is surfaced via `RestaurantDish.lastVerifiedAt` (stale menus flagged).

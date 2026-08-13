@@ -7,6 +7,11 @@ const isPublicRoute = createRouteMatcher([
   "/register(.*)",
   "/pricing(.*)",
   "/dishes(.*)",
+  // Phase 2 web: the consumer restaurant directory + menu. Public by design —
+  // a diner scanning a table QR code has no account yet (Phase 3 lands here),
+  // and the menu must render for them. Verdicts still require a signed-in
+  // profile; signed-out visitors get the menu plus a sign-in prompt.
+  "/restaurants(.*)",
   "/terms(.*)",
   "/privacy(.*)",
   "/api/stripe/webhook",
