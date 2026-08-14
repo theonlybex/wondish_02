@@ -5,6 +5,8 @@ import {
   resolveQrToken,
   recordScan,
   recordReferral,
+  REFERRAL_COOKIE,
+  REFERRAL_COOKIE_MAX_AGE,
 } from "@/lib/restaurant-referrals-server";
 
 // Phase 3 §1 — the QR scan entry point (docs/restaurants/phase-3.md).
@@ -14,9 +16,6 @@ import {
 // The cookie (not a query param) is the carrier because the register page
 // hard-codes Clerk's forceRedirectUrl, so a redirect_url would be discarded.
 export const dynamic = "force-dynamic";
-
-export const REFERRAL_COOKIE = "wondish_ref";
-const REFERRAL_COOKIE_MAX_AGE = 30 * 60; // 30 minutes — one sitting
 
 export async function GET(req: NextRequest, { params }: { params: { token: string } }) {
   const code = await resolveQrToken(params.token);
@@ -34,6 +33,9 @@ export async function GET(req: NextRequest, { params }: { params: { token: strin
       accountId: account.id,
       qrCodeId: code.id,
       restaurantId: code.restaurantId,
+      // An already-signed-in diner scanning a tent is a visit, not a sign-up.
+      // Attribute it, but keep it out of the conversion numerator.
+      countsAsSignup: false,
     });
     return NextResponse.redirect(new URL(`/restaurants/${code.restaurantSlug}`, req.url));
   }
