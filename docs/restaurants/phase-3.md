@@ -57,6 +57,36 @@ Both derive from data this phase already writes plus a field that exists today. 
 
 **Deliberately not built yet:** discount issued/redeemed state. It is blocked on the open questions below, so the column is specified here and added when the delivery rail is decided — the table gains a column, not a redesign.
 
+> **Attribution slice as-built (2026-08-14).** Shipped: §1 (QR codes, `GET
+> /r/[token]`, admin minting), §2 (referral carry-through + `RestaurantReferral`),
+> §5 (`/admin/referrals`). **§3, the discount rail, is NOT built** — it stays
+> blocked on the open business questions below, and lands as one more column
+> plus a `SignupDiscount` model when they are answered.
+>
+> Two decisions a reader would otherwise have to reverse-engineer:
+> 1. **The referral rides an httpOnly cookie, not a query param.** The register
+>    page hard-codes Clerk's `forceRedirectUrl`, so any `redirect_url` we
+>    attached would be discarded.
+> 2. **Every sign-up now routes through `/r/claim`** (that same
+>    `forceRedirectUrl`). With no cookie it forwards to
+>    `/profile?onboarding=true`, the previous destination. Every failure path
+>    falls through the same way — attribution is worth far less than a working
+>    sign-up — and every exit clears the cookie, because this route has exactly
+>    one entry point and a retained cookie could only ever be redeemed by the
+>    *next* sign-up in that browser.
+>
+> Corrected during an adversarial review of the first cut (see commit
+> `feb7b8b`): `resolveQrToken` now requires the restaurant to be `PUBLISHED`,
+> not merely the code to be active — the destination menu 404s otherwise, which
+> would have landed a brand-new account on a 404 the moment it signed up. And a
+> scan by an **already-signed-in** diner attributes without incrementing
+> `signups`: counting it would let staff testing tents and regulars dining out
+> dominate the conversion number the pilot is judged on.
+>
+> **Known gaps, deliberately not fixed here:** `scans` has no dedup, so link
+> previews, crawlers and double-taps inflate the denominator; and `/r/claim`
+> sets no `maxDuration` around its Clerk call.
+
 ## Data model & API summary
 - **New models:** `RestaurantQrCode`, `RestaurantReferral`, `SignupDiscount`.
 - **New endpoints:** `GET /r/[token]` (public), admin endpoints to mint/label QR codes for a restaurant (reuse `requireAdmin`), `GET /api/admin/referrals` (ops list + aggregates, §5), an authed `GET /api/me/discounts` (list the user's issued discounts — extend the Clara `MeDTO` or a small new route).
