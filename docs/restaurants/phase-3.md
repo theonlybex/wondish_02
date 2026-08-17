@@ -83,9 +83,11 @@ Both derive from data this phase already writes plus a field that exists today. 
 > `signups`: counting it would let staff testing tents and regulars dining out
 > dominate the conversion number the pilot is judged on.
 >
-> **Known gaps, deliberately not fixed here:** `scans` has no dedup, so link
-> previews, crawlers and double-taps inflate the denominator; and `/r/claim`
-> sets no `maxDuration` around its Clerk call.
+> **Known gaps, deliberately not fixed here:** `scans` is rate-limited per
+> IP+code (added in the review wave, `70ea6af`), which stops deliberate
+> inflation — but it is a cap, not a dedup, so link previews, crawlers and
+> double-taps from distinct addresses still pad the denominator. And
+> `/r/claim` sets no `maxDuration` around its Clerk call.
 
 ## Data model & API summary
 - **New models:** `RestaurantQrCode`, `RestaurantReferral`, `SignupDiscount`.
