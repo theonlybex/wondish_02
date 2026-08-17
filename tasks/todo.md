@@ -1,5 +1,9 @@
 # Logic-engine fixes (ops audit, 2026-07-02)
 
+> **See `/BACKLOG.md` for the canonical list of outstanding work.** This file
+> stays as the detailed record — root causes, fix notes, commit refs. Its live
+> items are mirrored there.
+
 > Previous plan (Meal-Plan Reliability Phase A) is fully executed and shipped; superseded by this list.
 
 Working one by one. TDD (node:test via `npm test`) where the logic is pure; DB-coupled files get minimal surgical changes gated by `npm run build` + lint.
