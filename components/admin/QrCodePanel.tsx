@@ -17,6 +17,9 @@ interface QrCode {
   scans: number;
   signups: number;
   createdAt: string;
+  /// Built server-side from configuration, never from the admin's current
+  /// host — this string gets printed onto a table tent.
+  scanUrl: string;
 }
 
 export default function QrCodePanel({ restaurantId }: { restaurantId: string }) {
@@ -27,12 +30,25 @@ export default function QrCodePanel({ restaurantId }: { restaurantId: string }) 
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
+  // A failed load must NOT render as "no codes yet": an ops user whose
+  // session expired would read that as an empty restaurant and mint a second
+  // code for a table that already has one. loadFailed keeps the two apart.
+  const [loadFailed, setLoadFailed] = useState(false);
+
   const load = async () => {
-    const res = await fetch(`/api/admin/restaurants/${restaurantId}/qr-codes`);
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/admin/restaurants/${restaurantId}/qr-codes`);
+      if (!res.ok) {
+        setLoadFailed(true);
+        setCodes([]);
+        return;
+      }
       const body = await res.json();
+      setLoadFailed(false);
       setCodes(body.codes ?? []);
-    } else {
+    } catch {
+      // Without this the panel sits on "Loading…" forever.
+      setLoadFailed(true);
       setCodes([]);
     }
   };
@@ -41,9 +57,6 @@ export default function QrCodePanel({ restaurantId }: { restaurantId: string }) 
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
-
-  const scanUrl = (token: string) =>
-    typeof window === "undefined" ? `/r/${token}` : `${window.location.origin}/r/${token}`;
 
   const mint = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,7 +111,7 @@ export default function QrCodePanel({ restaurantId }: { restaurantId: string }) 
 
   const copy = async (code: QrCode) => {
     try {
-      await navigator.clipboard.writeText(scanUrl(code.token));
+      await navigator.clipboard.writeText(code.scanUrl);
       setCopied(code.id);
       setTimeout(() => setCopied(null), 2000);
     } catch {
@@ -146,6 +159,17 @@ export default function QrCodePanel({ restaurantId }: { restaurantId: string }) 
         <p className="px-5 py-6 text-sm" style={{ color: "#ABA6A6" }}>
           Loading…
         </p>
+      ) : loadFailed ? (
+        <div className="px-5 py-8 text-center">
+          <p className="font-semibold text-[#1E1A1A] mb-1">Couldn&rsquo;t load the codes</p>
+          <p className="text-sm mb-3" style={{ color: "#848181" }}>
+            This is not the same as having none — don&rsquo;t create a new code until this
+            loads, or you may duplicate one that already exists.
+          </p>
+          <Button variant="secondary" size="sm" onClick={() => void load()}>
+            Retry
+          </Button>
+        </div>
       ) : codes.length === 0 ? (
         <div className="px-5 py-8 text-center">
           <p className="font-semibold text-[#1E1A1A] mb-1">No QR codes yet</p>
@@ -166,7 +190,7 @@ export default function QrCodePanel({ restaurantId }: { restaurantId: string }) 
                     </Badge>
                   </div>
                   <p className="text-xs mt-1 font-mono break-all" style={{ color: "#848181" }}>
-                    {scanUrl(code.token)}
+                    {code.scanUrl}
                   </p>
                   <p className="text-xs mt-1.5 tabular-nums" style={{ color: "#ABA6A6" }}>
                     {code.scans} scans · {code.signups} sign-ups ·{" "}

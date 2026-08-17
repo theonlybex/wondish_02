@@ -27,6 +27,9 @@ interface Totals {
   scans: number;
   signups: number;
   conversion: number | null;
+  /// Scans are anonymous, so an email search cannot narrow these totals.
+  /// Surfaced so the strip is never mistaken for one diner's numbers.
+  ignoresSearch?: boolean;
 }
 
 const ANIM = `
@@ -98,14 +101,26 @@ export default function AdminReferralsPage() {
           </p>
         </div>
 
-        <div className="ov grid gap-4 sm:grid-cols-3 mb-6" style={{ animationDelay: "60ms" }}>
-          {stat("Scans", String(totals.scans))}
-          {stat("Sign-ups", String(totals.signups))}
-          {stat("Conversion", formatConversionRate(totals.conversion))}
+        <div className="ov mb-6" style={{ animationDelay: "60ms" }}>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {stat("Scans", String(totals.scans))}
+            {stat("Sign-ups", String(totals.signups))}
+            {stat("Conversion", formatConversionRate(totals.conversion))}
+          </div>
+          {totals.ignoresSearch && (
+            <p className="text-xs mt-2" style={{ color: "#ABA6A6" }}>
+              These totals ignore the email search — a scan is anonymous, so it cannot be
+              narrowed to one person. Only the table below is filtered.
+            </p>
+          )}
         </div>
 
         <div className="ov flex flex-wrap items-end gap-3 mb-5" style={{ animationDelay: "120ms" }}>
           <div className="min-w-[220px]">
+            {/* "All restaurants" is a real option, not a placeholder: Select
+                renders a placeholder as <option disabled>, which would make
+                the filter a one-way door — no way back to unfiltered without
+                reloading the page. */}
             <Select
               label="Restaurant"
               value={restaurantId}
@@ -113,8 +128,10 @@ export default function AdminReferralsPage() {
                 setRestaurantId(e.target.value);
                 void load({ restaurantId: e.target.value, search });
               }}
-              placeholder="All restaurants"
-              options={restaurants.map((r) => ({ value: r.id, label: r.name }))}
+              options={[
+                { value: "", label: "All restaurants" },
+                ...restaurants.map((r) => ({ value: r.id, label: r.name })),
+              ]}
             />
           </div>
           <form

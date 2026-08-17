@@ -4,6 +4,15 @@ import { requireAdmin, adminErrorResponse } from "@/lib/admin";
 import { generateQrToken } from "@/lib/restaurant-referrals-server";
 
 // Phase 3 §1 — ops mints and labels the codes that go on tables.
+//
+// The scan URL is built HERE, from configuration, not from whichever host the
+// admin happens to be on. Minting from a preview deployment or localhost and
+// copying that link would bake the wrong host into a PRINTED table tent,
+// permanently.
+function scanBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_APP_URL || "https://wondish.io").replace(/\/+$/, "");
+}
+
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     await requireAdmin();
@@ -20,7 +29,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         createdAt: true,
       },
     });
-    return NextResponse.json({ codes });
+    return NextResponse.json({
+      codes: codes.map((c) => ({ ...c, scanUrl: `${scanBaseUrl()}/r/${c.token}` })),
+    });
   } catch (err) {
     return adminErrorResponse(err);
   }
@@ -55,7 +66,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         createdAt: true,
       },
     });
-    return NextResponse.json({ code }, { status: 201 });
+    return NextResponse.json(
+      { code: { ...code, scanUrl: `${scanBaseUrl()}/r/${code.token}` } },
+      { status: 201 }
+    );
   } catch (err) {
     return adminErrorResponse(err);
   }

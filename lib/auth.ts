@@ -148,16 +148,42 @@ export class AccountClaimConflictError extends Error {
   }
 }
 
+/// Whether this call actually brought the account into existence for this
+/// Clerk user, as opposed to returning one that was already there.
+/// `isNewToWondish` is true for a fresh row AND for a claimed shell row — in
+/// both cases the Clerk user is signing up for the first time. It is false
+/// for a returning user, which is what callers counting sign-ups need: see
+/// app/r/claim/route.ts, where crediting a QR code for a returning account
+/// would inflate the metric the pilot is judged on.
+export interface AccountOutcome {
+  account: Awaited<ReturnType<typeof findAccountOrThrow>>;
+  isNewToWondish: boolean;
+}
+
+function findAccountOrThrow(userId: string) {
+  return prisma.account.findUniqueOrThrow({
+    where: { clerkId: userId },
+    include: { subscriptions: true },
+  });
+}
+
 // Explicit-userId account lookup/creation, race-safe against concurrent
 // callers (app launch + foreground refresh + a post-purchase webhook can all
 // race to create the same account). Always returns with subscriptions
 // included so callers never need a second round trip for premium/serializeMe.
 export async function getOrCreateAccount(userId: string) {
+  return (await getOrCreateAccountWithOutcome(userId)).account;
+}
+
+/// Same work as getOrCreateAccount, but also reports whether the account was
+/// new. Kept as a separate entry point so the eight existing callers that
+/// only want the account are untouched.
+export async function getOrCreateAccountWithOutcome(userId: string): Promise<AccountOutcome> {
   const existing = await prisma.account.findUnique({
     where: { clerkId: userId },
     include: { subscriptions: true },
   });
-  if (existing) return existing;
+  if (existing) return { account: existing, isNewToWondish: false };
 
   const client = await clerkClient();
   const u = await client.users.getUser(userId);
@@ -224,8 +250,12 @@ export async function getOrCreateAccount(userId: string) {
   // decision.action === "none" needs no write — a concurrent request already
   // claimed this row between our two reads above.
 
-  return prisma.account.findUniqueOrThrow({
-    where: { clerkId: userId },
-    include: { subscriptions: true },
-  });
+  // "create" = a brand-new row; "claim" = a shell row nobody had signed up
+  // for. Both mean this Clerk user is new to Wondish. "none" means a
+  // concurrent request got there first for the SAME clerkId, which is still
+  // this sign-up — but the early return above already covers the returning
+  // user, which is the case that must not be counted.
+  const isNewToWondish = decision.action === "create" || decision.action === "claim";
+
+  return { account: await findAccountOrThrow(userId), isNewToWondish };
 }

@@ -39,7 +39,10 @@ export async function GET(req: NextRequest) {
         },
       }),
       // The strip counts SCANS, which are anonymous and therefore live on the
-      // QR rows, not on referrals. Scoped to the same restaurant filter.
+      // QR rows, not on referrals. It honours the restaurant filter, but an
+      // email search CANNOT narrow it — a scan has no person attached. The
+      // response says so rather than letting site-wide totals sit next to one
+      // diner's row and read as that diner's numbers.
       prisma.restaurantQrCode.aggregate({
         where: restaurantId ? { restaurantId } : {},
         _sum: { scans: true, signups: true },
@@ -50,7 +53,14 @@ export async function GET(req: NextRequest) {
     const signups = counters._sum.signups ?? 0;
 
     return NextResponse.json({
-      totals: { scans, signups, conversion: conversionRate(scans, signups) },
+      totals: {
+        scans,
+        signups,
+        conversion: conversionRate(scans, signups),
+        // True when an email search is active: the table below is narrowed
+        // but these totals are not, because scans are anonymous.
+        ignoresSearch: Boolean(search),
+      },
       rows: rows.map((r) => ({
         id: r.id,
         accountId: r.accountId,

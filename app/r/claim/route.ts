@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { getOrCreateAccount } from "@/lib/auth";
+import { getOrCreateAccountWithOutcome } from "@/lib/auth";
 import {
   resolveQrToken,
   recordReferral,
@@ -48,13 +48,19 @@ export async function GET(req: NextRequest) {
     const code = await resolveQrToken(token);
     if (!code) return exit(FALLBACK);
 
-    const account = await getOrCreateAccount(userId);
+    // Reaching this route does NOT prove a sign-up happened. Clerk's OAuth
+    // sign-up -> sign-in transfer still honours <SignUp>'s forceRedirectUrl,
+    // so "Sign up with Google" on an address that already has an account
+    // lands here with a RETURNING user. Asking the account layer whether it
+    // actually created anything is the only honest signal — asserting true
+    // here would reintroduce exactly the inflation countsAsSignup exists to
+    // prevent.
+    const { account, isNewToWondish } = await getOrCreateAccountWithOutcome(userId);
     await recordReferral({
       accountId: account.id,
       qrCodeId: code.id,
       restaurantId: code.restaurantId,
-      // Reached only via register's post-sign-up redirect: this is a sign-up.
-      countsAsSignup: true,
+      countsAsSignup: isNewToWondish,
     });
 
     return exit(`/restaurants/${code.restaurantSlug}`);
