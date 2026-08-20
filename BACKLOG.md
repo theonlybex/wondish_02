@@ -56,8 +56,17 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
       Blocked on the business questions in §5 below. Lands as one more column plus
       a model; attribution already exists. **[verified]**
 - [ ] **Phase 4 — ranking + "Going Out Tonight".** `lib/restaurant-ranking.ts` and
-      a dashboard card. **Unblocked, no decisions needed** — the natural next build.
-      **[reported]**
+      a dashboard card. Unblocked by other work. **PAUSED 2026-08-20 during design.**
+      Findings from that session, worth keeping: only **5 published restaurants**
+      exist, so the ranking orders a very small set; the doc's cuisine-variety term
+      has almost no data behind it (**2** `MealLog` rows carry a `restaurantDishId`,
+      because nothing writes them yet — web has no "Add to today" and the iOS tab is
+      unbuilt); and the `/restaurants` directory already shows "N of M dishes fit
+      you" per restaurant, so the card's marginal value is smaller than the doc
+      implies. Open decisions when resuming: which ranking signals for v1 (diet-fit
+      alone vs also macro-fit); where the surface lives (dashboard grid card per the
+      doc, vs leading the directory); and what a user with no diet profile sees.
+      **[verified: all four counts]**
 - [ ] **Phase 5 — cuisine rotation + ratings.** Activates `ratingBoost`.
       **[reported]**
 - [ ] **Phase 6 — monetisation half.** Paid placement (`sponsorBoost`, capped and
