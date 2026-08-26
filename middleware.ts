@@ -12,6 +12,9 @@ const isPublicRoute = createRouteMatcher([
   // and the menu must render for them. Verdicts still require a signed-in
   // profile; signed-out visitors get the menu plus a sign-in prompt.
   "/restaurants(.*)",
+  // Phase 3: the QR scan entry point. The whole point is that a diner with no
+  // account can scan a table code — this must never redirect to login.
+  "/r/(.*)",
   "/terms(.*)",
   "/privacy(.*)",
   "/api/stripe/webhook",

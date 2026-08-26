@@ -1,5 +1,10 @@
 # Production Stage — Improvement Tracker
 
+> ⚠️ **STALE — unaudited as of 2026-08-17.** Some items here are already fixed
+> (e.g. it claims the engine has no unit tests; `lib/caloric-engine.test.ts` has 92).
+> Others are still real (two different lb→kg constants). Do not treat this as a live
+> risk list until it has been audited item by item — see `/BACKLOG.md` §7.
+
 Consolidated list of everything surfaced during the algorithm review + load
 assessment (June 2026). Grouped by area and ordered by priority. Check items off
 as they're done.

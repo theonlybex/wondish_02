@@ -7,7 +7,9 @@ export default function RegisterPage() {
     <div className="flex items-center justify-center w-full">
       <SignUp
         signInUrl="/login"
-        forceRedirectUrl="/profile?onboarding=true"
+        // Phase 3: every sign-up lands on /r/claim, which redeems a QR
+        // referral cookie when present and otherwise forwards to onboarding.
+        forceRedirectUrl="/r/claim"
         appearance={{
           elements: {
             rootBox: "w-full max-w-md",

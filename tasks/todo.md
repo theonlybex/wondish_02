@@ -1,5 +1,9 @@
 # Logic-engine fixes (ops audit, 2026-07-02)
 
+> **See `/BACKLOG.md` for the canonical list of outstanding work.** This file
+> stays as the detailed record — root causes, fix notes, commit refs. Its live
+> items are mirrored there.
+
 > Previous plan (Meal-Plan Reliability Phase A) is fully executed and shipped; superseded by this list.
 
 Working one by one. TDD (node:test via `npm test`) where the logic is pure; DB-coupled files get minimal surgical changes gated by `npm run build` + lint.
@@ -95,7 +99,7 @@ All build cycles through Journal Grid are complete, merged, and pushed; prod is 
 - [ ] Paywall (Cycle 2b): monetization decisions D1-D4 (StoreKit-only? $14.99? 7-day
       trial? quotas) + App Store Connect product setup (D9) + Apple root CA certs.
 - [ ] D13: account hard-delete cascades Subscription rows — legal/product sign-off pending.
-- [ ] Orphaned Account rows when a Clerk user is deleted out-of-band (found 2026-08-08,
+- [x] Orphaned Account rows when a Clerk user is deleted out-of-band (found 2026-08-08,
       hit live on itsbebox@gmail.com). Account.clerkId still pointed at a deleted Clerk
       user, so `getAccount` (lookup BY clerkId) returned null and the dashboard gate read
       that as "not onboarded" → endless "complete your profile"; saving the profile then
@@ -114,6 +118,12 @@ All build cycles through Journal Grid are complete, merged, and pushed; prod is 
       Zero cost on the happy path (fires only in an already-failing case), no webhook or
       Clerk config needed, and the takeover guard stays intact (still requires a verified
       email AND a genuinely absent previous owner).
+      FIXED 2026-08-14 (fcd97a9, branch feat/restaurants-phase-3-attribution, NOT yet
+      merged): resolveAccountClaim takes previousOwnerExists; getOrCreateAccount asks
+      Clerk ONLY in the branch that was already going to fail, so a verified email can
+      re-claim a row whose Clerk owner is gone. Takeover guard intact (verified email
+      AND confirmed-absent owner; any non-404 Clerk error counts as present). 5 unit
+      tests. The gotcha below still applies until this merges.
       OPERATIONAL GOTCHA until then: delete accounts through the app, never from the
       Clerk dashboard.
 - [ ] Scan tab: real implementation (currently the "coming soon" stub inside Cook).

@@ -1,6 +1,14 @@
 # Restaurants Phase 3 — QR Attribution + Ops Reporting Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+
+> **STATUS: COMPLETE (2026-08-17).** All 8 tasks implemented and committed on
+> `feat/restaurants-phase-3-attribution` (`1b37bfd` → `1d3cf17`), plus a review
+> fix wave (`70ea6af`) closing 7 findings. Suite 1001/1001; tsc 19 pre-existing
+> only; `next build` green. NOT merged and NOT pushed.
+>
+> Out of scope by design: §3, the discount rail — blocked on the open business
+> questions in `docs/restaurants/phase-3.md`.
 
 **Goal:** A diner scans a restaurant's table QR code, signs up, and that account is permanently attributed to that restaurant — and Wondish ops can see the resulting scans, sign-ups and conversion at `/admin/referrals`.
 
@@ -58,7 +66,7 @@
 - Consumes: nothing (first task)
 - Produces: Prisma models `RestaurantQrCode { id, restaurantId, token, label, active, scans, signups, createdAt }` and `RestaurantReferral { id, accountId, restaurantId, restaurantQrCodeId, signedUpAt }`, both available as `prisma.restaurantQrCode` / `prisma.restaurantReferral`.
 
-- [ ] **Step 1: Add the models to `prisma/schema.prisma`**
+- [x] **Step 1: Add the models to `prisma/schema.prisma`**
 
 Append after the `RestaurantDishRevision` model:
 
@@ -101,7 +109,7 @@ model RestaurantReferral {
 }
 ```
 
-- [ ] **Step 2: Add the back-relations**
+- [x] **Step 2: Add the back-relations**
 
 In `model Account`, add to the relation block (after `restaurantStaff RestaurantStaff[]`):
 
@@ -116,7 +124,7 @@ In `model Restaurant`, add after `dishRevisions RestaurantDishRevision[]`:
   referrals RestaurantReferral[]
 ```
 
-- [ ] **Step 3: Write the migration SQL**
+- [x] **Step 3: Write the migration SQL**
 
 Create `prisma/migrations/20260813000000_restaurant_qr_referrals/migration.sql`:
 
@@ -177,7 +185,7 @@ ALTER TABLE "RestaurantReferral"
   ON DELETE SET NULL ON UPDATE CASCADE;
 ```
 
-- [ ] **Step 4: Generate the client and apply the migration**
+- [x] **Step 4: Generate the client and apply the migration**
 
 Run: `npx prisma generate && npx prisma migrate deploy`
 Expected: `All migrations have been successfully applied.`
@@ -187,12 +195,12 @@ Expected: `Database schema is up to date!`
 
 > **Note:** local `DATABASE_URL` points at the same Neon database as production. These statements are additive (`CREATE TABLE` / `CREATE INDEX` only), so this is safe, but say so in the commit.
 
-- [ ] **Step 5: Verify the tables are queryable**
+- [x] **Step 5: Verify the tables are queryable**
 
 Run: `npx tsx -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.restaurantQrCode.count().then(n=>{console.log('qr codes:',n);return p.restaurantReferral.count()}).then(n=>{console.log('referrals:',n);return p.\$disconnect()})"`
 Expected: `qr codes: 0` and `referrals: 0`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add prisma/schema.prisma prisma/migrations
@@ -224,7 +232,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   - `isValidQrToken(raw: unknown): raw is string`
   - `QR_TOKEN_LENGTH: number` (= 12)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `lib/restaurant-referrals.test.ts`:
 
@@ -313,12 +321,12 @@ describe("isValidQrToken", () => {
 });
 ```
 
-- [ ] **Step 2: Run it to make sure it fails**
+- [x] **Step 2: Run it to make sure it fails**
 
 Run: `node --import tsx --test lib/restaurant-referrals.test.ts`
 Expected: FAIL — `Cannot find module './restaurant-referrals'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `lib/restaurant-referrals.ts`:
 
@@ -361,12 +369,12 @@ export function isValidQrToken(raw: unknown): raw is string {
 }
 ```
 
-- [ ] **Step 4: Run the tests and make sure they pass**
+- [x] **Step 4: Run the tests and make sure they pass**
 
 Run: `node --import tsx --test lib/restaurant-referrals.test.ts`
 Expected: PASS, 15 tests
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/restaurant-referrals.ts lib/restaurant-referrals.test.ts
@@ -396,7 +404,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   - `recordReferral(args: { accountId, qrCodeId, restaurantId }): Promise<"created" | "already">`
   - `recordScan(qrCodeId: string): Promise<void>`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `lib/restaurant-referrals-server.test.ts`:
 
@@ -511,12 +519,12 @@ describe("recordReferral", () => {
 });
 ```
 
-- [ ] **Step 2: Run it to make sure it fails**
+- [x] **Step 2: Run it to make sure it fails**
 
 Run: `node --import tsx --test lib/restaurant-referrals-server.test.ts`
 Expected: FAIL — module not found
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `lib/restaurant-referrals-server.ts`:
 
@@ -598,16 +606,16 @@ export async function recordReferral(args: {
 }
 ```
 
-- [ ] **Step 4: Run the tests and make sure they pass**
+- [x] **Step 4: Run the tests and make sure they pass**
 
 Run: `node --import tsx --test lib/restaurant-referrals-server.test.ts`
 Expected: PASS, 7 tests
 
-- [ ] **Step 5: Verify the tests have teeth (mutation check)**
+- [x] **Step 5: Verify the tests have teeth (mutation check)**
 
 Temporarily change `if (existing) return "already";` to `if (false) return "already";`, re-run the test file, and confirm the idempotency test FAILS. Restore the line and confirm the suite passes again.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/restaurant-referrals-server.ts lib/restaurant-referrals-server.test.ts
@@ -633,7 +641,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Consumes: `resolveQrToken`, `recordScan`, `recordReferral` (Task 3)
 - Produces: the cookie contract `wondish_ref` = the QR token, httpOnly, `sameSite: "lax"`, `maxAge` 1800s — read by Task 5.
 
-- [ ] **Step 1: Add the route to the public matcher**
+- [x] **Step 1: Add the route to the public matcher**
 
 In `middleware.ts`, inside `isPublicRoute`'s array, after the `/restaurants(.*)` entry:
 
@@ -643,7 +651,7 @@ In `middleware.ts`, inside `isPublicRoute`'s array, after the `/restaurants(.*)`
   "/r/(.*)",
 ```
 
-- [ ] **Step 2: Write the route**
+- [x] **Step 2: Write the route**
 
 Create `app/r/[token]/route.ts`:
 
@@ -700,12 +708,12 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
 }
 ```
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 Run: `npx tsc --noEmit 2>&1 | grep -c "error TS"`
 Expected: `19` (the pre-existing baseline — no new errors)
 
-- [ ] **Step 4: Verify the route by hand**
+- [x] **Step 4: Verify the route by hand**
 
 With the dev server running (`npm run dev`), mint a code directly:
 
@@ -728,7 +736,7 @@ Also check an unknown token redirects to the directory:
 `curl -s -o /dev/null -w "%{redirect_url}\n" http://localhost:3000/r/NOSUCHTOKEN1`
 Expected: `http://localhost:3000/restaurants`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/r middleware.ts
@@ -763,7 +771,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 > resolves as a token. `claim` is 5 characters and `QR_TOKEN_LENGTH` is 12, so
 > it could not be a valid token anyway.
 
-- [ ] **Step 1: Write the route**
+- [x] **Step 1: Write the route**
 
 Create `app/r/claim/route.ts`:
 
@@ -819,7 +827,7 @@ export async function GET(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: Point sign-up at it**
+- [x] **Step 2: Point sign-up at it**
 
 In `app/(auth)/register/[[...rest]]/page.tsx`, change:
 
@@ -835,19 +843,19 @@ to:
         forceRedirectUrl="/r/claim"
 ```
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 Run: `npx tsc --noEmit 2>&1 | grep -c "error TS"`
 Expected: `19`
 
-- [ ] **Step 4: Verify the pass-through case (no cookie)**
+- [x] **Step 4: Verify the pass-through case (no cookie)**
 
 Run: `curl -s -o /dev/null -w "%{http_code} -> %{redirect_url}\n" http://localhost:3000/r/claim`
 Expected: `307 -> http://localhost:3000/profile?onboarding=true`
 
 This is the important one: a signed-out visitor with no cookie must reach the normal onboarding destination, because every sign-up now passes through this route.
 
-- [ ] **Step 5: Verify the attribution case end to end (manual, browser)**
+- [x] **Step 5: Verify the attribution case end to end (manual, browser)**
 
 1. Sign out.
 2. Visit `http://localhost:3000/r/TESTTOKEN123` → lands on `/register`.
@@ -868,7 +876,7 @@ Expected: exactly one referral row for the new email, and `signups` = 1.
 
 6. Visit `/r/TESTTOKEN123` again while signed in as that user; confirm `signups` is **still 1** (idempotent) and `scans` incremented.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/r/claim "app/(auth)/register"
@@ -899,7 +907,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Consumes: `generateQrToken` (Task 3)
 - Produces: `GET/POST /api/admin/restaurants/[id]/qr-codes`, `PATCH .../[codeId]`
 
-- [ ] **Step 1: Write the list + mint endpoint**
+- [x] **Step 1: Write the list + mint endpoint**
 
 Create `app/api/admin/restaurants/[id]/qr-codes/route.ts`:
 
@@ -950,7 +958,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 }
 ```
 
-- [ ] **Step 2: Write the activate/deactivate endpoint**
+- [x] **Step 2: Write the activate/deactivate endpoint**
 
 Create `app/api/admin/restaurants/[id]/qr-codes/[codeId]/route.ts`:
 
@@ -983,24 +991,24 @@ export async function PATCH(
 }
 ```
 
-- [ ] **Step 3: Build the panel**
+- [x] **Step 3: Build the panel**
 
 Create `components/admin/QrCodePanel.tsx`. Model it on `components/admin/RestaurantStaffPanel.tsx` — same load-on-mount, same `Button`/`Badge` imports, same error/notice state. It must render, for each code: the label, the full scan URL (`{origin}/r/{token}`) with a copy button, `scans` / `signups` / conversion (via `formatConversionRate(conversionRate(scans, signups))` from `lib/restaurant-referrals`), an Active/Inactive badge, and a toggle calling `PATCH`. Above the list, a single-field form (label) that POSTs to mint a new code.
 
 Requirements to honour: every interactive control has a `min-h-[44px]` tap target and a `focus-visible:ring-2` ring; the deactivate toggle is a `Button variant="secondary"` (deactivating is reversible, so it needs no confirm modal); a `catch` around each `fetch` sets `"Network error — try again."` without masking a server `body.error`.
 
-- [ ] **Step 4: Mount it on the restaurant admin page**
+- [x] **Step 4: Mount it on the restaurant admin page**
 
 In `app/(dashboard)/admin/restaurants/[id]/page.tsx`, add a "QR codes" tab beside the existing Staff tab, rendering `<QrCodePanel restaurantId={params.id} />`. Follow exactly how `RestaurantStaffPanel` is mounted there.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `npm test` → expect all passing (no new tests in this task)
 Run: `npx tsc --noEmit 2>&1 | grep -c "error TS"` → expect `19`
 
 In the browser as a SUPER user, open `/admin/restaurants/<id>`, mint a code labelled "Table 9", confirm it appears with a copy-able URL, then paste that URL into a signed-out window and confirm it redirects to `/register`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/api/admin/restaurants components/admin/QrCodePanel.tsx "app/(dashboard)/admin/restaurants"
@@ -1028,7 +1036,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Consumes: `referralFunnelState`, `conversionRate`, `formatConversionRate` (Task 2)
 - Produces: `GET /api/admin/referrals?restaurantId=&search=` → `{ totals: { scans, signups, conversion }, rows: Array<{ id, accountId, email, name, restaurantId, restaurantName, qrLabel, status, signedUpAt }> }`
 
-- [ ] **Step 1: Write the API**
+- [x] **Step 1: Write the API**
 
 Create `app/api/admin/referrals/route.ts`:
 
@@ -1099,7 +1107,7 @@ export async function GET(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: Build the page**
+- [x] **Step 2: Build the page**
 
 Create `app/(dashboard)/admin/referrals/page.tsx` as a client component, modelled on `app/(dashboard)/admin/users/page.tsx` (same page shell, `Select`/`Badge`/`Button` imports, same load-on-mount + search pattern).
 
@@ -1112,7 +1120,7 @@ It renders, in order:
 
 Requirements: the table must scroll inside its own `overflow-x-auto` container so the page never scrolls horizontally on mobile; all controls get `min-h-[44px]` and `focus-visible:ring-2`.
 
-- [ ] **Step 3: Add the sidebar entry and i18n keys**
+- [x] **Step 3: Add the sidebar entry and i18n keys**
 
 In `components/dashboard/DashboardSidebar.tsx`, add to `adminItems` after the restaurants entry:
 
@@ -1125,7 +1133,7 @@ Add `"referrals"` to the `sidebar` object in all three message files, immediatel
 - `messages/es.json`: `"referrals": "Referencias",`
 - `messages/ru.json`: `"referrals": "Рефералы",`
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `npm test` → all passing
 Run: `npx tsc --noEmit 2>&1 | grep -c "error TS"` → `19`
@@ -1134,7 +1142,7 @@ Expected: the three labels above.
 
 In the browser as SUPER, open `/admin/referrals`: the strip shows the scan/signup counts from Task 5's manual test, and the referral created there appears as a row with the right restaurant and status. Filter to that restaurant and confirm the strip recalculates.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/api/admin/referrals "app/(dashboard)/admin/referrals" components/dashboard/DashboardSidebar.tsx messages
@@ -1158,7 +1166,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 **Files:**
 - Modify: `docs/restaurants/phase-3.md`
 
-- [ ] **Step 1: Remove the manual test QR code**
+- [x] **Step 1: Remove the manual test QR code**
 
 ```bash
 npx tsx -e "
@@ -1169,11 +1177,11 @@ p.restaurantQrCode.deleteMany({where:{token:'TESTTOKEN123'}})
 
 Leave any `RestaurantReferral` row created during testing — it is real attribution for a real test account, and deleting it would misrepresent the counters.
 
-- [ ] **Step 2: Add the as-built note**
+- [x] **Step 2: Add the as-built note**
 
 At the end of `docs/restaurants/phase-3.md` §5, add a block recording: what shipped (§1, §2, §5), that the discount rail (§3) is still unbuilt and why, that the referral carrier is a cookie because `forceRedirectUrl` is hard-coded, and that every sign-up now routes through `/r/claim` with a fall-through to onboarding on any failure.
 
-- [ ] **Step 3: Full verification**
+- [x] **Step 3: Full verification**
 
 Run: `npm test`
 Expected: all passing, ~999 tests (977 baseline + 15 from Task 2 + 7 from Task 3)
@@ -1186,7 +1194,7 @@ Expected: `✓ Compiled successfully`, with `/r/[token]`, `/r/claim`, `/admin/re
 
 Restart the dev server with `rm -rf .next && npm run dev` and confirm a page's CSS chunk returns 200 with real bytes.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/restaurants/phase-3.md

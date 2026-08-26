@@ -33,6 +33,7 @@ export default function DashboardSidebar({
     { href: "/admin/users", label: t("users"), icon: "👥" },
     { href: "/admin/companies", label: t("companies"), icon: "🏢" },
     { href: "/admin/restaurants", label: t("restaurants"), icon: "🍜" },
+    { href: "/admin/referrals", label: t("referrals"), icon: "📈" },
     { href: "/admin/review-queue", label: t("reviewQueue"), icon: "🔍" },
     { href: "/admin/ingredient-requests", label: t("ingredientRequests"), icon: "🥕" },
     { href: "/admin/parameters/gender", label: t("parameters"), icon: "⚙️" },
