@@ -50,8 +50,7 @@ export default async function RestaurantMenuPage({ params }: { params: { slug: s
   const fitCount = dishes.filter((d) => d.verdict?.passed).length;
 
   return (
-    <div className="min-h-screen bg-[#F8F7FA] pt-24 pb-16">
-      <div className="max-w-3xl mx-auto px-5 sm:px-8">
+    <div className="max-w-3xl mx-auto">
         <Link
           href="/restaurants"
           className="inline-flex items-center gap-1.5 -ml-2 px-2 py-2.5 rounded-lg text-xs font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
@@ -134,7 +133,6 @@ export default async function RestaurantMenuPage({ params }: { params: { slug: s
             ))}
           </div>
         )}
-      </div>
     </div>
   );
 }

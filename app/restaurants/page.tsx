@@ -28,8 +28,9 @@ export default async function RestaurantsPage({
   });
 
   return (
-    <div className="min-h-screen bg-[#F8F7FA] pt-24 pb-16">
-      <div className="max-w-6xl mx-auto px-5 sm:px-8">
+    // The page shell (background, top padding) belongs to layout.tsx, which
+    // differs between the public and dashboard chromes.
+    <div className="max-w-6xl mx-auto">
         <header className="mb-8">
           <h1 className="text-4xl sm:text-5xl font-bold text-[#1E1A1A] mb-3">Restaurants</h1>
           <p className="text-[#848181] text-lg max-w-xl">
@@ -88,7 +89,6 @@ export default async function RestaurantsPage({
             ))}
           </div>
         )}
-      </div>
     </div>
   );
 }
