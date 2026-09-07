@@ -5,13 +5,13 @@
 
 export type AffinityPref = { liked: boolean; ingredient: { name: string } };
 
-export function buildIngredientAffinity(prefs: AffinityPref[]): {
+export function buildIngredientAffinity(prefs: AffinityPref[] | null | undefined): {
   affinityMap: Record<string, number>;
   seenIngredientNames: Set<string>;
 } {
   const affinityMap: Record<string, number> = {};
   const seenIngredientNames = new Set<string>();
-  for (const p of prefs) {
+  for (const p of prefs ?? []) {
     const name = p.ingredient.name.toLowerCase();
     seenIngredientNames.add(name);
     if (p.liked) affinityMap[name] = 1;

@@ -77,7 +77,7 @@ function makePatient(overrides: Record<string, unknown> = {}) {
     goalWeight: null, goalWeightUnit: null,
     physicalActivity: null,
     foodAllergies: [], foodToAvoid: [], healthConditions: [],
-    foodPreferences: [], motivations: [], dishPreferences: [],
+    foodPreferences: [], motivations: [], ingredientPreferences: [],
     ...overrides,
   };
 }
@@ -539,11 +539,9 @@ test("motivation scoring: with 'Build muscle', the zero-protein recipe never sur
   assert.ok(lunches.every((r) => r.recipeId !== "no-protein"));
 });
 
-test("liked-dish affinity: the only recipe missing the loved ingredient is never picked", async () => {
+test("liked-ingredient affinity: the only recipe missing the loved ingredient is never picked", async () => {
   const patient = makePatient({
-    dishPreferences: [
-      { liked: true, recipe: { ingredients: [{ ingredient: { name: "Tofu" } }] } },
-    ],
+    ingredientPreferences: [{ liked: true, ingredient: { name: "Tofu" } }],
   });
   const pool = [];
   for (let i = 1; i <= 9; i++) {
@@ -558,9 +556,9 @@ test("liked-dish affinity: the only recipe missing the loved ingredient is never
 
 test("novelty scoring: a recipe made only of already-seen ingredients ranks last and is never picked", async () => {
   const patient = makePatient({
-    dishPreferences: [
+    ingredientPreferences: [
       // Disliked → contributes to seen ingredients but not to affinity.
-      { liked: false, recipe: { ingredients: [{ ingredient: { name: "Okra" } }] } },
+      { liked: false, ingredient: { name: "Okra" } },
     ],
   });
   const pool = [];

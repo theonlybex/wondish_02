@@ -16,6 +16,7 @@ import {
   resolveSex,
 } from "@/lib/caloric-engine";
 import { macroDeviation } from "@/lib/macros";
+import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 // Type-only import (erased at runtime). The implementation is loaded lazily at
 // the call site below via dynamic import — a static import here would create a
@@ -142,13 +143,8 @@ export async function buildMealPlanMenus(
       physicalActivity: true,
       gender:           true,
       ...PATIENT_DIET_INCLUDE,
-      dishPreferences:  {
-        include: {
-          recipe: {
-            include: { ingredients: { include: { ingredient: { select: { name: true } } } } },
-          },
-        },
-      },
+      // DISHES-RETIRED (2026-09-07): affinity now comes from liked ingredients.
+      ingredientPreferences: { include: { ingredient: { select: { name: true } } } },
     },
   });
 
@@ -165,24 +161,9 @@ export async function buildMealPlanMenus(
 
   const motivationNames = patient.motivations.map((pm) => pm.motivation.name);
 
-  // ── Build affinity map from liked dishes ───────────────────────────────────
-  const likedDishPrefs = patient.dishPreferences.filter((dp) => dp.liked);
-  const totalLiked     = likedDishPrefs.length;
-  const ingredientCount: Record<string, number> = {};
-  for (const dp of likedDishPrefs) {
-    for (const ri of dp.recipe.ingredients) {
-      const n = ri.ingredient.name.toLowerCase();
-      ingredientCount[n] = (ingredientCount[n] ?? 0) + 1;
-    }
-  }
-  const affinityMap: Record<string, number> = {};
-  if (totalLiked > 0) {
-    for (const [n, c] of Object.entries(ingredientCount)) affinityMap[n] = c / totalLiked;
-  }
-  const seenIngredientNames = new Set<string>();
-  for (const dp of patient.dishPreferences) {
-    for (const ri of dp.recipe.ingredients) seenIngredientNames.add(ri.ingredient.name.toLowerCase());
-  }
+  // ── Build affinity map from liked ingredients ──────────────────────────────
+  // DISHES-RETIRED (2026-09-07): replaces the liked-dish affinity map.
+  const { affinityMap, seenIngredientNames } = buildIngredientAffinity(patient.ingredientPreferences);
 
   // ── Caloric targets ────────────────────────────────────────────────────────
   // baseTDEE is TDEE at current body weight (maintenance). The gradual
