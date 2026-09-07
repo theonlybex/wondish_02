@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { startOfWeek, endOfWeek, format } from "date-fns";
 import { CUISINES } from "@/lib/cuisines";
 // Old "What to buy" design (reused the standalone GroceryListView). Replaced
 // (2026-09-07) by the inline shopping list below, which ticks bought items
@@ -73,9 +72,10 @@ export default function PantryClient({
   const [cookError, setCookError] = useState("");
   // Nothing generates until the user picks a cuisine (no auto-fire).
   const [cookingCuisine, setCookingCuisine] = useState<string | null>(null);
-  // "What to buy" — this week's shopping list from the plan. null = not loaded.
+  // "What to buy" — smart stocking list: ingredients that unlock the most
+  // dishes, favorites first, minus what's already on hand. null = not loaded.
   const [groceryItems, setGroceryItems] = useState<
-    { ingredientId: string; name: string; totalQuantity: number; unit: string | null }[] | null
+    { ingredientId: string; name: string; dishCount: number; favorite: boolean }[] | null
   >(null);
   const [groceryLoading, setGroceryLoading] = useState(false);
   const [groceryError, setGroceryError] = useState("");
@@ -124,11 +124,7 @@ export default function PantryClient({
     setGroceryLoading(true);
     setGroceryError("");
     try {
-      const from = startOfWeek(new Date(), { weekStartsOn: 1 });
-      const to = endOfWeek(new Date(), { weekStartsOn: 1 });
-      const res = await fetch(
-        `/api/grocery-list?from=${format(from, "yyyy-MM-dd")}&to=${format(to, "yyyy-MM-dd")}`
-      );
+      const res = await fetch("/api/pantry/to-buy");
       if (!res.ok) throw new Error();
       const data = await res.json();
       setGroceryItems(data.items ?? []);
@@ -293,11 +289,17 @@ export default function PantryClient({
   // pantry's `toggle` → PatientPantryItem write). Items already on hand show
   // as done.
   if (view === "buy") {
-    const boughtCount = groceryItems?.filter((g) => selected.has(g.ingredientId)).length ?? 0;
-    const total = groceryItems?.length ?? 0;
     return (
       <div>
         {tabs}
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <p className="text-xs" style={{ color: "#848181" }}>
+            Buy these to unlock the most dishes — your favorites are on top.
+          </p>
+          <a href="/taste?edit=1" className="text-xs font-semibold shrink-0 hover:underline" style={{ color: "#812549" }}>
+            Edit favorites →
+          </a>
+        </div>
         {groceryLoading && groceryItems === null ? (
           <div className="py-16 text-center" role="status" aria-label="Loading shopping list">
             <svg className="animate-spin h-6 w-6 text-primary mx-auto" viewBox="0 0 24 24" fill="none">
@@ -318,56 +320,46 @@ export default function PantryClient({
           </div>
         ) : !groceryItems || groceryItems.length === 0 ? (
           <div className="py-12 text-center text-sm" style={{ color: "#848181" }}>
-            Nothing to buy yet — once you have a meal plan, its ingredients show up here.
+            Nothing to suggest yet — rate a few ingredients to get started.
           </div>
         ) : (
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-base font-bold text-[#1E1A1A]">This week&apos;s shopping list</h2>
-              <span className="text-xs font-semibold tabular-nums" style={{ color: "#812549" }}>
-                {boughtCount}/{total} got it
-              </span>
-            </div>
-            <p className="text-xs mb-5" style={{ color: "#848181" }}>
-              Tick an item when you buy it — it moves into your ingredients automatically.
-            </p>
-            <div className="space-y-2">
-              {groceryItems.map((item) => {
-                const have = selected.has(item.ingredientId);
-                return (
-                  <button
-                    key={item.ingredientId}
-                    type="button"
-                    onClick={() => toggle({ id: item.ingredientId, name: item.name })}
-                    aria-pressed={have}
-                    className="w-full flex items-center gap-3 bg-white rounded-2xl px-4 py-3 text-left transition-colors hover:bg-[#FBFAF5]"
-                    style={{ boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
+          <div className="space-y-2">
+            {groceryItems.map((item) => {
+              const have = selected.has(item.ingredientId);
+              return (
+                <button
+                  key={item.ingredientId}
+                  type="button"
+                  onClick={() => toggle({ id: item.ingredientId, name: item.name })}
+                  aria-pressed={have}
+                  className="w-full flex items-center gap-3 bg-white rounded-2xl px-4 py-3 text-left transition-colors hover:bg-[#FBFAF5]"
+                  style={{ boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
+                >
+                  <span
+                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                      have ? "bg-primary border-primary" : "border-[#EAE4CA]"
+                    }`}
                   >
-                    <span
-                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                        have ? "bg-primary border-primary" : "border-[#EAE4CA]"
-                      }`}
-                    >
-                      {have && (
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <path d="M10 3L5 8.5 2 5.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
+                    {have && (
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M10 3L5 8.5 2 5.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </span>
+                  <span className="flex-1 min-w-0 flex items-center gap-1.5">
+                    {item.favorite && (
+                      <span aria-label="favorite" title="A favorite ingredient" style={{ color: "#812549" }}>★</span>
+                    )}
+                    <span className={`text-sm font-medium truncate ${have ? "line-through text-[#ABA6A6]" : "text-[#1E1A1A]"}`}>
+                      {item.name}
                     </span>
-                    <span className="flex-1 min-w-0">
-                      {/* Ingredient names only — no quantities. People buy a
-                          pack/dozen, not a recipe-scale count. */}
-                      <span className={`text-sm font-medium ${have ? "line-through text-[#ABA6A6]" : "text-[#1E1A1A]"}`}>
-                        {item.name}
-                      </span>
-                    </span>
-                    <span className="text-[10px] flex-shrink-0" style={{ color: have ? "#812549" : "#ABA6A6" }}>
-                      {have ? "In your ingredients" : "Tap when you buy it"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                  </span>
+                  <span className="text-[10px] flex-shrink-0" style={{ color: have ? "#812549" : "#ABA6A6" }}>
+                    {have ? "In your ingredients" : `unlocks ${item.dishCount} dish${item.dishCount === 1 ? "" : "es"}`}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

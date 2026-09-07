@@ -66,9 +66,11 @@ export default async function DashboardLayout({
     if (target) redirect(target);
   }
 
-  // New-premium onboarding: redirect to Dish Tinder only if user hasn't seen taste setup yet.
+  // Onboarding: route users through the ingredient taste screen until it's done.
+  // FREE-MODE (2026-09-06): ingredient-taste is part of onboarding for EVERYONE,
+  // not just premium. Admins still skip it.
   // Cookie-gated: once taste_complete=1 is set we skip the DB query entirely on every navigation.
-  if (isPremium && !isAdmin && account) {
+  if (!isAdmin && account) {
     const tasteDone = cookies().get("taste_complete")?.value === "1";
 
     if (!tasteDone) {
