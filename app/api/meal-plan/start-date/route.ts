@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
 import { accountHasActivePremium } from "@/lib/auth";
+import { guardAiSpend } from "@/lib/ai-budget";
 
 export const maxDuration = 60;
 
@@ -40,7 +41,9 @@ export async function POST(req: NextRequest) {
 
   const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const isPremium = isAdmin || accountHasActivePremium(account.subscriptions);
-  if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
+  void isPremium;
+  // FREE-MODE (2026-09-06): premium gate disabled — everything free for now.
+  // if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
   const patient = await prisma.patient.findUnique({
     where: { accountId: account.id },
@@ -57,6 +60,10 @@ export async function POST(req: NextRequest) {
   // A past start builds a plan that can end before today — the UI then reads
   // an empty "today" as generation having failed.
   const start = clampPlanStartToToday(parsed);
+
+  // Generation can trigger a Clara top-up call — spend guard.
+  const guard = await guardAiSpend(userId, "planGen");
+  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
 
   // Atomic blue/green regenerate — no unguarded wipe.
   try {

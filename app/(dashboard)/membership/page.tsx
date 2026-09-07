@@ -23,11 +23,6 @@ const PREMIUM_BENEFITS = [
     description: "Auto-generated shopping list from your weekly plan. Organised by category, ready to use in the store.",
   },
   {
-    icon: "🎯",
-    title: "Your Prediction",
-    description: "See the exact number of days to reach your goal weight based on your profile and weekly pace.",
-  },
-  {
     icon: "📊",
     title: "Nutrition Analytics",
     description: "Detailed macro and micronutrient breakdowns for every meal. Understand the science behind what you eat.",
@@ -220,7 +215,7 @@ export default async function MembershipPage() {
         <div className="grid sm:grid-cols-3 gap-3">
           {[
             { href: "/meal-plan", label: "My Meal Plan", icon: "🍽" },
-            { href: "/prediction", label: "My Prediction", icon: "🎯" },
+            // Prediction removed (2026-09-07).
             { href: "/journey", label: "My Journey", icon: "📈" },
           ].map(({ href, label, icon }) => (
             <Link

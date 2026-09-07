@@ -16,7 +16,9 @@ export async function GET() {
 
   const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const isPremium = isAdmin || accountHasActivePremium(account.subscriptions);
-  if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
+  void isPremium;
+  // FREE-MODE (2026-09-06): premium gate disabled — everything free for now.
+  // if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
   const patient = await prisma.patient.findUnique({
     where: { accountId: account.id },

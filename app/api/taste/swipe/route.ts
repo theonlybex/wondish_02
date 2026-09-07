@@ -15,7 +15,9 @@ export async function POST(req: NextRequest) {
 
   const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const isPremium = isAdmin || accountHasActivePremium(account.subscriptions);
-  if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
+  void isPremium;
+  // FREE-MODE (2026-09-06): premium gate disabled — everything free for now.
+  // if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
   const patient = account.patient;
   if (!patient) return NextResponse.json({ error: "No profile" }, { status: 404 });
@@ -56,7 +58,9 @@ export async function DELETE(req: NextRequest) {
 
   const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const isPremium = isAdmin || accountHasActivePremium(account.subscriptions);
-  if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
+  void isPremium;
+  // FREE-MODE (2026-09-06): premium gate disabled — everything free for now.
+  // if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
   const patient = account.patient;
   if (!patient) return NextResponse.json({ error: "No profile" }, { status: 404 });

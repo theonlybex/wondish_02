@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { accountHasActivePremium, getOrCreateAccount } from "@/lib/auth";
-import { FRIDGE_DAILY_FREE, FRIDGE_DAY_RATE_LIMIT_NAME, FRIDGE_DAY_RATE_LIMIT_WINDOW_SEC } from "@/lib/freemium";
+import { guardAiSpend } from "@/lib/ai-budget";
 import { PATIENT_FOOD_MAP_INCLUDE, buildFoodMapText } from "@/lib/food-map";
 import { derivePatientBans, buildDietMatchers } from "@/lib/diet-match";
 import {
@@ -82,12 +82,11 @@ export async function POST(req: NextRequest) {
   // the Cycle-5 amendment; client-side UsageMeter/PaywallView are void). Must
   // run before any Anthropic call so a gated request costs zero tokens
   // (charge-before-model is the correct anti-race direction and stays).
-  if (!accountHasActivePremium(account.subscriptions)) {
-    const day = await rateLimit(FRIDGE_DAY_RATE_LIMIT_NAME, userId, FRIDGE_DAILY_FREE, FRIDGE_DAY_RATE_LIMIT_WINDOW_SEC);
-    if (!day.success) {
-      return NextResponse.json({ error: "Premium required" }, { status: 402 });
-    }
-  }
+  // Anthropic spend guard: per-user daily quota + global daily ceiling. Runs
+  // before any model call so a gated request costs zero tokens. Abuse/cost
+  // backstop (generous, not a paywall).
+  const guard = await guardAiSpend(userId, "fridge");
+  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
 
   const foodMapText = buildFoodMapText(patient);
   // F-D7: deterministic server-side allergen filter, independent of the

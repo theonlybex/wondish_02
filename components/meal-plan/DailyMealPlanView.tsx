@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { format, addDays, subDays } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import SwapMealModal from "@/components/meal-plan/SwapMealModal";
 import Button from "@/components/ui/Button";
 import type { MealType } from "@/lib/local-date";
 import { MenuEntry, RecipeDTO, PlanExchangeDTO } from "@/types";
+import { CUISINES } from "@/lib/cuisines";
 
 interface DailyMealPlanViewProps {
   initialMenus: MenuEntry[];
@@ -240,6 +241,22 @@ export default function DailyMealPlanView({
   const [regenerating, setRegenerating] = useState(false);
   const [profileIncomplete, setProfileIncomplete] = useState(false);
   const [dailyCalorieTarget, setDailyCalorieTarget] = useState<number | null>(initialDailyCalorieTarget);
+  // First-time users shouldn't need a ceremonial "Start Meal Plan Today"
+  // click — arriving with no plan starts one automatically (once). The banner
+  // below becomes the "building your plan" moment; the button remains only as
+  // the retry path if the auto-start fails.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    // Clara is the default source: arriving with NO plan generates one
+    // automatically (once), no cuisine required. The elapsed-plan case (a
+    // start date exists but today's window has run out) is handled after the
+    // hydrate fetch below, once we know today has no menus.
+    if (!startDate && !autoStarted.current) {
+      autoStarted.current = true;
+      void generatePlan({ claraFirst: true, cuisine: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [stale, setStale] = useState(initialStale);
   const [swapModal, setSwapModal]       = useState<{
     menuId: string; mealTypeId: string; recipeId: string; calories: number;
@@ -271,8 +288,15 @@ export default function DailyMealPlanView({
           setDailyCalorieTarget(data.dailyCalorieTarget);
         }
         setExchanges(data.exchanges ?? null);
+        // Elapsed-plan / empty-today safety net: a plan exists but today has no
+        // menus (the window ran out). Generate once — same as a fresh start.
+        if ((data.menus ?? []).length === 0 && !autoStarted.current) {
+          autoStarted.current = true;
+          void generatePlan({ claraFirst: true, cuisine: null });
+        }
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSetStartDate = async () => {
@@ -301,6 +325,93 @@ export default function DailyMealPlanView({
       setSettingStart(false);
     }
   };
+
+  // TEST (2026-09-06): have Clara author the whole visible day and write it
+  // into the plan (Menu rows), then reload that day.
+  const [claraDayLoading, setClaraDayLoading] = useState(false);
+  const [claraDayError, setClaraDayError] = useState("");
+  // Generation source, remembered per device (no schema change to the original
+  // system): "clara" = AI-generated dishes, "homemade" = curated recipes.
+  const [planMode, setPlanMode] = useState<"clara" | "homemade">("clara");
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("meal-plan-mode") : null;
+    if (saved === "homemade" || saved === "clara") setPlanMode(saved);
+  }, []);
+  const selectMode = (m: "clara" | "homemade") => {
+    setPlanMode(m);
+    setClaraDayError("");
+    try {
+      localStorage.setItem("meal-plan-mode", m);
+    } catch {
+      /* private mode — preference just won't persist */
+    }
+  };
+
+  // Both modes build through the SAME (unchanged) plan builder — the only
+  // difference is the dish source. Clara passes claraFirst + cuisine; Homemade
+  // omits them so the curated recipe catalog is used.
+  const generatePlan = async (body: Record<string, unknown>) => {
+    if (claraDayLoading) return;
+    setClaraDayLoading(true);
+    setClaraDayError("");
+    try {
+      const dateStr = format(date, "yyyy-MM-dd");
+      const res = await fetch("/api/meal-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startDate: format(new Date(), "yyyy-MM-dd"), ...body }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setClaraDayError(data?.error ?? "Couldn't generate your plan — try again.");
+        return;
+      }
+      const mRes = await fetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
+      const mData = await mRes.json();
+      setMenus(mData.menus ?? []);
+      setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
+      setMealRatings(mData.mealRatings ?? {});
+      if (mData.mealPlanStartDate) setStartDate(new Date(mData.mealPlanStartDate));
+      setDailyCalorieTarget(mData.dailyCalorieTarget ?? null);
+      setExchanges(mData.exchanges ?? null);
+    } catch {
+      setClaraDayError("Network error — try again.");
+    } finally {
+      setClaraDayLoading(false);
+    }
+  };
+  // Picking a cuisine regenerates ONLY the viewed day (additive day route) —
+  // the rest of the plan stays exactly as it was.
+  const handleClaraDay = async (cuisine: string) => {
+    if (claraDayLoading) return;
+    setClaraDayLoading(true);
+    setClaraDayError("");
+    try {
+      const dateStr = format(date, "yyyy-MM-dd");
+      const res = await fetch("/api/meal-plan/day", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: dateStr, cuisine }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setClaraDayError(data?.error ?? "Couldn't update today — try again.");
+        return;
+      }
+      const mRes = await fetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
+      const mData = await mRes.json();
+      setMenus(mData.menus ?? []);
+      setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
+      setMealRatings(mData.mealRatings ?? {});
+      setDailyCalorieTarget(mData.dailyCalorieTarget ?? null);
+      setExchanges(mData.exchanges ?? null);
+    } catch {
+      setClaraDayError("Network error — try again.");
+    } finally {
+      setClaraDayLoading(false);
+    }
+  };
+  const handleHomemade = () => generatePlan({}); // no claraFirst → curated builder
 
   const handleRegenerate = async () => {
     if (!startDate) return;
@@ -477,6 +588,91 @@ export default function DailyMealPlanView({
         )}
       </div>
 
+      {/* Plan source switch (2026-09-06): pick who fills the plan.
+          - Clara     → claraFirst + cuisine, AI-authored dishes under all rules
+          - Homemade  → the original curated recipe builder, unchanged
+          Both call the SAME plan builder; only the dish source differs. */}
+      {startDate && (
+        <div className="rounded-2xl px-4 py-3 mb-4 border border-dashed" style={{ borderColor: "#812549", background: "rgba(129,37,73,0.04)" }}>
+          {/* Segmented switch */}
+          <div
+            className="inline-flex p-0.5 rounded-full mb-3 border"
+            style={{ borderColor: "#812549", background: "rgba(255,255,255,0.6)" }}
+            role="group"
+            aria-label="Choose how your plan is filled"
+          >
+            {([
+              { key: "clara", label: "Clara" },
+              { key: "homemade", label: "Homemade Recipes" },
+            ] as const).map((opt) => {
+              const active = planMode === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => selectMode(opt.key)}
+                  disabled={claraDayLoading}
+                  aria-pressed={active}
+                  className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors disabled:opacity-50 ${
+                    active ? "text-white" : "text-[#5F1C35] hover:bg-[#812549]/10"
+                  }`}
+                  style={active ? { background: "#812549" } : undefined}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="text-sm font-semibold flex items-center gap-2" style={{ color: "#5F1C35" }}>
+            {claraDayLoading && (
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" role="status" aria-label="Generating">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+            )}
+            {claraDayLoading
+              ? "Generating…"
+              : planMode === "clara"
+                ? "Change today's cuisine (optional)"
+                : "Build from Wondish's homemade recipes"}
+          </p>
+          {claraDayError ? (
+            <p role="alert" className="text-xs mt-0.5 text-error">{claraDayError}</p>
+          ) : (
+            <p className="text-xs mt-0.5 mb-2" style={{ color: "#848181" }}>
+              {planMode === "clara"
+                ? "Clara fills your plan automatically. Pick a cuisine to regenerate just today's meals — the rest of your plan stays the same."
+                : "Rebuilds your plan from Wondish's curated recipe catalog, under all the usual rules."}
+            </p>
+          )}
+
+          {!claraDayLoading && planMode === "clara" && (
+            <div className="flex flex-wrap gap-1.5 mt-1" role="group" aria-label="Choose a cuisine">
+              {CUISINES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => void handleClaraDay(c)}
+                  className="px-3 py-1 rounded-full text-xs font-semibold border border-[#812549]/30 text-[#5F1C35] bg-white hover:bg-[#812549] hover:text-white transition-colors"
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
+          {!claraDayLoading && planMode === "homemade" && (
+            <button
+              type="button"
+              onClick={() => void handleHomemade()}
+              className="mt-1 px-4 py-1.5 rounded-full text-xs font-semibold border border-[#812549]/30 text-[#5F1C35] bg-white hover:bg-[#812549] hover:text-white transition-colors"
+            >
+              Generate my plan
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Pending plan-exchanges strip (display parity — resolve in the app) */}
       {pendingExchanges.length > 0 && (
         <div className="bg-white border border-[#EAE4CA] rounded-2xl px-4 py-3 mb-4 text-sm text-[#5F1C35]">
@@ -528,18 +724,46 @@ export default function DailyMealPlanView({
         </div>
       )}
 
-      {/* No start date */}
-      {!startDate && (
+      {/* No start date: auto-start fires on mount — this is the "building your
+          plan" moment, with the button kept only as the failure/retry path. */}
+      {!startDate && !profileIncomplete && (
         <div className="bg-primary/10 border border-primary/20 rounded-2xl p-6 text-center mb-6">
-          <p className="text-navy font-semibold mb-2">Set your meal plan start date</p>
-          <p className="text-[#848181] text-sm mb-4">We&apos;ll generate a personalized 35-day meal plan starting today.</p>
-          <Button loading={settingStart} onClick={handleSetStartDate}>Start Meal Plan Today</Button>
+          {settingStart ? (
+            <>
+              <p className="text-navy font-semibold mb-2">Building your personalized plan…</p>
+              <p className="text-[#848181] text-sm">
+                Balancing your calories across 35 days of dishes — this takes a few seconds.
+              </p>
+              <div className="flex justify-center mt-4" role="status" aria-label="Building your plan">
+                <svg className="animate-spin h-7 w-7 text-primary" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-navy font-semibold mb-2">Your plan isn&apos;t started yet</p>
+              <p className="text-[#848181] text-sm mb-4">
+                Something interrupted the automatic start — one tap and we&apos;ll build your
+                personalized 35-day plan from today.
+              </p>
+              <Button loading={settingStart} onClick={handleSetStartDate}>Start my plan</Button>
+            </>
+          )}
         </div>
       )}
 
       {/* Main content */}
-      {loading ? (
-        <div className="text-center py-12 text-[#848181]">Loading…</div>
+      {loading || settingStart ? (
+        // settingStart covers the whole start flow — including the gap between
+        // setStartDate() and the menus fetch resolving — so the "No meal plan"
+        // empty state can't flash for a frame after generation completes. While
+        // startDate is still null the "building your plan" card above owns the
+        // screen, so suppress this duplicate spinner then.
+        !startDate && settingStart ? null : (
+          <div className="text-center py-12 text-[#848181]">Loading…</div>
+        )
       ) : menus.length === 0 ? (
         <div className="text-center py-12 text-[#848181]">
           {isPastPlanEnd ? (

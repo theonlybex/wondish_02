@@ -14,6 +14,7 @@ import {
   buildCustomUnitMap,
   computeRemaining,
   getDayTarget,
+  isCallerSuppliedMacroSource,
   getDayEnvelope,
   validateRange,
   MEAL_TYPES,
@@ -59,17 +60,21 @@ export async function POST(req: NextRequest) {
   let restaurantDish: RestaurantDishDep | undefined;
 
   if (input.source === MealLogSource.RECIPE) {
-    const r = await prisma.recipe.findUnique({
-      where: { id: input.recipeId! },
+    // isPublic parity with every serving surface (audit Task 18) — same gate
+    // as app/api/meal-plan/[menuId]/swap: a private recipe id must not be
+    // loggable/read back through this path.
+    const r = await prisma.recipe.findFirst({
+      where: { id: input.recipeId!, isPublic: true },
       select: { name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, servings: true },
     });
     if (!r) return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
     recipe = r;
   } else if (input.source === MealLogSource.CUSTOM) {
-    const account = await getAccountWithSubscription(userId);
-    if (!accountHasActivePremium(account?.subscriptions ?? [])) {
-      return NextResponse.json({ error: "Premium required" }, { status: 402 });
-    }
+    // FREE-MODE (2026-09-06): premium gate disabled — everything free for now.
+    // const account = await getAccountWithSubscription(userId);
+    // if (!accountHasActivePremium(account?.subscriptions ?? [])) {
+    //   return NextResponse.json({ error: "Premium required" }, { status: 402 });
+    // }
     const ci = await prisma.patientCustomIngredient.findFirst({
       where: { id: input.customIngredientId!, patientId: patient.id },
       select: { name: true, calories: true, protein: true, carbs: true, fat: true, unit: true },
@@ -85,6 +90,16 @@ export async function POST(req: NextRequest) {
     });
     if (!dish) return NextResponse.json({ error: "Restaurant dish not found" }, { status: 404 });
     restaurantDish = dish;
+  }
+
+  // Opaque provenance recipeId (MANUAL/PICTURE/FRIDGE/CLARA — see
+  // validateItem in lib/meal-log.ts): the column is still a real FK, so a
+  // nonexistent id would fail the insert (P2003 → 500). Provenance is
+  // echo-only, so an unresolvable id is silently dropped — matching the
+  // passthrough posture — rather than failing the write.
+  if (isCallerSuppliedMacroSource(input.source) && input.recipeId) {
+    const exists = await prisma.recipe.findUnique({ where: { id: input.recipeId }, select: { id: true } });
+    if (!exists) input.recipeId = undefined;
   }
 
   const resolved = resolveSnapshot(input, { recipe, customIngredient, restaurantDish });

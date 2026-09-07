@@ -8,7 +8,7 @@ It supersedes, and pulls the live items out of:
 | Source | Status |
 |---|---|
 | `tasks/todo.md` | still the detailed record — history + root-cause notes. Live items are mirrored here. |
-| `docs/productionStage.md` | **STALE, unaudited** — see §7. Do not trust it without re-verifying. |
+| `docs/productionStage.md` | **current as of 2026-09-06** — audited, rewritten; holds the production blockers + phased bug-fix plan (see §7). |
 | `cycle.md` | per-release checklist, not features — see §6. |
 | `docs/restaurants/roadmap.md` | the restaurant phase plan — see §3. |
 | `docs/superpowers/plans/*.md` | executed plans. Unticked checkboxes there do **not** mean incomplete; this repo does not tick them during execution. |
@@ -163,10 +163,10 @@ probes of new routes return JSON 401 · one interactive simulator sign-in.
 
 ## 7. Needs an audit before it can be trusted
 
-- [ ] **Audit `docs/productionStage.md` (16 open items) against current code.**
-      Confirmed stale in part: it claims "no unit tests for any of the engine",
-      but `lib/caloric-engine.test.ts` has **92 tests**. Confirmed still true: two
-      different lb→kg constants (`0.45359237` at `caloric-engine.ts:82` vs
-      `0.453592` at `:356`). Several of its items map to entries already marked
-      `[x]` in `tasks/todo.md`. Until audited, treat that file as unreliable rather
-      than as 16 live production risks. **[verified: both spot-checks]**
+- [x] **Audit `docs/productionStage.md` against current code.** Done 2026-09-05:
+      of its 16 items, 10 were already fixed, 3 still real, 3 unverifiable ops.
+      The file was rewritten 2026-09-06 as the production path: verified blockers +
+      the phased bug-fix plan. The complete verified bug list (3 high / 16 medium /
+      26 low, file:line evidence) is `docs/bug-audit-2026-09-05.md`.
+      **`docs/productionStage.md` is now current and trustworthy — start there for
+      production work.** **[verified]**

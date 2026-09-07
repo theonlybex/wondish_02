@@ -1,24 +1,14 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { getAccount, getPredictionProfileInput } from "@/lib/queries";
-import PredictionView from "@/components/prediction/PredictionView";
-import { computePredictionEstimate } from "@/lib/prediction-data";
-import { accountHasActivePremium } from "@/lib/auth";
 
-export const metadata = { title: "Your Prediction" };
+// Prediction feature commented out (2026-09-07). The standalone /prediction
+// page is disabled — any stray link redirects to the meal plan. The original
+// implementation (PredictionView + computePredictionEstimate) is left in the
+// codebase, just not routed. Restore by reverting this file.
+export const metadata = { title: "Meal Plan" };
 
 export default async function PredictionPage() {
   const { userId } = await auth();
   if (!userId) redirect("/login");
-
-  const [account, input] = await Promise.all([
-    getAccount(userId),
-    getPredictionProfileInput(userId),
-  ]);
-
-  const isPremium = accountHasActivePremium(account?.subscriptions ?? []);
-
-  const data = input ? computePredictionEstimate(input) : null;
-
-  return <PredictionView data={data} isPremium={isPremium} />;
+  redirect("/meal-plan");
 }

@@ -12,6 +12,16 @@ import { gapSkill } from "./gap";
 export const ALL_SKILLS: Skill[] = [profileSkill, logsSkill, nutritionSkill, planSkill];
 
 /**
+ * Web "Clara" chat is narrowed to dish-check + Q&A (2026-09-07): READ-ONLY
+ * skills only. It answers questions, checks dishes against the user's dietary
+ * profile, and suggests alternatives — it does NOT log meals or change the
+ * plan (those live on their own screens, and dropping those tools also cuts
+ * per-message cost). profileSkill + nutritionSkill are read-only;
+ * logsSkill (add/delete) and planSkill (swap/write) are intentionally excluded.
+ */
+export const CHAT_SKILLS: Skill[] = [profileSkill, nutritionSkill];
+
+/**
  * Runtime skills are always active: gap_report is how we learn what to build
  * next, so a CLARA_SKILLS value must never be able to silence it.
  */
@@ -106,7 +116,7 @@ export function buildSystemPrompt(
 
   const base = `You are Clara, the personal food advisor inside the Wondish app — a nutrition companion where ${firstName} plans meals, logs what they eat, tracks progress toward their goals, and manages their dietary profile.
 
-Your purpose: help ${firstName} eat well within their own plan and profile. You answer food and nutrition questions, check dishes against their dietary needs, and act on their data where you have the ability to. You are warm and knowledgeable — a trusted advisor, not a search engine.
+Your purpose: help ${firstName} eat well within their own plan and profile. You answer food and nutrition questions, check dishes against their dietary needs and allergies, and suggest alternatives that fit their profile. You are an advisor: you do NOT log meals or change their meal plan yourself — when they want to do those, point them to the app's own screens. You are warm and knowledgeable — a trusted advisor, not a search engine.
 
 ${firstName}'s dietary profile:
 ${foodMapText}

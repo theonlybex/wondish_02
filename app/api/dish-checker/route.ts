@@ -4,12 +4,7 @@ import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { sanitizeChatHistory } from "@/lib/chat-history";
 import { accountHasActivePremium, getAccountWithSubscription } from "@/lib/auth";
-import {
-  CHAT_DAILY_FREE,
-  CHAT_DAY_RATE_LIMIT_NAME,
-  CHAT_DAY_RATE_LIMIT_WINDOW_SEC,
-  chatQuotaExceededResponseBody,
-} from "@/lib/freemium";
+import { guardAiSpend } from "@/lib/ai-budget";
 import Anthropic from "@anthropic-ai/sdk";
 import { PATIENT_FOOD_MAP_INCLUDE, buildFoodMapText } from "@/lib/food-map";
 import { startClaraLoop } from "@/lib/clara/loop";
@@ -18,7 +13,7 @@ import { parseClaraRequestOptions } from "@/lib/clara/request";
 import { resolveToday } from "@/lib/clara/dates";
 import { maxToolRounds } from "@/lib/clara/budget";
 import {
-  ALL_SKILLS,
+  CHAT_SKILLS,
   resolveActiveSkills,
   buildToolDefs,
   buildSystemPrompt,
@@ -63,21 +58,12 @@ export async function POST(req: NextRequest) {
   const account = await getAccountWithSubscription(userId);
   if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
 
-  // Credit gate (docs/superpowers/plans/2026-07-23-clara-ai-access-architecture.md):
-  // premium accounts bypass the daily allowance entirely; free accounts get
-  // CHAT_DAILY_FREE messages/day. Must run before any Anthropic call so a
-  // gated request costs zero tokens.
-  if (!accountHasActivePremium(account.subscriptions)) {
-    const { success: withinDailyFree } = await rateLimit(
-      CHAT_DAY_RATE_LIMIT_NAME,
-      userId,
-      CHAT_DAILY_FREE,
-      CHAT_DAY_RATE_LIMIT_WINDOW_SEC
-    );
-    if (!withinDailyFree) {
-      return NextResponse.json(chatQuotaExceededResponseBody(), { status: 402 });
-    }
-  }
+  // Anthropic spend guard: per-user daily quota + global daily ceiling. Runs
+  // before any model call so a gated request costs zero tokens. This is the
+  // abuse/cost backstop (not a paywall — the limit is generous). Replaces the
+  // former premium-only CHAT_DAILY_FREE credit gate.
+  const guard = await guardAiSpend(userId, "claraChat");
+  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
 
   const patient = await prisma.patient.findFirst({
     where: { accountId: account.id },
@@ -97,11 +83,11 @@ export async function POST(req: NextRequest) {
   const isPremium = accountHasActivePremium(account.subscriptions);
   const firstName = account.firstName ?? "there";
 
-  const activeSkills = patient ? resolveActiveSkills(ALL_SKILLS, process.env.CLARA_SKILLS) : [];
+  const activeSkills = patient ? resolveActiveSkills(CHAT_SKILLS, process.env.CLARA_SKILLS) : [];
   // Registered but switched off — only the server can tell this from "never
   // built", so it authors the FLAGGED_OFF verdict rather than the model.
   const activeNames = new Set(activeSkills.map((s) => s.name));
-  const disabledSkills = ALL_SKILLS.filter((s) => !activeNames.has(s.name)).map((s) => s.name);
+  const disabledSkills = CHAT_SKILLS.filter((s) => !activeNames.has(s.name)).map((s) => s.name);
 
   const ctx: ClaraContext | null = patient
     ? {

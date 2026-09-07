@@ -2,11 +2,11 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { subDays } from "date-fns";
 import { prisma } from "@/lib/db";
-import { getAccount, getPredictionProfileInput } from "@/lib/queries";
+import { getAccount } from "@/lib/queries";
 import { computeJourneyStats, computeMacroStats } from "@/lib/journey";
 import { getJourneyPayload, type JourneyPayload } from "@/lib/journey-data";
 import JourneyDashboard from "@/components/journey/JourneyDashboard";
-import PredictionWhatIf from "@/components/journey/PredictionWhatIf";
+// import PredictionWhatIf from "@/components/journey/PredictionWhatIf"; // prediction removed 2026-09-07
 
 export const metadata = { title: "Journey" };
 
@@ -34,10 +34,8 @@ export default async function JourneyPage() {
     macroStats: computeMacroStats([], null),
     entries: [],
   };
-  const [payload, predictionInput] = await Promise.all([
-    patient ? getJourneyPayload(patient.id, from, to) : Promise.resolve(emptyPayload),
-    getPredictionProfileInput(userId),
-  ]);
+  // Prediction removed (2026-09-07) — no longer fetch the prediction input.
+  const payload = patient ? await getJourneyPayload(patient.id, from, to) : emptyPayload;
   const { stats, macroStats } = payload;
 
   const rangeLabel = `${from.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${to.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
@@ -74,10 +72,10 @@ export default async function JourneyPage() {
         <JourneyDashboard initialStats={stats} initialMacroStats={macroStats} />
       </div>
 
-      {/* Prediction what-if card */}
+      {/* Prediction what-if card commented out (2026-09-07) — prediction removed.
       <div className="jy mt-8 max-w-md mx-auto" style={{ animationDelay: "240ms" }}>
         <PredictionWhatIf input={predictionInput} />
-      </div>
+      </div> */}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   serializeMealLog,
   buildCustomUnitMap,
   getDayEnvelope,
+  isCallerSuppliedMacroSource,
   type ParsedMealLog,
   type RecipeDep,
   type CustomIngredientDep,
@@ -46,10 +47,36 @@ export async function POST(req: NextRequest) {
   const { localDate, items } = parsed.value;
 
   // Premium gate once if any item is CUSTOM.
-  if (items.some((it) => it.source === MealLogSource.CUSTOM)) {
-    const account = await getAccountWithSubscription(userId);
-    if (!accountHasActivePremium(account?.subscriptions ?? [])) {
-      return NextResponse.json({ error: "Premium required" }, { status: 402 });
+  // FREE-MODE (2026-09-06): premium gate disabled — everything free for now.
+  // if (items.some((it) => it.source === MealLogSource.CUSTOM)) {
+  //   const account = await getAccountWithSubscription(userId);
+  //   if (!accountHasActivePremium(account?.subscriptions ?? [])) {
+  //     return NextResponse.json({ error: "Premium required" }, { status: 402 });
+  //   }
+  // }
+
+  // Opaque provenance recipeId (MANUAL/PICTURE/FRIDGE/CLARA — see validateItem
+  // in lib/meal-log.ts): the column is still a real FK, so one nonexistent id
+  // would fail the whole batch transaction (P2003 → 500). Provenance is
+  // echo-only, so unresolvable ids are silently dropped — matching the
+  // passthrough posture — rather than failing the batch. One query for all.
+  const provenanceIds = Array.from(
+    new Set(
+      items
+        .filter((it) => isCallerSuppliedMacroSource(it.source) && it.recipeId)
+        .map((it) => it.recipeId as string)
+    )
+  );
+  if (provenanceIds.length > 0) {
+    const found = await prisma.recipe.findMany({
+      where: { id: { in: provenanceIds } },
+      select: { id: true },
+    });
+    const foundIds = new Set(found.map((r) => r.id));
+    for (const it of items) {
+      if (isCallerSuppliedMacroSource(it.source) && it.recipeId && !foundIds.has(it.recipeId)) {
+        it.recipeId = undefined;
+      }
     }
   }
 
@@ -61,8 +88,10 @@ export async function POST(req: NextRequest) {
     let restaurantDish: RestaurantDishDep | undefined;
 
     if (item.source === MealLogSource.RECIPE) {
-      const r = await prisma.recipe.findUnique({
-        where: { id: item.recipeId! },
+      // isPublic parity with every serving surface (audit Task 18) — same
+      // gate as app/api/meal-plan/[menuId]/swap and the single-write route.
+      const r = await prisma.recipe.findFirst({
+        where: { id: item.recipeId!, isPublic: true },
         select: { name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, servings: true },
       });
       if (!r) return NextResponse.json({ error: `Recipe not found: ${item.recipeId}` }, { status: 404 });

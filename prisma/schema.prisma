@@ -159,6 +159,7 @@ model Patient {
   journalEntries    JournalEntry[]
   customIngredients PatientCustomIngredient[]
   mealLogs          MealLog[]
+  pantryItems       PatientPantryItem[]
 
   claraCapabilityRequests ClaraCapabilityRequest[]
   supplements             Supplement[]
@@ -375,6 +376,20 @@ model Ingredient {
   fat            Float?
   recipes        RecipeIngredient[]
   restaurantUses RestaurantDishIngredient[]
+  pantryUses     PatientPantryItem[]
+}
+
+// What the patient currently has at home ("fridge/pantry"), maintained by the
+// pantry picker. Drives the "dishes you can cook right now" view; replaced
+// wholesale by PUT /api/pantry, cleared item-by-item as the user edits.
+model PatientPantryItem {
+  patientId    String
+  ingredientId String
+  patient      Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([patientId, ingredientId])
 }
 
 model RecipeIngredient {

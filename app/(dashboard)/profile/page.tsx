@@ -5,6 +5,8 @@ import { getAccount } from "@/lib/queries";
 import { isProfileComplete } from "@/lib/onboarding";
 import { findClaimableInvites } from "@/lib/restaurant-pending-invites-server";
 import ProfileForm from "@/components/profile/ProfileForm";
+import OnboardingWizard from "@/components/onboarding/OnboardingWizard";
+import DeleteAccountSection from "@/components/profile/DeleteAccountSection";
 import PendingInviteBanner from "@/components/restaurant/PendingInviteBanner";
 
 export const metadata = { title: "Profile" };
@@ -97,38 +99,53 @@ export default async function ProfilePage({
         </div>
       )}
 
-      <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
-        <p
-          className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
-          style={{ color: "#B75E78" }}
-        >
-          {isOnboarding ? "Setup" : "Profile"}
-        </p>
-        <h1 className="text-3xl font-bold text-[#1E1A1A]">
-          {isOnboarding ? "Complete Your Profile" : "Profile"}
-        </h1>
-        <div className="flex items-center gap-3 mt-4">
-          <div className="h-px w-12 bg-primary/40" />
-          <p className="text-xs" style={{ color: "#848181" }}>
-            {isOnboarding
-              ? "Tell us about yourself so we can personalise your meal plan."
-              : "Update your health profile and dietary preferences."}
-          </p>
+      {isOnboarding ? (
+        // Apple-style step wizard: one question per screen, per-step required
+        // validation, reward beat mid-flow. The classic single-page form below
+        // remains the profile-EDIT surface.
+        <div className="ov" style={{ animationDelay: "0ms" }}>
+          <OnboardingWizard
+            refData={refData}
+            accountData={
+              account
+                ? { firstName: account.firstName, lastName: account.lastName, email: account.email }
+                : { firstName: "", lastName: "", email: "" }
+            }
+          />
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
+            <p
+              className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
+              style={{ color: "#B75E78" }}
+            >
+              Profile
+            </p>
+            <h1 className="text-3xl font-bold text-[#1E1A1A]">Profile</h1>
+            <div className="flex items-center gap-3 mt-4">
+              <div className="h-px w-12 bg-primary/40" />
+              <p className="text-xs" style={{ color: "#848181" }}>
+                Update your health profile and dietary preferences.
+              </p>
+            </div>
+          </div>
 
-      <div className="ov" style={{ animationDelay: "80ms" }}>
-        <ProfileForm
-          initialData={patient as unknown as Record<string, unknown>}
-          refData={refData}
-          isOnboarding={isOnboarding}
-          accountData={
-            account
-              ? { firstName: account.firstName, lastName: account.lastName, email: account.email }
-              : { firstName: "", lastName: "", email: "" }
-          }
-        />
-      </div>
+          <div className="ov" style={{ animationDelay: "80ms" }}>
+            <ProfileForm
+              initialData={patient as unknown as Record<string, unknown>}
+              refData={refData}
+              isOnboarding={false}
+              accountData={
+                account
+                  ? { firstName: account.firstName, lastName: account.lastName, email: account.email }
+                  : { firstName: "", lastName: "", email: "" }
+              }
+            />
+            <DeleteAccountSection />
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import { computeAllMetrics, gradualDailyCals, maxDailyDeficit, resolvePlanDirection, resolveSex, type CaloricProfileInput } from "@/lib/caloric-engine";
 import DailyMealPlanView from "@/components/meal-plan/DailyMealPlanView";
-import Link from "next/link";
+// import Link from "next/link"; // only used by the hidden Weekly view link
 
 export const metadata = { title: "Meal Plan" };
 
@@ -113,28 +113,10 @@ export default async function MealPlanPage() {
         .mp { animation: mp-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
       `}</style>
 
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="mp flex items-start justify-between mb-8" style={{ animationDelay: "0ms" }}>
-        <div>
-          <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-2" style={{ color: "#B75E78" }}>
-            {today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-          </p>
-          <h1 className="text-3xl font-bold text-[#1E1A1A]">Meal Plan</h1>
-          <p className="text-xs mt-1.5" style={{ color: "#848181" }}>Your personalised daily menu</p>
-        </div>
-        <Link
-          href="/meal-plan/weekly"
-          className="mp text-xs font-semibold px-4 py-2 rounded-xl border transition-colors mt-1"
-          style={{
-            animationDelay: "80ms",
-            color: "#812549",
-            borderColor: "rgba(129,37,73,0.25)",
-            background: "rgba(129,37,73,0.06)",
-          }}
-        >
-          Weekly view →
-        </Link>
-      </div>
+      {/* Header removed (2026-09-06): the "Meal Plan" title, the "personalised
+          daily menu" subtitle, the redundant date, and the Weekly view link are
+          all gone — the day-navigator below is the meal-plan header now. The
+          /meal-plan/weekly route stays live; only its entry point is removed. */}
 
       <div className="mp" style={{ animationDelay: "160ms" }}>
         <DailyMealPlanView

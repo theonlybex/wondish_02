@@ -1,9 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
 import { getPlanDayCalories, deriveLoggedRecipeIds } from "@/lib/meal-plan";
 import { accountHasActivePremium } from "@/lib/auth";
+import { normalizeCuisine } from "@/lib/clara/recipe-generation";
+import { guardAiSpend } from "@/lib/ai-budget";
 import { getExchangesForRange, splitByStatus } from "@/lib/plan-exchanges";
 import { addDays } from "date-fns";
 
@@ -124,6 +127,15 @@ export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // Same bucket as /regenerate — both trigger the same full-plan rebuild.
+  const { success } = await rateLimit("regenerate", userId, 10, 60);
+  if (!success) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a moment before regenerating again." },
+      { status: 429 }
+    );
+  }
+
   const account = await prisma.account.findUnique({
     where: { clerkId: userId },
     include: { subscriptions: true, roles: { include: { role: true } }, patient: true },
@@ -132,7 +144,9 @@ export async function POST(req: NextRequest) {
 
   const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const isPremium = isAdmin || accountHasActivePremium(account.subscriptions);
-  if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
+  void isPremium;
+  // FREE-MODE (2026-09-06): premium gate disabled — everything free for now.
+  // if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
   const patient = account.patient;
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
@@ -141,8 +155,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Profile not complete" }, { status: 422 });
   }
 
-  const { startDate } = await req.json();
-  const parsed = new Date(startDate);
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const { startDate, claraFirst, cuisine } = (body ?? {}) as { startDate?: unknown; claraFirst?: unknown; cuisine?: unknown };
+  const parsed = new Date(typeof startDate === "string" || typeof startDate === "number" ? startDate : NaN);
 
   if (isNaN(parsed.getTime())) {
     return NextResponse.json({ error: "Invalid date" }, { status: 400 });
@@ -152,8 +172,20 @@ export async function POST(req: NextRequest) {
   // an empty "today" as generation having failed.
   const start = clampPlanStartToToday(parsed);
 
+  // Clara is the default dish source and cuisine is OPTIONAL — a whole-plan
+  // build with no cuisine simply lets Clara vary cuisines ("Surprise me" → null).
+  // Cuisine now only scopes the current-day route (/api/meal-plan/day).
+  const wantClara = claraFirst === true;
+
+  // Every plan (re)generation can trigger a Clara top-up call — spend guard.
+  const guard = await guardAiSpend(userId, "planGen");
+  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
+
   try {
-    const count = await regeneratePlan(patient.id, start);
+    const count = await regeneratePlan(patient.id, start, undefined, {
+      claraFirst: wantClara,
+      cuisine: wantClara ? normalizeCuisine(cuisine) : null,
+    });
     return NextResponse.json({ ok: true, count });
   } catch (err) {
     if (err instanceof MealPlanBusyError) {

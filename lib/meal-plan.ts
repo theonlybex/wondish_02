@@ -17,6 +17,11 @@ import {
 } from "@/lib/caloric-engine";
 import { macroDeviation } from "@/lib/macros";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+// Type-only import (erased at runtime). The implementation is loaded lazily at
+// the call site below via dynamic import — a static import here would create a
+// module cycle (meal-log → meal-plan → recipe-generation → fridge → meal-log)
+// that throws a TDZ error on load.
+import type { TopUpRequest } from "@/lib/clara/recipe-generation";
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -129,6 +134,7 @@ export async function buildMealPlanMenus(
   patientId: string,
   startDate: Date,
   planVersion: number,
+  opts: { claraFirst?: boolean; cuisine?: string | null } = {},
 ): Promise<BuildResult> {
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
@@ -289,6 +295,74 @@ export async function buildMealPlanMenus(
     : recipePoolRaw.filter(
         (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed
       );
+
+  // ── Clara catalog top-up (hybrid pool) ─────────────────────────────────────
+  // When a meal type's eligible pool is thin (small catalog, or heavy bans
+  // filtered it down), ask Clara to generate dishes for exactly those slots.
+  // Generated dishes are persisted as ordinary public Recipe rows (tagged
+  // "clara") and re-validated with the SAME deterministic ban filter as DB
+  // dishes before entering the pool — so selection, calorie windows, macros,
+  // logging, and swaps all behave identically. Strictly fail-soft: any AI
+  // failure leaves the DB-only pool untouched.
+  // claraFirst (test/preview): generate Clara candidates for EVERY meal type
+  // regardless of pool depth, so the plan is assembled predominantly from
+  // Clara dishes — still under every builder rule below. Default stays
+  // thin-pool-only top-up.
+  const MIN_POOL_PER_TYPE = opts.claraFirst ? 0 : 12;
+  // One week of dishes: 7 per meal type → 7 distinct breakfasts/lunches/
+  // dinners/snacks, i.e. a full week of variety. The builder then fills the
+  // (unchanged) plan from these, repeating week to week per its no-repeat rule.
+  const CLARA_PER_TYPE = 7;
+  try {
+    const baseMealCals = computeMealCalories(baseTDEE);
+    const thin: TopUpRequest[] = mealTypes
+      .map((mt) => {
+        const eligible = recipePool.filter((r) => r.mealTypeId === mt.id).length;
+        const count = opts.claraFirst
+          ? CLARA_PER_TYPE
+          : Math.max(0, MIN_POOL_PER_TYPE - eligible);
+        return {
+          mealTypeId: mt.id,
+          mealTypeName: mt.name,
+          count,
+          targetCalories: baseMealCals[mt.name.toLowerCase()] ?? Math.round(baseTDEE * 0.25),
+        };
+      })
+      .filter((r) => r.count > 0);
+
+    if (thin.length > 0) {
+      const existingNames = new Set(
+        (
+          await prisma.recipe.findMany({ where: { isPublic: true }, select: { name: true } })
+        ).map((r) => r.name.trim().toLowerCase())
+      );
+      // Lazy import breaks the module cycle (see the type-only import note up top).
+      const { generateAndPersistRecipes } = await import("@/lib/clara/recipe-generation");
+      const createdIds = await generateAndPersistRecipes({
+        requests: thin,
+        bannedNames: [...allergyNames, ...exactBanned.map((b) => b.name)],
+        matchers,
+        existingNames,
+        macroTarget,
+        cuisine: opts.cuisine ?? null,
+      });
+      if (createdIds.length > 0) {
+        const created: PoolRecipe[] = await prisma.recipe.findMany({
+          where: { id: { in: createdIds } },
+          select: { ...recipeSelect, mealTypeId: true, description: true },
+        });
+        // Belt over suspenders: generated rows pass the same gate as DB rows.
+        const safe = !hasBans
+          ? created
+          : created.filter(
+              (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed
+            );
+        recipePool.push(...safe);
+      }
+    }
+  } catch {
+    // Top-up must never break plan generation.
+  }
 
   // weekUsedIds resets every 7 days — prevents recipe exhaustion while still
   // ensuring no recipe repeats within the same week.

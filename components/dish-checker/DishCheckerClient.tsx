@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function DishCheckerClient({ firstName }: Props) {
-  const opening = `Hi ${firstName}! I'm Clara, your personal food advisor. Tell me about any dish or food you're thinking of eating — I'll check it against your dietary profile and let you know if it's a good fit, and suggest changes if not.`;
+  const opening = `Hi ${firstName}! I'm Clara, your personal food advisor. I know your allergies, diet, and goals — so ask me anything about food: check a dish against your profile, ask about ingredients or swaps, or tell me your goal and I'll suggest what to eat.`;
 
   const [messages, setMessages] = useState<Message[]>([
     { role: "assistant", content: opening },
@@ -125,7 +125,10 @@ export default function DishCheckerClient({ firstName }: Props) {
   const shadow = "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)";
 
   return (
-    <div className="h-full flex gap-5">
+    // min-h-full (not h-full): the row is at least the viewport height, and
+    // grows to the taller column — so the chat window is never shorter than
+    // the suggestions panel. items-stretch keeps both columns the same height.
+    <div className="min-h-full flex items-stretch gap-5">
       {/* ── Chat column ── */}
       <div
         className="flex-1 flex flex-col bg-white rounded-2xl overflow-hidden"
@@ -223,26 +226,28 @@ export default function DishCheckerClient({ firstName }: Props) {
           <h2 className="text-lg font-bold text-[#1E1A1A] mb-4">
             Meet Clara
           </h2>
-          <p className="text-sm leading-relaxed mb-3" style={{ color: "#848181" }}>
-            Your personal AI food expert.
-          </p>
-          <p className="text-sm leading-relaxed mb-3" style={{ color: "#848181" }}>
-            Clara knows your dietary preferences, allergies, health conditions,
-            and goals. Ask her about any dish, ingredient, or meal you are
-            thinking of having.
-          </p>
-          <p className="text-sm leading-relaxed" style={{ color: "#848181" }}>
-            She will tell you if it works for you — and suggest changes if not.
+          <p className="text-sm leading-relaxed mb-5" style={{ color: "#848181" }}>
+            Knows your diet, allergies, and goals.
           </p>
 
-          <div
-            className="mt-6 pt-5 border-t space-y-2.5"
-            style={{ borderColor: "rgba(30,26,26,0.06)" }}
-          >
+          <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-2" style={{ color: "#ABA6A6" }}>
+            Best for
+          </p>
+          <ul className="space-y-1.5 mb-5 text-sm" style={{ color: "#1E1A1A" }}>
+            <li>Checking if you can eat a dish</li>
+            <li>Food &amp; nutrition questions</li>
+            <li>Suggestions for your goals</li>
+          </ul>
+
+          <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-2" style={{ color: "#ABA6A6" }}>
+            Try asking
+          </p>
+          <div className="space-y-2.5">
             {[
-              "Is lamb curry ok for me?",
-              "Can I eat sushi tonight?",
-              "What about a Caesar salad?",
+              "Can I eat a Caesar salad?",
+              "Is oat milk fine with my diet?",
+              "What should I eat to hit my protein goal?",
+              "A lower-carb swap for pasta?",
             ].map((ex) => (
               <button
                 key={ex}

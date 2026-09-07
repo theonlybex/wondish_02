@@ -71,7 +71,8 @@ const defaultDeps: RunnerDeps = { prisma, buildMealPlanMenus };
 export async function regeneratePlan(
   patientId: string,
   startDate: Date,
-  deps: RunnerDeps = defaultDeps
+  deps: RunnerDeps = defaultDeps,
+  opts: { claraFirst?: boolean; cuisine?: string | null } = {},
 ): Promise<number> {
   const stuckCutoff = new Date(Date.now() - STUCK_AFTER_MS);
 
@@ -100,7 +101,7 @@ export async function regeneratePlan(
     // mealPlanStartDate agree instead of the rows carrying request time-of-day.
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
-    const { rows, builtForWeight } = await deps.buildMealPlanMenus(patientId, start, nextVersion);
+    const { rows, builtForWeight } = await deps.buildMealPlanMenus(patientId, start, nextVersion, opts);
 
     // Guard: never flip to an empty plan. If the builder produced nothing
     // (e.g. an over-restrictive profile vs the recipe catalog), keep the current

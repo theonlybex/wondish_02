@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import DatePicker from "@/components/ui/DatePicker";
 import Button from "@/components/ui/Button";
@@ -22,6 +22,13 @@ export default function GroceryListView({
   const [to, setTo] = useState(initialTo);
   const [loading, setLoading] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
+
+  // Load the current window on mount when embedded with no seeded items
+  // (the "What to buy" tab in the Ingredients screen passes initialItems=[]).
+  useEffect(() => {
+    if (initialItems.length === 0) void load(initialFrom, initialTo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const load = async (f: Date, t: Date) => {
     setLoading(true);

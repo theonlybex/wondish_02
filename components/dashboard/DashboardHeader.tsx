@@ -152,9 +152,10 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
                     <Link href="/orders" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors">
                       <span className="text-base">📦</span> {t("myOrders")}
                     </Link>
+                    {/* Prediction removed (2026-09-07) — link hidden.
                     <Link href="/prediction" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors">
                       <span className="text-base">🎯</span> {t("myPrediction")}
-                    </Link>
+                    </Link> */}
                     <Link href="/membership" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors">
                       <span className="text-base">⭐</span> {t("myMembership")}
                     </Link>

@@ -102,9 +102,11 @@ export default async function DashboardLayout({
           plan={isAdmin ? "ADMIN" : isPremium ? "PREMIUM" : "FREE"}
         />
         <main className="flex-1 overflow-y-auto p-5 sm:p-8">
+          {/* FREE-MODE (2026-09-06): PremiumGuard disabled — everything free for now.
           <PremiumGuard isPremium={isPremium} isAdmin={isAdmin}>
             {children}
-          </PremiumGuard>
+          </PremiumGuard> */}
+          {children}
         </main>
       </div>
     </div>
