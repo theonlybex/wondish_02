@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { accountHasActivePremium } from "@/lib/auth";
 
+// DISHES-RETIRED (2026-09-07): the app now swipes INGREDIENTS
+// (/api/taste/ingredients + /api/taste/ingredient-swipe). This dish-swipe
+// endpoint is no longer wired to any screen; kept for reference/reversibility.
+
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

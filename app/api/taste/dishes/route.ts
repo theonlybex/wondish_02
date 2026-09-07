@@ -4,6 +4,10 @@ import { prisma } from "@/lib/db";
 import { accountHasActivePremium } from "@/lib/auth";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 
+// DISHES-RETIRED (2026-09-07): the app now swipes INGREDIENTS
+// (/api/taste/ingredients + /api/taste/ingredient-swipe). This dish-swipe
+// endpoint is no longer wired to any screen; kept for reference/reversibility.
+
 export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
