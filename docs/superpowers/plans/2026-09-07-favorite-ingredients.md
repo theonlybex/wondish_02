@@ -1,0 +1,1118 @@
+# Favorite Ingredients Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Replace liked dishes with liked ingredients: swipe ingredients in onboarding, rank a smart "What to buy" list by favorites + dish-count, and source meal-plan affinity from liked ingredients.
+
+**Architecture:** One new table (`PatientIngredientPreference`) mirrors the existing `PatientDishPreference`. Pure ranking/affinity logic lives in small `lib/` modules (unit-tested with `node --test`); thin API routes and client components consume them. The taste screen is repurposed to a new `IngredientTinder` component with onboarding/edit modes; liked-dish code is commented out (not deleted).
+
+**Tech Stack:** Next.js 14 App Router, TypeScript, Prisma + Neon Postgres, Clerk auth. Tests: `node --import tsx --test` over `lib/*.test.ts`.
+
+## Global Constraints
+
+- **Node test runner:** unit tests are `lib/<name>.test.ts` using `node:test` + `node:assert/strict`, run via `npm test`. Route handlers and React components are NOT unit-tested in this repo — verify them with `npx tsc --noEmit`, `npx next lint --file <path>`, and a dev-server curl.
+- **Shared DB:** local dev connects to the **shared prod Neon DB** (per project memory). `prisma migrate dev` here applies to prod — expected (the `PatientPantryItem` migration was applied the same way), but be aware.
+- **Never run `npm run build` while the dev server is running** — it clobbers `.next` and the site renders unstyled. Use `tsc`/`lint`/curl to verify.
+- **Retire, don't delete:** liked-dish code is commented out with a dated marker `// DISHES-RETIRED (2026-09-07)`, matching the repo's `// FREE-MODE` convention.
+- **Diet filtering:** any recipe pool shown to a user must pass `evaluateDishAgainstProfile(names, matchers)` from `@/lib/diet-match` (allergy + exact bans), same as `app/api/taste/dishes/route.ts` and `app/api/pantry/cookable/route.ts`.
+- **Branch:** work continues on `feat/clara-generation-pantry-freemode`.
+- **Emoji-in-nav rule does not apply here** — emoji on swipe cards / list rows is fine (dish cards already use them); the earlier "remove emojis" instruction was about nav menu labels only.
+
+---
+
+### Task 1: Data model — `PatientIngredientPreference`
+
+**Files:**
+- Modify: `prisma/schema.prisma` (add model + two back-relations)
+- Create: `prisma/migrations/<timestamp>_patient_ingredient_preference/migration.sql` (generated)
+
+**Interfaces:**
+- Produces: Prisma model `PatientIngredientPreference { id, patientId, ingredientId, liked: boolean, createdAt }` with unique `[patientId, ingredientId]`; relation accessors `patient.ingredientPreferences` and `ingredient.preferences`.
+
+- [ ] **Step 1: Add the model to `prisma/schema.prisma`** (place near `PatientDishPreference`, ~line 308)
+
+```prisma
+model PatientIngredientPreference {
+  id           String     @id @default(cuid())
+  patientId    String
+  ingredientId String
+  liked        Boolean // true = favorite, false = not for me
+  patient      Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([patientId, ingredientId])
+}
+```
+
+- [ ] **Step 2: Add back-relations**
+
+In `model Patient` (near `dishPreferences PatientDishPreference[]`):
+```prisma
+  ingredientPreferences PatientIngredientPreference[]
+```
+In `model Ingredient` (near `recipes RecipeIngredient[]`):
+```prisma
+  preferences PatientIngredientPreference[]
+```
+
+- [ ] **Step 3: Generate + apply the migration**
+
+Run: `npx prisma migrate dev --name patient_ingredient_preference`
+Expected: creates the migration dir and applies it (shared DB — see Global Constraints). Generated SQL should match:
+```sql
+CREATE TABLE "PatientIngredientPreference" (
+    "id" TEXT NOT NULL,
+    "patientId" TEXT NOT NULL,
+    "ingredientId" TEXT NOT NULL,
+    "liked" BOOLEAN NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "PatientIngredientPreference_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "PatientIngredientPreference_patientId_ingredientId_key"
+    ON "PatientIngredientPreference"("patientId", "ingredientId");
+ALTER TABLE "PatientIngredientPreference" ADD CONSTRAINT "PatientIngredientPreference_patientId_fkey"
+    FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "PatientIngredientPreference" ADD CONSTRAINT "PatientIngredientPreference_ingredientId_fkey"
+    FOREIGN KEY ("ingredientId") REFERENCES "Ingredient"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+```
+
+- [ ] **Step 4: Verify the client typechecks**
+
+Run: `npx tsc --noEmit`
+Expected: PASS (Prisma client regenerated by `migrate dev` now exposes `prisma.patientIngredientPreference`).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add prisma/schema.prisma prisma/migrations
+git commit -m "feat(db): PatientIngredientPreference table"
+```
+
+---
+
+### Task 2: `lib/ingredient-emoji.ts` — name → emoji
+
+**Files:**
+- Create: `lib/ingredient-emoji.ts`
+- Test: `lib/ingredient-emoji.test.ts`
+
+**Interfaces:**
+- Produces: `getIngredientEmoji(name: string): string` — case-insensitive substring match against a small map, fallback `🥘`.
+
+- [ ] **Step 1: Write the failing test** (`lib/ingredient-emoji.test.ts`)
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { getIngredientEmoji } from "./ingredient-emoji";
+
+test("maps known ingredients case-insensitively", () => {
+  assert.equal(getIngredientEmoji("Chicken breast"), "🍗");
+  assert.equal(getIngredientEmoji("brown RICE"), "🍚");
+  assert.equal(getIngredientEmoji("avocado"), "🥑");
+});
+
+test("falls back to a generic emoji for unknown ingredients", () => {
+  assert.equal(getIngredientEmoji("xanthan gum"), "🥘");
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `node --import tsx --test lib/ingredient-emoji.test.ts`
+Expected: FAIL ("Cannot find module './ingredient-emoji'").
+
+- [ ] **Step 3: Write the implementation** (`lib/ingredient-emoji.ts`)
+
+```ts
+// Best-effort emoji for an ingredient name — first substring match wins.
+// Purely cosmetic (swipe cards / buy-list rows); unknown names get 🥘.
+const MAP: [string, string][] = [
+  ["chicken", "🍗"], ["beef", "🥩"], ["steak", "🥩"], ["pork", "🥓"],
+  ["bacon", "🥓"], ["fish", "🐟"], ["salmon", "🐟"], ["tuna", "🐟"],
+  ["shrimp", "🦐"], ["egg", "🥚"], ["rice", "🍚"], ["pasta", "🍝"],
+  ["noodle", "🍜"], ["bread", "🍞"], ["potato", "🥔"], ["tomato", "🍅"],
+  ["avocado", "🥑"], ["onion", "🧅"], ["garlic", "🧄"], ["carrot", "🥕"],
+  ["broccoli", "🥦"], ["pepper", "🫑"], ["mushroom", "🍄"], ["corn", "🌽"],
+  ["cheese", "🧀"], ["milk", "🥛"], ["butter", "🧈"], ["yogurt", "🥛"],
+  ["apple", "🍎"], ["banana", "🍌"], ["lemon", "🍋"], ["lime", "🍋"],
+  ["spinach", "🥬"], ["lettuce", "🥬"], ["bean", "🫘"], ["lentil", "🫘"],
+  ["oil", "🫒"], ["olive", "🫒"], ["honey", "🍯"], ["oat", "🌾"],
+  ["flour", "🌾"], ["chocolate", "🍫"], ["nut", "🥜"], ["almond", "🥜"],
+];
+
+export function getIngredientEmoji(name: string): string {
+  const n = name.toLowerCase();
+  for (const [key, emoji] of MAP) if (n.includes(key)) return emoji;
+  return "🥘";
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `node --import tsx --test lib/ingredient-emoji.test.ts`
+Expected: PASS (both tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/ingredient-emoji.ts lib/ingredient-emoji.test.ts
+git commit -m "feat: ingredient emoji helper"
+```
+
+---
+
+### Task 3: `lib/to-buy.ts` — dish-count + ranking
+
+**Files:**
+- Create: `lib/to-buy.ts`
+- Test: `lib/to-buy.test.ts`
+
+**Interfaces:**
+- Consumes: nothing (pure).
+- Produces:
+  - `computeIngredientDishCounts(recipes: RankRecipe[]): Map<string, { name: string; count: number }>` keyed by `ingredientId`.
+  - `rankToBuy(params): ToBuyItem[]`
+  - Types: `RankRecipe = { ingredients: { ingredientId: string; name: string }[] }`, `ToBuyItem = { ingredientId: string; name: string; dishCount: number; favorite: boolean }`, `STAPLE_NAMES: Set<string>`.
+
+- [ ] **Step 1: Write the failing test** (`lib/to-buy.test.ts`)
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { computeIngredientDishCounts, rankToBuy } from "./to-buy";
+
+const recipes = [
+  { ingredients: [{ ingredientId: "chicken", name: "Chicken" }, { ingredientId: "rice", name: "Rice" }] },
+  { ingredients: [{ ingredientId: "chicken", name: "Chicken" }, { ingredientId: "salt", name: "Salt" }] },
+  { ingredients: [{ ingredientId: "rice", name: "Rice" }, { ingredientId: "egg", name: "Egg" }] },
+];
+
+test("computeIngredientDishCounts counts occurrences per ingredient", () => {
+  const counts = computeIngredientDishCounts(recipes);
+  assert.equal(counts.get("chicken")?.count, 2);
+  assert.equal(counts.get("rice")?.count, 2);
+  assert.equal(counts.get("egg")?.count, 1);
+});
+
+test("rankToBuy: favorites first, then dish-count desc; excludes pantry + staples", () => {
+  const items = rankToBuy({
+    recipes,
+    pantry: new Set(["rice"]),          // already have rice -> excluded
+    liked: new Set(["egg"]),            // favorite -> floats to top
+    cap: 10,
+  });
+  // rice excluded (pantry); salt excluded (staple)
+  assert.deepEqual(items.map((i) => i.ingredientId), ["egg", "chicken"]);
+  assert.equal(items[0].favorite, true);
+  assert.equal(items[1].dishCount, 2);
+});
+
+test("rankToBuy respects the cap", () => {
+  const items = rankToBuy({ recipes, pantry: new Set(), liked: new Set(), cap: 1 });
+  assert.equal(items.length, 1);
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `node --import tsx --test lib/to-buy.test.ts`
+Expected: FAIL ("Cannot find module './to-buy'").
+
+- [ ] **Step 3: Write the implementation** (`lib/to-buy.ts`)
+
+```ts
+// Pure ranking for the "What to buy" smart-stocking list. The route diet-filters
+// recipes first (only eatable dishes reach here), then this module counts how
+// many dishes each ingredient unlocks and orders: favorites first, then by
+// dish-count descending. Pantry items (already owned) and trivial staples are
+// dropped.
+
+export type RankRecipe = { ingredients: { ingredientId: string; name: string }[] };
+export type ToBuyItem = { ingredientId: string; name: string; dishCount: number; favorite: boolean };
+
+export const STAPLE_NAMES = new Set(["salt", "pepper", "black pepper", "water"]);
+
+export function computeIngredientDishCounts(
+  recipes: RankRecipe[]
+): Map<string, { name: string; count: number }> {
+  const counts = new Map<string, { name: string; count: number }>();
+  for (const r of recipes) {
+    // A dish counts once per ingredient even if it appears twice in the row set.
+    const seen = new Set<string>();
+    for (const ing of r.ingredients) {
+      if (seen.has(ing.ingredientId)) continue;
+      seen.add(ing.ingredientId);
+      const cur = counts.get(ing.ingredientId);
+      if (cur) cur.count += 1;
+      else counts.set(ing.ingredientId, { name: ing.name, count: 1 });
+    }
+  }
+  return counts;
+}
+
+export function rankToBuy(params: {
+  recipes: RankRecipe[];
+  pantry: Set<string>; // ingredientIds already owned
+  liked: Set<string>; // ingredientIds marked favorite
+  staples?: Set<string>; // lowercased names to skip
+  cap?: number;
+}): ToBuyItem[] {
+  const { recipes, pantry, liked } = params;
+  const staples = params.staples ?? STAPLE_NAMES;
+  const cap = params.cap ?? 50;
+
+  const counts = computeIngredientDishCounts(recipes);
+  const items: ToBuyItem[] = [];
+  for (const [ingredientId, { name, count }] of counts) {
+    if (pantry.has(ingredientId)) continue;
+    if (staples.has(name.trim().toLowerCase())) continue;
+    items.push({ ingredientId, name, dishCount: count, favorite: liked.has(ingredientId) });
+  }
+
+  items.sort(
+    (a, b) =>
+      Number(b.favorite) - Number(a.favorite) ||
+      b.dishCount - a.dishCount ||
+      a.name.localeCompare(b.name)
+  );
+  return items.slice(0, cap);
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `node --import tsx --test lib/to-buy.test.ts`
+Expected: PASS (all three tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/to-buy.ts lib/to-buy.test.ts
+git commit -m "feat: to-buy ranking (favorites + dish-count)"
+```
+
+---
+
+### Task 4: `lib/ingredient-affinity.ts` — builder affinity from likes
+
+**Files:**
+- Create: `lib/ingredient-affinity.ts`
+- Test: `lib/ingredient-affinity.test.ts`
+
+**Interfaces:**
+- Produces: `buildIngredientAffinity(prefs: AffinityPref[]): { affinityMap: Record<string, number>; seenIngredientNames: Set<string> }` where `AffinityPref = { liked: boolean; ingredient: { name: string } }`.
+
+- [ ] **Step 1: Write the failing test** (`lib/ingredient-affinity.test.ts`)
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { buildIngredientAffinity } from "./ingredient-affinity";
+
+test("liked ingredients get positive affinity; all rated names are 'seen'", () => {
+  const { affinityMap, seenIngredientNames } = buildIngredientAffinity([
+    { liked: true, ingredient: { name: "Chicken" } },
+    { liked: false, ingredient: { name: "Tofu" } },
+  ]);
+  assert.equal(affinityMap["chicken"], 1);
+  assert.equal(affinityMap["tofu"], undefined); // disliked -> no affinity
+  assert.ok(seenIngredientNames.has("chicken"));
+  assert.ok(seenIngredientNames.has("tofu")); // rated either way -> seen
+});
+
+test("empty prefs yield empty affinity and seen set", () => {
+  const { affinityMap, seenIngredientNames } = buildIngredientAffinity([]);
+  assert.deepEqual(affinityMap, {});
+  assert.equal(seenIngredientNames.size, 0);
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `node --import tsx --test lib/ingredient-affinity.test.ts`
+Expected: FAIL ("Cannot find module './ingredient-affinity'").
+
+- [ ] **Step 3: Write the implementation** (`lib/ingredient-affinity.ts`)
+
+```ts
+// DISHES-RETIRED (2026-09-07): the meal-plan builder's ingredient-affinity used
+// to be derived from liked *dishes*. It now comes straight from liked
+// *ingredients* — a cleaner, direct signal. A flat weight of 1 for each liked
+// ingredient is enough; pickByMotivation blends it with motivation/macro scores.
+
+export type AffinityPref = { liked: boolean; ingredient: { name: string } };
+
+export function buildIngredientAffinity(prefs: AffinityPref[]): {
+  affinityMap: Record<string, number>;
+  seenIngredientNames: Set<string>;
+} {
+  const affinityMap: Record<string, number> = {};
+  const seenIngredientNames = new Set<string>();
+  for (const p of prefs) {
+    const name = p.ingredient.name.toLowerCase();
+    seenIngredientNames.add(name);
+    if (p.liked) affinityMap[name] = 1;
+  }
+  return { affinityMap, seenIngredientNames };
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `node --import tsx --test lib/ingredient-affinity.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/ingredient-affinity.ts lib/ingredient-affinity.test.ts
+git commit -m "feat: ingredient-affinity helper for the builder"
+```
+
+---
+
+### Task 5: Swipe API — `/api/taste/ingredient-swipe`
+
+**Files:**
+- Create: `app/api/taste/ingredient-swipe/route.ts`
+
+**Interfaces:**
+- Consumes: `prisma.patientIngredientPreference` (Task 1).
+- Produces: `POST { ingredientId: string, liked: boolean } -> { ok: true }`; `DELETE ?ingredientId= -> { ok: true }`.
+
+- [ ] **Step 1: Write the route** (mirrors `app/api/taste/swipe/route.ts`)
+
+```ts
+import { auth } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+
+export async function POST(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const patient = await prisma.patient.findFirst({
+    where: { account: { clerkId: userId } },
+    select: { id: true },
+  });
+  if (!patient) return NextResponse.json({ error: "No profile" }, { status: 404 });
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const { ingredientId, liked } = (body ?? {}) as { ingredientId?: unknown; liked?: unknown };
+  if (typeof ingredientId !== "string" || ingredientId.length === 0 || typeof liked !== "boolean") {
+    return NextResponse.json({ error: "ingredientId (string) and liked (boolean) required" }, { status: 400 });
+  }
+
+  // A nonexistent ingredientId would surface as an FK-violation 500.
+  const ingredient = await prisma.ingredient.findUnique({ where: { id: ingredientId }, select: { id: true } });
+  if (!ingredient) return NextResponse.json({ error: "Ingredient not found" }, { status: 404 });
+
+  await prisma.patientIngredientPreference.upsert({
+    where: { patientId_ingredientId: { patientId: patient.id, ingredientId } },
+    create: { patientId: patient.id, ingredientId, liked },
+    update: { liked },
+  });
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const patient = await prisma.patient.findFirst({
+    where: { account: { clerkId: userId } },
+    select: { id: true },
+  });
+  if (!patient) return NextResponse.json({ error: "No profile" }, { status: 404 });
+
+  const ingredientId = new URL(req.url).searchParams.get("ingredientId");
+  if (!ingredientId) return NextResponse.json({ error: "ingredientId required" }, { status: 400 });
+
+  await prisma.patientIngredientPreference.deleteMany({ where: { patientId: patient.id, ingredientId } });
+  return NextResponse.json({ ok: true });
+}
+```
+
+- [ ] **Step 2: Verify typecheck + lint**
+
+Run: `npx tsc --noEmit && npx next lint --file app/api/taste/ingredient-swipe/route.ts`
+Expected: PASS, no errors.
+
+- [ ] **Step 3: Verify auth guard responds** (dev server running)
+
+Run: `curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:3000/api/taste/ingredient-swipe`
+Expected: `401`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/api/taste/ingredient-swipe/route.ts
+git commit -m "feat(api): ingredient-swipe route"
+```
+
+---
+
+### Task 6: Deck API — `/api/taste/ingredients`
+
+**Files:**
+- Create: `app/api/taste/ingredients/route.ts`
+
+**Interfaces:**
+- Consumes: `computeIngredientDishCounts` (Task 3), `getIngredientEmoji` (Task 2), `derivePatientBans`/`buildDietMatchers`/`evaluateDishAgainstProfile`/`PATIENT_DIET_INCLUDE` (`@/lib/diet-match`), `STAPLE_NAMES` (Task 3), `prisma.patientIngredientPreference`.
+- Produces: `GET [?edit=1] -> { ingredients: { id, name, emoji, dishCount, liked: boolean | null }[] }` (top ~20 by dish-count; onboarding excludes already-rated, edit includes them with current `liked`).
+
+- [ ] **Step 1: Write the route**
+
+```ts
+import { auth } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import {
+  derivePatientBans,
+  buildDietMatchers,
+  evaluateDishAgainstProfile,
+  PATIENT_DIET_INCLUDE,
+} from "@/lib/diet-match";
+import { computeIngredientDishCounts, STAPLE_NAMES } from "@/lib/to-buy";
+import { getIngredientEmoji } from "@/lib/ingredient-emoji";
+
+const DECK_SIZE = 20;
+
+export async function GET(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const edit = new URL(req.url).searchParams.get("edit") === "1";
+
+  const patient = await prisma.patient.findFirst({
+    where: { account: { clerkId: userId } },
+    include: PATIENT_DIET_INCLUDE,
+  });
+  if (!patient) return NextResponse.json({ ingredients: [] });
+
+  const { allergyNames, exactBanned } = derivePatientBans(patient);
+  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const hasBans = matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
+
+  // Eatable public recipes only, so a banned ingredient never enters the deck.
+  const recipes = await prisma.recipe.findMany({
+    where: { isPublic: true, ingredients: { some: {} } },
+    select: { ingredients: { select: { ingredientId: true, ingredient: { select: { name: true } } } } },
+  });
+  const eatable = (hasBans
+    ? recipes.filter((r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed)
+    : recipes
+  ).map((r) => ({ ingredients: r.ingredients.map((ri) => ({ ingredientId: ri.ingredientId, name: ri.ingredient.name })) }));
+
+  const counts = computeIngredientDishCounts(eatable);
+
+  // Current ratings (for edit-mode badges and onboarding exclusion).
+  const prefs = await prisma.patientIngredientPreference.findMany({
+    where: { patientId: patient.id },
+    select: { ingredientId: true, liked: true },
+  });
+  const likedById = new Map(prefs.map((p) => [p.ingredientId, p.liked]));
+
+  const ranked = Array.from(counts.entries())
+    .filter(([, v]) => !STAPLE_NAMES.has(v.name.trim().toLowerCase()))
+    .filter(([id]) => (edit ? true : !likedById.has(id))) // onboarding: unrated only
+    .sort((a, b) => b[1].count - a[1].count || a[1].name.localeCompare(b[1].name))
+    .slice(0, DECK_SIZE)
+    .map(([id, v]) => ({
+      id,
+      name: v.name,
+      emoji: getIngredientEmoji(v.name),
+      dishCount: v.count,
+      liked: likedById.has(id) ? (likedById.get(id) as boolean) : null,
+    }));
+
+  return NextResponse.json({ ingredients: ranked });
+}
+```
+
+- [ ] **Step 2: Verify typecheck + lint**
+
+Run: `npx tsc --noEmit && npx next lint --file app/api/taste/ingredients/route.ts`
+Expected: PASS.
+
+- [ ] **Step 3: Verify auth guard** (dev server running)
+
+Run: `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/api/taste/ingredients`
+Expected: `401`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/api/taste/ingredients/route.ts
+git commit -m "feat(api): ingredient deck route"
+```
+
+---
+
+### Task 7: To-buy API — `/api/pantry/to-buy`
+
+**Files:**
+- Create: `app/api/pantry/to-buy/route.ts`
+
+**Interfaces:**
+- Consumes: `rankToBuy` (Task 3), diet-match helpers, `prisma.patientPantryItem`, `prisma.patientIngredientPreference`.
+- Produces: `GET -> { items: { ingredientId, name, dishCount, favorite }[] }`.
+
+- [ ] **Step 1: Write the route**
+
+```ts
+import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
+import {
+  derivePatientBans,
+  buildDietMatchers,
+  evaluateDishAgainstProfile,
+  PATIENT_DIET_INCLUDE,
+} from "@/lib/diet-match";
+import { rankToBuy } from "@/lib/to-buy";
+
+// Smart stocking list: ingredients to buy to unlock the most dishes — favorites
+// first, then by dish-count — filtered to what the user does not already own.
+export async function GET() {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { success } = await rateLimit("pantry-to-buy", userId, 120, 60);
+  if (!success) return NextResponse.json({ error: "Too many requests. Please slow down." }, { status: 429 });
+
+  const patient = await prisma.patient.findFirst({
+    where: { account: { clerkId: userId } },
+    include: PATIENT_DIET_INCLUDE,
+  });
+  if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+
+  const { allergyNames, exactBanned } = derivePatientBans(patient);
+  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const hasBans = matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
+
+  const [recipesRaw, pantry, prefs] = await Promise.all([
+    prisma.recipe.findMany({
+      where: { isPublic: true, ingredients: { some: {} } },
+      select: { ingredients: { select: { ingredientId: true, ingredient: { select: { name: true } } } } },
+    }),
+    prisma.patientPantryItem.findMany({ where: { patientId: patient.id }, select: { ingredientId: true } }),
+    prisma.patientIngredientPreference.findMany({
+      where: { patientId: patient.id, liked: true },
+      select: { ingredientId: true },
+    }),
+  ]);
+
+  const recipes = (hasBans
+    ? recipesRaw.filter((r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed)
+    : recipesRaw
+  ).map((r) => ({ ingredients: r.ingredients.map((ri) => ({ ingredientId: ri.ingredientId, name: ri.ingredient.name })) }));
+
+  const items = rankToBuy({
+    recipes,
+    pantry: new Set(pantry.map((p) => p.ingredientId)),
+    liked: new Set(prefs.map((p) => p.ingredientId)),
+    cap: 50,
+  });
+
+  return NextResponse.json({ items });
+}
+```
+
+- [ ] **Step 2: Verify typecheck + lint**
+
+Run: `npx tsc --noEmit && npx next lint --file app/api/pantry/to-buy/route.ts`
+Expected: PASS.
+
+- [ ] **Step 3: Verify auth guard** (dev server running)
+
+Run: `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/api/pantry/to-buy`
+Expected: `401`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/api/pantry/to-buy/route.ts
+git commit -m "feat(api): smart-stocking to-buy route"
+```
+
+---
+
+### Task 8: `IngredientTinder` component
+
+**Files:**
+- Create: `components/taste/IngredientTinder.tsx`
+
+**Interfaces:**
+- Consumes: `GET /api/taste/ingredients[?edit=1]` (Task 6), `POST /api/taste/ingredient-swipe` (Task 5), `POST /api/taste/seen` (existing).
+- Produces: `<IngredientTinder mode="onboarding" | "edit" />`.
+
+- [ ] **Step 1: Write the component** (mirrors `components/taste/DishTinder.tsx` swipe UX)
+
+```tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+interface DeckIngredient {
+  id: string;
+  name: string;
+  emoji: string;
+  dishCount: number;
+  liked: boolean | null;
+}
+
+export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit" }) {
+  const router = useRouter();
+  const [items, setItems] = useState<DeckIngredient[]>([]);
+  const [index, setIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [swiping, setSwiping] = useState(false);
+  const [done, setDone] = useState(false);
+  const [likedCount, setLikedCount] = useState(0);
+
+  useEffect(() => {
+    fetch(`/api/taste/ingredients${mode === "edit" ? "?edit=1" : ""}`)
+      .then((r) => r.json())
+      .then((data) => setItems(data.ingredients ?? []))
+      .finally(() => setLoading(false));
+  }, [mode]);
+
+  // Mark taste as complete so the layout gate stops redirecting here.
+  useEffect(() => {
+    if (mode === "edit" || done || (!loading && items.length === 0)) {
+      fetch("/api/taste/seen", { method: "POST" }).catch(() => {});
+    }
+  }, [mode, done, loading, items.length]);
+
+  const finish = () => router.push(mode === "edit" ? "/pantry?tab=buy" : "/pantry?onboarding=1");
+
+  const swipe = async (liked: boolean) => {
+    if (swiping || index >= items.length) return;
+    setSwiping(true);
+    const ing = items[index];
+    await fetch("/api/taste/ingredient-swipe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ingredientId: ing.id, liked }),
+    });
+    if (liked) setLikedCount((n) => n + 1);
+    if (index + 1 >= items.length) setDone(true);
+    else setIndex((i) => i + 1);
+    setSwiping(false);
+  };
+
+  const skip = () => {
+    if (index + 1 >= items.length) setDone(true);
+    else setIndex((i) => i + 1);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center py-20">
+        <div className="text-4xl animate-pulse mb-4">🥘</div>
+        <p className="text-[#848181] text-sm">Loading ingredients…</p>
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-5xl mb-4">✅</p>
+        <p className="text-navy font-semibold text-lg mb-2">You&apos;ve rated the key ingredients!</p>
+        <button onClick={finish} className="mt-4 px-6 py-3 rounded-2xl bg-primary text-white font-semibold text-sm">
+          {mode === "edit" ? "Done →" : "Continue →"}
+        </button>
+      </div>
+    );
+  }
+
+  if (done) {
+    return (
+      <div className="flex flex-col items-center py-16 text-center">
+        <div className="text-6xl mb-4">🎉</div>
+        <h2 className="text-2xl font-bold text-navy mb-2">Favorites saved!</h2>
+        <p className="text-[#848181] text-sm mb-8">
+          You favorited <span className="text-primary font-semibold">{likedCount}</span> ingredient
+          {likedCount === 1 ? "" : "s"}. They&apos;ll sit at the top of your shopping list.
+        </p>
+        <button
+          onClick={finish}
+          className="px-8 py-3.5 rounded-2xl bg-primary text-white font-bold text-sm shadow-lg shadow-primary/30 hover:opacity-90 transition-opacity"
+        >
+          {mode === "edit" ? "Back to ingredients →" : "Continue to what to buy →"}
+        </button>
+      </div>
+    );
+  }
+
+  const ing = items[index];
+  const progress = (index / items.length) * 100;
+
+  return (
+    <div className="max-w-sm mx-auto">
+      <div className="text-center mb-6">
+        <p className="text-xs font-bold text-primary uppercase tracking-widest">
+          {mode === "edit" ? "Edit your favorite ingredients" : "Which ingredients do you love?"}
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3 mb-5">
+        <div className="flex-1 h-1.5 bg-[#F0EFF5] rounded-full overflow-hidden">
+          <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+        </div>
+        <span className="text-xs text-[#848181] shrink-0">{index + 1} / {items.length}</span>
+      </div>
+
+      <div className="bg-white border border-[#EAE4CA] rounded-3xl overflow-hidden shadow-lg">
+        <div className="bg-gradient-to-br from-primary/10 to-primary/5 px-8 pt-10 pb-6 text-center">
+          <span className="text-8xl leading-none">{ing.emoji}</span>
+          <h2 className="text-xl font-bold text-navy mt-5 leading-tight">{ing.name}</h2>
+          <p className="text-[10px] text-[#848181] mt-2">unlocks {ing.dishCount} dish{ing.dishCount === 1 ? "" : "es"}</p>
+          {mode === "edit" && ing.liked !== null && (
+            <p className="text-[10px] mt-1 font-bold" style={{ color: ing.liked ? "#059669" : "#EA5455" }}>
+              Currently: {ing.liked ? "👍 Favorite" : "👎 Not for me"}
+            </p>
+          )}
+        </div>
+
+        <div className="px-5 py-4 flex gap-3">
+          <button
+            onClick={() => swipe(false)}
+            disabled={swiping}
+            className="flex-1 py-4 rounded-2xl bg-red-50 border-2 border-red-200 text-red-600 font-bold text-sm hover:bg-red-100 disabled:opacity-50 transition-all active:scale-95"
+          >
+            ✕ Not for me
+          </button>
+          <button
+            onClick={() => swipe(true)}
+            disabled={swiping}
+            className="flex-1 py-4 rounded-2xl bg-emerald-50 border-2 border-emerald-200 text-emerald-700 font-bold text-sm hover:bg-emerald-100 disabled:opacity-50 transition-all active:scale-95"
+          >
+            ✓ Favorite
+          </button>
+        </div>
+
+        <div className="pb-4 text-center">
+          <button onClick={skip} className="text-xs text-[#848181] hover:text-navy transition-colors px-4 py-2">
+            Skip →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Verify typecheck + lint**
+
+Run: `npx tsc --noEmit && npx next lint --file components/taste/IngredientTinder.tsx`
+Expected: PASS.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add components/taste/IngredientTinder.tsx
+git commit -m "feat: IngredientTinder swipe component"
+```
+
+---
+
+### Task 9: Taste page → ingredient mode (retire dish profile)
+
+**Files:**
+- Modify: `app/(dashboard)/taste/page.tsx` (replace body)
+
+**Interfaces:**
+- Consumes: `IngredientTinder` (Task 8).
+- Produces: `/taste` and `/taste?edit=1` render the ingredient swiper.
+
+- [ ] **Step 1: Replace the file contents**
+
+```tsx
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/db";
+import IngredientTinder from "@/components/taste/IngredientTinder";
+
+export const metadata = { title: "Favorite Ingredients" };
+
+// DISHES-RETIRED (2026-09-07): the old dish-swipe "Taste Profile" (affinity map
+// from liked dishes, journal likes, dish tinder) is retired. This screen now
+// captures favorite INGREDIENTS. `?edit=1` re-opens it to change past picks.
+export default async function TasteProfilePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ edit?: string }>;
+}) {
+  const { edit } = await searchParams;
+  const { userId } = await auth();
+  if (!userId) redirect("/login");
+
+  const patient = await prisma.patient.findFirst({ where: { account: { clerkId: userId } } });
+  if (!patient) redirect("/profile?onboarding=true");
+
+  const mode = edit === "1" ? "edit" : "onboarding";
+
+  return (
+    <div className="max-w-lg mx-auto py-4">
+      <IngredientTinder mode={mode} />
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Verify typecheck + lint**
+
+Run: `npx tsc --noEmit && npx next lint --file "app/(dashboard)/taste/page.tsx"`
+Expected: PASS. (The old imports — `DishTinder`, `getRecipeEmoji`, journal queries — are gone; `components/taste/DishTinder.tsx` remains on disk, unused/retired.)
+
+- [ ] **Step 3: Verify the page renders** (dev server running)
+
+Run: `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/taste`
+Expected: `307` (auth redirect) — no `500`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add "app/(dashboard)/taste/page.tsx"
+git commit -m "feat: taste screen captures favorite ingredients (retire dish profile)"
+```
+
+---
+
+### Task 10: Layout gate — taste for everyone
+
+**Files:**
+- Modify: `app/(dashboard)/layout.tsx:71` (the taste-gate condition)
+
+**Interfaces:**
+- Produces: all non-admin users (not just premium) are routed through `/taste` until `tasteCompleted`.
+
+- [ ] **Step 1: Change the gate condition**
+
+Replace line 71:
+```ts
+  if (isPremium && !isAdmin && account) {
+```
+with:
+```ts
+  // FREE-MODE (2026-09-06): ingredient-taste is part of onboarding for EVERYONE,
+  // not just premium. Admins still skip it.
+  if (!isAdmin && account) {
+```
+
+- [ ] **Step 2: Verify typecheck + lint**
+
+Run: `npx tsc --noEmit && npx next lint --file "app/(dashboard)/layout.tsx"`
+Expected: PASS. (`isPremium` is still used below for the header `plan` prop, so no unused-var error.)
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add "app/(dashboard)/layout.tsx"
+git commit -m "feat: route all users through ingredient taste in onboarding"
+```
+
+---
+
+### Task 11: PantryClient "buy" tab → to-buy + edit link
+
+**Files:**
+- Modify: `components/pantry/PantryClient.tsx` (the `view === "buy"` data load + rendering; add an edit-favorites link)
+
+**Interfaces:**
+- Consumes: `GET /api/pantry/to-buy` (Task 7).
+- Produces: the buy tab lists ranked ingredients with an "unlocks N dishes" hint and an "Edit favorite ingredients" link to `/taste?edit=1`.
+
+- [ ] **Step 1: Replace the grocery loader with a to-buy loader**
+
+Find the existing `loadGrocery` function and the `groceryItems` state (it fetches `/api/grocery-list?from=&to=`). Replace with:
+
+```tsx
+// Smart stocking list (favorites first, then by dish-count).
+const [toBuy, setToBuy] = useState<{ ingredientId: string; name: string; dishCount: number; favorite: boolean }[]>([]);
+const [toBuyLoading, setToBuyLoading] = useState(false);
+
+const loadToBuy = async () => {
+  setToBuyLoading(true);
+  try {
+    const res = await fetch("/api/pantry/to-buy");
+    const data = await res.json();
+    setToBuy(data.items ?? []);
+  } finally {
+    setToBuyLoading(false);
+  }
+};
+```
+
+Update the `useEffect` that loads on `view === "buy"` to call `loadToBuy()` instead of `loadGrocery()`.
+
+- [ ] **Step 2: Replace the buy-list rendering**
+
+In the `view === "buy"` branch, render the ranked rows (tapping still calls the existing `toggle({ id, name })` to move the item into "What I have"):
+
+```tsx
+<div className="mb-4 flex items-center justify-between">
+  <p className="text-xs" style={{ color: "#848181" }}>
+    Buy these to unlock the most dishes — your favorites are on top.
+  </p>
+  <a href="/taste?edit=1" className="text-xs font-semibold shrink-0" style={{ color: "#812549" }}>
+    Edit favorite ingredients →
+  </a>
+</div>
+
+{toBuyLoading ? (
+  <div className="text-center py-12 text-[#848181]">Loading…</div>
+) : toBuy.length === 0 ? (
+  <div className="text-center py-12 text-[#848181]">Nothing to suggest yet.</div>
+) : (
+  <div className="bg-white border border-[#EAE4CA] rounded-2xl divide-y divide-[#EAE4CA]">
+    {toBuy.map((item) => (
+      <button
+        key={item.ingredientId}
+        type="button"
+        onClick={() => toggle({ id: item.ingredientId, name: item.name })}
+        className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-[#FAFAFA] transition-colors"
+      >
+        {item.favorite && <span className="text-[#812549] text-sm" aria-label="favorite">★</span>}
+        <span className="flex-1 text-sm font-medium text-navy">{item.name}</span>
+        <span className="text-[#848181] text-xs">unlocks {item.dishCount} dish{item.dishCount === 1 ? "" : "es"}</span>
+      </button>
+    ))}
+  </div>
+)}
+```
+
+> Note: confirm the exact name/signature of the existing pantry-add handler (the Explore notes call it `toggle({ id, name })`, writing via `PUT /api/pantry`). If it differs, call the real one — the behavior needed is "add this ingredient to What-I-have and drop it from the buy list."
+
+- [ ] **Step 3: Verify typecheck + lint**
+
+Run: `npx tsc --noEmit && npx next lint --file components/pantry/PantryClient.tsx`
+Expected: PASS. Remove any now-unused `loadGrocery`/`groceryItems`/grocery types flagged by lint.
+
+- [ ] **Step 4: Verify the page renders** (dev server running)
+
+Run: `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/pantry`
+Expected: `307` (auth redirect) — no `500`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add components/pantry/PantryClient.tsx
+git commit -m "feat: What-to-buy = smart stocking list + edit favorites link"
+```
+
+---
+
+### Task 12: Meal-plan builder — ingredient affinity
+
+**Files:**
+- Modify: `lib/meal-plan.ts` (patient include ~lines 145-151; affinity block ~lines 168-185)
+
+**Interfaces:**
+- Consumes: `buildIngredientAffinity` (Task 4).
+- Produces: `affinityMap` / `seenIngredientNames` sourced from `patient.ingredientPreferences`. No change to `pickByMotivation` calls.
+
+- [ ] **Step 1: Add the import** (top of `lib/meal-plan.ts`, with the other `@/lib` imports)
+
+```ts
+import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
+```
+
+- [ ] **Step 2: Swap the patient include**
+
+Replace the `dishPreferences: { ... }` include block (~lines 145-151) with:
+```ts
+      // DISHES-RETIRED (2026-09-07): affinity now comes from liked ingredients.
+      ingredientPreferences: { include: { ingredient: { select: { name: true } } } },
+```
+
+- [ ] **Step 3: Replace the affinity block**
+
+Replace the liked-dish affinity block (~lines 168-185: `likedDishPrefs`, `totalLiked`, `ingredientCount`, `affinityMap`, `seenIngredientNames`) with:
+```ts
+  // ── Build affinity map from liked ingredients ──────────────────────────────
+  // DISHES-RETIRED (2026-09-07): replaces the liked-dish affinity map.
+  const { affinityMap, seenIngredientNames } = buildIngredientAffinity(patient.ingredientPreferences);
+```
+
+- [ ] **Step 4: Verify typecheck + the full builder suite**
+
+Run: `npx tsc --noEmit && npm test`
+Expected: `tsc` PASS. Tests: all green. If a pre-existing test asserted dish-preference affinity, update it to construct `ingredientPreferences` (shape `{ liked, ingredient: { name } }`) and assert the liked ingredient's dishes score higher; a build with no preferences must still succeed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/meal-plan.ts lib/*.test.ts
+git commit -m "feat: meal-plan affinity from liked ingredients (retire dish affinity)"
+```
+
+---
+
+### Task 13: Retire dish-swipe routes + full verification
+
+**Files:**
+- Modify: `app/api/taste/dishes/route.ts`, `app/api/taste/swipe/route.ts` (add retirement banner)
+
+**Interfaces:**
+- Produces: dish-swipe endpoints are clearly retired (still present, unused).
+
+- [ ] **Step 1: Add a retirement banner** to the top of both `app/api/taste/dishes/route.ts` and `app/api/taste/swipe/route.ts`, directly under the imports:
+
+```ts
+// DISHES-RETIRED (2026-09-07): the app now swipes INGREDIENTS
+// (/api/taste/ingredients + /api/taste/ingredient-swipe). This dish-swipe
+// endpoint is no longer wired to any screen; kept for reference/reversibility.
+```
+
+- [ ] **Step 2: Full verification**
+
+Run: `npx tsc --noEmit && npm test`
+Expected: `tsc` clean; all tests pass (baseline 1012 + the new `ingredient-emoji`, `to-buy`, `ingredient-affinity` tests).
+
+- [ ] **Step 3: Smoke the affected pages** (dev server running)
+
+```bash
+for p in /taste /pantry /meal-plan; do
+  curl -s -o /dev/null -w "$p: %{http_code}\n" "http://localhost:3000$p"
+done
+```
+Expected: each `307` (auth redirect), none `500`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/api/taste/dishes/route.ts app/api/taste/swipe/route.ts
+git commit -m "chore: mark dish-swipe endpoints retired"
+```
+
+---
+
+## Self-Review
+
+**Spec coverage:**
+- New `PatientIngredientPreference` table → Task 1. ✓
+- Retire liked dishes (builder affinity, dish deck/swipe, copy) → Tasks 12, 13, 9. ✓
+- Taste = swipe ingredients (onboarding + edit modes, current-state badges) → Tasks 6, 8, 9. ✓
+- Onboarding: ingredient swipe for everyone, before pantry → Task 10 (gate) + Task 8 finish → `/pantry?onboarding=1`. ✓
+- What-to-buy = smart stocking (favorites first, dish-count desc, exclude pantry, cap 50, "unlocks N dishes") → Tasks 3, 7, 11. ✓
+- Edit entry point on Ingredients screen → Task 11 link → `/taste?edit=1`. ✓
+- Builder affinity from liked ingredients → Tasks 4, 12. ✓
+- Diet filtering on every user-facing pool → Tasks 6, 7 (evaluateDishAgainstProfile). ✓
+- Migration additive/safe; dish code commented not deleted → Tasks 1, 13. ✓
+
+**Placeholder scan:** none — every code step is complete. The one soft spot (Task 11 Step 2) explicitly instructs confirming the existing pantry-add handler name in `PantryClient.tsx` and states the required behavior.
+
+**Type consistency:** `ToBuyItem { ingredientId, name, dishCount, favorite }` produced in Task 3 is consumed verbatim in Tasks 7 and 11. Deck item `{ id, name, emoji, dishCount, liked }` produced in Task 6 is consumed verbatim in Task 8. `buildIngredientAffinity(prefs: { liked, ingredient: { name } }[])` in Task 4 matches the include shape in Task 12. `getIngredientEmoji`, `computeIngredientDishCounts`, `STAPLE_NAMES`, `rankToBuy` names are consistent across tasks.
