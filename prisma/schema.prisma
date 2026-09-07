@@ -154,6 +154,7 @@ model Patient {
   healthConditions  PatientHealthCondition[]
   motivations       PatientMotivation[]
   dishPreferences   PatientDishPreference[]
+  ingredientPreferences PatientIngredientPreference[]
   menus             Menu[]
   orders            Order[]
   journalEntries    JournalEntry[]
@@ -317,6 +318,21 @@ model PatientDishPreference {
   @@unique([patientId, recipeId])
 }
 
+// Favorite ingredients captured by the ingredient-swipe taste screen. Floats
+// favorites to the top of the What-to-buy list and feeds the meal-plan
+// builder's ingredient affinity (replaces the retired liked-dish affinity).
+model PatientIngredientPreference {
+  id           String     @id @default(cuid())
+  patientId    String
+  ingredientId String
+  liked        Boolean // true = favorite, false = not for me
+  patient      Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([patientId, ingredientId])
+}
+
 // ─── Custom Ingredients (Premium) ────────────────────────────────────────────
 
 model PatientCustomIngredient {
@@ -377,6 +393,7 @@ model Ingredient {
   recipes        RecipeIngredient[]
   restaurantUses RestaurantDishIngredient[]
   pantryUses     PatientPantryItem[]
+  preferences    PatientIngredientPreference[]
 }
 
 // What the patient currently has at home ("fridge/pantry"), maintained by the
