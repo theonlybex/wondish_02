@@ -84,9 +84,21 @@ export default function PantryClient({
   // "What to buy" has two lenses: by value (most dishes unlocked) and by cuisine
   // (stock a cuisine's signature ingredients). Cuisine ids resolve staple names
   // to real Ingredient ids so a tap adds it to the pantry.
-  const [buyMode, setBuyMode] = useState<"value" | "cuisine">("value");
+  const [buyMode, setBuyMode] = useState<"category" | "value" | "cuisine">("category");
   const [cuisineIds, setCuisineIds] = useState<Record<string, string> | null>(null);
   const [openCuisine, setOpenCuisine] = useState<string | null>(null);
+  // Full catalog grouped by category (shared by both tabs' category sections).
+  const [catalog, setCatalog] = useState<{ key: string; title: string; items: { id: string; name: string; favorite: boolean }[] }[] | null>(null);
+  const [openCat, setOpenCat] = useState<string | null>(null);
+  const loadCatalog = async () => {
+    if (catalog) return;
+    try {
+      const res = await fetch("/api/pantry/catalog");
+      if (res.ok) setCatalog((await res.json()).categories ?? []);
+    } catch {
+      /* leave null */
+    }
+  };
   const loadCuisineIds = async () => {
     if (cuisineIds) return;
     try {
@@ -134,6 +146,7 @@ export default function PantryClient({
 
   useEffect(() => {
     void load();
+    void loadCatalog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -154,7 +167,7 @@ export default function PantryClient({
 
   // Load the shopping list the first time the "What to buy" tab is opened.
   useEffect(() => {
-    if (view === "buy" && groceryItems === null && !groceryLoading) void loadGrocery();
+    if (view === "buy") { void loadCatalog(); if (groceryItems === null && !groceryLoading) void loadGrocery(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
@@ -313,17 +326,17 @@ export default function PantryClient({
         {tabs}
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="inline-flex p-0.5 rounded-full border" style={{ borderColor: "#EAE4CA", background: "#F5F1DD" }}>
-            {(["value", "cuisine"] as const).map((m) => (
+            {(["category", "value", "cuisine"] as const).map((m) => (
               <button
                 key={m}
                 type="button"
-                onClick={() => { setBuyMode(m); if (m === "cuisine") void loadCuisineIds(); }}
+                onClick={() => { setBuyMode(m); if (m === "cuisine") void loadCuisineIds(); if (m === "category") void loadCatalog(); }}
                 aria-pressed={buyMode === m}
-                className={`px-3.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
                   buyMode === m ? "bg-white text-primary shadow-sm" : "text-[#848181] hover:text-primary"
                 }`}
               >
-                {m === "value" ? "By value" : "By cuisine"}
+                {m === "category" ? "By category" : m === "value" ? "By value" : "By cuisine"}
               </button>
             ))}
           </div>
@@ -332,7 +345,61 @@ export default function PantryClient({
           </a>
         </div>
 
-        {buyMode === "value" ? (
+        {buyMode === "category" ? (
+          catalog === null ? (
+            <div className="py-12 text-center text-sm" style={{ color: "#848181" }}>Loading…</div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs mb-1" style={{ color: "#848181" }}>
+                Tap what you need — it&apos;s added to your ingredients. Favorites (★) are on top; things you have drop to the bottom.
+              </p>
+              {catalog.map((cat) => {
+                const open = openCat === cat.key;
+                const owned = cat.items.filter((it) => selected.has(it.id)).length;
+                const sorted = [...cat.items].sort(
+                  (a, b) =>
+                    (selected.has(a.id) ? 1 : 0) - (selected.has(b.id) ? 1 : 0) ||
+                    (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) ||
+                    a.name.localeCompare(b.name)
+                );
+                return (
+                  <div key={cat.key} className="bg-white rounded-2xl overflow-hidden border border-[#EAE4CA]" style={{ boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}>
+                    <button type="button" onClick={() => setOpenCat(open ? null : cat.key)} aria-expanded={open} className="w-full flex items-center gap-3 px-4 py-3 text-left">
+                      <span className="flex-1 text-sm font-bold text-[#1E1A1A]">{cat.title}</span>
+                      <span className="text-[10px] tabular-nums" style={{ color: "#848181" }}>{owned}/{cat.items.length} have</span>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                        <path d="M4 6l4 4 4-4" stroke="#ABA6A6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                    {open && (
+                      <div className="divide-y divide-[#EAE4CA] border-t border-[#EAE4CA]">
+                        {sorted.map((it) => {
+                          const have = selected.has(it.id);
+                          return (
+                            <button key={it.id} type="button" onClick={() => toggle({ id: it.id, name: it.name })} aria-pressed={have} className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#FBFAF5]">
+                              <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${have ? "bg-primary border-primary" : "border-[#EAE4CA]"}`}>
+                                {have && (
+                                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                                    <path d="M10 3L5 8.5 2 5.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                  </svg>
+                                )}
+                              </span>
+                              <span className="flex-1 min-w-0 flex items-center gap-1.5">
+                                {it.favorite && <span aria-label="favorite" style={{ color: "#812549" }}>★</span>}
+                                <span className={`text-sm font-medium ${have ? "line-through text-[#ABA6A6]" : "text-[#1E1A1A]"}`}>{it.name}</span>
+                              </span>
+                              {have && <span className="text-[10px] shrink-0" style={{ color: "#812549" }}>In your ingredients</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )
+        ) : buyMode === "value" ? (
           groceryLoading && groceryItems === null ? (
             <div className="py-16 text-center" role="status" aria-label="Loading shopping list">
               <svg className="animate-spin h-6 w-6 text-primary mx-auto" viewBox="0 0 24 24" fill="none">
@@ -530,11 +597,48 @@ export default function PantryClient({
         )}
 
         <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-2" style={{ color: "#ABA6A6" }}>
-          Common ingredients
+          Browse by category
         </p>
-        <div className="flex flex-wrap gap-2">
-          {common.filter((c) => !selected.has(c.id)).map((c) => chip(c))}
-        </div>
+        {catalog === null ? (
+          <p className="text-xs" style={{ color: "#848181" }}>Loading ingredients…</p>
+        ) : (
+          <div className="space-y-2">
+            {catalog.map((cat) => {
+              const open = openCat === cat.key;
+              const have = cat.items.filter((it) => selected.has(it.id)).length;
+              return (
+                <div key={cat.key} className="rounded-2xl overflow-hidden border border-[#EAE4CA]">
+                  <button type="button" onClick={() => setOpenCat(open ? null : cat.key)} aria-expanded={open} className="w-full flex items-center gap-3 px-4 py-2.5 text-left bg-[#F9F7ED]">
+                    <span className="flex-1 text-sm font-semibold text-[#1E1A1A]">{cat.title}</span>
+                    <span className="text-[10px] tabular-nums" style={{ color: "#848181" }}>{have}/{cat.items.length}</span>
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                      <path d="M4 6l4 4 4-4" stroke="#ABA6A6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  {open && (
+                    <div className="flex flex-wrap gap-2 p-3">
+                      {cat.items.map((it) => {
+                        const sel = selected.has(it.id);
+                        return (
+                          <button
+                            key={it.id}
+                            type="button"
+                            onClick={() => toggle({ id: it.id, name: it.name })}
+                            aria-pressed={sel}
+                            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${sel ? "text-white" : "text-[#5F1C35] bg-white hover:bg-[#812549]/10"}`}
+                            style={sel ? { background: "#812549", borderColor: "#812549" } : { borderColor: "rgba(129,37,73,0.3)" }}
+                          >
+                            {sel ? "✓ " : ""}{it.favorite ? "★ " : ""}{it.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {syncError && (
           <div role="alert" className="bg-error/10 border border-error/20 text-error rounded-xl px-4 py-2.5 text-xs mt-4">
