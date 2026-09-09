@@ -2,35 +2,29 @@
 
 import { format } from "date-fns";
 import Link from "next/link";
-import { MenuEntry } from "@/types";
 
-// Shows the current plan window — the days that actually have menus in the
-// active version (a rolling 7-day week starts on the generation day, not a
-// fixed Monday), from today forward. No week navigation: there is exactly one
-// window; the next week doesn't exist until it's generated.
-export default function WeeklyMealPlanGrid({ menus }: { menus: MenuEntry[] }) {
-  const dateKeys = Array.from(
-    new Set(menus.map((m) => format(new Date(m.date), "yyyy-MM-dd")))
-  ).sort();
-  const days = dateKeys.map((k) => new Date(`${k}T00:00:00`));
-  const todayKey = format(new Date(), "yyyy-MM-dd");
+// One menu row as loaded by the weekly page (typed loosely; the page casts).
+interface WeekMenu {
+  id: string;
+  date: string | Date;
+  mealType?: { name: string } | null;
+  recipe: { name: string; calories?: number | null; ethnic?: { name: string } | null };
+}
 
-  // Group menus by meal-type name → date, ordered breakfast→lunch→dinner→snack.
-  const ORDER = ["breakfast", "lunch", "dinner", "snack"];
-  const grouped: Record<string, Record<string, MenuEntry>> = {};
-  for (const menu of menus) {
-    const mtName = menu.mealType?.name ?? "Other";
-    if (!grouped[mtName]) grouped[mtName] = {};
-    grouped[mtName][format(new Date(menu.date), "yyyy-MM-dd")] = menu;
-  }
-  const mealTypeOrder = Object.keys(grouped).sort(
-    (a, b) =>
-      ((ORDER.indexOf(a.toLowerCase()) + 1) || 99) - ((ORDER.indexOf(b.toLowerCase()) + 1) || 99)
-  );
+const ORDER = ["breakfast", "lunch", "dinner", "snack"];
+const mealRank = (n?: string) => {
+  const i = ORDER.indexOf((n ?? "").toLowerCase());
+  return i < 0 ? 99 : i;
+};
+const SHADOW = "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)";
 
+// Weekly overview in the app's card language: one card per day (cream header,
+// burgundy accent for today), meals listed as rows like the daily MealCard.
+// Vertical + mobile-first — no spreadsheet table, no horizontal scroll.
+export default function WeeklyMealPlanGrid({ menus }: { menus: WeekMenu[] }) {
   if (menus.length === 0) {
     return (
-      <div className="text-center py-16 px-6">
+      <div className="text-center py-16 px-6 bg-white rounded-2xl border border-[#EAE4CA]" style={{ boxShadow: SHADOW }}>
         <p className="text-navy font-semibold mb-2">No week generated yet</p>
         <p className="text-[#848181] text-sm mb-5">
           Head to your meal plan and generate your week from your ingredients.
@@ -42,76 +36,84 @@ export default function WeeklyMealPlanGrid({ menus }: { menus: MenuEntry[] }) {
     );
   }
 
+  const byDate = new Map<string, WeekMenu[]>();
+  for (const m of menus) {
+    const k = format(new Date(m.date), "yyyy-MM-dd");
+    if (!byDate.has(k)) byDate.set(k, []);
+    byDate.get(k)!.push(m);
+  }
+  const dateKeys = Array.from(byDate.keys()).sort();
+  const todayKey = format(new Date(), "yyyy-MM-dd");
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse min-w-[700px]">
-        <thead>
-          <tr>
-            <th className="w-24 text-left py-2 px-3 text-[#848181] text-xs font-semibold uppercase tracking-wide">
-              Meal
-            </th>
-            {days.map((day) => {
-              const isToday = format(day, "yyyy-MM-dd") === todayKey;
-              return (
-                <th key={day.toISOString()} className="text-center py-2 px-2">
-                  <span
-                    className="inline-flex flex-col items-center justify-center w-10 py-1 rounded-lg"
-                    style={
-                      isToday
-                        ? { background: "rgba(129,37,73,0.12)", border: "1px solid rgba(129,37,73,0.3)" }
-                        : undefined
-                    }
-                  >
-                    <span
-                      className="block text-[10px] font-semibold uppercase"
-                      style={{ color: isToday ? "#812549" : "#848181" }}
-                    >
-                      {format(day, "EEE")}
-                    </span>
-                    <span
-                      className="block font-bold text-sm"
-                      style={{ color: isToday ? "#812549" : "#1E1A1A" }}
-                    >
-                      {format(day, "d")}
-                    </span>
+    <div className="space-y-3">
+      {dateKeys.map((k) => {
+        const day = new Date(`${k}T00:00:00`);
+        const isToday = k === todayKey;
+        const meals = byDate.get(k)!.slice().sort((a, b) => mealRank(a.mealType?.name) - mealRank(b.mealType?.name));
+        const dayKcal = meals.reduce((s, m) => s + (m.recipe.calories ?? 0), 0);
+
+        return (
+          <div
+            key={k}
+            className="bg-white rounded-2xl overflow-hidden border"
+            style={{ borderColor: isToday ? "rgba(129,37,73,0.35)" : "#EAE4CA", boxShadow: SHADOW }}
+          >
+            {/* Day header */}
+            <div
+              className="flex items-center justify-between px-4 py-3"
+              style={{ background: isToday ? "rgba(129,37,73,0.06)" : "#F9F7ED" }}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex flex-col items-center justify-center w-11 h-11 rounded-xl shrink-0"
+                  style={{ background: isToday ? "#812549" : "#fff", border: isToday ? "none" : "1px solid #EAE4CA" }}
+                >
+                  <span className="text-[9px] font-bold uppercase leading-none" style={{ color: isToday ? "rgba(255,255,255,0.75)" : "#ABA6A6" }}>
+                    {format(day, "EEE")}
                   </span>
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {mealTypeOrder.map((mtName) => (
-            <tr key={mtName} className="border-t border-[#EAE4CA]">
-              <td className="py-3 px-3 text-xs font-semibold text-[#848181] uppercase tracking-wide align-top">
-                {mtName}
-              </td>
-              {days.map((day) => {
-                const dateKey = format(day, "yyyy-MM-dd");
-                const menu = grouped[mtName]?.[dateKey];
-                return (
-                  <td key={dateKey} className="py-3 px-2 align-top">
-                    {menu ? (
-                      <div className="flex flex-col items-center text-center">
-                        <p className="text-navy text-xs font-medium line-clamp-2">
-                          {menu.recipe.name}
-                        </p>
-                        {menu.recipe.ethnic?.name && (
-                          <span className="mt-1 px-1.5 py-0.5 rounded-full bg-[#F5F1DD] text-primary text-[10px] font-medium">
-                            {menu.recipe.ethnic.name}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-center text-[#D0CDD7] text-lg">—</div>
+                  <span className="text-base font-bold leading-none mt-0.5" style={{ color: isToday ? "#fff" : "#1E1A1A" }}>
+                    {format(day, "d")}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-[#1E1A1A] leading-tight">{format(day, "EEEE")}</p>
+                  {isToday && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#812549" }}>Today</span>
+                  )}
+                </div>
+              </div>
+              {dayKcal > 0 && (
+                <span className="text-xs font-semibold tabular-nums" style={{ color: "#848181" }}>
+                  {Math.round(dayKcal)} kcal
+                </span>
+              )}
+            </div>
+
+            {/* Meals */}
+            <div className="divide-y divide-[#EAE4CA]">
+              {meals.map((m) => (
+                <div key={m.id} className="flex items-center gap-3 px-4 py-3">
+                  <span className="w-16 shrink-0 text-[10px] font-bold uppercase tracking-wide" style={{ color: "#ABA6A6" }}>
+                    {m.mealType?.name}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-navy truncate">{m.recipe.name}</p>
+                    {m.recipe.ethnic?.name && (
+                      <span className="text-[10px] font-medium" style={{ color: "#812549" }}>{m.recipe.ethnic.name}</span>
                     )}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                  </div>
+                  {m.recipe.calories ? (
+                    <span className="text-[11px] shrink-0 tabular-nums" style={{ color: "#848181" }}>
+                      {m.recipe.calories} kcal
+                    </span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -83,14 +83,7 @@ export default async function WeeklyPlanPage() {
         {label && <p className="text-sm font-medium mt-2" style={{ color: "#848181" }}>{label}</p>}
       </div>
 
-      <div
-        className="wp rounded-2xl overflow-hidden"
-        style={{
-          animationDelay: "120ms",
-          background: "#fff",
-          boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
-        }}
-      >
+      <div className="wp" style={{ animationDelay: "120ms" }}>
         <WeeklyMealPlanGrid menus={menus as never} />
       </div>
     </div>
