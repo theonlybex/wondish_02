@@ -45,6 +45,9 @@ export interface FridgeRecipe {
   perServing: FridgePerServing;
   fitsPlan: boolean;
   conflicts: string[];
+  // Optional: the dish's cuisine, set when Clara generates a varied ("mixed")
+  // batch so each dish can be tagged with its own Ethnic. Ignored elsewhere.
+  cuisine?: string;
 }
 
 // ── normalizeIngredients ────────────────────────────────────────────────────
@@ -143,6 +146,7 @@ function parseOneRecipe(raw: unknown, mealTypeHint?: string): FridgeRecipe | nul
     perServing: { calories, protein, carbs, fat, fiber },
     fitsPlan: r.fitsPlan,
     conflicts: coerceStringArray(r.conflicts),
+    ...(typeof r.cuisine === "string" && r.cuisine.trim() ? { cuisine: r.cuisine.trim() } : {}),
   };
 }
 
@@ -270,6 +274,7 @@ export const SUGGEST_RECIPES_SCHEMA: { type: "object"; properties: Record<string
           },
           fitsPlan: { type: "boolean" },
           conflicts: { type: "array", items: { type: "string" } },
+          cuisine: { type: "string" },
         },
         required: ["name", "steps", "perServing", "fitsPlan"],
       },

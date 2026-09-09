@@ -23,13 +23,9 @@ import type { DietMatchers } from "@/lib/diet-match";
 // malformed output) returns [] and the plan builds from the DB pool alone.
 
 // Single source of truth is the pure cuisines module; import for internal use
-// and re-export so existing importers of this symbol keep working.
-import { CLARA_RECIPE_TAG } from "@/lib/cuisines";
-export { CLARA_RECIPE_TAG };
-
-// Cuisine constants live in the client-safe lib/cuisines module; re-exported
-// here so server call sites can keep importing from one place.
-export { CUISINES, normalizeCuisine, type Cuisine } from "@/lib/cuisines";
+// and re-export so existing importers of these symbols keep working.
+import { CLARA_RECIPE_TAG, normalizeCuisine, CUISINES, type Cuisine } from "@/lib/cuisines";
+export { CLARA_RECIPE_TAG, normalizeCuisine, CUISINES, type Cuisine };
 
 // Structured recipe generation runs on Haiku — cheapest model, and the
 // deterministic gates (allergen filter, macro/calorie sanity, builder
@@ -90,7 +86,9 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     `- usesIngredients lists EVERY ingredient in the dish; leave missingIngredients empty.`,
     `- perServing macros must be realistic and self-consistent (protein/carbs/fat roughly explain the calories).${macro}`,
     `- mealType must be exactly one of: ${args.requests.map((r) => r.mealTypeName).join(", ")}.`,
-    args.cuisine ? `- Vary proteins and dishes within ${args.cuisine} cuisine; avoid near-duplicates.` : `- Vary cuisines and proteins; avoid near-duplicates of each other.`,
+    args.cuisine
+      ? `- Vary proteins and dishes within ${args.cuisine} cuisine; avoid near-duplicates.`
+      : `- Vary the cuisine across the dishes (e.g. Italian, Mexican, Chinese, Thai, Indian, Japanese, Mediterranean, American, French, Korean, Middle Eastern) and set each dish's "cuisine" field to that cuisine. Avoid near-duplicates.`,
     cuisine,
     basket,
     banned,
@@ -219,16 +217,25 @@ export async function persistValidatedRecipes(
     });
     dishTypeId = dt.id;
   }
-  let ethnicId: string | null = null;
-  if (cuisineName) {
+  // Cuisine per dish: the batch cuisine (a specific request) wins; otherwise
+  // each dish carries its own cuisine (mixed generation). Ethnics are upserted
+  // once each and cached across the batch.
+  const ethnicCache = new Map<string, string>();
+  const resolveEthnic = async (raw: string | null | undefined): Promise<string | null> => {
+    const name = raw ? normalizeCuisine(raw) : null;
+    if (!name) return null;
+    const key = name.toLowerCase();
+    const cached = ethnicCache.get(key);
+    if (cached) return cached;
     const eth = await prisma.ethnic.upsert({
-      where: { name: cuisineName },
+      where: { name },
       update: {},
-      create: { name: cuisineName },
+      create: { name },
       select: { id: true },
     });
-    ethnicId = eth.id;
-  }
+    ethnicCache.set(key, eth.id);
+    return eth.id;
+  };
   // Resolve ingredient names → rows, case-insensitively, creating the missing
   // ones (Ingredient.name is unique; a P2002 race falls back to the winner).
   const allNames = Array.from(
@@ -266,6 +273,8 @@ export async function persistValidatedRecipes(
       )
     );
     if (ingredientIds.length < 2) continue;
+    // Batch cuisine wins (a specific request); else the dish's own cuisine.
+    const ethnicId = await resolveEthnic(cuisineName ?? recipe.cuisine ?? null);
     try {
       const row = await prisma.recipe.create({
         data: {

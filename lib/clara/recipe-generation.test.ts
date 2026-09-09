@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { passesSanity } from "./recipe-generation";
-import type { FridgeRecipe } from "../fridge";
+import { validateFridgeRecipeSnapshot, type FridgeRecipe } from "../fridge";
+
+test("validateFridgeRecipeSnapshot parses an optional per-dish cuisine", () => {
+  const base = { name: "Pad Thai", steps: ["cook"], perServing: { calories: 500, protein: 25, carbs: 55, fat: 15, fiber: 3 }, fitsPlan: true };
+  assert.equal(validateFridgeRecipeSnapshot({ ...base, cuisine: "Thai" })?.cuisine, "Thai");
+  assert.equal(validateFridgeRecipeSnapshot(base)?.cuisine, undefined);
+  assert.equal(validateFridgeRecipeSnapshot({ ...base, cuisine: "   " })?.cuisine, undefined);
+});
 
 // A realistic, self-consistent dish: 30p/50c/18f → 482 derived kcal vs 500
 // stated (inside the ±35% band). Override per-test to probe each gate.
