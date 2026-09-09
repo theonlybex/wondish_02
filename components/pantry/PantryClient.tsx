@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CUISINES } from "@/lib/cuisines";
+import { computeBasketReadiness } from "@/lib/basket-readiness";
 // Old "What to buy" design (reused the standalone GroceryListView). Replaced
 // (2026-09-07) by the inline shopping list below, which ticks bought items
 // straight into "What I have". Kept for reference.
@@ -588,8 +589,45 @@ export default function PantryClient({
         </section>
       )}
 
+      {/* Required-ingredients counter — how close the basket is to filling a
+          full week. Sticks to the bottom while selecting (onboarding + New-week). */}
+      {(() => {
+        const status = computeBasketReadiness(Array.from(selected.values()));
+        return (
+          <div
+            className="sticky bottom-0 z-10 mt-4 px-4 py-3 rounded-2xl border backdrop-blur"
+            style={{
+              borderColor: status.ready ? "#2E7D5B" : "#EAE4CA",
+              background: status.ready ? "rgba(46,125,91,0.08)" : "rgba(255,255,255,0.92)",
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-semibold" style={{ color: status.ready ? "#2E7D5B" : "#5F1C35" }}>
+                {status.count} / {status.min} ingredients{status.ready ? " ✓" : ""}
+              </span>
+              <span className="text-xs text-right" style={{ color: "#848181" }}>
+                {status.ready
+                  ? "Enough to fill a full week"
+                  : `Add ${Math.max(0, status.min - status.count)} more${
+                      status.missingCategories.length ? ` (a ${status.missingCategories.join(", ")})` : ""
+                    }`}
+              </span>
+            </div>
+            <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "#F0EFF5" }}>
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${Math.min(100, (status.count / status.min) * 100)}%`,
+                  background: status.ready ? "#2E7D5B" : "#812549",
+                }}
+              />
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Continue */}
-      <div className="pt-2">
+      <div className="pt-4">
         <Link
           href="/meal-plan"
           className="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-dark transition-colors shadow-lg shadow-primary/25"
