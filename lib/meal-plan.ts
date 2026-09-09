@@ -414,8 +414,9 @@ export async function buildMealPlanMenus(
   const weekUsedSignatures = new Set<string>();
   // Protein spread: the last few protein types used, avoided while fresh options
   // exist so the same protein doesn't dominate the week. Window of 2.
-  const recentProteins: string[] = [];
-  const PROTEIN_WINDOW = 2;
+  // Protein spread: avoid serving a protein two days in a row (same-day repeats
+  // are fine). prevDayProteins holds yesterday's proteins; excluded today.
+  let prevDayProteins = new Set<string>();
   // Cross-week variety: dishes from the previous week are avoided all week
   // (soft — the fallback tier still allows them if the pool is exhausted). Not
   // cleared by the 7-day weekUsedIds reset, so it holds for the whole build.
@@ -445,6 +446,7 @@ export async function buildMealPlanMenus(
 
     let dayCalories = 0;
     const dailyFamilies = new Set<string>();
+    const todayProteins = new Set<string>();
     let lunchTotalCalories = 0; // tracked after lunch to cap dinner
 
     const lunchMealType = mealTypes.find((mt) => mt.name.toLowerCase() === "lunch");
@@ -508,7 +510,7 @@ export async function buildMealPlanMenus(
             (r.dishType !== null && dishNames.has(r.dishType.name.toLowerCase()))) &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
           (r.subFamily === null || !mealSubFamilies.has(r.subFamily)) &&
-          !(excludeUsed && (() => { const dp = dishProtein(r.ingredients); return dp !== null && recentProteins.includes(dp); })()) &&
+          !(excludeUsed && (() => { const dp = dishProtein(r.ingredients); return dp !== null && prevDayProteins.has(dp); })()) &&
           !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id) || weekUsedSignatures.has(dishSignature(r.ingredients))));
         // First attempt: exclude recipes already used this week AND last week's
         // dishes (cross-week variety). Runs whenever either set is non-empty —
@@ -525,10 +527,7 @@ export async function buildMealPlanMenus(
         trackChosen(recipe, dailyFamilies, mealSubFamilies, weekUsedIds);
         weekUsedSignatures.add(dishSignature(recipe.ingredients));
         const dp = dishProtein(recipe.ingredients);
-        if (dp) {
-          recentProteins.push(dp);
-          while (recentProteins.length > PROTEIN_WINDOW) recentProteins.shift();
-        }
+        if (dp) todayProteins.add(dp);
         mealCalories += recipe.calories ?? 0;
         dayCalories  += recipe.calories ?? 0;
         menus.push({ patientId, recipeId: recipe.id, mealTypeId: mealType.id, date: new Date(current), planVersion });
@@ -629,6 +628,8 @@ export async function buildMealPlanMenus(
       }
     }
 
+    // Carry today's proteins forward so tomorrow avoids them (no back-to-back).
+    prevDayProteins = todayProteins;
     current.setDate(current.getDate() + 1);
   }
 
