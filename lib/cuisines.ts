@@ -2,6 +2,11 @@
 // components (unlike lib/clara/recipe-generation.ts, which pulls in Prisma
 // and the Anthropic SDK).
 
+// Tag stamped on every Clara-generated recipe. Lives here (the dependency-free
+// module) so light server code (pruning) can reference it without importing
+// the generation module; recipe-generation re-exports it for existing callers.
+export const CLARA_RECIPE_TAG = "clara";
+
 export const CUISINES = [
   "Surprise me",
   "Italian",

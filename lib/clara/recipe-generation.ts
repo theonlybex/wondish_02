@@ -22,7 +22,10 @@ import type { DietMatchers } from "@/lib/diet-match";
 // Fail-soft is a hard requirement: any error (no key, 401, 429, timeout,
 // malformed output) returns [] and the plan builds from the DB pool alone.
 
-export const CLARA_RECIPE_TAG = "clara";
+// Single source of truth is the pure cuisines module; import for internal use
+// and re-export so existing importers of this symbol keep working.
+import { CLARA_RECIPE_TAG } from "@/lib/cuisines";
+export { CLARA_RECIPE_TAG };
 
 // Cuisine constants live in the client-safe lib/cuisines module; re-exported
 // here so server call sites can keep importing from one place.
