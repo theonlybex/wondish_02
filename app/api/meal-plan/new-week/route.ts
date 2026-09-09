@@ -5,6 +5,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
 import { guardAiSpend } from "@/lib/ai-budget";
 import { computeBasketReadiness } from "@/lib/basket-readiness";
+import { parseRecentDishes, recentDishIds, mergeRecentDishes } from "@/lib/recent-dishes";
 
 export const maxDuration = 60;
 
@@ -21,7 +22,7 @@ export async function POST() {
 
   const patient = await prisma.patient.findFirst({
     where: { account: { clerkId: userId } },
-    select: { id: true, profileCompleted: true, mealPlanStartDate: true, activePlanVersion: true },
+    select: { id: true, profileCompleted: true, mealPlanStartDate: true, activePlanVersion: true, recentDishes: true },
   });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
   if (!patient.profileCompleted) return NextResponse.json({ error: "Profile not complete" }, { status: 422 });
@@ -46,14 +47,12 @@ export async function POST() {
   const anchor = patient.mealPlanStartDate ? new Date(patient.mealPlanStartDate) : today;
   const basket = new Set(names.map((n) => n.trim().toLowerCase()));
 
-  // Cross-week variety: avoid the dishes the current (about-to-be-replaced)
-  // week used, so consecutive weeks don't repeat. Soft — the builder falls back
-  // to reuse if the basket pool can't fill a slot otherwise.
-  const prevWeek = await prisma.menu.findMany({
-    where: { patientId: patient.id, planVersion: patient.activePlanVersion },
-    select: { recipeId: true },
-  });
-  const excludeRecipeIds = new Set(prevWeek.map((m) => m.recipeId));
+  // Cross-week variety over a rolling ~2-month window: avoid every dish served
+  // in the last RECENT_DISH_WINDOW_DAYS, so weeks don't repeat until a dish
+  // rolls out and becomes eligible again. Soft — the builder falls back to
+  // reuse if the basket pool can't otherwise fill a slot.
+  const recent = parseRecentDishes(patient.recentDishes);
+  const excludeRecipeIds = recentDishIds(recent);
 
   try {
     const count = await regeneratePlan(patient.id, today, undefined, {
@@ -63,6 +62,22 @@ export async function POST() {
       basket,
       excludeRecipeIds,
     });
+
+    // Record this week's dishes in the rolling window (prunes expired entries).
+    const after = await prisma.patient.findUnique({
+      where: { id: patient.id },
+      select: { activePlanVersion: true },
+    });
+    const newMenus = await prisma.menu.findMany({
+      where: { patientId: patient.id, planVersion: after?.activePlanVersion ?? patient.activePlanVersion },
+      select: { recipeId: true },
+    });
+    const newIds = Array.from(new Set(newMenus.map((m) => m.recipeId)));
+    const merged = mergeRecentDishes(recent, newIds);
+    await prisma.patient
+      .update({ where: { id: patient.id }, data: { recentDishes: merged } })
+      .catch(() => {}); // best-effort: variety memory must never fail the request
+
     return NextResponse.json({ ok: true, count });
   } catch (err) {
     if (err instanceof MealPlanBusyError) {

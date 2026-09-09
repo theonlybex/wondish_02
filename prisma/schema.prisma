@@ -147,6 +147,9 @@ model Patient {
   mealPlanGenStartedAt DateTime?
   mealPlanError        String?
   mealPlanWeight       Float? // current weight (lbs) when the active plan was generated — used to detect drift
+  // Rolling ~2-month log of dishes served, so weekly generation avoids repeats
+  // until they roll out of the window: [{ id: recipeId, ts: epochMs }].
+  recentDishes         Json?
 
   foodPreferences   PatientFoodPreference[]
   foodToAvoid       PatientFoodToAvoid[]
