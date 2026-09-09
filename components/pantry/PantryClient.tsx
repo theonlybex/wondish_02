@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CUISINES } from "@/lib/cuisines";
 import { computeBasketReadiness } from "@/lib/basket-readiness";
+import { buildCuisineChecklists } from "@/lib/cuisine-ingredients";
 // Old "What to buy" design (reused the standalone GroceryListView). Replaced
 // (2026-09-07) by the inline shopping list below, which ticks bought items
 // straight into "What I have". Kept for reference.
@@ -80,6 +81,21 @@ export default function PantryClient({
   >(null);
   const [groceryLoading, setGroceryLoading] = useState(false);
   const [groceryError, setGroceryError] = useState("");
+  // "What to buy" has two lenses: by value (most dishes unlocked) and by cuisine
+  // (stock a cuisine's signature ingredients). Cuisine ids resolve staple names
+  // to real Ingredient ids so a tap adds it to the pantry.
+  const [buyMode, setBuyMode] = useState<"value" | "cuisine">("value");
+  const [cuisineIds, setCuisineIds] = useState<Record<string, string> | null>(null);
+  const [openCuisine, setOpenCuisine] = useState<string | null>(null);
+  const loadCuisineIds = async () => {
+    if (cuisineIds) return;
+    try {
+      const res = await fetch("/api/pantry/cuisine-ids");
+      if (res.ok) setCuisineIds((await res.json()).ids ?? {});
+    } catch {
+      /* leave null — staples render disabled until ids resolve */
+    }
+  };
 
   // Sequence guards so a slow response can never clobber a newer one.
   const cookableSeq = useRef(0);
@@ -290,79 +306,155 @@ export default function PantryClient({
   // pantry's `toggle` → PatientPantryItem write). Items already on hand show
   // as done.
   if (view === "buy") {
+    const ownedLower = new Set(Array.from(selected.values()).map((n) => n.toLowerCase()));
+    const checklists = buildCuisineChecklists(ownedLower);
     return (
       <div>
         {tabs}
-        <div className="mb-5 flex items-center justify-between gap-3">
-          <p className="text-xs" style={{ color: "#848181" }}>
-            Buy these to unlock the most dishes — your favorites are on top.
-          </p>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="inline-flex p-0.5 rounded-full border" style={{ borderColor: "#EAE4CA", background: "#F5F1DD" }}>
+            {(["value", "cuisine"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => { setBuyMode(m); if (m === "cuisine") void loadCuisineIds(); }}
+                aria-pressed={buyMode === m}
+                className={`px-3.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                  buyMode === m ? "bg-white text-primary shadow-sm" : "text-[#848181] hover:text-primary"
+                }`}
+              >
+                {m === "value" ? "By value" : "By cuisine"}
+              </button>
+            ))}
+          </div>
           <a href="/taste?edit=1" className="text-xs font-semibold shrink-0 hover:underline" style={{ color: "#812549" }}>
             Edit favorites →
           </a>
         </div>
-        {groceryLoading && groceryItems === null ? (
-          <div className="py-16 text-center" role="status" aria-label="Loading shopping list">
-            <svg className="animate-spin h-6 w-6 text-primary mx-auto" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-            </svg>
-          </div>
-        ) : groceryError ? (
-          <div className="py-12 text-center">
-            <div role="alert" className="inline-block bg-error/10 border border-error/20 text-error rounded-xl px-4 py-3 text-sm mb-4">
-              {groceryError}
+
+        {buyMode === "value" ? (
+          groceryLoading && groceryItems === null ? (
+            <div className="py-16 text-center" role="status" aria-label="Loading shopping list">
+              <svg className="animate-spin h-6 w-6 text-primary mx-auto" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
             </div>
-            <div>
+          ) : groceryError ? (
+            <div className="py-12 text-center">
+              <div role="alert" className="inline-block bg-error/10 border border-error/20 text-error rounded-xl px-4 py-3 text-sm mb-4">
+                {groceryError}
+              </div>
               <button type="button" onClick={() => void loadGrocery()} className="px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold">
                 Try again
               </button>
             </div>
-          </div>
-        ) : !groceryItems || groceryItems.length === 0 ? (
-          <div className="py-12 text-center text-sm" style={{ color: "#848181" }}>
-            Nothing to suggest yet — rate a few ingredients to get started.
-          </div>
+          ) : !groceryItems || groceryItems.length === 0 ? (
+            <div className="py-12 text-center text-sm" style={{ color: "#848181" }}>
+              Nothing to suggest yet — rate a few ingredients to get started.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {groceryItems.map((item) => {
+                const have = selected.has(item.ingredientId);
+                return (
+                  <button
+                    key={item.ingredientId}
+                    type="button"
+                    onClick={() => toggle({ id: item.ingredientId, name: item.name })}
+                    aria-pressed={have}
+                    className="w-full flex items-center gap-3 bg-white rounded-2xl px-4 py-3 text-left transition-colors hover:bg-[#FBFAF5]"
+                    style={{ boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
+                  >
+                    <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${have ? "bg-primary border-primary" : "border-[#EAE4CA]"}`}>
+                      {have && (
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                          <path d="M10 3L5 8.5 2 5.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </span>
+                    <span className="flex-1 min-w-0 flex items-center gap-1.5">
+                      {item.favorite && (
+                        <span aria-label="favorite" title="A favorite ingredient" style={{ color: "#812549" }}>★</span>
+                      )}
+                      <span className={`text-sm font-medium truncate ${have ? "line-through text-[#ABA6A6]" : "text-[#1E1A1A]"}`}>
+                        {item.name}
+                      </span>
+                    </span>
+                    <span className="text-[10px] flex-shrink-0" style={{ color: have ? "#812549" : "#ABA6A6" }}>
+                      {have
+                        ? "In your ingredients"
+                        : item.marginal > 0
+                          ? `unlocks ${item.marginal} more dish${item.marginal === 1 ? "" : "es"}`
+                          : `in ${item.dishCount} dish${item.dishCount === 1 ? "" : "es"}`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )
         ) : (
           <div className="space-y-2">
-            {groceryItems.map((item) => {
-              const have = selected.has(item.ingredientId);
+            <p className="text-xs mb-1" style={{ color: "#848181" }}>
+              Shop toward a cuisine — buy its keys and it unlocks. Ingredients shared across cuisines check off everywhere.
+            </p>
+            {checklists.map((c) => {
+              const open = openCuisine === c.cuisine;
+              const pct = Math.round((c.have / c.total) * 100);
               return (
-                <button
-                  key={item.ingredientId}
-                  type="button"
-                  onClick={() => toggle({ id: item.ingredientId, name: item.name })}
-                  aria-pressed={have}
-                  className="w-full flex items-center gap-3 bg-white rounded-2xl px-4 py-3 text-left transition-colors hover:bg-[#FBFAF5]"
-                  style={{ boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
-                >
-                  <span
-                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                      have ? "bg-primary border-primary" : "border-[#EAE4CA]"
-                    }`}
-                  >
-                    {have && (
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <path d="M10 3L5 8.5 2 5.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </span>
-                  <span className="flex-1 min-w-0 flex items-center gap-1.5">
-                    {item.favorite && (
-                      <span aria-label="favorite" title="A favorite ingredient" style={{ color: "#812549" }}>★</span>
-                    )}
-                    <span className={`text-sm font-medium truncate ${have ? "line-through text-[#ABA6A6]" : "text-[#1E1A1A]"}`}>
-                      {item.name}
+                <div key={c.cuisine} className="bg-white rounded-2xl overflow-hidden border border-[#EAE4CA]" style={{ boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}>
+                  <button type="button" onClick={() => setOpenCuisine(open ? null : c.cuisine)} aria-expanded={open} className="w-full flex items-center gap-3 px-4 py-3 text-left">
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-[#1E1A1A]">{c.cuisine}</span>
+                        {c.ready && (
+                          <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={{ background: "rgba(46,125,91,0.12)", color: "#2E7D5B" }}>Ready</span>
+                        )}
+                      </span>
+                      <span className="mt-1.5 flex items-center gap-2">
+                        <span className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#F0EFF5" }}>
+                          <span className="block h-full rounded-full transition-all" style={{ width: `${pct}%`, background: c.ready ? "#2E7D5B" : "#812549" }} />
+                        </span>
+                        <span className="text-[10px] tabular-nums shrink-0" style={{ color: "#848181" }}>
+                          {c.have}/{c.total}{c.ready ? "" : ` · add ${c.total - c.have}`}
+                        </span>
+                      </span>
                     </span>
-                  </span>
-                  <span className="text-[10px] flex-shrink-0" style={{ color: have ? "#812549" : "#ABA6A6" }}>
-                    {have
-                      ? "In your ingredients"
-                      : item.marginal > 0
-                        ? `unlocks ${item.marginal} more dish${item.marginal === 1 ? "" : "es"}`
-                        : `in ${item.dishCount} dish${item.dishCount === 1 ? "" : "es"}`}
-                  </span>
-                </button>
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                      <path d="M4 6l4 4 4-4" stroke="#ABA6A6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  {open && (
+                    <div className="divide-y divide-[#EAE4CA] border-t border-[#EAE4CA]">
+                      {c.staples.map((s) => {
+                        const id = cuisineIds?.[s.name.toLowerCase()];
+                        return (
+                          <button
+                            key={s.name}
+                            type="button"
+                            disabled={!id}
+                            onClick={() => id && toggle({ id, name: s.name })}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#FBFAF5] disabled:opacity-60"
+                          >
+                            <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${s.have ? "bg-primary border-primary" : "border-[#EAE4CA]"}`}>
+                              {s.have && (
+                                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                                  <path d="M10 3L5 8.5 2 5.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              )}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className={`text-sm font-medium ${s.have ? "line-through text-[#ABA6A6]" : "text-[#1E1A1A]"}`}>{s.name}</span>
+                              {s.alsoIn.length > 0 && (
+                                <span className="block text-[10px] mt-0.5" style={{ color: "#ABA6A6" }}>also {s.alsoIn.slice(0, 3).join(", ")}</span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
