@@ -61,6 +61,32 @@ function dishSignature(ings: { ingredient: { name: string } }[]): string {
   ).sort().join("|");
 }
 
+// Primary-protein detection, so the week doesn't serve the same protein type
+// over and over ("grilled chicken every day"). Returns a coarse protein family.
+const PROTEIN_TYPES: [string, string[]][] = [
+  ["chicken", ["chicken"]],
+  ["beef", ["beef", "steak"]],
+  ["pork", ["pork", "bacon", "ham", "sausage"]],
+  ["turkey", ["turkey"]],
+  ["lamb", ["lamb"]],
+  ["seafood", ["fish", "salmon", "tuna", "cod", "tilapia", "shrimp", "prawn"]],
+  ["egg", ["egg"]],
+  ["tofu", ["tofu", "tempeh", "seitan"]],
+  ["legume", ["bean", "lentil", "chickpea"]],
+];
+function proteinType(name: string): string | null {
+  const n = name.toLowerCase();
+  for (const [type, kws] of PROTEIN_TYPES) if (kws.some((k) => n.includes(k))) return type;
+  return null;
+}
+function dishProtein(ings: { ingredient: { name: string } }[]): string | null {
+  for (const i of ings) {
+    const t = proteinType(i.ingredient.name);
+    if (t) return t;
+  }
+  return null;
+}
+
 function pickByMotivation(
   candidates: RecipeCandidate[],
   motivationNames: string[],
@@ -386,6 +412,10 @@ export async function buildMealPlanMenus(
   const weekUsedIds = new Set<string>();
   // Near-duplicate guard within the week: signatures of dishes already used.
   const weekUsedSignatures = new Set<string>();
+  // Protein spread: the last few protein types used, avoided while fresh options
+  // exist so the same protein doesn't dominate the week. Window of 2.
+  const recentProteins: string[] = [];
+  const PROTEIN_WINDOW = 2;
   // Cross-week variety: dishes from the previous week are avoided all week
   // (soft — the fallback tier still allows them if the pool is exhausted). Not
   // cleared by the 7-day weekUsedIds reset, so it holds for the whole build.
@@ -478,6 +508,7 @@ export async function buildMealPlanMenus(
             (r.dishType !== null && dishNames.has(r.dishType.name.toLowerCase()))) &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
           (r.subFamily === null || !mealSubFamilies.has(r.subFamily)) &&
+          !(excludeUsed && (() => { const dp = dishProtein(r.ingredients); return dp !== null && recentProteins.includes(dp); })()) &&
           !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id) || weekUsedSignatures.has(dishSignature(r.ingredients))));
         // First attempt: exclude recipes already used this week AND last week's
         // dishes (cross-week variety). Runs whenever either set is non-empty —
@@ -493,6 +524,11 @@ export async function buildMealPlanMenus(
       const addRecipe = (recipe: RecipeCandidate) => {
         trackChosen(recipe, dailyFamilies, mealSubFamilies, weekUsedIds);
         weekUsedSignatures.add(dishSignature(recipe.ingredients));
+        const dp = dishProtein(recipe.ingredients);
+        if (dp) {
+          recentProteins.push(dp);
+          while (recentProteins.length > PROTEIN_WINDOW) recentProteins.shift();
+        }
         mealCalories += recipe.calories ?? 0;
         dayCalories  += recipe.calories ?? 0;
         menus.push({ patientId, recipeId: recipe.id, mealTypeId: mealType.id, date: new Date(current), planVersion });

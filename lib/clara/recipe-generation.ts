@@ -84,6 +84,7 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     `- Everyday dishes with common, individually named ingredients (e.g. "chicken breast", "brown rice", "olive oil") — no compound items, no brand names.`,
     `- Each dish is a COMPLETE MEAL for its slot (protein + carb + veg where sensible), close to the stated per-serving calorie target.`,
     `- usesIngredients lists EVERY ingredient in the dish; leave missingIngredients empty.`,
+    `- steps: provide 5–10 clear, numbered cooking instructions a home cook can follow (prep, cook, assemble, serve). Every dish MUST have real steps.`,
     `- perServing macros must be realistic and self-consistent (protein/carbs/fat roughly explain the calories).${macro}`,
     `- mealType must be exactly one of: ${args.requests.map((r) => r.mealTypeName).join(", ")}.`,
     args.cuisine

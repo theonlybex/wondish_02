@@ -545,12 +545,13 @@ test("motivation scoring: with 'Build muscle', the zero-protein recipe never sur
 });
 
 test("liked-ingredient affinity: the only recipe missing the loved ingredient is never picked", async () => {
+  // Use a non-protein loved ingredient so protein-spread doesn't interfere.
   const patient = makePatient({
-    ingredientPreferences: [{ liked: true, ingredient: { name: "Tofu" } }],
+    ingredientPreferences: [{ liked: true, ingredient: { name: "Spinach" } }],
   });
   const pool = [];
   for (let i = 1; i <= 9; i++) {
-    pool.push(makeRecipe({ id: `t${i}`, mealTypeId: MT_L.id, calories: 500, ingredients: ["tofu", `extra-${i}`] }));
+    pool.push(makeRecipe({ id: `t${i}`, mealTypeId: MT_L.id, calories: 500, ingredients: ["spinach", `extra-${i}`] }));
   }
   pool.push(makeRecipe({ id: "plain", mealTypeId: MT_L.id, calories: 500, ingredients: ["plain"] }));
   setDb(patient, [MT_L, MT_S], pool);
@@ -957,6 +958,19 @@ test("excludeRecipeIds: reuses an excluded dish when it's the only option", asyn
   setDb(makePatient(), [MT_L, MT_S], [makeRecipe({ id: "only", mealTypeId: MT_L.id, calories: 600 })]);
   const { rows } = await build("p1", START, 1, { windowDays: 7, excludeRecipeIds: new Set(["only"]) });
   assert.ok(rows.some((r) => r.recipeId === "only"), "the excluded dish is reused when nothing else fits (soft exclusion)");
+});
+
+test("protein spread: no two consecutive days share a protein when 3+ are available", async () => {
+  const pool: ReturnType<typeof makeRecipe>[] = [];
+  for (const [pre, ing] of [["c", "chicken breast"], ["b", "ground beef"], ["f", "salmon"]]) {
+    for (let i = 0; i < 3; i++) pool.push(makeRecipe({ id: `${pre}${i}`, mealTypeId: MT_L.id, calories: 600, ingredients: [ing, `veg${pre}${i}`] }));
+  }
+  setDb(makePatient(), [MT_L, MT_S], pool);
+  const { rows } = await build("p1", START, 1, { windowDays: 7 });
+  const lunches = [...groupByDay(rows).values()].map((d) => d.find((r) => r.mealTypeId === MT_L.id)?.recipeId?.[0]);
+  let bad = false;
+  for (let i = 1; i < lunches.length; i++) if (lunches[i] && lunches[i] === lunches[i - 1]) bad = true;
+  assert.ok(!bad, `consecutive days share a protein: ${lunches.join(",")}`);
 });
 
 test("near-duplicate guard: two dishes with the same ingredients aren't both used in a week", async () => {
