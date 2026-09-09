@@ -357,6 +357,7 @@ model Recipe {
   id              String                  @id @default(cuid())
   name            String
   description     String?
+  steps           String[]                @default([]) // cooking instructions (esp. Clara-generated dishes)
   imageUrl        String?
   emoji           String?
   calories        Float?

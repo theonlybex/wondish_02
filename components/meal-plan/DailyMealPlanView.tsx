@@ -80,9 +80,14 @@ function InlineDishExpand({
   onRate: (recipeId: string, mealTypeName: string, rating: number) => void;
 }) {
   const r = menu.recipe;
-  const steps = r.description
-    ? r.description.split(/\n/).map((s) => s.replace(/^\d+\.\s*/, "").trim()).filter(Boolean)
-    : [];
+  // Prefer the recipe's real cooking steps (Clara + curated); fall back to
+  // splitting the description for older dishes that packed steps in there.
+  const savedSteps = (r as { steps?: string[] }).steps;
+  const steps = Array.isArray(savedSteps) && savedSteps.length > 0
+    ? savedSteps.map((s) => s.replace(/^\d+\.\s*/, "").trim()).filter(Boolean)
+    : r.description
+      ? r.description.split(/\n/).map((s) => s.replace(/^\d+\.\s*/, "").trim()).filter(Boolean)
+      : [];
 
   return (
     <motion.div

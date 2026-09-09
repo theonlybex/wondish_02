@@ -280,6 +280,7 @@ export async function persistValidatedRecipes(
         data: {
           name: recipe.name.trim(),
           description: recipe.description ?? null,
+          steps: Array.isArray(recipe.steps) ? recipe.steps.filter((s) => typeof s === "string" && s.trim()) : [],
           emoji: recipe.emoji ?? null,
           calories: recipe.perServing.calories,
           protein: recipe.perServing.protein,
