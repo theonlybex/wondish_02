@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { CUISINES } from "@/lib/cuisines";
 import { format, addDays, subDays } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import SwapMealModal from "@/components/meal-plan/SwapMealModal";
@@ -326,6 +327,42 @@ export default function DailyMealPlanView({
     }
   };
 
+  // "Cuisine for today" — rebuild just the viewed day in a chosen cuisine
+  // (basket-constrained; cuisine is a soft lens). The rest of the week stays.
+  const [cuisineDayLoading, setCuisineDayLoading] = useState(false);
+  const [cuisineDayError, setCuisineDayError] = useState("");
+  const [showCuisines, setShowCuisines] = useState(false);
+  const setCuisineForDay = async (cuisine: string) => {
+    if (cuisineDayLoading) return;
+    setCuisineDayLoading(true);
+    setCuisineDayError("");
+    try {
+      const dateStr = format(date, "yyyy-MM-dd");
+      const res = await fetch("/api/meal-plan/day", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: dateStr, cuisine }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setCuisineDayError(data?.error ?? "Couldn't update today — try again.");
+        return;
+      }
+      const mRes = await fetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
+      const mData = await mRes.json();
+      setMenus(mData.menus ?? []);
+      setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
+      setMealRatings(mData.mealRatings ?? {});
+      setDailyCalorieTarget(mData.dailyCalorieTarget ?? null);
+      setExchanges(mData.exchanges ?? null);
+      setShowCuisines(false);
+    } catch {
+      setCuisineDayError("Network error — try again.");
+    } finally {
+      setCuisineDayLoading(false);
+    }
+  };
+
   // Browsing horizon: today through one week ahead. The plan is generated
   // weeks out, but distant days get recomputed as weight drifts; past days
   // live in the Journal calendar, not here.
@@ -467,19 +504,60 @@ export default function DailyMealPlanView({
         </div>
       )}
 
-      {/* Entry point to the full-week grid — only when a week exists. */}
+      {/* Cuisine-for-today + full-week entry — only when a day exists. */}
       {menus.length > 0 && (
-        <div className="flex justify-end mb-2">
-          <a
-            href="/meal-plan/weekly"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold hover:opacity-80 transition-opacity"
-            style={{ color: "#812549" }}
-          >
-            View full week
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </a>
+        <div className="mb-3">
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setShowCuisines((v) => !v)}
+              aria-expanded={showCuisines}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold hover:opacity-80 transition-opacity"
+              style={{ color: "#812549" }}
+            >
+              Cuisine for today
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ transform: showCuisines ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <a
+              href="/meal-plan/weekly"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold hover:opacity-80 transition-opacity"
+              style={{ color: "#812549" }}
+            >
+              View full week
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </a>
+          </div>
+          {showCuisines && (
+            <div className="mt-2 rounded-2xl px-3 py-3 border border-dashed" style={{ borderColor: "#812549", background: "rgba(129,37,73,0.04)" }}>
+              {cuisineDayError && <p role="alert" className="text-xs mb-2 text-error">{cuisineDayError}</p>}
+              <div className="flex flex-wrap gap-1.5">
+                {CUISINES.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => void setCuisineForDay(c)}
+                    disabled={cuisineDayLoading}
+                    className="px-3 py-1 rounded-full text-xs font-semibold border border-[#812549]/30 text-[#5F1C35] bg-white hover:bg-[#812549] hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+              {cuisineDayLoading && (
+                <p className="text-xs mt-2 flex items-center gap-2" style={{ color: "#5F1C35" }}>
+                  <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" role="status" aria-label="Rebuilding">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Rebuilding today…
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
