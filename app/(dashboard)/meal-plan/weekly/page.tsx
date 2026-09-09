@@ -19,11 +19,11 @@ export default async function WeeklyPlanPage() {
     select: { activePlanVersion: true },
   });
 
-  // The current rolling window is the upcoming days of the active plan. Load
-  // from today forward (capped generously past a 7-day week).
+  // One week only: today through today+6 (7 days). Capping the query here means
+  // an older, longer plan still shows exactly one week, not its whole length.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const rangeEnd = addDays(today, 13);
+  const rangeEnd = addDays(today, 6);
   rangeEnd.setHours(23, 59, 59, 999);
 
   const menus = await prisma.menu.findMany({
