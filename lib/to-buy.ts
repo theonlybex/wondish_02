@@ -5,9 +5,36 @@
 // dropped.
 
 export type RankRecipe = { ingredients: { ingredientId: string; name: string }[] };
-export type ToBuyItem = { ingredientId: string; name: string; dishCount: number; favorite: boolean };
+export type ToBuyItem = {
+  ingredientId: string;
+  name: string;
+  dishCount: number; // total eatable dishes that use this ingredient
+  marginal: number; // dishes this one purchase unlocks NOW (only missing ingredient)
+  favorite: boolean;
+};
 
 export const STAPLE_NAMES = new Set(["salt", "pepper", "black pepper", "water"]);
+
+// For each recipe that is exactly ONE ingredient short of the basket (staples
+// free), that missing ingredient "unlocks" the recipe. Returns marginal unlock
+// counts keyed by ingredientId — the "add X → unlocks N more dishes" number.
+export function computeMarginalUnlocks(
+  recipes: RankRecipe[],
+  basket: Set<string>,
+  staples: Set<string> = STAPLE_NAMES
+): Map<string, number> {
+  const marginal = new Map<string, number>();
+  for (const r of recipes) {
+    const missing = r.ingredients.filter(
+      (ing) => !basket.has(ing.ingredientId) && !staples.has(ing.name.trim().toLowerCase())
+    );
+    if (missing.length === 1) {
+      const id = missing[0].ingredientId;
+      marginal.set(id, (marginal.get(id) ?? 0) + 1);
+    }
+  }
+  return marginal;
+}
 
 export function computeIngredientDishCounts(
   recipes: RankRecipe[]
@@ -39,16 +66,26 @@ export function rankToBuy(params: {
   const cap = params.cap ?? 50;
 
   const counts = computeIngredientDishCounts(recipes);
+  const marginal = computeMarginalUnlocks(recipes, pantry, staples);
   const items: ToBuyItem[] = [];
   for (const [ingredientId, { name, count }] of counts) {
     if (pantry.has(ingredientId)) continue;
     if (staples.has(name.trim().toLowerCase())) continue;
-    items.push({ ingredientId, name, dishCount: count, favorite: liked.has(ingredientId) });
+    items.push({
+      ingredientId,
+      name,
+      dishCount: count,
+      marginal: marginal.get(ingredientId) ?? 0,
+      favorite: liked.has(ingredientId),
+    });
   }
 
+  // Favorites first; then what unlocks the most dishes RIGHT NOW (marginal);
+  // then overall usefulness (absolute) so a fresh/empty basket still ranks well.
   items.sort(
     (a, b) =>
       Number(b.favorite) - Number(a.favorite) ||
+      b.marginal - a.marginal ||
       b.dishCount - a.dishCount ||
       a.name.localeCompare(b.name)
   );

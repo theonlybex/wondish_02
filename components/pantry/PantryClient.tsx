@@ -76,7 +76,7 @@ export default function PantryClient({
   // "What to buy" — smart stocking list: ingredients that unlock the most
   // dishes, favorites first, minus what's already on hand. null = not loaded.
   const [groceryItems, setGroceryItems] = useState<
-    { ingredientId: string; name: string; dishCount: number; favorite: boolean }[] | null
+    { ingredientId: string; name: string; dishCount: number; marginal: number; favorite: boolean }[] | null
   >(null);
   const [groceryLoading, setGroceryLoading] = useState(false);
   const [groceryError, setGroceryError] = useState("");
@@ -356,7 +356,11 @@ export default function PantryClient({
                     </span>
                   </span>
                   <span className="text-[10px] flex-shrink-0" style={{ color: have ? "#812549" : "#ABA6A6" }}>
-                    {have ? "In your ingredients" : `unlocks ${item.dishCount} dish${item.dishCount === 1 ? "" : "es"}`}
+                    {have
+                      ? "In your ingredients"
+                      : item.marginal > 0
+                        ? `unlocks ${item.marginal} more dish${item.marginal === 1 ? "" : "es"}`
+                        : `in ${item.dishCount} dish${item.dishCount === 1 ? "" : "es"}`}
                   </span>
                 </button>
               );
