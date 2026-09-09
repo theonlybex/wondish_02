@@ -446,6 +446,27 @@ export default function DailyMealPlanView({
         </div>
       )}
 
+      {/* Always-reachable New-week action (a plan already fills today, so the
+          gated panel below is hidden — this is the visible entry point + error). */}
+      {startDate && menus.length > 0 && (
+        <div
+          className="flex items-center justify-between gap-3 mb-4 rounded-2xl px-4 py-3 border border-dashed"
+          style={{ borderColor: "#812549", background: "rgba(129,37,73,0.04)" }}
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-semibold" style={{ color: "#5F1C35" }}>Generate a fresh week</p>
+            {newWeekError ? (
+              <p role="alert" className="text-xs mt-0.5 text-error">{newWeekError}</p>
+            ) : (
+              <p className="text-xs mt-0.5" style={{ color: "#848181" }}>
+                Rebuilds 7 days from today using your ingredients — replaces the current week.
+              </p>
+            )}
+          </div>
+          <Button size="sm" loading={newWeekLoading} onClick={() => void generateNewWeek()}>New week</Button>
+        </div>
+      )}
+
       {/* Entry point to the full-week grid — only when a week exists. */}
       {menus.length > 0 && (
         <div className="flex justify-end mb-2">
