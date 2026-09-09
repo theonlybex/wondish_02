@@ -55,6 +55,10 @@ interface TopUpArgs {
   // Chosen cuisine (real name, not "Surprise me") — every dish is that cuisine
   // and is stamped with the matching Ethnic row.
   cuisine?: string | null;
+  // Basket constraint: when set, every generated dish may use ONLY these
+  // ingredient names (plus free staples). Enforced in the prompt AND by a
+  // deterministic post-filter (the model's claim is never trusted).
+  allowedIngredients?: string[];
 }
 
 function systemPrompt(args: TopUpArgs, total: number): string {
@@ -71,6 +75,9 @@ function systemPrompt(args: TopUpArgs, total: number): string {
   const cuisine = args.cuisine
     ? `\n- EVERY dish must be authentic ${args.cuisine} cuisine.`
     : "";
+  const basket = args.allowedIngredients && args.allowedIngredients.length > 0
+    ? `\n- Every dish may use ONLY these ingredients (plus salt, pepper, water): ${args.allowedIngredients.join(", ")}. Use no other ingredient.`
+    : "";
   return [
     `You are Clara, Wondish's nutrition assistant. Generate ${total} realistic, home-cookable ${args.cuisine ? args.cuisine + " " : ""}dishes to expand a meal-plan catalog:`,
     perType,
@@ -82,6 +89,7 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     `- mealType must be exactly one of: ${args.requests.map((r) => r.mealTypeName).join(", ")}.`,
     args.cuisine ? `- Vary proteins and dishes within ${args.cuisine} cuisine; avoid near-duplicates.` : `- Vary cuisines and proteins; avoid near-duplicates of each other.`,
     cuisine,
+    basket,
     banned,
   ].join("\n");
 }
@@ -155,9 +163,22 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
   // Deterministic gates — model claims are never trusted.
   const typeByName = new Map(requests.map((r) => [r.mealTypeName.toLowerCase(), r]));
   const seen = new Set(args.existingNames);
+  // Basket constraint (deterministic): reject any dish using an ingredient not
+  // in the allowed basket (staples are free). The prompt asks for it; this
+  // enforces it.
+  const BASKET_STAPLES = new Set(["salt", "pepper", "black pepper", "water"]);
+  const allowed = args.allowedIngredients
+    ? new Set(args.allowedIngredients.map((n) => n.trim().toLowerCase()))
+    : null;
+  const withinBasket = (r: FridgeRecipe): boolean =>
+    !allowed ||
+    r.usesIngredients.every(
+      (n) => allowed.has(n.trim().toLowerCase()) || BASKET_STAPLES.has(n.trim().toLowerCase())
+    );
   const accepted: { recipe: FridgeRecipe; mealTypeId: string }[] = [];
   for (const r of applyAllergenFilter(recipes, args.matchers)) {
     if (accepted.length >= total) break;
+    if (!withinBasket(r)) continue;
     if (!passesSanity(r)) continue;
     const slot = typeByName.get((r.mealType ?? "").toLowerCase());
     if (!slot) continue;
