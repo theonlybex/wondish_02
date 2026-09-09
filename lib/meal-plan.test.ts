@@ -958,3 +958,20 @@ test("excludeRecipeIds: reuses an excluded dish when it's the only option", asyn
   const { rows } = await build("p1", START, 1, { windowDays: 7, excludeRecipeIds: new Set(["only"]) });
   assert.ok(rows.some((r) => r.recipeId === "only"), "the excluded dish is reused when nothing else fits (soft exclusion)");
 });
+
+test("near-duplicate guard: two dishes with the same ingredients aren't both used in a week", async () => {
+  const pool = [
+    makeRecipe({ id: "dup1", mealTypeId: MT_L.id, calories: 600, ingredients: ["chicken", "broccoli"] }),
+    makeRecipe({ id: "dup2", mealTypeId: MT_L.id, calories: 600, ingredients: ["chicken", "broccoli"] }),
+  ];
+  for (let i = 0; i < 6; i++) {
+    pool.push(makeRecipe({ id: `d${i}`, mealTypeId: MT_L.id, calories: 600, ingredients: [`prot${i}`, `veg${i}`] }));
+  }
+  setDb(makePatient(), [MT_L, MT_S], pool);
+  const { rows } = await build("p1", START, 1, { windowDays: 7 });
+  const lunchIds = rows.filter((r) => r.mealTypeId === MT_L.id).map((r) => r.recipeId);
+  assert.ok(
+    !(lunchIds.includes("dup1") && lunchIds.includes("dup2")),
+    "two dishes with the same ingredient signature should not both appear in one week"
+  );
+});

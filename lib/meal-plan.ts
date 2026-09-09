@@ -50,6 +50,17 @@ type RecipeCandidate = {
   ingredients: { ingredient: { name: string } }[];
 };
 
+// A dish's "sameness" signature: its sorted, non-staple ingredient names. Two
+// dishes with the same signature are near-duplicates (same components) even
+// with different ids/names — used to keep a week varied beyond exact-id repeats
+// (e.g. "grilled chicken + roasted vegetables" appearing on two days).
+const SIG_STAPLES = new Set(["salt", "pepper", "black pepper", "water"]);
+function dishSignature(ings: { ingredient: { name: string } }[]): string {
+  return Array.from(
+    new Set(ings.map((i) => i.ingredient.name.trim().toLowerCase()).filter((n) => n && !SIG_STAPLES.has(n)))
+  ).sort().join("|");
+}
+
 function pickByMotivation(
   candidates: RecipeCandidate[],
   motivationNames: string[],
@@ -373,6 +384,8 @@ export async function buildMealPlanMenus(
   // weekUsedIds resets every 7 days — prevents recipe exhaustion while still
   // ensuring no recipe repeats within the same week.
   const weekUsedIds = new Set<string>();
+  // Near-duplicate guard within the week: signatures of dishes already used.
+  const weekUsedSignatures = new Set<string>();
   // Cross-week variety: dishes from the previous week are avoided all week
   // (soft — the fallback tier still allows them if the pool is exhausted). Not
   // cleared by the 7-day weekUsedIds reset, so it holds for the whole build.
@@ -388,7 +401,7 @@ export async function buildMealPlanMenus(
 
   const current = new Date(startDate);
   while (current <= endDate) {
-    if (dayIndex % 7 === 0) weekUsedIds.clear();
+    if (dayIndex % 7 === 0) { weekUsedIds.clear(); weekUsedSignatures.clear(); }
     dayIndex++;
 
     // One schedule for every direction: gradual deficit (lose), gradual
@@ -465,7 +478,7 @@ export async function buildMealPlanMenus(
             (r.dishType !== null && dishNames.has(r.dishType.name.toLowerCase()))) &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
           (r.subFamily === null || !mealSubFamilies.has(r.subFamily)) &&
-          !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id)));
+          !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id) || weekUsedSignatures.has(dishSignature(r.ingredients))));
         // First attempt: exclude recipes already used this week AND last week's
         // dishes (cross-week variety). Runs whenever either set is non-empty —
         // so day 1 of a week still honors the previous-week exclusion.
@@ -479,6 +492,7 @@ export async function buildMealPlanMenus(
 
       const addRecipe = (recipe: RecipeCandidate) => {
         trackChosen(recipe, dailyFamilies, mealSubFamilies, weekUsedIds);
+        weekUsedSignatures.add(dishSignature(recipe.ingredients));
         mealCalories += recipe.calories ?? 0;
         dayCalories  += recipe.calories ?? 0;
         menus.push({ patientId, recipeId: recipe.id, mealTypeId: mealType.id, date: new Date(current), planVersion });
@@ -559,7 +573,7 @@ export async function buildMealPlanMenus(
           r.ingredients.length > 0 && r.description !== null &&
           r.calories !== null && r.calories >= minCals && r.calories <= maxCals &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
-          !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id)));
+          !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id) || weekUsedSignatures.has(dishSignature(r.ingredients))));
         let extraCandidates = weekUsedIds.size > 0 || excludeRecipeIds.size > 0
           ? selectionPool.filter((r) => matchesExtra(r, true))
           : [];
@@ -573,6 +587,7 @@ export async function buildMealPlanMenus(
         dayCalories += extraCals;
         extraCount++;
         weekUsedIds.add(extra.id);
+        weekUsedSignatures.add(dishSignature(extra.ingredients));
         if (extra.family && !isBeverageExempt(extra)) dailyFamilies.add(extra.family);
         menus.push({ patientId, recipeId: extra.id, mealTypeId: snackMealType.id, date: new Date(current), planVersion });
       }
