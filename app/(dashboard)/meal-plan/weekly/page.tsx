@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { startOfWeek, addDays, format } from "date-fns";
+import { addDays, format } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import Link from "next/link";
@@ -14,56 +14,47 @@ export default async function WeeklyPlanPage() {
   const account = await getAccount(userId);
   if (!account) redirect("/login");
 
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-  const weekEnd = addDays(weekStart, 6);
-  weekEnd.setHours(23, 59, 59, 999);
-
-  const menuInclude = {
-    recipe: {
-      include: {
-        mealType: true,
-        ingredients: { include: { ingredient: true } },
-      },
-    },
-    mealType: true,
-  } as const;
-
   const patient = await prisma.patient.findFirst({
     where: { account: { clerkId: userId } },
-    select: { id: true, mealPlanStartDate: true, profileCompleted: true, activePlanVersion: true },
+    select: { activePlanVersion: true },
   });
 
-  // Show only the active plan version. First-time generation is triggered from
-  // the daily meal-plan view (Strategy B) — this page never generates.
+  // The current rolling window is the upcoming days of the active plan. Load
+  // from today forward (capped generously past a 7-day week).
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const rangeEnd = addDays(today, 13);
+  rangeEnd.setHours(23, 59, 59, 999);
+
   const menus = await prisma.menu.findMany({
     where: {
       patient: { account: { clerkId: userId } },
       planVersion: patient?.activePlanVersion ?? 0,
-      date: { gte: weekStart, lte: weekEnd },
+      date: { gte: today, lte: rangeEnd },
     },
-    include: menuInclude,
+    include: {
+      recipe: {
+        include: {
+          mealType: true,
+          ethnic: true,
+          ingredients: { include: { ingredient: true } },
+        },
+      },
+      mealType: true,
+    },
     orderBy: [{ date: "asc" }, { mealType: { name: "asc" } }],
   });
 
-  const weekLabel = (() => {
-    const s = weekStart;
-    const e = weekEnd;
+  const label = (() => {
+    if (menus.length === 0) return "";
+    const dates = menus.map((m) => new Date(m.date)).sort((a, b) => a.getTime() - b.getTime());
+    const s = dates[0];
+    const e = dates[dates.length - 1];
     const sMonth = s.toLocaleDateString("en-US", { month: "short" });
     const eMonth = e.toLocaleDateString("en-US", { month: "short" });
-    const sDay   = s.getDate();
-    const eDay   = e.getDate();
-    const year   = e.getFullYear();
     return sMonth === eMonth
-      ? `${sMonth} ${sDay} – ${eDay}, ${year}`
-      : `${sMonth} ${sDay} – ${eMonth} ${eDay}, ${year}`;
-  })();
-
-  const weekNumber = (() => {
-    const d = new Date(weekStart);
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-    const jan4 = new Date(d.getFullYear(), 0, 4);
-    return 1 + Math.round(((d.getTime() - jan4.getTime()) / 86400000 - 3 + ((jan4.getDay() + 6) % 7)) / 7);
+      ? `${sMonth} ${s.getDate()} – ${e.getDate()}, ${e.getFullYear()}`
+      : `${sMonth} ${s.getDate()} – ${eMonth} ${e.getDate()}, ${e.getFullYear()}`;
   })();
 
   return (
@@ -76,7 +67,6 @@ export default async function WeeklyPlanPage() {
         .wp { animation: wp-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
       `}</style>
 
-      {/* ── Header ─────────────────────────────────────────────── */}
       <div className="wp mb-8" style={{ animationDelay: "0ms" }}>
         <Link
           href="/meal-plan"
@@ -89,53 +79,10 @@ export default async function WeeklyPlanPage() {
           Meal Plan
         </Link>
 
-        <div className="flex items-end justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <p className="text-3xl font-bold text-[#1E1A1A]">Weekly Plan</p>
-              <span
-                className="text-[9px] font-bold tracking-[0.18em] uppercase px-2.5 py-1 rounded-full"
-                style={{ background: "rgba(129,37,73,0.1)", color: "#812549" }}
-              >
-                Week {weekNumber}
-              </span>
-            </div>
-            <p className="text-sm font-medium" style={{ color: "#848181" }}>{weekLabel}</p>
-          </div>
-
-          <div className="flex gap-1 mb-0.5">
-            {["M","T","W","T","F","S","S"].map((d, i) => {
-              const dayDate = addDays(weekStart, i);
-              const isToday = dayDate.toDateString() === new Date().toDateString();
-              return (
-                <div
-                  key={i}
-                  className="w-8 h-8 rounded-lg flex flex-col items-center justify-center"
-                  style={{
-                    background: isToday ? "rgba(129,37,73,0.15)" : "transparent",
-                    border: isToday ? "1px solid rgba(129,37,73,0.3)" : "1px solid transparent",
-                  }}
-                >
-                  <span
-                    className="text-[8px] font-bold uppercase leading-none"
-                    style={{ color: isToday ? "#812549" : "#ABA6A6" }}
-                  >
-                    {d}
-                  </span>
-                  <span
-                    className="text-[10px] font-bold leading-none mt-0.5"
-                    style={{ color: isToday ? "#812549" : "#CCC6C6" }}
-                  >
-                    {dayDate.getDate()}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <p className="text-3xl font-bold text-[#1E1A1A]">Your week</p>
+        {label && <p className="text-sm font-medium mt-2" style={{ color: "#848181" }}>{label}</p>}
       </div>
 
-      {/* ── Grid ───────────────────────────────────────────────── */}
       <div
         className="wp rounded-2xl overflow-hidden"
         style={{
@@ -144,10 +91,7 @@ export default async function WeeklyPlanPage() {
           boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)",
         }}
       >
-        <WeeklyMealPlanGrid
-          initialMenus={menus as never}
-          initialWeekStart={weekStart}
-        />
+        <WeeklyMealPlanGrid menus={menus as never} />
       </div>
     </div>
   );

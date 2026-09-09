@@ -446,6 +446,22 @@ export default function DailyMealPlanView({
         </div>
       )}
 
+      {/* Entry point to the full-week grid — only when a week exists. */}
+      {menus.length > 0 && (
+        <div className="flex justify-end mb-2">
+          <a
+            href="/meal-plan/weekly"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold hover:opacity-80 transition-opacity"
+            style={{ color: "#812549" }}
+          >
+            View full week
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </a>
+        </div>
+      )}
+
       {/* Date nav + calorie pill */}
       <div className="flex items-center mb-6">
         {atBackLimit ? (
