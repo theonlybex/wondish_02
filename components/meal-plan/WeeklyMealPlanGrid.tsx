@@ -93,8 +93,7 @@ export default function WeeklyMealPlanGrid({ menus }: { menus: MenuEntry[] }) {
                   <td key={dateKey} className="py-3 px-2 align-top">
                     {menu ? (
                       <div className="flex flex-col items-center text-center">
-                        <span className="text-2xl" aria-hidden="true">{menu.recipe.emoji ?? "🍽"}</span>
-                        <p className="text-navy text-xs font-medium mt-1 line-clamp-2">
+                        <p className="text-navy text-xs font-medium line-clamp-2">
                           {menu.recipe.name}
                         </p>
                         {menu.recipe.ethnic?.name && (
