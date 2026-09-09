@@ -943,3 +943,18 @@ test("basket: a dish needing a non-basket ingredient is never selected", async (
   assert.ok(rows.length > 0);
   assert.ok(rows.every((r) => r.recipeId !== "out"), "non-basket dish must never be selected");
 });
+
+test("excludeRecipeIds: last week's dishes are avoided when alternatives exist", async () => {
+  const pool = [makeRecipe({ id: "old", mealTypeId: MT_L.id, calories: 600 })];
+  for (let i = 0; i < 10; i++) pool.push(makeRecipe({ id: `new${i}`, mealTypeId: MT_L.id, calories: 600 }));
+  setDb(makePatient(), [MT_L, MT_S], pool);
+  const { rows } = await build("p1", START, 1, { windowDays: 7, excludeRecipeIds: new Set(["old"]) });
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((r) => r.recipeId !== "old"), "an excluded (last-week) dish is avoided when alternatives exist");
+});
+
+test("excludeRecipeIds: reuses an excluded dish when it's the only option", async () => {
+  setDb(makePatient(), [MT_L, MT_S], [makeRecipe({ id: "only", mealTypeId: MT_L.id, calories: 600 })]);
+  const { rows } = await build("p1", START, 1, { windowDays: 7, excludeRecipeIds: new Set(["only"]) });
+  assert.ok(rows.some((r) => r.recipeId === "only"), "the excluded dish is reused when nothing else fits (soft exclusion)");
+});

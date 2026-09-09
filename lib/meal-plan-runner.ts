@@ -72,7 +72,7 @@ export async function regeneratePlan(
   patientId: string,
   startDate: Date,
   deps: RunnerDeps = defaultDeps,
-  opts: { claraFirst?: boolean; cuisine?: string | null; windowDays?: number; anchorDate?: Date; basket?: Set<string> } = {},
+  opts: { claraFirst?: boolean; cuisine?: string | null; windowDays?: number; anchorDate?: Date; basket?: Set<string>; excludeRecipeIds?: Set<string> } = {},
 ): Promise<number> {
   const stuckCutoff = new Date(Date.now() - STUCK_AFTER_MS);
 

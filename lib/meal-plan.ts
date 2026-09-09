@@ -142,6 +142,7 @@ export async function buildMealPlanMenus(
     windowDays?: number;
     anchorDate?: Date;
     basket?: Set<string>;
+    excludeRecipeIds?: Set<string>;
   } = {},
 ): Promise<BuildResult> {
   const patient = await prisma.patient.findUnique({
@@ -371,6 +372,10 @@ export async function buildMealPlanMenus(
   // weekUsedIds resets every 7 days — prevents recipe exhaustion while still
   // ensuring no recipe repeats within the same week.
   const weekUsedIds = new Set<string>();
+  // Cross-week variety: dishes from the previous week are avoided all week
+  // (soft — the fallback tier still allows them if the pool is exhausted). Not
+  // cleared by the 7-day weekUsedIds reset, so it holds for the whole build.
+  const excludeRecipeIds = opts.excludeRecipeIds ?? new Set<string>();
   let dayIndex = 0;
 
   // Day number is measured from the fixed anchor (day-1 of the deficit
@@ -459,9 +464,11 @@ export async function buildMealPlanMenus(
             (r.dishType !== null && dishNames.has(r.dishType.name.toLowerCase()))) &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
           (r.subFamily === null || !mealSubFamilies.has(r.subFamily)) &&
-          !(excludeUsed && weekUsedIds.has(r.id));
-        // First attempt: exclude recipes already used this week
-        if (weekUsedIds.size > 0) {
+          !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id)));
+        // First attempt: exclude recipes already used this week AND last week's
+        // dishes (cross-week variety). Runs whenever either set is non-empty —
+        // so day 1 of a week still honors the previous-week exclusion.
+        if (weekUsedIds.size > 0 || excludeRecipeIds.size > 0) {
           const fresh = selectionPool.filter((r) => matches(r, true));
           if (fresh.length > 0) return fresh;
         }
@@ -551,8 +558,8 @@ export async function buildMealPlanMenus(
           r.ingredients.length > 0 && r.description !== null &&
           r.calories !== null && r.calories >= minCals && r.calories <= maxCals &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
-          !(excludeUsed && weekUsedIds.has(r.id));
-        let extraCandidates = weekUsedIds.size > 0
+          !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id)));
+        let extraCandidates = weekUsedIds.size > 0 || excludeRecipeIds.size > 0
           ? selectionPool.filter((r) => matchesExtra(r, true))
           : [];
         if (extraCandidates.length === 0) {

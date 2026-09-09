@@ -21,7 +21,7 @@ export async function POST() {
 
   const patient = await prisma.patient.findFirst({
     where: { account: { clerkId: userId } },
-    select: { id: true, profileCompleted: true, mealPlanStartDate: true },
+    select: { id: true, profileCompleted: true, mealPlanStartDate: true, activePlanVersion: true },
   });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
   if (!patient.profileCompleted) return NextResponse.json({ error: "Profile not complete" }, { status: 422 });
@@ -46,12 +46,22 @@ export async function POST() {
   const anchor = patient.mealPlanStartDate ? new Date(patient.mealPlanStartDate) : today;
   const basket = new Set(names.map((n) => n.trim().toLowerCase()));
 
+  // Cross-week variety: avoid the dishes the current (about-to-be-replaced)
+  // week used, so consecutive weeks don't repeat. Soft — the builder falls back
+  // to reuse if the basket pool can't fill a slot otherwise.
+  const prevWeek = await prisma.menu.findMany({
+    where: { patientId: patient.id, planVersion: patient.activePlanVersion },
+    select: { recipeId: true },
+  });
+  const excludeRecipeIds = new Set(prevWeek.map((m) => m.recipeId));
+
   try {
     const count = await regeneratePlan(patient.id, today, undefined, {
       claraFirst: true,
       windowDays: 7,
       anchorDate: anchor,
       basket,
+      excludeRecipeIds,
     });
     return NextResponse.json({ ok: true, count });
   } catch (err) {
