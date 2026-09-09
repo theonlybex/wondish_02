@@ -74,6 +74,9 @@ export async function POST(req: NextRequest) {
       basket,
       cuisine: normalizeCuisine(cuisine),
       claraFirst: true,
+      // One day needs only ~1 dish per slot — generate a small pool so the
+      // model call stays fast (was 28 dishes for a single day).
+      claraPerType: 2,
     });
     if (rows.length === 0) {
       return NextResponse.json(

@@ -143,6 +143,7 @@ export async function buildMealPlanMenus(
     anchorDate?: Date;
     basket?: Set<string>;
     excludeRecipeIds?: Set<string>;
+    claraPerType?: number; // dishes to generate per meal type (default 7)
   } = {},
 ): Promise<BuildResult> {
   const patient = await prisma.patient.findUnique({
@@ -316,7 +317,7 @@ export async function buildMealPlanMenus(
   // One week of dishes: 7 per meal type → 7 distinct breakfasts/lunches/
   // dinners/snacks, i.e. a full week of variety. The builder then fills the
   // (unchanged) plan from these, repeating week to week per its no-repeat rule.
-  const CLARA_PER_TYPE = 7;
+  const CLARA_PER_TYPE = opts.claraPerType ?? 7;
   try {
     const baseMealCals = computeMealCalories(baseTDEE);
     const thin: TopUpRequest[] = mealTypes
