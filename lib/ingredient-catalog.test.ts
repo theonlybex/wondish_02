@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { INGREDIENT_CATALOG, catalogItemNames } from "./ingredient-catalog";
+import { INGREDIENT_CATALOG, catalogItemNames, tasteLevels } from "./ingredient-catalog";
 import { classifyIngredient } from "./ingredient-categories";
 
 test("catalog item names are unique", () => {
@@ -8,17 +8,20 @@ test("catalog item names are unique", () => {
   assert.equal(names.length, new Set(names.map((n) => n.toLowerCase())).size);
 });
 
-// The readiness gate keys off protein/carb/vegetable, so every item in those
-// levels must classify into its own category — otherwise selecting e.g. Tilapia
-// wouldn't count as a protein. (fruit/dairy/fat don't gate readiness.)
-for (const key of ["protein", "carb", "vegetable"] as const) {
-  test(`every ${key}-level catalog item classifies as ${key}`, () => {
-    const level = INGREDIENT_CATALOG.find((l) => l.key === key);
-    assert.ok(level, `missing ${key} level`);
-    for (const g of level!.groups) {
-      for (const item of g.items) {
-        assert.equal(classifyIngredient(item), key, `"${item}" should classify as ${key}`);
-      }
-    }
-  });
-}
+test("taste levels are the favorite-able groups, proteins first", () => {
+  const keys = tasteLevels().map((l) => l.key);
+  assert.equal(keys[0], "proteins");
+  assert.ok(keys.every((k) => INGREDIENT_CATALOG.find((c) => c.key === k)?.taste));
+});
+
+// The readiness gate keys off protein/carb, so those catalog categories must
+// classify consistently (or picking Salmon wouldn't count as a protein).
+test("every 'proteins' item classifies as protein", () => {
+  const cat = INGREDIENT_CATALOG.find((c) => c.key === "proteins")!;
+  for (const item of cat.items) assert.equal(classifyIngredient(item), "protein", `"${item}"`);
+});
+
+test("every 'grains' item classifies as carb", () => {
+  const cat = INGREDIENT_CATALOG.find((c) => c.key === "grains")!;
+  for (const item of cat.items) assert.equal(classifyIngredient(item), "carb", `"${item}"`);
+});

@@ -7,7 +7,7 @@ import {
   evaluateDishAgainstProfile,
   PATIENT_DIET_INCLUDE,
 } from "@/lib/diet-match";
-import { INGREDIENT_CATALOG, catalogItemNames } from "@/lib/ingredient-catalog";
+import { tasteLevels, catalogItemNames } from "@/lib/ingredient-catalog";
 
 // GET /api/taste/ingredients — the curated ingredient catalog as levels of
 // grouped, selectable items (proteins first). Each item resolves to a real
@@ -52,21 +52,18 @@ export async function GET() {
   });
   const likedById = new Map(prefs.map((p) => [p.ingredientId, p.liked]));
 
-  const levels = INGREDIENT_CATALOG.map((level) => ({
-    key: level.key,
-    title: level.title,
-    groups: level.groups
-      .map((g) => ({
-        label: g.label,
-        items: g.items
-          .filter((name) => !isBanned(name) && idByName.has(name))
-          .map((name) => {
-            const id = idByName.get(name)!;
-            return { id, name, liked: likedById.get(id) === true };
-          }),
-      }))
-      .filter((g) => g.items.length > 0),
-  })).filter((l) => l.groups.length > 0);
+  const levels = tasteLevels()
+    .map((level) => ({
+      key: level.key,
+      title: level.title,
+      items: level.items
+        .filter((name) => !isBanned(name) && idByName.has(name))
+        .map((name) => {
+          const id = idByName.get(name)!;
+          return { id, name, liked: likedById.get(id) === true };
+        }),
+    }))
+    .filter((l) => l.items.length > 0);
 
   return NextResponse.json({ levels });
 }

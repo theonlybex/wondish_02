@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 interface Item { id: string; name: string; liked: boolean }
-interface Group { label: string; items: Item[] }
-interface Level { key: string; title: string; groups: Group[] }
+interface Level { key: string; title: string; items: Item[] }
 
 export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit" }) {
   const router = useRouter();
@@ -25,7 +24,7 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
         const lv: Level[] = data.levels ?? [];
         setLevels(lv);
         const pre = new Set<string>();
-        for (const l of lv) for (const g of l.groups) for (const it of g.items) if (it.liked) pre.add(it.id);
+        for (const l of lv) for (const it of l.items) if (it.liked) pre.add(it.id);
         setSelected(pre);
       })
       .finally(() => setLoading(false));
@@ -127,7 +126,7 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
   }
 
   const level = levels[levelIdx];
-  const selectedInLevel = level.groups.reduce((n, g) => n + g.items.filter((it) => selected.has(it.id)).length, 0);
+  const selectedInLevel = level.items.filter((it) => selected.has(it.id)).length;
   const isLast = levelIdx === levels.length - 1;
 
   return (
@@ -165,30 +164,23 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
         ))}
       </div>
 
-      {/* Grouped selectable chips */}
-      <div className="space-y-4">
-        {level.groups.map((g) => (
-          <div key={g.label}>
-            <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: "#ABA6A6" }}>{g.label}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {g.items.map((it) => {
-                const sel = selected.has(it.id);
-                return (
-                  <button
-                    key={it.id}
-                    type="button"
-                    onClick={() => toggle(it.id)}
-                    aria-pressed={sel}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${sel ? "text-white" : "text-[#5F1C35] bg-white hover:bg-[#812549]/10"}`}
-                    style={sel ? { background: "#812549", borderColor: "#812549" } : { borderColor: "rgba(129,37,73,0.3)" }}
-                  >
-                    {sel ? "✓ " : ""}{it.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+      {/* Selectable chips */}
+      <div className="flex flex-wrap gap-1.5">
+        {level.items.map((it) => {
+          const sel = selected.has(it.id);
+          return (
+            <button
+              key={it.id}
+              type="button"
+              onClick={() => toggle(it.id)}
+              aria-pressed={sel}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${sel ? "text-white" : "text-[#5F1C35] bg-white hover:bg-[#812549]/10"}`}
+              style={sel ? { background: "#812549", borderColor: "#812549" } : { borderColor: "rgba(129,37,73,0.3)" }}
+            >
+              {sel ? "✓ " : ""}{it.name}
+            </button>
+          );
+        })}
       </div>
 
       {/* Sticky Back / Next */}
