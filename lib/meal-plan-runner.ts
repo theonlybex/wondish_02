@@ -72,7 +72,7 @@ export async function regeneratePlan(
   patientId: string,
   startDate: Date,
   deps: RunnerDeps = defaultDeps,
-  opts: { claraFirst?: boolean; cuisine?: string | null } = {},
+  opts: { claraFirst?: boolean; cuisine?: string | null; windowDays?: number; anchorDate?: Date; basket?: Set<string> } = {},
 ): Promise<number> {
   const stuckCutoff = new Date(Date.now() - STUCK_AFTER_MS);
 
@@ -119,7 +119,9 @@ export async function regeneratePlan(
       where: { id: patientId },
       data: {
         activePlanVersion: nextVersion,
-        mealPlanStartDate: start,
+        // Rolling weeks keep the original anchor (day-1 of the calorie ramp);
+        // only a fresh plan (no anchor passed) stamps today's start.
+        mealPlanStartDate: opts.anchorDate ?? start,
         mealPlanStatus: "READY",
         mealPlanStale: false,
         mealPlanError: null,
