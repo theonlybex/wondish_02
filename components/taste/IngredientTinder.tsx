@@ -25,13 +25,38 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
   const [swiping, setSwiping] = useState(false);
   const [done, setDone] = useState(false);
   const [likedCount, setLikedCount] = useState(0);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
-  useEffect(() => {
-    fetch(`/api/taste/ingredients${mode === "edit" ? "?edit=1" : ""}`)
+  const loadDeck = () => {
+    setLoading(true);
+    return fetch(`/api/taste/ingredients${mode === "edit" ? "?edit=1" : ""}`)
       .then((r) => r.json())
       .then((data) => setLevels(data.levels ?? []))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    void loadDeck();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
+
+  // Clear every rating and rate favorites from scratch.
+  const startOver = async () => {
+    setResetting(true);
+    try {
+      await fetch("/api/taste/ingredients/reset", { method: "POST" });
+    } catch {
+      /* proceed anyway — the deck reload reflects server state */
+    }
+    setDone(false);
+    setLevelIdx(0);
+    setCardIdx(0);
+    setLikedCount(0);
+    setConfirmReset(false);
+    await loadDeck();
+    setResetting(false);
+  };
 
   // Mark taste as complete so the layout gate stops redirecting here.
   useEffect(() => {
@@ -106,6 +131,14 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
         >
           {mode === "edit" ? "Back to ingredients →" : "Continue to what to buy →"}
         </button>
+        <button
+          onClick={() => void startOver()}
+          disabled={resetting}
+          className="mt-4 text-xs font-semibold hover:text-navy transition-colors disabled:opacity-50"
+          style={{ color: "#ABA6A6" }}
+        >
+          {resetting ? "Resetting…" : "Start over from scratch"}
+        </button>
       </div>
     );
   }
@@ -115,6 +148,29 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
 
   return (
     <div className="max-w-sm mx-auto">
+      {/* Start over */}
+      <div className="flex justify-end items-center mb-1 h-5">
+        {confirmReset ? (
+          <span className="flex items-center gap-2 text-[11px]">
+            <span style={{ color: "#848181" }}>Clear all your ratings?</span>
+            <button onClick={() => void startOver()} disabled={resetting} className="font-bold text-error disabled:opacity-50">
+              Start over
+            </button>
+            <button onClick={() => setConfirmReset(false)} className="font-semibold" style={{ color: "#848181" }}>
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <button
+            onClick={() => setConfirmReset(true)}
+            className="text-[11px] hover:text-navy transition-colors"
+            style={{ color: "#ABA6A6" }}
+          >
+            Start over
+          </button>
+        )}
+      </div>
+
       {/* Level header */}
       <div className="text-center mb-4">
         <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#B75E78" }}>
