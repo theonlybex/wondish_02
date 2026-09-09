@@ -50,8 +50,18 @@ export default function WeeklyMealPlanGrid({ menus }: { menus: WeekMenu[] }) {
       {dateKeys.map((k) => {
         const day = new Date(`${k}T00:00:00`);
         const isToday = k === todayKey;
-        const meals = byDate.get(k)!.slice().sort((a, b) => mealRank(a.mealType?.name) - mealRank(b.mealType?.name));
+        const meals = byDate.get(k)!;
         const dayKcal = meals.reduce((s, m) => s + (m.recipe.calories ?? 0), 0);
+        // Group by meal type — a single meal can be several dishes (a complete
+        // meal + a side/filler, or a dish + a beverage), all stamped with the
+        // slot's meal type. Show the label once with its dishes listed under it.
+        const groups = new Map<string, WeekMenu[]>();
+        for (const m of meals) {
+          const name = m.mealType?.name ?? "Other";
+          if (!groups.has(name)) groups.set(name, []);
+          groups.get(name)!.push(m);
+        }
+        const orderedGroups = Array.from(groups.entries()).sort((a, b) => mealRank(a[0]) - mealRank(b[0]));
 
         return (
           <div
@@ -90,24 +100,32 @@ export default function WeeklyMealPlanGrid({ menus }: { menus: WeekMenu[] }) {
               )}
             </div>
 
-            {/* Meals */}
+            {/* Meals — one row per meal type, dishes stacked under it */}
             <div className="divide-y divide-[#EAE4CA]">
-              {meals.map((m) => (
-                <div key={m.id} className="flex items-center gap-3 px-4 py-3">
-                  <span className="w-16 shrink-0 text-[10px] font-bold uppercase tracking-wide" style={{ color: "#ABA6A6" }}>
-                    {m.mealType?.name}
+              {orderedGroups.map(([mtName, dishes]) => (
+                <div key={mtName} className="flex gap-3 px-4 py-3">
+                  <span className="w-16 shrink-0 pt-0.5 text-[10px] font-bold uppercase tracking-wide" style={{ color: "#ABA6A6" }}>
+                    {mtName}
                   </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-navy truncate">{m.recipe.name}</p>
-                    {m.recipe.ethnic?.name && (
-                      <span className="text-[10px] font-medium" style={{ color: "#812549" }}>{m.recipe.ethnic.name}</span>
-                    )}
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    {dishes.map((m) => (
+                      <div key={m.id} className="flex items-center gap-2">
+                        <p className="flex-1 min-w-0 text-sm font-semibold text-navy truncate">
+                          {m.recipe.name}
+                          {m.recipe.ethnic?.name && (
+                            <span className="ml-1.5 text-[10px] font-medium align-middle" style={{ color: "#812549" }}>
+                              {m.recipe.ethnic.name}
+                            </span>
+                          )}
+                        </p>
+                        {m.recipe.calories ? (
+                          <span className="text-[11px] shrink-0 tabular-nums" style={{ color: "#848181" }}>
+                            {m.recipe.calories} kcal
+                          </span>
+                        ) : null}
+                      </div>
+                    ))}
                   </div>
-                  {m.recipe.calories ? (
-                    <span className="text-[11px] shrink-0 tabular-nums" style={{ color: "#848181" }}>
-                      {m.recipe.calories} kcal
-                    </span>
-                  ) : null}
                 </div>
               ))}
             </div>
