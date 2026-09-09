@@ -11,6 +11,7 @@ import { startClaraLoop } from "@/lib/clara/loop";
 import { createAnthropicClient } from "@/lib/clara/anthropic-client";
 import { parseClaraRequestOptions } from "@/lib/clara/request";
 import { resolveToday } from "@/lib/clara/dates";
+import { buildTodaysPlanText } from "@/lib/clara/today-plan";
 import { maxToolRounds } from "@/lib/clara/budget";
 import {
   CHAT_SKILLS,
@@ -101,12 +102,10 @@ export async function POST(req: NextRequest) {
       }
     : null;
 
-  const systemPrompt = buildSystemPrompt(
-    firstName,
-    buildFoodMapText(patient),
-    activeSkills,
-    promptToday
-  );
+  const systemPrompt =
+    buildSystemPrompt(firstName, buildFoodMapText(patient), activeSkills, promptToday) +
+    // Give Clara today's dishes + steps so she can help with cooking.
+    (patient ? await buildTodaysPlanText(patient.id, resolution.localDate) : "");
 
   const execute = async (
     name: string,
