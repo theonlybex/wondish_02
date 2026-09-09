@@ -17,6 +17,7 @@ import {
 } from "@/lib/caloric-engine";
 import { macroDeviation } from "@/lib/macros";
 import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
+import { isCoveredByBasket } from "@/lib/basket-coverage";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 // Type-only import (erased at runtime). The implementation is loaded lazily at
 // the call site below via dynamic import — a static import here would create a
@@ -135,7 +136,13 @@ export async function buildMealPlanMenus(
   patientId: string,
   startDate: Date,
   planVersion: number,
-  opts: { claraFirst?: boolean; cuisine?: string | null } = {},
+  opts: {
+    claraFirst?: boolean;
+    cuisine?: string | null;
+    windowDays?: number;
+    anchorDate?: Date;
+    basket?: Set<string>;
+  } = {},
 ): Promise<BuildResult> {
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
@@ -224,7 +231,11 @@ export async function buildMealPlanMenus(
     }
   }
 
-  const totalExtraDays = isRampPlan ? rampEndDay + MAINTENANCE_BUFFER_DAYS - 1 : 34;
+  // windowDays caps the plan to a fixed length (rolling weeks); default keeps
+  // the dynamic ramp+buffer / 35-day maintenance length.
+  const totalExtraDays = opts.windowDays && opts.windowDays > 0
+    ? opts.windowDays - 1
+    : isRampPlan ? rampEndDay + MAINTENANCE_BUFFER_DAYS - 1 : 34;
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + totalExtraDays);
   endDate.setHours(23, 59, 59, 999);
@@ -277,6 +288,17 @@ export async function buildMealPlanMenus(
         (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed
       );
 
+  // Basket mode (cache-first): selection is limited to library dishes the
+  // basket fully covers — reusing previously-generated/curated dishes for free.
+  // The generated top-up below is basket-constrained, so its dishes join this
+  // pool too. Without a basket, selectionPool IS recipePool (identical old
+  // behavior), so every read/push below is a no-op change when unset.
+  const selectionPool: PoolRecipe[] = opts.basket
+    ? recipePool.filter((r) =>
+        isCoveredByBasket(r.ingredients.map((ri) => ri.ingredient.name), opts.basket!)
+      )
+    : recipePool;
+
   // ── Clara catalog top-up (hybrid pool) ─────────────────────────────────────
   // When a meal type's eligible pool is thin (small catalog, or heavy bans
   // filtered it down), ask Clara to generate dishes for exactly those slots.
@@ -326,6 +348,7 @@ export async function buildMealPlanMenus(
         existingNames,
         macroTarget,
         cuisine: opts.cuisine ?? null,
+        allowedIngredients: opts.basket ? Array.from(opts.basket) : undefined,
       });
       if (createdIds.length > 0) {
         const created: PoolRecipe[] = await prisma.recipe.findMany({
@@ -338,7 +361,7 @@ export async function buildMealPlanMenus(
           : created.filter(
               (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed
             );
-        recipePool.push(...safe);
+        selectionPool.push(...safe);
       }
     }
   } catch {
@@ -350,6 +373,13 @@ export async function buildMealPlanMenus(
   const weekUsedIds = new Set<string>();
   let dayIndex = 0;
 
+  // Day number is measured from the fixed anchor (day-1 of the deficit
+  // schedule), not this build's start — so a rolling week starting at anchor+7
+  // continues the ramp. Defaults to startDate, i.e. planDay === dayIndex (old
+  // behavior) when no anchor is passed.
+  const anchor = new Date(opts.anchorDate ?? startDate);
+  anchor.setHours(0, 0, 0, 0);
+
   const current = new Date(startDate);
   while (current <= endDate) {
     if (dayIndex % 7 === 0) weekUsedIds.clear();
@@ -357,7 +387,8 @@ export async function buildMealPlanMenus(
 
     // One schedule for every direction: gradual deficit (lose), gradual
     // surplus (gain), or flat maintenance — same shape the projections use.
-    const weekCals    = gradualDailyCals(baseTDEE, dayIndex, direction, minCal, maxDeficit);
+    const planDay     = Math.round((current.getTime() - anchor.getTime()) / 86400000) + 1;
+    const weekCals    = gradualDailyCals(baseTDEE, planDay, direction, minCal, maxDeficit);
     const caloriePlan = computeMealCalories(weekCals);
     // Hard ceiling for the whole day — per-meal windows reach 135% of a meal's
     // target, so without this the assembled day can erase the planned deficit.
@@ -431,11 +462,11 @@ export async function buildMealPlanMenus(
           !(excludeUsed && weekUsedIds.has(r.id));
         // First attempt: exclude recipes already used this week
         if (weekUsedIds.size > 0) {
-          const fresh = recipePool.filter((r) => matches(r, true));
+          const fresh = selectionPool.filter((r) => matches(r, true));
           if (fresh.length > 0) return fresh;
         }
         // Fallback: allow recipe reuse when the weekly pool is exhausted
-        return recipePool.filter((r) => matches(r, false));
+        return selectionPool.filter((r) => matches(r, false));
       };
 
       const addRecipe = (recipe: RecipeCandidate) => {
@@ -522,10 +553,10 @@ export async function buildMealPlanMenus(
           (r.family === null || !dailyFamilies.has(r.family)) &&
           !(excludeUsed && weekUsedIds.has(r.id));
         let extraCandidates = weekUsedIds.size > 0
-          ? recipePool.filter((r) => matchesExtra(r, true))
+          ? selectionPool.filter((r) => matchesExtra(r, true))
           : [];
         if (extraCandidates.length === 0) {
-          extraCandidates = recipePool.filter((r) => matchesExtra(r, false));
+          extraCandidates = selectionPool.filter((r) => matchesExtra(r, false));
         }
         if (extraCandidates.length === 0) break;
         const extra = pickByMotivation(extraCandidates, motivationNames, affinityMap, seenIngredientNames, macroTarget);

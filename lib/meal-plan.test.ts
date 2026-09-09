@@ -50,9 +50,14 @@ const db = {
 
 // Dynamic import so the assignment above runs before lib/db initialises.
 const modPromise = import("./meal-plan");
-async function build(patientId: string, start: Date, version = 1): Promise<BuildResult> {
+async function build(
+  patientId: string,
+  start: Date,
+  version = 1,
+  opts: Record<string, unknown> = {}
+): Promise<BuildResult> {
   const { buildMealPlanMenus } = await modPromise;
-  return buildMealPlanMenus(patientId, start, version);
+  return buildMealPlanMenus(patientId, start, version, opts);
 }
 async function planDayCalories(patientId: string, localDate: string): Promise<number | null> {
   const { getPlanDayCalories } = await modPromise;
@@ -898,4 +903,43 @@ test("alternatives: no bans returns first 3 candidates unfiltered; no calorie ba
   const out = await findAlternatives(dietPatient, { mealTypeId: "mt-lunch" }, db);
   assert.equal(out.length, 3);
   assert.deepEqual(seen[0], { mealTypeId: "mt-lunch", excludeRecipeId: undefined });
+});
+
+// ─── Rolling window + ramp anchor + basket (Phase A) ─────────────────────────
+
+test("windowDays caps the plan to exactly N days", async () => {
+  setDb(makePatient(), ALL_MT, [
+    makeRecipe({ id: "b", mealTypeId: MT_B.id, calories: 500 }),
+    makeRecipe({ id: "l", mealTypeId: MT_L.id, calories: 700 }),
+  ]);
+  const { rows } = await build("p1", START, 1, { windowDays: 7 });
+  const days = new Set(rows.map((r) => dayKey(r.date)));
+  assert.equal(days.size, 7);
+  assert.ok(days.has(dayKey(START)) && days.has(dayKey(addDays(START, 6))));
+  assert.ok(!days.has(dayKey(addDays(START, 7))), "no rows past day 7");
+});
+
+test("anchorDate shifts the window forward and still builds all 7 days", async () => {
+  setDb(makePatient(), ALL_MT, [
+    makeRecipe({ id: "b", mealTypeId: MT_B.id, calories: 500 }),
+    makeRecipe({ id: "l", mealTypeId: MT_L.id, calories: 700 }),
+  ]);
+  const start2 = addDays(START, 7);
+  const { rows } = await build("p1", start2, 1, { windowDays: 7, anchorDate: START });
+  const days = new Set(rows.map((r) => dayKey(r.date)));
+  assert.equal(days.size, 7);
+  assert.ok(days.has(dayKey(start2)) && days.has(dayKey(addDays(START, 13))));
+});
+
+test("basket: a dish needing a non-basket ingredient is never selected", async () => {
+  setDb(makePatient(), [MT_L, MT_S], [
+    makeRecipe({ id: "in", mealTypeId: MT_L.id, calories: 600, ingredients: ["chicken", "rice"] }),
+    makeRecipe({ id: "out", mealTypeId: MT_L.id, calories: 600, ingredients: ["beef", "rice"] }),
+  ]);
+  const { rows } = await build("p1", START, 1, {
+    windowDays: 7,
+    basket: new Set(["chicken", "rice", "broccoli"]),
+  });
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((r) => r.recipeId !== "out"), "non-basket dish must never be selected");
 });
