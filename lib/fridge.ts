@@ -48,6 +48,9 @@ export interface FridgeRecipe {
   // Optional: the dish's cuisine, set when Clara generates a varied ("mixed")
   // batch so each dish can be tagged with its own Ethnic. Ignored elsewhere.
   cuisine?: string;
+  // Optional, whole minutes; persisted to Recipe.prepTime / cookTime.
+  prepMinutes?: number;
+  cookMinutes?: number;
 }
 
 // ── normalizeIngredients ────────────────────────────────────────────────────
@@ -86,6 +89,11 @@ function coerceStringArray(v: unknown): string[] {
 function clampNumber(v: unknown, min: number, max: number, fallback: number): number {
   const n = typeof v === "number" && Number.isFinite(v) ? v : fallback;
   return Math.min(max, Math.max(min, n));
+}
+
+// Whole minutes in [0, 600]; anything else (missing, negative, absurd) is dropped.
+function minutes(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 600 ? Math.round(v) : null;
 }
 
 // servings clamps into the open-at-zero interval (0, MAX_SERVINGS]. Missing
@@ -147,6 +155,8 @@ function parseOneRecipe(raw: unknown, mealTypeHint?: string): FridgeRecipe | nul
     fitsPlan: r.fitsPlan,
     conflicts: coerceStringArray(r.conflicts),
     ...(typeof r.cuisine === "string" && r.cuisine.trim() ? { cuisine: r.cuisine.trim() } : {}),
+    ...(minutes(r.prepMinutes) !== null ? { prepMinutes: minutes(r.prepMinutes)! } : {}),
+    ...(minutes(r.cookMinutes) !== null ? { cookMinutes: minutes(r.cookMinutes)! } : {}),
   };
 }
 
@@ -261,6 +271,8 @@ export const SUGGEST_RECIPES_SCHEMA: { type: "object"; properties: Record<string
           steps: { type: "array", items: { type: "string" } },
           mealType: { type: "string" },
           servings: { type: "number" },
+          prepMinutes: { type: "number" },
+          cookMinutes: { type: "number" },
           perServing: {
             type: "object",
             properties: {

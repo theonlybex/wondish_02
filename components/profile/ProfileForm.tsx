@@ -167,6 +167,22 @@ export default function ProfileForm({
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
+    // Same plausibility bounds as onboarding (stored lbs): 50–1000 lbs / 23–454 kg.
+    {
+      const w = parseFloat(form.weight);
+      const g = form.goalWeight ? parseFloat(form.goalWeight) : null;
+      const range = weightUnitShown === "kg" ? "23 and 454 kg" : "50 and 1000 lbs";
+      if (form.weight && (!Number.isFinite(w) || w < 50 || w > 1000)) {
+        e.preventDefault();
+        setError(`Weight must be between ${range}.`);
+        return;
+      }
+      if (g !== null && (!Number.isFinite(g) || g < 50 || g > 1000)) {
+        e.preventDefault();
+        setError(`Goal weight must be between ${range}.`);
+        return;
+      }
+    }
     e.preventDefault();
     setLoading(true);
     setError("");

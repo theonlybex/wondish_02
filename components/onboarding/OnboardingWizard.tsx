@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
@@ -84,6 +84,52 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
   const [foodPreferenceIds, setFoodPreferenceIds] = useState<string[]>([]);
   const [healthConditionIds, setHealthConditionIds] = useState<string[]>([]);
 
+  // A reload used to restart at 1/9. Draft answers live in sessionStorage
+  // (per tab, gone when the tab closes) and are restored after mount — after,
+  // not during, so server and first client render still match.
+  const DRAFT_KEY = "wondish.onboarding.draft.v1";
+  const [draftRestored, setDraftRestored] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const d = JSON.parse(raw) as Record<string, unknown>;
+        const str = (k: string) => (typeof d[k] === "string" ? (d[k] as string) : null);
+        const arr = (k: string) => (Array.isArray(d[k]) ? (d[k] as string[]) : null);
+        if (typeof d.stepIndex === "number" && d.stepIndex > 0 && d.stepIndex < STEPS.length) setStepIndex(d.stepIndex);
+        if (d.agreedTerms === true) setAgreedTerms(true);
+        if (str("firstName")) setFirstName(str("firstName")!);
+        if (str("lastName")) setLastName(str("lastName")!);
+        if (str("sexAtBirth")) setSexAtBirth(str("sexAtBirth")!);
+        if (str("birthday")) setBirthday(str("birthday")!);
+        if (d.heightUnit === "cm" || d.heightUnit === "ftin") setHeightUnit(d.heightUnit);
+        if (str("heightFt") !== null) setHeightFt(str("heightFt")!);
+        if (str("heightIn") !== null) setHeightIn(str("heightIn")!);
+        if (str("heightCm") !== null) setHeightCm(str("heightCm")!);
+        if (d.weightUnit === "kg" || d.weightUnit === "lbs") setWeightUnit(d.weightUnit);
+        if (str("weight") !== null) setWeight(str("weight")!);
+        if (str("physicalActivityId")) setPhysicalActivityId(str("physicalActivityId")!);
+        if (str("goalWeight") !== null) setGoalWeight(str("goalWeight")!);
+        if (arr("motivationIds")) setMotivationIds(arr("motivationIds")!);
+        if (arr("foodAllergyIds")) setFoodAllergyIds(arr("foodAllergyIds")!);
+        if (arr("foodToAvoidIds")) setFoodToAvoidIds(arr("foodToAvoidIds")!);
+        if (arr("foodPreferenceIds")) setFoodPreferenceIds(arr("foodPreferenceIds")!);
+        if (arr("healthConditionIds")) setHealthConditionIds(arr("healthConditionIds")!);
+      }
+    } catch { /* corrupt or blocked storage: start fresh */ }
+    setDraftRestored(true);
+  }, []);
+  useEffect(() => {
+    if (!draftRestored) return;
+    try {
+      window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+        stepIndex, agreedTerms, firstName, lastName, sexAtBirth, birthday, heightUnit, heightFt, heightIn, heightCm,
+        weightUnit, weight, physicalActivityId, goalWeight, motivationIds, foodAllergyIds, foodToAvoidIds, foodPreferenceIds, healthConditionIds,
+      }));
+    } catch { /* storage unavailable — progress simply isn't kept */ }
+  }, [draftRestored, stepIndex, agreedTerms, firstName, lastName, sexAtBirth, birthday, heightUnit, heightFt, heightIn, heightCm,
+    weightUnit, weight, physicalActivityId, goalWeight, motivationIds, foodAllergyIds, foodToAvoidIds, foodPreferenceIds, healthConditionIds]);
+
   const step = STEPS[stepIndex];
   const progress = Math.round((stepIndex / (STEPS.length - 1)) * 100);
 
@@ -154,8 +200,10 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
     if (step.id === "body") {
       if (heightCmValue() <= 0 || heightCmValue() > 300)
         errs.height = "Please enter your height.";
-      if (weightLbs() <= 0 || weightLbs() > 1500)
+      if (weightLbs() <= 0)
         errs.weight = "Please enter your weight.";
+      else if (weightLbs() < 50 || weightLbs() > 1000)
+        errs.weight = `Weight must be between ${weightUnit === "kg" ? "23 and 454 kg" : "50 and 1000 lbs"}.`;
     }
     if (step.id === "activity") {
       if (!physicalActivityId) errs.activity = "Pick the closest match — you can change it later.";
@@ -615,7 +663,12 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
             <Input
               label={`Goal weight (${weightUnit})`}
               type="number" min="0" step="0.1"
-              placeholder={weightUnit === "kg" ? "63" : "140"}
+              placeholder={
+                // Suggest the healthy target computed two steps earlier, in the user's unit.
+                liveProfile
+                  ? (weightUnit === "kg" ? liveProfile.tbwKg : kgToLbs(liveProfile.tbwKg)).toFixed(0)
+                  : weightUnit === "kg" ? "63" : "140"
+              }
               value={goalWeight}
               onChange={(e) => setGoalWeight(e.target.value)}
               error={fieldErrors.goalWeight}

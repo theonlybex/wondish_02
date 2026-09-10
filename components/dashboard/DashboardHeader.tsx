@@ -125,7 +125,7 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
           </Link>
         ) : (
           <Link href="/pricing" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full border border-[#EAE4CA] text-[#848181] hover:border-primary/30 hover:text-primary hover:bg-primary/5 transition-colors">
-            {t("upgrade")} →
+            {t("upgrade")}
           </Link>
         )}
 
