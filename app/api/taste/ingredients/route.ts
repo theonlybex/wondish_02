@@ -7,7 +7,8 @@ import {
   evaluateDishAgainstProfile,
   PATIENT_DIET_INCLUDE,
 } from "@/lib/diet-match";
-import { tasteLevels, catalogItemNames } from "@/lib/ingredient-catalog";
+import { tasteLevels } from "@/lib/ingredient-catalog";
+import { resolveCatalogIngredientIds } from "@/lib/ingredient-catalog-db";
 
 // GET /api/taste/ingredients — the curated ingredient catalog as levels of
 // grouped, selectable items (proteins first). Each item resolves to a real
@@ -28,28 +29,14 @@ export async function GET() {
   const hasBans = matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
   const isBanned = (name: string) => hasBans && !evaluateDishAgainstProfile([name], matchers).passed;
 
-  // Resolve every catalog item name → Ingredient id (find-or-create).
-  const names = catalogItemNames();
-  const idByName = new Map<string, string>();
-  for (const name of names) {
-    const existing = await prisma.ingredient.findFirst({
-      where: { name: { equals: name, mode: "insensitive" } },
-      select: { id: true },
-    });
-    if (existing) { idByName.set(name, existing.id); continue; }
-    try {
-      const created = await prisma.ingredient.create({ data: { name }, select: { id: true } });
-      idByName.set(name, created.id);
-    } catch {
-      const winner = await prisma.ingredient.findFirst({ where: { name: { equals: name, mode: "insensitive" } }, select: { id: true } });
-      if (winner) idByName.set(name, winner.id);
-    }
-  }
-
-  const prefs = await prisma.patientIngredientPreference.findMany({
-    where: { patientId: patient.id },
-    select: { ingredientId: true, liked: true },
-  });
+  // Resolve every catalog item name → Ingredient id (batched find-or-create).
+  const [idByName, prefs] = await Promise.all([
+    resolveCatalogIngredientIds(),
+    prisma.patientIngredientPreference.findMany({
+      where: { patientId: patient.id },
+      select: { ingredientId: true, liked: true },
+    }),
+  ]);
   const likedById = new Map(prefs.map((p) => [p.ingredientId, p.liked]));
 
   const levels = tasteLevels()

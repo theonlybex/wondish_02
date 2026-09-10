@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
-import { INGREDIENT_CATALOG, catalogItemNames } from "@/lib/ingredient-catalog";
+import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
+import { resolveCatalogIngredientIds } from "@/lib/ingredient-catalog-db";
 
 // GET /api/pantry/catalog — the full ingredient catalog grouped by category,
 // with each item resolved to a real Ingredient id and a `favorite` flag (from
@@ -17,27 +18,13 @@ export async function GET() {
   });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
-  const names = catalogItemNames();
-  const idByName = new Map<string, string>();
-  for (const name of names) {
-    const existing = await prisma.ingredient.findFirst({
-      where: { name: { equals: name, mode: "insensitive" } },
-      select: { id: true },
-    });
-    if (existing) { idByName.set(name, existing.id); continue; }
-    try {
-      const created = await prisma.ingredient.create({ data: { name }, select: { id: true } });
-      idByName.set(name, created.id);
-    } catch {
-      const winner = await prisma.ingredient.findFirst({ where: { name: { equals: name, mode: "insensitive" } }, select: { id: true } });
-      if (winner) idByName.set(name, winner.id);
-    }
-  }
-
-  const favs = await prisma.patientIngredientPreference.findMany({
-    where: { patientId: patient.id, liked: true },
-    select: { ingredientId: true },
-  });
+  const [idByName, favs] = await Promise.all([
+    resolveCatalogIngredientIds(),
+    prisma.patientIngredientPreference.findMany({
+      where: { patientId: patient.id, liked: true },
+      select: { ingredientId: true },
+    }),
+  ]);
   const favoriteIds = new Set(favs.map((f) => f.ingredientId));
 
   const categories = INGREDIENT_CATALOG.map((c) => ({

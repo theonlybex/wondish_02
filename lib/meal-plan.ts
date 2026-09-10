@@ -449,6 +449,9 @@ export async function buildMealPlanMenus(
     let dayCalories = 0;
     const dailyFamilies = new Set<string>();
     const todayProteins = new Set<string>();
+    // Dishes already on today's plate — the one repeat we never allow while
+    // any other eligible dish exists (a week can repeat; a day must not).
+    const todayUsedIds = new Set<string>();
     let lunchTotalCalories = 0; // tracked after lunch to cap dinner
 
     const lunchMealType = mealTypes.find((mt) => mt.name.toLowerCase() === "lunch");
@@ -503,7 +506,7 @@ export async function buildMealPlanMenus(
         const dishNames = dishTypeNames
           ? new Set(dishTypeNames.map((n) => n.toLowerCase()))
           : null;
-        const matches = (r: PoolRecipe, excludeUsed: boolean): boolean =>
+        const base = (r: PoolRecipe): boolean =>
           r.mealTypeId !== null && eligibleIds.has(r.mealTypeId) &&
           (isSnack || (r.ingredients.length > 0 && r.description !== null)) &&
           (calWin === null ||
@@ -511,23 +514,37 @@ export async function buildMealPlanMenus(
           (dishNames === null ||
             (r.dishType !== null && dishNames.has(r.dishType.name.toLowerCase()))) &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
-          (r.subFamily === null || !mealSubFamilies.has(r.subFamily)) &&
-          !(excludeUsed && (() => { const dp = dishProtein(r.ingredients); return dp !== null && prevDayProteins.has(dp); })()) &&
-          !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id) || weekUsedSignatures.has(dishSignature(r.ingredients))));
-        // First attempt: exclude recipes already used this week AND last week's
-        // dishes (cross-week variety). Runs whenever either set is non-empty —
-        // so day 1 of a week still honors the previous-week exclusion.
-        if (weekUsedIds.size > 0 || excludeRecipeIds.size > 0) {
-          const fresh = selectionPool.filter((r) => matches(r, true));
-          if (fresh.length > 0) return fresh;
+          (r.subFamily === null || !mealSubFamilies.has(r.subFamily));
+        // Variety rules relax in order of how much a repeat would hurt: first
+        // the "not the same protein as yesterday" rule, then last week's
+        // dishes, then this week's dishes — and only when NOTHING else fits
+        // does a dish already on today's plate come back. The old two-tier
+        // fallback jumped straight to "anything", so a thin basket pool put
+        // the same chicken dish at lunch AND dinner every day.
+        const tiers: { protein: boolean; crossWeek: boolean; weekReuse: boolean; sameDay: boolean }[] = [
+          { protein: false, crossWeek: false, weekReuse: false, sameDay: false },
+          { protein: true,  crossWeek: false, weekReuse: false, sameDay: false },
+          { protein: true,  crossWeek: true,  weekReuse: false, sameDay: false },
+          { protein: true,  crossWeek: true,  weekReuse: true,  sameDay: false },
+          { protein: true,  crossWeek: true,  weekReuse: true,  sameDay: true },
+        ];
+        const matches = (r: PoolRecipe, relax: (typeof tiers)[number]): boolean =>
+          base(r) &&
+          (relax.protein || (() => { const dp = dishProtein(r.ingredients); return dp === null || !prevDayProteins.has(dp); })()) &&
+          (relax.crossWeek || !excludeRecipeIds.has(r.id)) &&
+          (relax.weekReuse || (!weekUsedIds.has(r.id) && !weekUsedSignatures.has(dishSignature(r.ingredients)))) &&
+          (relax.sameDay || !todayUsedIds.has(r.id));
+        for (const relax of tiers) {
+          const pool = selectionPool.filter((r) => matches(r, relax));
+          if (pool.length > 0) return pool;
         }
-        // Fallback: allow recipe reuse when the weekly pool is exhausted
-        return selectionPool.filter((r) => matches(r, false));
+        return [];
       };
 
       const addRecipe = (recipe: RecipeCandidate) => {
         trackChosen(recipe, dailyFamilies, mealSubFamilies, weekUsedIds);
         weekUsedSignatures.add(dishSignature(recipe.ingredients));
+        todayUsedIds.add(recipe.id);
         const dp = dishProtein(recipe.ingredients);
         if (dp) todayProteins.add(dp);
         mealCalories += recipe.calories ?? 0;
@@ -611,9 +628,11 @@ export async function buildMealPlanMenus(
           r.calories !== null && r.calories >= minCals && r.calories <= maxCals &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
           !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id) || weekUsedSignatures.has(dishSignature(r.ingredients))));
-        let extraCandidates = weekUsedIds.size > 0 || excludeRecipeIds.size > 0
-          ? selectionPool.filter((r) => matchesExtra(r, true))
-          : [];
+        // Same ladder as the meals: fresh → week reuse (never today) → anything.
+        let extraCandidates = selectionPool.filter((r) => matchesExtra(r, true) && !todayUsedIds.has(r.id));
+        if (extraCandidates.length === 0) {
+          extraCandidates = selectionPool.filter((r) => matchesExtra(r, false) && !todayUsedIds.has(r.id));
+        }
         if (extraCandidates.length === 0) {
           extraCandidates = selectionPool.filter((r) => matchesExtra(r, false));
         }
@@ -624,6 +643,7 @@ export async function buildMealPlanMenus(
         dayCalories += extraCals;
         extraCount++;
         weekUsedIds.add(extra.id);
+        todayUsedIds.add(extra.id);
         weekUsedSignatures.add(dishSignature(extra.ingredients));
         if (extra.family && !isBeverageExempt(extra)) dailyFamilies.add(extra.family);
         menus.push({ patientId, recipeId: extra.id, mealTypeId: snackMealType.id, date: new Date(current), planVersion });

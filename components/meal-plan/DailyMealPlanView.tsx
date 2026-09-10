@@ -469,7 +469,7 @@ export default function DailyMealPlanView({
     .filter((g) => g.dishes.length > 0);
 
   return (
-    <div className="flex gap-6 items-start">
+    <div className="flex flex-col lg:flex-row gap-6 items-stretch lg:items-start">
       <style>{`
         @keyframes mp-bar { from { width: 0%; } }
         .mp-bar { animation: mp-bar 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
@@ -677,7 +677,10 @@ export default function DailyMealPlanView({
           {/* Timeline */}
           <div
             className="grid gap-0 bg-[#F9F7ED] rounded-2xl p-4"
-            style={{ gridTemplateColumns: "40px 24px 1fr" }}
+            // minmax(0, …) lets the card column shrink below its content's
+            // min width on phones; a bare 1fr is minmax(auto, 1fr) and the
+            // dish cards pushed past the viewport edge.
+            style={{ gridTemplateColumns: "40px 24px minmax(0, 1fr)" }}
           >
             {mealGroups.map((group, idx) => {
               const isLast = idx === mealGroups.length - 1;
@@ -872,7 +875,8 @@ export default function DailyMealPlanView({
       </div>
 
       {menus.length > 0 && (
-        <div className="w-64 shrink-0 sticky top-6">
+        // Stacks under the timeline on phones; a sticky rail from lg up.
+        <div className="w-full lg:w-64 shrink-0 lg:sticky lg:top-6">
           <div
             className="rounded-2xl p-5"
             style={{
