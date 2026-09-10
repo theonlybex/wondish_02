@@ -24,7 +24,19 @@ import type { ClaraContext, ToolResult } from "@/lib/clara/types";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Last-resort boundary: an uncaught throw here used to surface as an empty
+// 500 with no log line, which is indistinguishable from a network failure
+// for the client. Always answer JSON and always say why in the server log.
 export async function POST(req: NextRequest) {
+  try {
+    return await handleChat(req);
+  } catch (err) {
+    console.error("[dish-checker] unhandled", err);
+    return NextResponse.json({ error: "Clara is unavailable right now" }, { status: 500 });
+  }
+}
+
+async function handleChat(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

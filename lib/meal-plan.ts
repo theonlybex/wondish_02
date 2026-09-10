@@ -403,8 +403,10 @@ export async function buildMealPlanMenus(
         selectionPool.push(...safe);
       }
     }
-  } catch {
-    // Top-up must never break plan generation.
+  } catch (err) {
+    // Top-up must never break plan generation — but a silent failure here
+    // produces a plan of repeats with no trace, so always say why.
+    console.warn("[meal-plan] Clara top-up failed; building from the library pool only:", err);
   }
 
   // weekUsedIds resets every 7 days — prevents recipe exhaustion while still

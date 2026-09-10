@@ -206,17 +206,25 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
       (n) => allowed.has(n.trim().toLowerCase()) || BASKET_STAPLES.has(n.trim().toLowerCase())
     );
   const accepted: { recipe: FridgeRecipe; mealTypeId: string }[] = [];
-  for (const r of applyAllergenFilter(recipes, args.matchers)) {
+  const rejected: Record<string, number> = {};
+  const reject = (why: string, r: FridgeRecipe) => {
+    rejected[why] = (rejected[why] ?? 0) + 1;
+    if (process.env.AI_DEBUG) console.warn(`[recipe-generation] rejected (${why}): ${r.name}`);
+  };
+  const filtered = applyAllergenFilter(recipes, args.matchers);
+  rejected.allergen = recipes.length - filtered.length;
+  for (const r of filtered) {
     if (accepted.length >= total) break;
-    if (!withinBasket(r)) continue;
-    if (!passesSanity(r)) continue;
+    if (!withinBasket(r)) { reject("out-of-basket", r); continue; }
+    if (!passesSanity(r)) { reject("sanity", r); continue; }
     const slot = typeByName.get((r.mealType ?? "").toLowerCase());
-    if (!slot) continue;
+    if (!slot) { reject("meal-type", r); continue; }
     const nameKey = r.name.trim().toLowerCase();
-    if (!nameKey || seen.has(nameKey)) continue;
+    if (!nameKey || seen.has(nameKey)) { reject("duplicate-name", r); continue; }
     seen.add(nameKey);
     accepted.push({ recipe: r, mealTypeId: slot.mealTypeId });
   }
+  console.info(`[recipe-generation] generated=${recipes.length} accepted=${accepted.length} rejected=${JSON.stringify(rejected)}`);
   if (accepted.length === 0) return [];
   // dishType "complete meal" so the builder's primary-dish step (Step 1) can
   // select these under the full calorie-window + macro + variety rules, not
