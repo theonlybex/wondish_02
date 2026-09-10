@@ -56,8 +56,8 @@ export async function POST() {
   }
 
   // Generation can trigger a Clara top-up call — spend guard.
-  const guard = await guardAiSpend(userId, "planGen");
-  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
+  const guard = await guardAiSpend(userId, "planGen", isPremium ? "premium" : "free");
+  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

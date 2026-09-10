@@ -177,8 +177,8 @@ export async function POST(req: NextRequest) {
   const wantClara = claraFirst === true;
 
   // Every plan (re)generation can trigger a Clara top-up call — spend guard.
-  const guard = await guardAiSpend(userId, "planGen");
-  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
+  const guard = await guardAiSpend(userId, "planInit", isPremium ? "premium" : "free");
+  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
   try {
     const count = await regeneratePlan(patient.id, start, undefined, {

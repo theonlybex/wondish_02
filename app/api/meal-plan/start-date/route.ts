@@ -61,8 +61,8 @@ export async function POST(req: NextRequest) {
   const start = clampPlanStartToToday(parsed);
 
   // Generation can trigger a Clara top-up call — spend guard.
-  const guard = await guardAiSpend(userId, "planGen");
-  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
+  const guard = await guardAiSpend(userId, "planInit", isPremium ? "premium" : "free");
+  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
   // Atomic blue/green regenerate — no unguarded wipe.
   try {

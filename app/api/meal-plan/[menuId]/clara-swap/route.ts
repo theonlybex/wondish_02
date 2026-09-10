@@ -76,7 +76,7 @@ export async function POST(
   // AI spend guard (charge-before-model): per-user daily swap quota + global
   // ceiling. A rejected request costs zero tokens.
   const guard = await guardAiSpend(userId, "swap");
-  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
+  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
   const targetCalories = menu.recipe.calories && menu.recipe.calories > 0
     ? Math.round(menu.recipe.calories)

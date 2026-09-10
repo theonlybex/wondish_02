@@ -6,7 +6,10 @@ import type {
   ModelRoundRequest,
 } from "./types";
 
-export const CLARA_MODEL = "claude-sonnet-5";
+// 2026-09-10 (user-directed): Clara chat runs on Haiku like every other
+// Anthropic surface — tiers differ in availability (lib/ai-budget.ts), not
+// model. Haiku 4.5 does no thinking unless asked; `thinking` stays omitted.
+export const CLARA_MODEL = "claude-haiku-4-5";
 /**
  * 2048, up from the pre-runtime 1024 (AMENDMENT 2026-07-31, user-directed):
  * adaptive thinking is now on, and thinking tokens count against max_tokens —

@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
   // before any model call so a gated request costs zero tokens. Abuse/cost
   // backstop (generous, not a paywall).
   const guard = await guardAiSpend(userId, "fridge");
-  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
+  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
   const foodMapText = buildFoodMapText(patient);
   // F-D7: deterministic server-side allergen filter, independent of the

@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   // Per-day cuisine changes are cheaper than a full week — own modest quota.
   const guard = await guardAiSpend(userId, "swap");
-  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
+  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
   const localDate = typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)
     ? date

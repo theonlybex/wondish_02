@@ -68,7 +68,7 @@ test("model and token cap are sent on every round", async () => {
   const client = createAnthropicClient(anthropic as any);
   await collect(await client.openRound({ system: "S", messages: [], tools: [] }));
   assert.equal(sent[0].model, CLARA_MODEL);
-  assert.equal(sent[0].model, "claude-sonnet-5");
+  assert.equal(sent[0].model, "claude-haiku-4-5"); // all-Haiku since 2026-09-10
   assert.equal(sent[0].max_tokens, CLARA_MAX_TOKENS);
   assert.equal(sent[0].max_tokens, 2048); // room for thinking + a tool call
 });

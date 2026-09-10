@@ -41,7 +41,7 @@ export async function POST() {
   }
 
   const guard = await guardAiSpend(userId, "planGen");
-  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
+  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
   const today = clampPlanStartToToday(new Date());
   const anchor = patient.mealPlanStartDate ? new Date(patient.mealPlanStartDate) : today;

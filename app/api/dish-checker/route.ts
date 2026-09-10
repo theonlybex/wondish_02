@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   // abuse/cost backstop (not a paywall — the limit is generous). Replaces the
   // former premium-only CHAT_DAILY_FREE credit gate.
   const guard = await guardAiSpend(userId, "claraChat");
-  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
+  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
   const patient = await prisma.patient.findFirst({
     where: { accountId: account.id },
