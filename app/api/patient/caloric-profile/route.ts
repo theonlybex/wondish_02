@@ -72,5 +72,7 @@ export async function GET() {
     planStartDate: patient.mealPlanStartDate ?? null,
   });
 
-  return NextResponse.json({ profile: { ...profile, weeklyTarget } });
+  // Weight is stored in lbs; a metric-height user reads weights in kg.
+  const displayUnit: "kg" | "lbs" = patient.heightUnit === "cm" ? "kg" : "lbs";
+  return NextResponse.json({ profile: { ...profile, weeklyTarget, displayUnit } });
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { displayDishName } from "@/lib/dish-name";
 import { CUISINES } from "@/lib/cuisines";
 import { format, addDays, subDays } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -764,7 +765,7 @@ export default function DailyMealPlanView({
                                           ].filter(Boolean).join(" · ")}
                                     </p>
                                     <p className="text-[9px] text-[#9C9494] mt-0.5 line-through truncate">
-                                      was: {menu.recipe.name}
+                                      was: {displayDishName(menu.recipe.name)}
                                     </p>
                                   </div>
                                   <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#F5F1DD] text-[#5F1C35] shrink-0">
@@ -788,7 +789,7 @@ export default function DailyMealPlanView({
                               >
                                 <div className="flex-1 min-w-0">
                                   <p className={`text-forest truncate ${isMainDish ? "text-[11px] font-semibold" : "text-[10px] font-medium"}`}>
-                                    {menu.recipe.name}
+                                    {displayDishName(menu.recipe.name)}
                                     {isCompleted && <span className="ml-1.5 text-primary text-[9px] font-bold">✓</span>}
                                   </p>
                                   <p className="text-[9px] text-[#848181] mt-0.5">

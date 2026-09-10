@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { displayDishName } from "@/lib/dish-name";
 
 // A text block describing the user's dishes for `localDate`, appended to Clara's
 // system prompt so she knows exactly what they're cooking today and can answer
@@ -47,7 +48,7 @@ export async function buildTodaysPlanText(patientId: string, localDate: string):
         ? ` Steps: ${m.recipe.steps.map((s, i) => `${i + 1}) ${s}`).join(" ")}`
         : "";
       const kcal = m.recipe.calories ? ` (~${Math.round(m.recipe.calories)} kcal)` : "";
-      return `- ${m.mealType?.name ?? "Meal"}: ${m.recipe.name}${kcal}. Ingredients: ${ings}.${steps}`;
+      return `- ${m.mealType?.name ?? "Meal"}: ${displayDishName(m.recipe.name)}${kcal}. Ingredients: ${ings}.${steps}`;
     });
 
   return `\n\nTODAY'S MEAL PLAN — the user may ask how to cook any of these, or for help while cooking. Walk them through the steps clearly and in detail, and answer follow-up cooking questions:\n${lines.join("\n")}`;

@@ -1,6 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
+import { displayDishName } from "@/lib/dish-name";
 import Link from "next/link";
 
 // One menu row as loaded by the weekly page (typed loosely; the page casts).
@@ -111,7 +112,7 @@ export default function WeeklyMealPlanGrid({ menus }: { menus: WeekMenu[] }) {
                     {dishes.map((m) => (
                       <div key={m.id} className="flex items-center gap-2">
                         <p className="flex-1 min-w-0 text-sm font-semibold text-navy truncate">
-                          {m.recipe.name}
+                          {displayDishName(m.recipe.name)}
                           {m.recipe.ethnic?.name && (
                             <span className="ml-1.5 text-[10px] font-medium align-middle" style={{ color: "#812549" }}>
                               {m.recipe.ethnic.name}

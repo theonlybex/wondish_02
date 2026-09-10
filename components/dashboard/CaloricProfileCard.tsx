@@ -121,9 +121,20 @@ export default function CaloricProfileCard() {
     tdeeCBW: profile.tdeeCBW,
     weeklyTarget: profile.weeklyTarget,
   });
+  // "ramp" when the plan-ramp budget for today diverges from the steady-state
+  // goal. The ring HEADLINES today's number (the same one the meal plan and
+  // Today's Log show) and mentions the long-run goal underneath — the two
+  // used to be swapped, so the dashboard and the plan disagreed on "today".
+  const rampTargetCalories =
+    intake?.dayTarget && intake.dayTarget.basis === "plan-ramp" && intake.dayTarget.calories !== dailyTarget
+      ? intake.dayTarget.calories
+      : null;
+  const headlineTarget = rampTargetCalories ?? dailyTarget;
   const calRatio = profile.tdeeCBW > 0
-    ? Math.min(1, dailyTarget / profile.tdeeCBW)
+    ? Math.min(1, headlineTarget / profile.tdeeCBW)
     : 1;
+  const weightUnit: "kg" | "lbs" = profile.displayUnit ?? "lbs";
+  const showWeight = (kg: number) => `${fmt(weightUnit === "kg" ? kg : kgToLbs(kg))} ${weightUnit}`;
   const circumference = 2 * Math.PI * 54;
   const dashOffset = circumference * (1 - calRatio);
 
@@ -137,11 +148,6 @@ export default function CaloricProfileCard() {
   const eatenRatio = arcTargetCalories > 0 ? Math.min(1, eatenCalories / arcTargetCalories) : 0;
   const innerCircumference = 2 * Math.PI * 45;
   const innerOffset = innerCircumference * (1 - eatenRatio);
-  // "ramp" label when the plan-ramp budget diverges from the steady-state goal.
-  const rampTargetCalories =
-    intake?.dayTarget && intake.dayTarget.basis === "plan-ramp" && intake.dayTarget.calories !== dailyTarget
-      ? intake.dayTarget.calories
-      : null;
 
   return (
     <div className="bg-white h-full flex flex-col">
@@ -185,9 +191,9 @@ export default function CaloricProfileCard() {
           <div
             className="relative w-[110px] h-[110px]"
             role="img"
-            aria-label={`Daily target ${dailyTarget} kilocalories${
+            aria-label={`${rampTargetCalories != null ? "Today's target" : "Daily target"} ${headlineTarget} kilocalories${
               intake ? `, ${Math.round(eatenCalories)} eaten today` : ""
-            }`}
+            }${rampTargetCalories != null ? `, long-run goal ${dailyTarget} per day` : ""}`}
           >
             <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90" aria-hidden="true">
               <circle
@@ -232,12 +238,12 @@ export default function CaloricProfileCard() {
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-xl font-bold text-[#1E1A1A]">
-                {dailyTarget}
+                {headlineTarget}
               </span>
               <span className="text-[10px] text-[#848181] uppercase tracking-wider">kcal/day</span>
             </div>
           </div>
-          <p className="text-xs text-[#848181] mt-1.5">Daily Target</p>
+          <p className="text-xs text-[#848181] mt-1.5">{rampTargetCalories != null ? "Today's target" : "Daily Target"}</p>
           {intake && (
             <p
               className="text-[10px] font-semibold tabular-nums mt-0.5"
@@ -251,34 +257,34 @@ export default function CaloricProfileCard() {
           )}
           {rampTargetCalories != null && (
             <span className="mt-1 inline-flex items-center text-[9px] font-bold text-[#B75E78] bg-[#B75E78]/10 rounded-full px-2 py-0.5">
-              ramp · {rampTargetCalories} kcal today
+              goal · {dailyTarget} kcal/day
             </span>
           )}
         </div>
 
         {/* This Week's Target — hero text */}
-        <WeeklyTargetHero weeklyTarget={profile.weeklyTarget} cbmiClass={profile.cbmiClass} />
+        <WeeklyTargetHero weeklyTarget={profile.weeklyTarget} cbmiClass={profile.cbmiClass} unit={weightUnit} />
       </div>
 
       {/* Full-width momentum band — the whole journey rising to the user's target weight */}
-      <WeeklyTargetBand weeklyTarget={profile.weeklyTarget} targetKg={profile.tbwKg} />
+      <WeeklyTargetBand weeklyTarget={profile.weeklyTarget} targetKg={profile.tbwKg} unit={weightUnit} />
 
       {/* Metrics grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
         <MetricTile
           label="Current Weight"
-          value={`${fmt(profile.cbwLb)} lbs`}
+          value={showWeight(profile.cbwKg)}
           delay="180ms"
         />
         <MetricTile
           label="Target Weight"
-          value={`${fmt(kgToLbs(profile.tbwKg))} lbs`}
+          value={showWeight(profile.tbwKg)}
           accent
           delay="220ms"
         />
         <MetricTile
           label="Ideal Weight"
-          value={`${fmt(kgToLbs(profile.ibwKg))} lbs`}
+          value={showWeight(profile.ibwKg)}
           delay="260ms"
         />
         <MetricTile
@@ -357,10 +363,14 @@ function MetricTile({
 function WeeklyTargetHero({
   weeklyTarget,
   cbmiClass,
+  unit,
 }: {
   weeklyTarget?: WeeklyTargetDTO;
   cbmiClass: string;
+  unit: "kg" | "lbs";
 }) {
+  const toUnit = (kg: number) => (unit === "kg" ? kg : kgToLbs(kg));
+  const unitWord = unit === "kg" ? "kilograms" : "pounds";
   const wrap = "cp-a flex-1 min-w-[200px]";
   const eyebrow = "text-[10px] tracking-[0.2em] uppercase font-bold text-[#ABA6A6] mb-2";
 
@@ -391,9 +401,9 @@ function WeeklyTargetHero({
   }
 
   const reached = progressPct >= 100;
-  const targetLbs = kgToLbs(thisWeekTargetKg);
-  const deltaLbs = Math.abs(kgToLbs(weeklyDeltaKg));
-  const goalLbs = kgToLbs(goalWeightKg);
+  const targetLbs = toUnit(thisWeekTargetKg);
+  const deltaLbs = Math.abs(toUnit(weeklyDeltaKg));
+  const goalLbs = toUnit(goalWeightKg);
   const arrow = direction === "gain" ? "▲" : "▼";
   // Plan-only v1: "there" reflects the planned position at the current week
   // (matches the band's "now" marker), not an actual-weight measurement.
@@ -406,8 +416,8 @@ function WeeklyTargetHero({
       role="group"
       aria-label={
         reached
-          ? `Goal reached. Maintain ${goalLbs.toFixed(1)} pounds.`
-          : `This week's target ${targetLbs.toFixed(1)} pounds, ${Math.round(nowProgress)} percent through your plan, week ${weekIndex} of ${totalWeeks}.`
+          ? `Goal reached. Maintain ${goalLbs.toFixed(1)} ${unitWord}.`
+          : `This week's target ${targetLbs.toFixed(1)} ${unitWord}, ${Math.round(nowProgress)} percent through your plan, week ${weekIndex} of ${totalWeeks}.`
       }
     >
       <p className={eyebrow}>This Week&apos;s Target</p>
@@ -415,7 +425,7 @@ function WeeklyTargetHero({
       {reached ? (
         <>
           <p className="text-4xl font-black text-[#812549] leading-none">Goal reached 🎉</p>
-          <p className="text-sm text-[#848181] mt-2">Maintain {goalLbs.toFixed(1)} lbs</p>
+          <p className="text-sm text-[#848181] mt-2">Maintain {goalLbs.toFixed(1)} {unit}</p>
         </>
       ) : (
         <>
@@ -423,7 +433,7 @@ function WeeklyTargetHero({
             <span className="text-5xl font-black text-[#812549] leading-none tabular-nums">
               {targetLbs.toFixed(1)}
             </span>
-            <span className="text-base font-bold text-[#ABA6A6] mb-0.5">lbs</span>
+            <span className="text-base font-bold text-[#ABA6A6] mb-0.5">{unit}</span>
             <span className="inline-flex items-center text-xs font-bold text-[#B75E78] bg-[#B75E78]/10 rounded-full px-2 py-0.5 mb-1">
               {arrow} {deltaLbs.toFixed(2)}/wk
             </span>
@@ -443,7 +453,8 @@ function WeeklyTargetHero({
 
 // ─── Full-width Momentum Band (whole-journey rising curve) ────────────────────
 
-function WeeklyTargetBand({ weeklyTarget, targetKg }: { weeklyTarget?: WeeklyTargetDTO; targetKg: number }) {
+function WeeklyTargetBand({ weeklyTarget, targetKg, unit }: { weeklyTarget?: WeeklyTargetDTO; targetKg: number; unit: "kg" | "lbs" }) {
+  const toUnit = (kg: number) => (unit === "kg" ? kg : kgToLbs(kg));
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(760);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
@@ -485,8 +496,8 @@ function WeeklyTargetBand({ weeklyTarget, targetKg }: { weeklyTarget?: WeeklyTar
     maxWk === minWk ? PADX : PADX + ((week - minWk) / (maxWk - minWk)) * (w - 2 * PADX);
   const yFor = (pct: number) => H - BOT - (pct / 100) * (H - TOP - BOT);
 
-  const startLbs = kgToLbs(anchorStartKg);
-  const targetLbs = kgToLbs(targetKg);
+  const startLbs = toUnit(anchorStartKg);
+  const targetLbs = toUnit(targetKg);
 
   // Each point carries its planned weight: interpolate start → target by the
   // point's normalized progress, so hovering shows the pounds at that spot.
@@ -598,7 +609,7 @@ function WeeklyTargetBand({ weeklyTarget, targetKg }: { weeklyTarget?: WeeklyTar
             className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg bg-[#1E1A1A] px-2 py-1 text-center shadow-lg"
             style={{ left: Math.min(Math.max(hover.x, 34), w - 34), top: hover.y - 8 }}
           >
-            <div className="text-[11px] font-bold text-white leading-tight tabular-nums">{hover.lbs.toFixed(1)} lbs</div>
+            <div className="text-[11px] font-bold text-white leading-tight tabular-nums">{hover.lbs.toFixed(1)} {unit}</div>
             <div className="text-[8px] uppercase tracking-wider text-white/60 leading-tight">week {hover.week}</div>
           </div>
         )}
@@ -607,10 +618,10 @@ function WeeklyTargetBand({ weeklyTarget, targetKg }: { weeklyTarget?: WeeklyTar
       {/* start / goal end labels */}
       <div className="flex items-center justify-between mt-1 px-0.5">
         <span className="text-[10px] font-semibold text-[#848181]">
-          {startLbs.toFixed(0)} lbs · start
+          {startLbs.toFixed(0)} {unit} · start
         </span>
         <span className="text-[10px] font-semibold text-[#812549]">
-          target · {targetLbs.toFixed(0)} lbs
+          target · {targetLbs.toFixed(0)} {unit}
         </span>
       </div>
     </div>

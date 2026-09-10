@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { displayDishName } from "@/lib/dish-name";
 import { format } from "date-fns";
 import DatePicker from "@/components/ui/DatePicker";
 import Button from "@/components/ui/Button";
@@ -78,7 +79,7 @@ export default function JournalForm({
     return {
       mealType: menu.mealType?.name ?? "",
       recipeId: menu.recipe.id,
-      recipeName: menu.recipe.name,
+      recipeName: displayDishName(menu.recipe.name),
       rating: existing?.rating ?? 0,
       skipped: existing?.skipped ?? false,
       preparation: existing?.preparation ?? "",

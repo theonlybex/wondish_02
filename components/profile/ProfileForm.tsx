@@ -77,6 +77,32 @@ export default function ProfileForm({
     weeklyGoal: String(patient?.weeklyGoal ?? ""),
   });
 
+  // Weight is STORED in lbs (see /api/patient/profile); the form shows it in
+  // the user's unit. Metric height ⇒ kg by default, with a toggle. The text
+  // fields are separate state so typing isn't fought by round-trip rounding.
+  const LBS_PER_KG = 2.20462;
+  const [weightUnitShown, setWeightUnitShown] = useState<"kg" | "lbs">(
+    (patient?.heightUnit as string) === "cm" ? "kg" : "lbs"
+  );
+  const fmtWeight = (lbs: string, unit: "kg" | "lbs") => {
+    const v = parseFloat(lbs);
+    if (!Number.isFinite(v) || v <= 0) return "";
+    const shown = unit === "kg" ? v / LBS_PER_KG : v;
+    return String(Math.round(shown * 10) / 10);
+  };
+  const [weightText, setWeightText] = useState(() => fmtWeight(String(patient?.weight ?? ""), weightUnitShown));
+  const [goalText, setGoalText] = useState(() => fmtWeight(String(patient?.goalWeight ?? ""), weightUnitShown));
+  const toLbs = (text: string, unit: "kg" | "lbs") => {
+    const v = parseFloat(text);
+    if (!Number.isFinite(v)) return "";
+    return String(unit === "kg" ? v * LBS_PER_KG : v);
+  };
+  const switchWeightUnit = (unit: "kg" | "lbs") => {
+    setWeightUnitShown(unit);
+    setWeightText(fmtWeight(form.weight, unit));
+    setGoalText(fmtWeight(form.goalWeight, unit));
+  };
+
   // Live caloric preview
   const liveProfile: CaloricProfile | null = useMemo(() => {
     const sex = form.sexAtBirth.toLowerCase() as Sex;
@@ -309,15 +335,36 @@ export default function ProfileForm({
             </div>
           )}
 
-          <Input
-            label="Weight (lbs)"
-            type="number"
-            min="0"
-            step="0.1"
-            value={form.weight}
-            onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))}
-            placeholder="150"
-          />
+          <div>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Input
+                  label={`Weight (${weightUnitShown})`}
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={weightText}
+                  onChange={(e) => { setWeightText(e.target.value); setForm((f) => ({ ...f, weight: toLbs(e.target.value, weightUnitShown) })); }}
+                  placeholder={weightUnitShown === "kg" ? "68" : "150"}
+                />
+              </div>
+              <div role="radiogroup" aria-label="Weight unit" className="flex rounded-xl border border-[#EAE4CA] overflow-hidden mb-[1px]">
+                {(["lbs", "kg"] as const).map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    role="radio"
+                    aria-checked={weightUnitShown === u}
+                    onClick={() => switchWeightUnit(u)}
+                    className="min-h-[44px] px-3 text-xs font-semibold transition-colors"
+                    style={weightUnitShown === u ? { background: "#812549", color: "#fff" } : { background: "#F9F7ED", color: "#5F1C35" }}
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
 
           <Select
             label="Physical Activity"
@@ -369,13 +416,13 @@ export default function ProfileForm({
         <h2 className="text-base font-semibold text-navy mb-4">Goals</h2>
         <div className="grid sm:grid-cols-2 gap-4 mb-6">
           <Input
-            label="Goal Weight (lbs)"
+            label={`Goal Weight (${weightUnitShown})`}
             type="number"
             min="0"
             step="0.1"
-            value={form.goalWeight}
-            onChange={(e) => setForm((f) => ({ ...f, goalWeight: e.target.value }))}
-            placeholder="130"
+            value={goalText}
+            onChange={(e) => { setGoalText(e.target.value); setForm((f) => ({ ...f, goalWeight: toLbs(e.target.value, weightUnitShown) })); }}
+            placeholder={weightUnitShown === "kg" ? "60" : "130"}
           />
         </div>
         <MultiSelectChips

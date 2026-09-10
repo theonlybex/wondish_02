@@ -265,6 +265,8 @@ export interface CaloricProfileDTO {
 
   // Weekly target projection (attached by the caloric-profile route)
   weeklyTarget?: WeeklyTargetDTO;
+  // How to show weights: kg for metric-height users, lbs otherwise (storage is lbs).
+  displayUnit?: "kg" | "lbs";
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────

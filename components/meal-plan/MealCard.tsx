@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { displayDishName } from "@/lib/dish-name";
 import { RecipeDTO } from "@/types";
 import { getRecipeEmoji } from "@/lib/recipeEmoji";
 
@@ -29,7 +30,7 @@ export default function MealCard({ recipe, mealTypeName, onSelect, compact = fal
         <span className="text-2xl shrink-0">{recipe.emoji ?? getRecipeEmoji(recipe.name, recipe.tags, mealTypeName)}</span>
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-bold text-[#848181] uppercase tracking-wide">{mealTypeName}</p>
-          <p className="font-semibold text-navy text-sm truncate">{recipe.name}</p>
+          <p className="font-semibold text-navy text-sm truncate">{displayDishName(recipe.name)}</p>
           {recipe.calories && (
             <p className="text-[10px] text-[#848181] mt-0.5">{recipe.calories} kcal</p>
           )}
@@ -61,7 +62,7 @@ export default function MealCard({ recipe, mealTypeName, onSelect, compact = fal
       <div className="flex items-center gap-3">
         <span className="text-4xl">{recipe.emoji ?? getRecipeEmoji(recipe.name, recipe.tags, mealTypeName)}</span>
         <div>
-          <p className="font-semibold text-navy">{recipe.name}</p>
+          <p className="font-semibold text-navy">{displayDishName(recipe.name)}</p>
           {recipe.description && (
             <p className="text-[#848181] text-xs line-clamp-1 mt-0.5">{recipe.description}</p>
           )}
