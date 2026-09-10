@@ -86,6 +86,9 @@ model Subscription {
   status                 SubscriptionStatus @default(ACTIVE)
   trialEndsAt            DateTime?
   canceledAt             DateTime?
+  // Stripe cancel_at_period_end mirror: Premium stays on until
+  // stripeCurrentPeriodEnd, and the billing panel offers "Resume".
+  cancelAtPeriodEnd      Boolean            @default(false)
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
 
