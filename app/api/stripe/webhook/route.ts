@@ -1,30 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { Prisma } from "@prisma/client";
-import { stripe as getStripe, mapStripeStatus } from "@/lib/stripe";
-import { prisma } from "@/lib/db";
+import { stripe as getStripe } from "@/lib/stripe";
+import { syncStripeSubscription } from "@/lib/billing/sync";
 import { redis } from "@/lib/redis";
 import * as Sentry from "@sentry/nextjs";
+import { handleStripeEvent, type EventLike } from "./handlers";
 
 export const runtime = "nodejs";
 
-// All handlers write via updateMany: a bare update throws P2025 when the row
-// is gone (account deleted while the Stripe sub was live) → 500 → the
-// idempotency claim is released → Stripe retries the same failure for days.
-// A missing row is a tolerated no-op, logged once per event.
-async function updateStripeRow(
-  accountId: string,
-  data: Prisma.SubscriptionUpdateManyMutationInput,
-  eventType: string
-) {
-  const { count } = await prisma.subscription.updateMany({
-    where: { accountId, source: "STRIPE" },
-    data,
-  });
-  if (count === 0) {
-    console.warn(`[webhook] no STRIPE subscription row for account ${accountId} (${eventType}) — skipped`);
-  }
-}
+// Every event reduces to (accountId, subscriptionId) in ./handlers and is
+// written by syncStripeSubscription, which re-retrieves the subscription
+// through the pinned SDK (2024-04-10). A missing row is a tolerated no-op
+// (count 0), never a 500 — a 500 would release the idempotency claim and
+// make Stripe retry the same failure for days.
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -37,11 +25,7 @@ export async function POST(req: NextRequest) {
   const stripeClient = getStripe();
   let event: Stripe.Event;
   try {
-    event = stripeClient.webhooks.constructEvent(
-      body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
+    event = stripeClient.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error("[webhook] signature verification failed", err);
     return NextResponse.json({ error: "Invalid signature." }, { status: 400 });
@@ -58,105 +42,22 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        const accountId = session.metadata?.accountId;
-        const subscriptionId = session.subscription as string;
-
-        if (accountId && subscriptionId) {
-          const stripeSubscription =
-            await stripeClient.subscriptions.retrieve(subscriptionId);
-
-          // Honest status: a session can complete with the subscription in
-          // incomplete/past_due (async payment failure) — mapping everything
-          // non-trialing to ACTIVE granted free premium until the next event.
-          await updateStripeRow(accountId, {
-            stripeSubscriptionId: subscriptionId,
-            stripePriceId: stripeSubscription.items.data[0]?.price.id,
-            stripeCurrentPeriodEnd: new Date(
-              stripeSubscription.current_period_end * 1000
-            ),
-            plan: "PREMIUM",
-            status: mapStripeStatus(stripeSubscription.status),
-            trialEndsAt: stripeSubscription.trial_end
-              ? new Date(stripeSubscription.trial_end * 1000)
-              : null,
-          }, event.type);
+    const outcome = await handleStripeEvent(event as unknown as EventLike, {
+      sync: (accountId, subscriptionId) => syncStripeSubscription(accountId, subscriptionId),
+      retrieveInvoiceSubscription: async (invoiceId) => {
+        // Retrieve through the pinned SDK so `subscription` is where 2024-04-10 puts it.
+        const inv = await stripeClient.invoices.retrieve(invoiceId, { expand: ["subscription"] });
+        const sub = inv.subscription;
+        if (typeof sub === "string") {
+          const full = await stripeClient.subscriptions.retrieve(sub);
+          return { subscriptionId: full.id, accountId: full.metadata?.accountId ?? null };
         }
-        break;
-      }
-
-      case "invoice.payment_succeeded": {
-        const invoice = event.data.object as Stripe.Invoice;
-        const subscriptionId = invoice.subscription as string;
-
-        if (subscriptionId) {
-          const stripeSubscription =
-            await stripeClient.subscriptions.retrieve(subscriptionId);
-          const accountId = stripeSubscription.metadata?.accountId;
-
-          if (accountId) {
-            await updateStripeRow(accountId, {
-              status: mapStripeStatus(stripeSubscription.status),
-              stripeCurrentPeriodEnd: new Date(
-                stripeSubscription.current_period_end * 1000
-              ),
-            }, event.type);
-          }
-        }
-        break;
-      }
-
-      case "invoice.payment_failed": {
-        const invoice = event.data.object as Stripe.Invoice;
-        const subscriptionId = invoice.subscription as string;
-
-        if (subscriptionId) {
-          const stripeSubscription =
-            await stripeClient.subscriptions.retrieve(subscriptionId);
-          const accountId = stripeSubscription.metadata?.accountId;
-
-          if (accountId) {
-            await updateStripeRow(accountId, { status: "PAST_DUE" }, event.type);
-          }
-        }
-        break;
-      }
-
-      case "customer.subscription.deleted": {
-        const subscription = event.data.object as Stripe.Subscription;
-        const accountId = subscription.metadata?.accountId;
-
-        if (accountId) {
-          await updateStripeRow(accountId, {
-            plan: "FREE",
-            status: "CANCELED",
-            canceledAt: new Date(),
-            stripeSubscriptionId: null,
-            stripePriceId: null,
-          }, event.type);
-        }
-        break;
-      }
-
-      case "customer.subscription.updated": {
-        const subscription = event.data.object as Stripe.Subscription;
-        const accountId = subscription.metadata?.accountId;
-
-        if (accountId) {
-          await updateStripeRow(accountId, {
-            status: mapStripeStatus(subscription.status),
-            stripeCurrentPeriodEnd: new Date(
-              subscription.current_period_end * 1000
-            ),
-          }, event.type);
-        }
-        break;
-      }
-    }
-
-    return NextResponse.json({ received: true });
+        if (!sub) return { subscriptionId: null, accountId: null };
+        return { subscriptionId: sub.id, accountId: sub.metadata?.accountId ?? null };
+      },
+    });
+    if (outcome === "skipped") console.warn(`[webhook] ${event.type} ${event.id}: no account/subscription — skipped`);
+    return NextResponse.json({ received: true, outcome });
   } catch (err) {
     Sentry.captureException(err, { tags: { area: "stripe-webhook", eventType: event.type } });
     console.error("[webhook] processing error", err);
