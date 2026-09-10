@@ -32,6 +32,12 @@ export function formatCents(cents: number, currency = "usd"): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(cents / 100);
 }
 
+/** "$20.00 / month" · "$100.00 / 6 months" — client-safe (no server imports). */
+export function priceLabelFor(key: PlanKey): string {
+  const p = planByKey(key)!;
+  return `${formatCents(p.amountCents)} / ${p.months === 1 ? "month" : `${p.months} months`}`;
+}
+
 export function perMonthCents(plan: Plan): number {
   return Math.round(plan.amountCents / plan.months);
 }

@@ -1,5 +1,10 @@
 import { hasActivePremium } from "@/lib/auth";
-import { formatCents, planByKey, type PlanKey } from "./plans";
+import { formatCents, priceLabelFor, type PlanKey } from "./plans";
+
+// Server-only module (lib/auth pulls in Clerk's server entry). Client
+// components import the SubscriptionView TYPE from here and priceLabelFor
+// from ./plans.
+export { priceLabelFor };
 
 // What the billing panel renders. Pure: built from the Subscription row plus
 // an optional Stripe summary (card + invoices). Never carries Stripe ids.
@@ -32,11 +37,6 @@ type Summary = {
   pendingPriceId?: string | null;
   invoices: { id: string; created: number; amountPaidCents: number; status: string; pdfUrl: string | null }[];
 } | null;
-
-export function priceLabelFor(plan: PlanKey): string {
-  const p = planByKey(plan)!;
-  return `${formatCents(p.amountCents)} / ${p.months === 1 ? "month" : `${p.months} months`}`;
-}
 
 export function buildSubscriptionView(
   row: Row | null,

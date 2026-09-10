@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { SubscriptionView } from "@/lib/billing/subscription-view";
-import { priceLabelFor } from "@/lib/billing/subscription-view";
+import { priceLabelFor } from "@/lib/billing/plans";
 
 function fmtDate(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "—";
