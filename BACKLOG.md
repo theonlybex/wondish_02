@@ -28,6 +28,17 @@ Confidence is marked per item: **[verified]** checked against code this session 
       be exercised locally.
       ⚠️ The migration is already applied to the shared Neon DB, so those tables
       exist in prod ahead of the code.
+- [ ] **Billing v2 on `feat/billing-v2`** (stacked on
+      `feat/clara-generation-pantry-freemode`; plan:
+      `docs/superpowers/plans/2026-09-10-billing-v2.md`). $20/mo + $100/6mo,
+      in-app promo codes, instant activation, in-app switch/cancel/resume.
+      **[verified]** Production needs, in order: `npx tsx scripts/stripe-sync-prices.ts`
+      with the LIVE key; webhook endpoint pinned to API 2024-04-10 with the event
+      list in `docs/billing/stripe-setup.md`; Customer Portal with cancel/switch
+      OFF; then `PREMIUM_GATES=on` to start charging. Two migrations already
+      applied to the shared Neon DB (`recipe_ingredient_note`,
+      `subscription_cancel_at_period_end`). Manual test-mode pass (Task 14 of the
+      plan) still to run — the Stripe CLI is not installed locally.
 
 ---
 

@@ -22,7 +22,7 @@ function emailConflictResponse() {
 // GET/DELETE /api/me — the identity + subscription surface for the iOS
 // (Bearer-token) client. No existing route returns this shape: GET
 // /api/patient/profile omits subscription/onboardingComplete/photoUrl and
-// ships a heavy refData catalog; GET /api/stripe/checkout 404s for
+// ships a heavy refData catalog; GET /api/billing/portal 404s for
 // coupon/admin premium.
 export async function GET() {
   const { userId } = await auth();

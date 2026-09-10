@@ -13,9 +13,11 @@ async function main() {
   const mode = key.startsWith("sk_live") ? "LIVE" : "test";
   console.log(`Stripe ${mode} mode`);
 
-  const products = await stripe.products.search({ query: "name:'Wondish Premium' AND active:'true'" });
+  // products.list, not products.search: the search index is eventually
+  // consistent, so a rerun seconds after creation would create a duplicate.
+  const products = await stripe.products.list({ active: true, limit: 100 });
   const product =
-    products.data[0] ??
+    products.data.find((p) => p.name === "Wondish Premium") ??
     (await stripe.products.create({
       name: "Wondish Premium",
       description: "Full meal planner, weekly generation, and Clara without limits.",
