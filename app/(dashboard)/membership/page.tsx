@@ -1,10 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getAccount } from "@/lib/queries";
-import { accountHasActivePremium } from "@/lib/auth";
-import Link from "next/link";
+import { loadSubscriptionView } from "@/lib/billing/load-view";
+import BillingPanel from "@/components/billing/BillingPanel";
 
-export const metadata = { title: "Membership" };
+export const metadata = { title: "Billing" };
 
 const PREMIUM_BENEFITS = [
   {
@@ -53,21 +53,13 @@ export default async function MembershipPage() {
   const { userId } = await auth();
   if (!userId) redirect("/login");
 
-  const account = await getAccount(userId);
-
+  const [account, loaded] = await Promise.all([getAccount(userId), loadSubscriptionView(userId)]);
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
-  // Stripe-source row: the display fields below (trial/period end) are Stripe
-  // billing concepts, so this page shows the STRIPE row specifically. The
-  // premium gate itself ORs across every source (accountHasActivePremium).
-  const sub = account?.subscriptions?.find((s) => s.source === "STRIPE") ?? null;
-  const isPremium = isAdmin || accountHasActivePremium(account?.subscriptions ?? []);
-
-  if (!isPremium) redirect("/pricing");
-
+  const view = loaded?.view ?? {
+    isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null,
+    cancelAtPeriodEnd: false, canSwitchTo: null, card: null, invoices: [],
+  };
   const firstName = account?.firstName ?? "there";
-  const isTrialing = sub?.status === "TRIALING";
-  const trialEnd = (sub as { trialEndsAt?: Date | null } | null)?.trialEndsAt ?? null;
-  const periodEnd = sub?.stripeCurrentPeriodEnd ?? null;
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -81,97 +73,35 @@ export default async function MembershipPage() {
 
       {/* Header */}
       <div className="ov mb-8" style={{ animationDelay: "0ms" }}>
-        <p
-          className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3"
-          style={{ color: "#B75E78" }}
-        >
-          Membership
+        <p className="text-[9px] tracking-[0.28em] uppercase font-mono mb-3" style={{ color: "#B75E78" }}>
+          Billing
         </p>
         <h1 className="text-3xl font-bold text-[#1E1A1A]">
-          Hey {firstName}, you&apos;re all set.
+          {view.isPremium || isAdmin ? `Hey ${firstName}, you're all set.` : `Hey ${firstName}.`}
         </h1>
         <div className="flex items-center gap-3 mt-4">
           <div className="h-px w-12 bg-primary/40" />
           <p className="text-xs" style={{ color: "#848181" }}>
-            {isAdmin
-              ? "Full admin access — all features unlocked."
-              : "You have full access to everything Wondish has to offer."}
+            {isAdmin ? "Full admin access — all features unlocked." : "Manage your plan, payment method and invoices."}
           </p>
         </div>
       </div>
 
-      {/* Hero plan card */}
-      <div
-        className="ov relative rounded-2xl overflow-hidden mb-6"
-        style={{
-          animationDelay: "70ms",
-          background: "linear-gradient(140deg, #5F1C35 0%, #812549 60%, #5F1C35 100%)",
-          boxShadow: "0 8px 32px rgba(30,26,26,0.25)",
-        }}
-      >
-        <div
-          className="absolute top-0 right-0 w-80 h-80 rounded-full pointer-events-none"
-          style={{ background: "radial-gradient(circle, rgba(129,37,73,0.10) 0%, transparent 65%)", transform: "translate(35%, -35%)" }}
-        />
-        <div className="relative px-8 py-8 flex items-center gap-6">
-          <div className="w-14 h-14 rounded-2xl bg-primary/20 flex items-center justify-center flex-shrink-0 text-2xl">
-            {isAdmin ? "🛡" : "⭐"}
+      <div className="ov mb-6" style={{ animationDelay: "70ms" }}>
+        {isAdmin && !view.isPremium ? (
+          <div className="rounded-2xl px-6 py-6 text-white" style={{ background: "linear-gradient(140deg, #5F1C35 0%, #812549 60%, #5F1C35 100%)" }}>
+            <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-2" style={{ color: "rgba(255,255,255,0.55)" }}>Admin access</p>
+            <p className="font-bold text-lg">All features unlocked — no restrictions apply.</p>
           </div>
-          <div className="flex-1">
-            <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-2" style={{ color: "rgba(129,37,73,0.5)" }}>
-              {isAdmin ? "Admin Access" : "Premium Member"}
-            </p>
-            <p className="text-white font-bold text-lg leading-snug">
-              {isAdmin
-                ? "All features unlocked — no restrictions apply."
-                : "Everything Wondish offers, fully unlocked."}
-            </p>
-            {!isAdmin && (
-              <div className="flex flex-wrap gap-3 mt-4">
-                {isTrialing && trialEnd && (
-                  <div
-                    className="rounded-xl px-4 py-2 text-sm"
-                    style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(129,37,73,0.2)" }}
-                  >
-                    <span style={{ color: "rgba(255,255,255,0.4)" }}>Trial ends </span>
-                    <span className="text-white font-semibold">
-                      {trialEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                    </span>
-                  </div>
-                )}
-                {!isTrialing && periodEnd && (
-                  <div
-                    className="rounded-xl px-4 py-2 text-sm"
-                    style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.08)" }}
-                  >
-                    <span style={{ color: "rgba(255,255,255,0.4)" }}>Renews </span>
-                    <span className="text-white font-semibold">
-                      {periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                    </span>
-                  </div>
-                )}
-                <div
-                  className="rounded-xl px-4 py-2 text-sm"
-                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.08)" }}
-                >
-                  <span style={{ color: "rgba(255,255,255,0.4)" }}>Status </span>
-                  <span className="text-primary font-semibold capitalize">
-                    {sub?.status?.toLowerCase() ?? "active"}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        ) : (
+          <BillingPanel initial={view} />
+        )}
       </div>
 
       {/* Benefits grid */}
       <div className="ov mb-6" style={{ animationDelay: "140ms" }}>
-        <p
-          className="text-[9px] tracking-[0.28em] uppercase font-bold mb-5"
-          style={{ color: "#ABA6A6" }}
-        >
-          Everything included
+        <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-5" style={{ color: "#ABA6A6" }}>
+          {view.isPremium || isAdmin ? "Everything included" : "What Premium includes"}
         </p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {PREMIUM_BENEFITS.map((b, i) => (
@@ -193,40 +123,6 @@ export default async function MembershipPage() {
                 style={{ background: "radial-gradient(ellipse at 90% 110%, rgba(129,37,73,0.06) 0%, transparent 60%)" }}
               />
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Quick links */}
-      <div
-        className="ov rounded-2xl p-6"
-        style={{
-          animationDelay: "420ms",
-          background: "#F9F7ED",
-          boxShadow: "0 0 0 1px rgba(30,26,26,0.04)",
-        }}
-      >
-        <p
-          className="text-[9px] tracking-[0.28em] uppercase font-bold mb-4"
-          style={{ color: "#ABA6A6" }}
-        >
-          Jump right in
-        </p>
-        <div className="grid sm:grid-cols-3 gap-3">
-          {[
-            { href: "/meal-plan", label: "My Meal Plan", icon: "🍽" },
-            // Prediction removed (2026-09-07).
-            { href: "/journey", label: "My Journey", icon: "📈" },
-          ].map(({ href, label, icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex items-center gap-3 bg-white hover:border-primary/30 rounded-xl px-4 py-3 text-sm font-medium text-[#1E1A1A] hover:text-primary transition-colors"
-              style={{ boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
-            >
-              <span>{icon}</span>
-              {label}
-            </Link>
           ))}
         </div>
       </div>

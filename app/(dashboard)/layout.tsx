@@ -10,6 +10,7 @@ import { RESTAURANT_ADMIN_ROLE } from "@/lib/restaurant-auth";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import PremiumGuard from "@/components/PremiumGuard";
+import PastDueBanner from "@/components/billing/PastDueBanner";
 
 export default async function DashboardLayout({
   children,
@@ -76,7 +77,7 @@ export default async function DashboardLayout({
     if (!tasteDone) {
       // Skip taste redirect when user is on /profile — they need to finish onboarding first.
       // Redirecting to /taste from here would fight the onboarding guard and loop.
-      if (pathname && pathname !== "/taste" && !pathname.startsWith("/profile")) {
+      if (pathname && pathname !== "/taste" && !pathname.startsWith("/profile") && !pathname.startsWith("/billing/success")) {
         const patient = await prisma.patient.findUnique({
           where: { accountId: account.id },
           select: { tasteCompleted: true },
@@ -103,6 +104,7 @@ export default async function DashboardLayout({
           name={account ? `${account.firstName} ${account.lastName}` : ""}
           plan={isAdmin ? "ADMIN" : isPremium ? "PREMIUM" : "FREE"}
         />
+        {account?.subscriptions?.some((s) => s.source === "STRIPE" && s.status === "PAST_DUE") && <PastDueBanner />}
         <main className="flex-1 overflow-y-auto p-5 sm:p-8">
           {/* FREE-MODE (2026-09-06): PremiumGuard disabled — everything free for now.
           <PremiumGuard isPremium={isPremium} isAdmin={isAdmin}>
