@@ -118,7 +118,8 @@ export default function MealStreakGrid({ days, totalCompleted, firstDay }: MealS
       </div>
 
       <div className="p-5 sm:p-6 flex-1 flex flex-col">
-      <div className="w-full overflow-hidden flex-1">
+      {/* Wide month grids scroll inside the card on phones instead of pushing past the viewport. */}
+      <div className="w-full overflow-x-auto flex-1">
         <div
           style={{
             display: "grid",

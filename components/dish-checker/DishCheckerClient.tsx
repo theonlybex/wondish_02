@@ -208,8 +208,9 @@ export default function DishCheckerClient({ firstName }: Props) {
         </div>
       </div>
 
-      {/* ── Info panel ── */}
-      <div className="w-64 flex-shrink-0">
+      {/* ── Info panel — desktop only; on phones it squeezed the chat into a
+          ~150px column with an unusable input. ── */}
+      <div className="hidden lg:block w-64 flex-shrink-0">
         <div
           className="bg-white rounded-2xl p-6 sticky top-0"
           style={{ boxShadow: shadow }}
