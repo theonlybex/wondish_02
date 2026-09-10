@@ -3,11 +3,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { classifyCoupon, couponCapWhere, couponPremiumUpsertArgs, GENERIC_COUPON_ERROR } from "@/lib/coupon";
+import { classifyCoupon, couponCapWhere, GENERIC_COUPON_ERROR } from "@/lib/coupon";
 
 // Thrown when the atomic cap-enforcing increment matches no row (cap reached
 // or coupon deactivated between the pre-check and the transaction).
 class CouponUnavailableError extends Error {}
+// Billing v2: PREMIUM grants are retired — discounts are Stripe promo codes
+// entered on the pricing page. Existing COUPON-source rows stay honoured.
+class CouponRetiredError extends Error {}
 
 function genericUnavailable() {
   return NextResponse.json({ error: GENERIC_COUPON_ERROR }, { status: 404 });
@@ -97,14 +100,18 @@ export async function POST(req: NextRequest) {
           create: { accountId: account.id, roleId: role.id },
         });
       } else {
-        // PREMIUM coupon — grant lives on the COUPON-source row; the STRIPE
-        // row (and its stripeSubscriptionId cancel handle) is never touched.
-        // See lib/coupon.ts couponPremiumUpsertArgs for the full rationale.
-        await tx.subscription.upsert(couponPremiumUpsertArgs(account.id));
+        // Aborts the transaction (redemption + usedCount roll back).
+        throw new CouponRetiredError();
       }
     });
   } catch (err) {
     if (err instanceof CouponUnavailableError) return genericUnavailable();
+    if (err instanceof CouponRetiredError) {
+      return NextResponse.json(
+        { error: "This code type has been retired — enter it on the payment page instead." },
+        { status: 410 }
+      );
+    }
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       // Concurrent double-redeem by the same account lost the unique race.
       return NextResponse.json({ error: "You have already redeemed this coupon" }, { status: 409 });

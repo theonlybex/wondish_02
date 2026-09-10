@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import PromoCodesAdmin from "@/components/admin/PromoCodesAdmin";
 
 interface Coupon {
   id: string;
@@ -40,7 +41,7 @@ export default function AdminCouponsPage() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({
     code: randomCode(),
-    type: "PREMIUM" as "ADMIN" | "PREMIUM",
+    type: "ADMIN" as "ADMIN" | "PREMIUM",
     maxUses: "1",
     expiresAt: "",
     note: "",
@@ -75,7 +76,7 @@ export default function AdminCouponsPage() {
     if (!res.ok) {
       setError(data.error);
     } else {
-      setForm({ code: randomCode(), type: "PREMIUM", maxUses: "1", expiresAt: "", note: "" });
+      setForm({ code: randomCode(), type: "ADMIN", maxUses: "1", expiresAt: "", note: "" });
       load();
     }
     setCreating(false);
@@ -103,12 +104,14 @@ export default function AdminCouponsPage() {
           <div className="flex items-center gap-3 mt-4">
             <div className="h-px w-12 bg-primary/40" />
             <p className="text-xs" style={{ color: "#848181" }}>
-              Create and manage coupon codes for admin or premium access
+              Promo codes give customers a discount at checkout (Stripe). Admin codes grant the SUPER role.
             </p>
           </div>
         </div>
 
-        {/* Create form */}
+        <PromoCodesAdmin />
+
+        {/* Create form (admin codes) */}
         <div
           className="ov bg-white rounded-2xl p-7 mb-6"
           style={{
@@ -117,7 +120,7 @@ export default function AdminCouponsPage() {
           }}
         >
           <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-6" style={{ color: "#ABA6A6" }}>
-            New Coupon
+            New Admin Code
           </p>
           <form onSubmit={handleCreate} className="grid sm:grid-cols-2 gap-5">
             {/* Code */}
@@ -145,14 +148,8 @@ export default function AdminCouponsPage() {
             {/* Type */}
             <div>
               <label className={labelClass} style={{ color: "#ABA6A6" }}>Type</label>
-              <select
-                value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value as "ADMIN" | "PREMIUM" })}
-                className={fieldClass}
-              >
-                <option value="PREMIUM">Premium — activates subscription for free</option>
-                <option value="ADMIN">Admin — full unlimited access (SUPER role)</option>
-              </select>
+              {/* PREMIUM coupons are retired (billing v2): discounts are Stripe promo codes above. */}
+              <input value="Admin — full unlimited access (SUPER role)" readOnly aria-readonly="true" className={fieldClass} style={{ color: "#848181" }} />
             </div>
 
             {/* Max uses */}

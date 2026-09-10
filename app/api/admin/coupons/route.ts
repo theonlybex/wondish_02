@@ -37,7 +37,12 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const code = (body.code as string)?.trim().toUpperCase();
-  const type = body.type === "ADMIN" ? "ADMIN" : "PREMIUM";
+  // Billing v2: discounts are Stripe promo codes (/api/admin/promo-codes);
+  // the DB coupon table only mints ADMIN (SUPER role) codes now.
+  if (body.type !== "ADMIN") {
+    return NextResponse.json({ error: "PREMIUM coupons are retired — create a Stripe promo code instead." }, { status: 400 });
+  }
+  const type = "ADMIN" as const;
   const maxUses = Number(body.maxUses ?? 1);
   const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
   const note = (body.note as string) || null;
