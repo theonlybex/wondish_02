@@ -27,6 +27,7 @@ type Row = {
   source: "STRIPE" | "APPLE" | "COUPON" | "ADMIN";
   plan: string;
   status: string;
+  stripeSubscriptionId?: string | null;
   stripePriceId: string | null;
   stripeCurrentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
@@ -47,6 +48,12 @@ export function buildSubscriptionView(
     return { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [] };
   }
   const isStripe = row.source === "STRIPE";
+  // Every account carries a STRIPE/FREE row from sign-up; without a Stripe
+  // subscription behind it there is nothing to manage — that's just "free",
+  // not a lapsed subscription.
+  if (isStripe && row.plan !== "PREMIUM" && !row.stripeSubscriptionId) {
+    return { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [] };
+  }
   const plan = isStripe ? priceToPlan(row.stripePriceId) : null;
   const pendingPlan = isStripe ? priceToPlan(summary?.pendingPriceId ?? null) : null;
   return {

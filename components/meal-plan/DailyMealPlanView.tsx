@@ -115,7 +115,7 @@ function InlineDishExpand({
         )}
 
         {/* Stats + swap */}
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           {[
             { label: "Prep",   value: (r.prepTime  ?? 0) > 0 ? `${r.prepTime}m`   : "—" },
             { label: "Cook",   value: (r.cookTime  ?? 0) > 0 ? `${r.cookTime}m`   : "—" },
@@ -160,7 +160,8 @@ function InlineDishExpand({
                 <li key={ri.ingredientId} className="flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-xs text-forest font-medium">
                     <span className="w-1 h-1 rounded-full bg-primary/40 shrink-0" />
-                    {ri.ingredient.name}
+                    {/* Clara-created ingredients arrive lowercase; the catalog is Title-case. */}
+                    {ri.ingredient.name.charAt(0).toUpperCase() + ri.ingredient.name.slice(1)}
                     {ri.note && <span className="text-[10px] font-normal text-[#848181]">· {ri.note}</span>}
                   </span>
                   {ri.quantity && (

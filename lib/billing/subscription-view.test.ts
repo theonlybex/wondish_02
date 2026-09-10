@@ -41,6 +41,19 @@ test("a scheduled downgrade surfaces as pendingPlan", () => {
   assert.equal(same.pendingPlan, null);
 });
 
+test("the default STRIPE/FREE row with no subscription is plain free, not a lapsed plan", () => {
+  const v = buildSubscriptionView({ ...row, plan: "FREE", stripePriceId: null, stripeCurrentPeriodEnd: null, stripeSubscriptionId: null }, null, priceToPlan);
+  assert.equal(v.isPremium, false);
+  assert.equal(v.source, null);
+  assert.equal(v.status, null);
+  // A cancelled real subscription still shows as ended (source STRIPE, not premium).
+  const ended = buildSubscriptionView({ ...row, plan: "FREE", status: "CANCELED", stripeSubscriptionId: null, stripeCurrentPeriodEnd: new Date("2026-08-01T00:00:00Z") }, null, priceToPlan);
+  assert.equal(ended.source, null); // no id left after deletion webhook → treated as free too
+  const lapsed = buildSubscriptionView({ ...row, plan: "PREMIUM", status: "CANCELED", stripeSubscriptionId: "sub_1" }, null, priceToPlan);
+  assert.equal(lapsed.source, "STRIPE");
+  assert.equal(lapsed.isPremium, false);
+});
+
 test("no row → free", () => {
   const v = buildSubscriptionView(null, null, priceToPlan);
   assert.deepEqual(v, { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [] });
