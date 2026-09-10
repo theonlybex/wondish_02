@@ -420,6 +420,9 @@ model RecipeIngredient {
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
   quantity     Float?
   unit         String?
+  // Dish-specific detail that survived the catalog remap ("whites only",
+  // "dried form", "original: margarine") — shown under the ingredient.
+  note         String?
 
   @@id([recipeId, ingredientId])
 }

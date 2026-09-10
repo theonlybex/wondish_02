@@ -3,7 +3,13 @@
 // recipe library into a cache-first source for basket-constrained weeks — the
 // same coverage rule pantry/cook-day uses, factored out for reuse.
 
-export const BASKET_STAPLES = new Set(["salt", "pepper", "black pepper", "water"]);
+// Includes the catalog spellings the alias remap folds recipe rows onto
+// ("salt" → "Kosher salt", "ground black pepper" → "Black peppercorns").
+export const BASKET_STAPLES = new Set([
+  "salt", "kosher salt", "sea salt",
+  "pepper", "black pepper", "black peppercorns",
+  "water", "tap water", "boiling water",
+]);
 
 export function isCoveredByBasket(
   ingredientNames: string[],

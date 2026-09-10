@@ -161,6 +161,7 @@ function InlineDishExpand({
                   <span className="flex items-center gap-1.5 text-xs text-forest font-medium">
                     <span className="w-1 h-1 rounded-full bg-primary/40 shrink-0" />
                     {ri.ingredient.name}
+                    {ri.note && <span className="text-[10px] font-normal text-[#848181]">· {ri.note}</span>}
                   </span>
                   {ri.quantity && (
                     <span className="text-[10px] text-[#848181]">

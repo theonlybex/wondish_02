@@ -13,8 +13,8 @@ export const CATEGORY_LABEL: Record<CategoryKey, string> = {
 };
 
 const KEYWORDS: [CategoryKey, string[]][] = [
-  ["protein", ["chicken", "beef", "steak", "pork", "bacon", "sausage", "turkey", "lamb", "fish", "salmon", "tuna", "cod", "tilapia", "shrimp", "prawn", "egg", "tofu", "tempeh", "seitan", "bean", "lentil", "chickpea", "ham"]],
-  ["carb", ["rice", "pasta", "spaghetti", "penne", "noodle", "bread", "potato", "oat", "flour", "quinoa", "tortilla", "couscous", "barley", "cereal", "bagel", "bun", "cracker", "wrap"]],
+  ["protein", ["chicken", "beef", "steak", "pork", "bacon", "sausage", "turkey", "lamb", "fish", "salmon", "tuna", "cod", "tilapia", "catfish", "shrimp", "prawn", "egg", "tofu", "tempeh", "seitan", "bean", "lentil", "chickpea", "ham"]],
+  ["carb", ["rice", "pasta", "spaghetti", "penne", "noodle", "bread", "potato", "oat", "flour", "quinoa", "tortilla", "couscous", "barley", "cornmeal", "cereal", "bagel", "bun", "cracker", "wrap"]],
   ["vegetable", ["broccoli", "spinach", "carrot", "tomato", "onion", "garlic", "pepper", "mushroom", "lettuce", "cucumber", "zucchini", "cabbage", "kale", "corn", "pea", "bean sprout", "cauliflower", "celery", "asparagus", "eggplant", "squash", "scallion", "brussels"]],
   ["fruit", ["apple", "banana", "berry", "strawberry", "blueberry", "orange", "lemon", "lime", "mango", "grape", "peach", "pear", "pineapple", "melon", "cherry"]],
   ["dairy", ["milk", "cheese", "yogurt", "yoghurt", "butter", "cream"]],

@@ -77,6 +77,7 @@ export interface RecipeDTO {
     ingredient: { id: string; name: string; unit?: string | null };
     quantity?: number | null;
     unit?: string | null;
+    note?: string | null;
   }[];
 }
 

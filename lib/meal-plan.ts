@@ -17,7 +17,7 @@ import {
 } from "@/lib/caloric-engine";
 import { macroDeviation } from "@/lib/macros";
 import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
-import { isCoveredByBasket } from "@/lib/basket-coverage";
+import { isCoveredByBasket, BASKET_STAPLES } from "@/lib/basket-coverage";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 // Type-only import (erased at runtime). The implementation is loaded lazily at
 // the call site below via dynamic import — a static import here would create a
@@ -54,7 +54,7 @@ type RecipeCandidate = {
 // dishes with the same signature are near-duplicates (same components) even
 // with different ids/names — used to keep a week varied beyond exact-id repeats
 // (e.g. "grilled chicken + roasted vegetables" appearing on two days).
-const SIG_STAPLES = new Set(["salt", "pepper", "black pepper", "water"]);
+const SIG_STAPLES = BASKET_STAPLES;
 function dishSignature(ings: { ingredient: { name: string } }[]): string {
   return Array.from(
     new Set(ings.map((i) => i.ingredient.name.trim().toLowerCase()).filter((n) => n && !SIG_STAPLES.has(n)))

@@ -27,7 +27,7 @@ export async function buildTodaysPlanText(patientId: string, localDate: string):
           name: true,
           steps: true,
           calories: true,
-          ingredients: { select: { ingredient: { select: { name: true } } } },
+          ingredients: { select: { note: true, ingredient: { select: { name: true } } } },
         },
       },
     },
@@ -42,7 +42,7 @@ export async function buildTodaysPlanText(patientId: string, localDate: string):
   const lines = menus
     .sort((a, b) => rank(a.mealType?.name) - rank(b.mealType?.name))
     .map((m) => {
-      const ings = m.recipe.ingredients.map((ri) => ri.ingredient.name).join(", ");
+      const ings = m.recipe.ingredients.map((ri) => (ri.note ? `${ri.ingredient.name} (${ri.note})` : ri.ingredient.name)).join(", ");
       const steps = m.recipe.steps.length
         ? ` Steps: ${m.recipe.steps.map((s, i) => `${i + 1}) ${s}`).join(" ")}`
         : "";

@@ -16,19 +16,29 @@ export const INGREDIENT_CATALOG: CatalogCategory[] = [
     key: "proteins",
     title: "Proteins & Plant-Based",
     taste: true,
-    items: ["Boneless chicken breasts", "Chicken thighs", "Ground turkey", "Ground beef", "Sirloin steak", "Ribeye steak", "Pork chops", "Bacon", "Salmon fillets", "Shrimp", "Extra-firm tofu"],
+    items: ["Boneless chicken breasts", "Chicken thighs", "Turkey breast", "Ground turkey", "Ground beef", "Sirloin steak", "Ribeye steak", "Pork chops", "Bacon", "Salmon fillets", "Tilapia fillets", "Catfish fillets", "Canned tuna", "Shrimp", "Extra-firm tofu"],
   },
   {
     key: "produce",
     title: "Vegetables & Fruits",
     taste: true,
-    items: ["Bell peppers", "Broccoli", "Carrots", "Celery", "Zucchini", "Spinach", "Kale", "Green cabbage", "Napa cabbage", "Avocados", "Roma tomatoes", "Cherry tomatoes", "Russet potatoes", "Yukon Gold potatoes", "Sweet potatoes", "Lemons", "Limes"],
+    items: [
+      "Bell peppers", "Broccoli", "Cauliflower", "Carrots", "Celery", "Zucchini", "Cucumbers", "Mushrooms", "Spinach", "Kale", "Arugula", "Romaine lettuce",
+      "Green cabbage", "Napa cabbage", "Green beans", "Green peas", "Asparagus", "Brussels sprouts", "Fennel", "Corn", "Avocados", "Roma tomatoes", "Cherry tomatoes",
+      "Russet potatoes", "Yukon Gold potatoes", "Sweet potatoes", "Lemons", "Limes", "Apples", "Bananas", "Oranges", "Peaches", "Blueberries", "Strawberries",
+    ],
   },
   {
     key: "grains",
     title: "Grains, Carbs & Bread",
     taste: true,
-    items: ["Jasmine rice", "Basmati rice", "Brown rice", "Arborio rice", "Spaghetti", "Penne", "Quinoa", "Rolled oats", "Flour tortillas", "Corn tortillas", "Sliced bread"],
+    items: ["Jasmine rice", "Basmati rice", "Brown rice", "Wild rice", "Arborio rice", "Spaghetti", "Penne", "Quinoa", "Couscous", "Barley", "Cornmeal", "Rolled oats", "Flour tortillas", "Corn tortillas", "Sliced bread"],
+  },
+  {
+    key: "nuts",
+    title: "Nuts, Seeds & Dried Fruit",
+    taste: true,
+    items: ["Walnuts", "Almonds", "Sesame seeds", "Chia seeds", "Ground flaxseed", "Raisins"],
   },
   {
     key: "dairy",
@@ -40,7 +50,7 @@ export const INGREDIENT_CATALOG: CatalogCategory[] = [
     key: "aromatics",
     title: "Aromatics & Herbs",
     taste: false,
-    items: ["Yellow onions", "Red onions", "White onions", "Shallots", "Garlic", "Fresh ginger", "Green onions", "Fresh cilantro", "Fresh parsley", "Fresh basil", "Fresh rosemary", "Fresh thyme", "Jalapeño peppers"],
+    items: ["Yellow onions", "Red onions", "White onions", "Shallots", "Garlic", "Fresh ginger", "Green onions", "Fresh cilantro", "Fresh parsley", "Fresh basil", "Fresh rosemary", "Fresh thyme", "Fresh dill", "Jalapeño peppers"],
   },
   {
     key: "canned",
@@ -58,18 +68,18 @@ export const INGREDIENT_CATALOG: CatalogCategory[] = [
     key: "sauces",
     title: "Sauces & Condiments",
     taste: false,
-    items: ["Soy sauce", "Sriracha", "Thai curry paste", "Salsa roja", "Salsa verde", "Mayonnaise", "Dijon mustard", "Ketchup", "Honey", "Maple syrup", "Pesto"],
+    items: ["Soy sauce", "Sriracha", "Thai curry paste", "Salsa roja", "Salsa verde", "Mayonnaise", "Dijon mustard", "Ketchup", "Honey", "Maple syrup", "Pesto", "Olives"],
   },
   {
     key: "spices",
     title: "Spices & Seasonings",
     taste: false,
-    items: ["Kosher salt", "Black peppercorns", "Garlic powder", "Onion powder", "Ground cumin", "Chili powder", "Smoked paprika", "Dried oregano", "Dried thyme", "Ground cinnamon", "Crushed red pepper flakes", "Bay leaves"],
+    items: ["Kosher salt", "Black peppercorns", "Garlic powder", "Onion powder", "Ground cumin", "Chili powder", "Curry powder", "Smoked paprika", "Dried oregano", "Dried thyme", "Ground cinnamon", "Nutmeg", "Crushed red pepper flakes", "Bay leaves", "Vanilla extract", "Cocoa powder"],
   },
 ];
 
 // Taste selector shows the favorite-able food groups, proteins first.
-const TASTE_ORDER = ["proteins", "produce", "grains", "dairy"];
+const TASTE_ORDER = ["proteins", "produce", "grains", "dairy", "nuts"];
 export function tasteLevels(): CatalogCategory[] {
   return INGREDIENT_CATALOG.filter((c) => c.taste).sort(
     (a, b) => TASTE_ORDER.indexOf(a.key) - TASTE_ORDER.indexOf(b.key)
