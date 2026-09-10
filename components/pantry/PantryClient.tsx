@@ -653,15 +653,22 @@ export default function PantryClient({
           <h2 className="text-base font-bold text-[#1E1A1A]">
             {selected.size === 0
               ? "Tap the ingredients you have — dishes appear here"
-              : `${readyCount} ${readyCount === 1 ? "dish" : "dishes"} we can suggest right now`}
+              : readyCount === 0 && computeBasketReadiness(Array.from(selected.values())).ready
+                ? "Clara will build your week from these ingredients"
+                : `${readyCount} ${readyCount === 1 ? "dish" : "dishes"} we can suggest right now`}
           </h2>
         </div>
         {cookable && cookable.ready.length > 0 && (
           <div className="grid sm:grid-cols-2 gap-3">{cookable.ready.map((d) => dishCard(d, false))}</div>
         )}
         {selected.size > 0 && cookable && cookable.ready.length === 0 && (
+          // "0 dishes" next to "enough for a full week" read as a contradiction:
+          // the counter is about generation, this list is about ready-made
+          // library dishes. Say so when the basket is already plan-ready.
           <p className="text-sm py-4" style={{ color: "#848181" }}>
-            Nothing fully covered yet — keep tapping, or check &quot;almost there&quot; below.
+            {computeBasketReadiness(Array.from(selected.values())).ready
+              ? "No ready-made library dish uses only these yet — that's fine, your plan is generated from what you picked. Tap more ingredients to unlock library dishes too."
+              : "Nothing fully covered yet — keep tapping, or check “almost there” below."}
           </p>
         )}
       </section>

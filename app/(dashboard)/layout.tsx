@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import { isProfileComplete } from "@/lib/onboarding";
 import { resolveOnboardingRedirect } from "@/lib/onboarding-gate";
-import { accountHasActivePremium } from "@/lib/auth";
+import { accountHasActivePremium, getOrCreateAccount, AccountClaimConflictError } from "@/lib/auth";
 import { RESTAURANT_ADMIN_ROLE } from "@/lib/restaurant-auth";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
@@ -21,7 +21,19 @@ export default async function DashboardLayout({
   const { userId } = await auth();
   if (!userId) redirect("/login");
 
-  const account = await getAccount(userId);
+  // First visit after sign-up: no Account row exists yet (it used to be created
+  // later by a client /api/me call), so this render saw null — blank greeting,
+  // empty name fields in onboarding. Create it here, server-side, then read it
+  // back with roles. A claim conflict leaves `account` null exactly as before.
+  let account = await getAccount(userId);
+  if (!account) {
+    try {
+      await getOrCreateAccount(userId);
+      account = await getAccount(userId);
+    } catch (err) {
+      if (!(err instanceof AccountClaimConflictError)) throw err;
+    }
+  }
   const pathname = (await headers()).get("x-pathname") ?? "";
 
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;

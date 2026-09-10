@@ -60,6 +60,10 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState("");
   const [saving, setSaving] = useState(false);
+  // Terms consent is collected here (the only flow every account passes
+  // through — Clerk sign-up, social login and sign-in tickets alike) and
+  // stored on the Account by the profile PATCH.
+  const [agreedTerms, setAgreedTerms] = useState(false);
 
   const [firstName, setFirstName] = useState(accountData.firstName ?? "");
   const [lastName, setLastName] = useState(accountData.lastName ?? "");
@@ -168,6 +172,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
 
   const next = () => {
     const errs = validateStep();
+    if (step.id === "welcome" && !agreedTerms) errs.agreedTerms = "Please accept the Terms and Privacy Policy to continue.";
     setFieldErrors(errs);
     if (Object.keys(errs).length > 0) return;
     if (stepIndex === STEPS.length - 1) {
@@ -224,6 +229,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
           goalWeight: goalWeightLbs() != null ? String(goalWeightLbs()) : "",
           goalWeightUnit: "lbs",
           weeklyGoal: "",
+          agreedTerms,
           motivationIds,
           healthConditionIds,
           foodPreferenceIds,
@@ -332,6 +338,24 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
               A few quick questions so your meal plan matches your body, your goals, and your
               allergies. Takes about two minutes.
             </p>
+            <label className="mt-6 flex items-start justify-center gap-2.5 text-left text-xs max-w-xs mx-auto cursor-pointer min-h-[44px]" style={{ color: "#5F1C35" }}>
+              <input
+                type="checkbox"
+                checked={agreedTerms}
+                onChange={(e) => { setAgreedTerms(e.target.checked); if (e.target.checked) setFieldErrors((f) => ({ ...f, agreedTerms: "" })); }}
+                aria-describedby={fieldErrors.agreedTerms ? "terms-error" : undefined}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[#812549]"
+              />
+              <span>
+                I agree to the{" "}
+                <a href="/terms" target="_blank" rel="noreferrer" className="underline font-semibold">Terms of Service</a>
+                {" "}and{" "}
+                <a href="/privacy" target="_blank" rel="noreferrer" className="underline font-semibold">Privacy Policy</a>.
+              </span>
+            </label>
+            {fieldErrors.agreedTerms && (
+              <p id="terms-error" role="alert" className="text-xs mt-2 text-error">{fieldErrors.agreedTerms}</p>
+            )}
           </div>
         )}
 

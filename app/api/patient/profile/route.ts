@@ -138,6 +138,9 @@ export async function PATCH(req: NextRequest) {
       firstName: firstName || account.firstName,
       lastName: lastName || account.lastName,
       onboardingComplete: true,
+      // Consent is recorded only when the client says the box was ticked —
+      // never flipped back to false by a later save.
+      ...((body as { agreedTerms?: unknown }).agreedTerms === true ? { agreedTerms: true } : {}),
     },
   });
 
