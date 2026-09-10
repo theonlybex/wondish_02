@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { passesSanity } from "./recipe-generation";
+import { passesSanity, chunkTopUpRequests } from "./recipe-generation";
 import { validateFridgeRecipeSnapshot, type FridgeRecipe } from "../fridge";
 
 test("validateFridgeRecipeSnapshot parses an optional per-dish cuisine", () => {
@@ -68,4 +68,17 @@ test("passesSanity: a missing perServing fails safely", () => {
   // @ts-expect-error deliberately removing a required field to test the guard
   delete bad.perServing;
   assert.equal(passesSanity(bad), false);
+});
+
+// The top-up used to ask for a whole week (7 × 3 meal types = 21 dishes, each
+// with 5–10 steps) in ONE call capped at 4096 output tokens — the tool JSON was
+// truncated and every dish dropped, so basket weeks came back with only raw
+// library items. One call per meal type keeps each response well inside budget.
+test("chunkTopUpRequests: one chunk per meal type, empty counts dropped, per-chunk cap honoured", () => {
+  const chunks = chunkTopUpRequests([
+    { mealTypeId: "b", mealTypeName: "Breakfast", count: 7, targetCalories: 400 },
+    { mealTypeId: "l", mealTypeName: "Lunch", count: 0, targetCalories: 700 },
+    { mealTypeId: "d", mealTypeName: "Dinner", count: 12, targetCalories: 600 },
+  ], 8);
+  assert.deepEqual(chunks.map((c) => c.map((r) => [r.mealTypeName, r.count])), [[["Breakfast", 7]], [["Dinner", 8]]]);
 });

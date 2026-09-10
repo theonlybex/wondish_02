@@ -7,6 +7,7 @@ import {
   type FridgeRecipe,
 } from "@/lib/fridge";
 import type { DietMatchers } from "@/lib/diet-match";
+import { BASKET_STAPLES } from "@/lib/basket-coverage";
 
 // ── Clara catalog top-up ─────────────────────────────────────────────────────
 //
@@ -32,6 +33,11 @@ export { CLARA_RECIPE_TAG, normalizeCuisine, CUISINES, type Cuisine };
 // selection) catch any quality slip regardless of model.
 const MODEL = "claude-haiku-4-5";
 const MAX_DISHES_PER_BUILD = 32; // cost ceiling per generation (covers a full week: 4 slots × 7)
+// One API call per meal type, at most this many dishes each. A dish with its
+// 5–10 steps is ~600 output tokens; 8 dishes sit well inside MAX_OUTPUT_TOKENS.
+// (A single 21-dish call at 4096 tokens truncated the tool JSON → 0 dishes.)
+const MAX_DISHES_PER_CALL = 8;
+const MAX_OUTPUT_TOKENS = 8192;
 const CAL_MIN = 80;
 const CAL_MAX = 1400;
 
@@ -113,24 +119,25 @@ export function passesSanity(r: FridgeRecipe): boolean {
  * Generate, validate, and persist top-up recipes. Returns the created recipe
  * ids ([] on any failure — the builder proceeds with the DB pool alone).
  */
-export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string[]> {
-  if (!process.env.ANTHROPIC_API_KEY) return [];
-  const requests = args.requests.filter((r) => r.count > 0);
-  if (requests.length === 0) return [];
+export function chunkTopUpRequests(
+  requests: TopUpRequest[],
+  cap: number = MAX_DISHES_PER_CALL
+): TopUpRequest[][] {
+  return requests
+    .filter((r) => r.count > 0)
+    .map((r) => [{ ...r, count: Math.min(r.count, cap) }]);
+}
 
-  const total = Math.min(
-    requests.reduce((s, r) => s + r.count, 0),
-    MAX_DISHES_PER_BUILD
-  );
-
-  let recipes: FridgeRecipe[];
+/** One generation call for one chunk; [] on any failure (fail-soft). */
+async function generateChunk(args: TopUpArgs, chunk: TopUpRequest[]): Promise<FridgeRecipe[]> {
+  const total = chunk.reduce((s, r) => s + r.count, 0);
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const msg = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 4096,
+      max_tokens: MAX_OUTPUT_TOKENS,
       thinking: { type: "disabled" }, // latency: same C6 call style as fridge/dish-checker
-      system: systemPrompt(args, total),
+      system: systemPrompt({ ...args, requests: chunk }, total),
       tools: [
         {
           name: "suggest_recipes",
@@ -146,21 +153,43 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
         },
       ],
     });
+    if (msg.stop_reason === "max_tokens") {
+      // Truncated tool JSON never parses; make the failure visible in server logs.
+      console.warn(`[recipe-generation] ${chunk[0]?.mealTypeName} top-up hit max_tokens (${MAX_OUTPUT_TOKENS}); dropping chunk`);
+    }
     const toolUse = msg.content.find(
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
     );
     const rawList = (toolUse?.input as { recipes?: unknown } | undefined)?.recipes;
     // Per-item validation (validateFridgeRecipeSnapshot = the fridge module's
     // parseOneRecipe) instead of parseFridgeRecipes, whose cap is 5 — top-ups
-    // may validly carry up to MAX_DISHES_PER_BUILD.
-    recipes = Array.isArray(rawList)
+    // may validly carry up to MAX_DISHES_PER_CALL.
+    return Array.isArray(rawList)
       ? rawList
           .map((item) => validateFridgeRecipeSnapshot(item))
           .filter((r): r is FridgeRecipe => r !== null)
       : [];
-  } catch {
-    return []; // fail-soft: AI outage must never break plan generation
+  } catch (err) {
+    // fail-soft: AI outage must never break plan generation — but say why.
+    const e = err as { status?: number; message?: string };
+    console.warn(`[recipe-generation] ${chunk[0]?.mealTypeName} top-up failed: ${e?.status ?? ""} ${e?.message ?? String(err)}`);
+    return [];
   }
+}
+
+export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string[]> {
+  if (!process.env.ANTHROPIC_API_KEY) return [];
+  // One call per meal type, in parallel: keeps each response inside the output
+  // budget and the whole top-up inside the route's time limit.
+  const chunks = chunkTopUpRequests(args.requests);
+  if (chunks.length === 0) return [];
+  const requests = chunks.flat();
+  const total = Math.min(
+    requests.reduce((s, r) => s + r.count, 0),
+    MAX_DISHES_PER_BUILD
+  );
+
+  const recipes = (await Promise.all(chunks.map((c) => generateChunk(args, c)))).flat();
 
   // Deterministic gates — model claims are never trusted.
   const typeByName = new Map(requests.map((r) => [r.mealTypeName.toLowerCase(), r]));
@@ -168,7 +197,6 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
   // Basket constraint (deterministic): reject any dish using an ingredient not
   // in the allowed basket (staples are free). The prompt asks for it; this
   // enforces it.
-  const BASKET_STAPLES = new Set(["salt", "pepper", "black pepper", "water"]);
   const allowed = args.allowedIngredients
     ? new Set(args.allowedIngredients.map((n) => n.trim().toLowerCase()))
     : null;

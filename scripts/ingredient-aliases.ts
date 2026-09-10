@@ -177,6 +177,46 @@ async function apply(write: boolean) {
   }
 
   console.log(`${write ? "APPLYING" : "DRY RUN"}: ${updated} rows re-pointed, ${merged} duplicate rows removed, ${dishesTouched}/${recipes.length} dishes touched`);
+
+  // Patient-side rows point at the same variant Ingredient rows (baskets were
+  // built from recipe names before the catalog existed). Fold them the same way,
+  // or a basket of "olive oil" no longer covers a dish that now says
+  // "Extra virgin olive oil".
+  const pantry = await prisma.patientPantryItem.findMany({ select: { patientId: true, ingredientId: true, ingredient: { select: { name: true } } } });
+  const prefs = await prisma.patientIngredientPreference.findMany({ select: { id: true, patientId: true, ingredientId: true, liked: true, ingredient: { select: { name: true } } } });
+  const pantryHas = new Set(pantry.map((p) => `${p.patientId}|${p.ingredientId}`));
+  const prefHas = new Set(prefs.map((p) => `${p.patientId}|${p.ingredientId}`));
+  let pantryMoved = 0, pantryMerged = 0, prefMoved = 0, prefMerged = 0;
+  for (const p of pantry) {
+    const target = file.aliases[p.ingredient.name.trim().toLowerCase()];
+    if (!target) continue;
+    const targetId = idByTarget.get(target)!;
+    if (targetId === p.ingredientId) continue;
+    const where = { patientId_ingredientId: { patientId: p.patientId, ingredientId: p.ingredientId } };
+    if (pantryHas.has(`${p.patientId}|${targetId}`)) {
+      pantryMerged++;
+      ops.push(() => prisma.patientPantryItem.delete({ where }));
+    } else {
+      pantryMoved++;
+      pantryHas.add(`${p.patientId}|${targetId}`);
+      ops.push(() => prisma.patientPantryItem.update({ where, data: { ingredientId: targetId } }));
+    }
+  }
+  for (const p of prefs) {
+    const target = file.aliases[p.ingredient.name.trim().toLowerCase()];
+    if (!target) continue;
+    const targetId = idByTarget.get(target)!;
+    if (targetId === p.ingredientId) continue;
+    if (prefHas.has(`${p.patientId}|${targetId}`)) {
+      prefMerged++;
+      ops.push(() => prisma.patientIngredientPreference.delete({ where: { id: p.id } }));
+    } else {
+      prefMoved++;
+      prefHas.add(`${p.patientId}|${targetId}`);
+      ops.push(() => prisma.patientIngredientPreference.update({ where: { id: p.id }, data: { ingredientId: targetId } }));
+    }
+  }
+  console.log(`pantry: ${pantryMoved} re-pointed, ${pantryMerged} duplicates removed (of ${pantry.length}); favorites: ${prefMoved} re-pointed, ${prefMerged} duplicates removed (of ${prefs.length})`);
   if (!write) return;
   const logPath = process.env.ALIAS_ROLLBACK_LOG ?? path.join(process.cwd(), `ingredient-alias-rollback-${Date.now()}.json`);
   fs.writeFileSync(logPath, JSON.stringify(log));
