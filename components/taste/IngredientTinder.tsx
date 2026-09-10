@@ -174,7 +174,8 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
               type="button"
               onClick={() => toggle(it.id)}
               aria-pressed={sel}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${sel ? "text-white" : "text-[#5F1C35] bg-white hover:bg-[#812549]/10"}`}
+              // ≥44px tap target on phones (Apple HIG); desktop keeps the denser pill.
+              className={`min-h-[44px] sm:min-h-0 px-3.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${sel ? "text-white" : "text-[#5F1C35] bg-white hover:bg-[#812549]/10"}`}
               style={sel ? { background: "#812549", borderColor: "#812549" } : { borderColor: "rgba(129,37,73,0.3)" }}
             >
               {sel ? "✓ " : ""}{it.name}

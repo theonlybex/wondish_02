@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/client-fetch";
 import React, { useState, useEffect } from "react";
 import { displayDishName } from "@/lib/dish-name";
 import { CUISINES } from "@/lib/cuisines";
@@ -255,7 +256,7 @@ export default function DailyMealPlanView({
   } | null>(null);
   const loadBasketStatus = async () => {
     try {
-      const res = await fetch("/api/pantry/basket-status");
+      const res = await apiFetch("/api/pantry/basket-status");
       if (res.ok) setBasketStatus(await res.json());
     } catch {
       /* leave null — the panel falls back to the ready-looking state */
@@ -283,7 +284,7 @@ export default function DailyMealPlanView({
     const clientToday = format(new Date(), "yyyy-MM-dd");
     const serverDay = format(date, "yyyy-MM-dd");
     const dateStr = clientToday !== serverDay ? clientToday : serverDay;
-    fetch(`/api/meal-plan?date=${dateStr}&exchanges=1`)
+    apiFetch(`/api/meal-plan?date=${dateStr}&exchanges=1`)
       .then((r) => r.json())
       .then((data) => {
         if (clientToday !== serverDay) {
@@ -311,7 +312,7 @@ export default function DailyMealPlanView({
     setNewWeekError("");
     setSelectedId(null);
     try {
-      const res = await fetch("/api/meal-plan/new-week", { method: "POST" });
+      const res = await apiFetch("/api/meal-plan/new-week", { method: "POST" });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         setNewWeekError(data?.error ?? "Couldn't generate your week — try again.");
@@ -319,7 +320,7 @@ export default function DailyMealPlanView({
         return;
       }
       const dateStr = format(new Date(), "yyyy-MM-dd");
-      const mRes = await fetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
+      const mRes = await apiFetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
       const mData = await mRes.json();
       setMenus(mData.menus ?? []);
       setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
@@ -346,7 +347,7 @@ export default function DailyMealPlanView({
     setCuisineDayError("");
     try {
       const dateStr = format(date, "yyyy-MM-dd");
-      const res = await fetch("/api/meal-plan/day", {
+      const res = await apiFetch("/api/meal-plan/day", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: dateStr, cuisine }),
@@ -356,7 +357,7 @@ export default function DailyMealPlanView({
         setCuisineDayError(data?.error ?? "Couldn't update today — try again.");
         return;
       }
-      const mRes = await fetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
+      const mRes = await apiFetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
       const mData = await mRes.json();
       setMenus(mData.menus ?? []);
       setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
@@ -390,7 +391,7 @@ export default function DailyMealPlanView({
     setDate(newDate);
     setLoading(true);
     try {
-      const res  = await fetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
+      const res  = await apiFetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
       const data = await res.json();
       setMenus(data.menus ?? []);
       setLoggedRecipeIds(data.loggedRecipeIds ?? []);
@@ -406,7 +407,7 @@ export default function DailyMealPlanView({
   const handleRate = async (recipeId: string, mealTypeName: string, rating: number) => {
     setSelectedId(null);
     const dateStr = format(date, "yyyy-MM-dd");
-    const res = await fetch("/api/journal/log-meal", {
+    const res = await apiFetch("/api/journal/log-meal", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ recipeId, mealTypeName, date: dateStr, rating }),
@@ -528,7 +529,7 @@ export default function DailyMealPlanView({
                     type="button"
                     onClick={() => void setCuisineForDay(c)}
                     disabled={cuisineDayLoading}
-                    className="px-3 py-1 rounded-full text-xs font-semibold border border-[#812549]/30 text-[#5F1C35] bg-white hover:bg-[#812549] hover:text-white transition-colors disabled:opacity-50"
+                    className="min-h-[44px] sm:min-h-0 px-3.5 sm:px-3 py-1 rounded-full text-xs font-semibold border border-[#812549]/30 text-[#5F1C35] bg-white hover:bg-[#812549] hover:text-white transition-colors disabled:opacity-50"
                   >
                     {c}
                   </button>

@@ -113,12 +113,14 @@ export default function WeeklyMealPlanGrid({ menus }: { menus: WeekMenu[] }) {
                       <div key={m.id} className="flex items-center gap-2">
                         <p className="flex-1 min-w-0 text-sm font-semibold text-navy truncate">
                           {displayDishName(m.recipe.name)}
-                          {m.recipe.ethnic?.name && (
-                            <span className="ml-1.5 text-[10px] font-medium align-middle" style={{ color: "#812549" }}>
-                              {m.recipe.ethnic.name}
-                            </span>
-                          )}
                         </p>
+                        {/* Sibling, not inside the truncated name — otherwise the
+                            tag is the part that gets clipped on phones. */}
+                        {m.recipe.ethnic?.name && (
+                          <span className="shrink-0 text-[10px] font-medium" style={{ color: "#812549" }}>
+                            {m.recipe.ethnic.name}
+                          </span>
+                        )}
                         {m.recipe.calories ? (
                           <span className="text-[11px] shrink-0 tabular-nums" style={{ color: "#848181" }}>
                             {m.recipe.calories} kcal

@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/client-fetch";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CUISINES } from "@/lib/cuisines";
@@ -93,7 +94,7 @@ export default function PantryClient({
   const loadCatalog = async () => {
     if (catalog) return;
     try {
-      const res = await fetch("/api/pantry/catalog");
+      const res = await apiFetch("/api/pantry/catalog");
       if (res.ok) setCatalog((await res.json()).categories ?? []);
     } catch {
       /* leave null */
@@ -102,7 +103,7 @@ export default function PantryClient({
   const loadCuisineIds = async () => {
     if (cuisineIds) return;
     try {
-      const res = await fetch("/api/pantry/cuisine-ids");
+      const res = await apiFetch("/api/pantry/cuisine-ids");
       if (res.ok) setCuisineIds((await res.json()).ids ?? {});
     } catch {
       /* leave null — staples render disabled until ids resolve */
@@ -119,7 +120,7 @@ export default function PantryClient({
     setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch("/api/pantry");
+      const res = await apiFetch("/api/pantry");
       if (!res.ok) throw new Error();
       const data = await res.json();
       setCommon(data.common ?? []);
@@ -135,7 +136,7 @@ export default function PantryClient({
   const refreshCookable = async () => {
     const seq = ++cookableSeq.current;
     try {
-      const res = await fetch("/api/pantry/cookable");
+      const res = await apiFetch("/api/pantry/cookable");
       if (!res.ok) return;
       const data = await res.json();
       if (seq === cookableSeq.current) setCookable(data);
@@ -154,7 +155,7 @@ export default function PantryClient({
     setGroceryLoading(true);
     setGroceryError("");
     try {
-      const res = await fetch("/api/pantry/to-buy");
+      const res = await apiFetch("/api/pantry/to-buy");
       if (!res.ok) throw new Error();
       const data = await res.json();
       setGroceryItems(data.items ?? []);
@@ -174,7 +175,7 @@ export default function PantryClient({
   const persist = async (next: Map<string, string>) => {
     const seq = ++saveSeq.current;
     try {
-      const res = await fetch("/api/pantry", {
+      const res = await apiFetch("/api/pantry", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ingredientIds: Array.from(next.keys()) }),
@@ -211,7 +212,7 @@ export default function PantryClient({
     searchTimer.current = setTimeout(async () => {
       const seq = ++searchSeq.current;
       try {
-        const res = await fetch(`/api/pantry?q=${encodeURIComponent(q.trim())}`);
+        const res = await apiFetch(`/api/pantry?q=${encodeURIComponent(q.trim())}`);
         if (!res.ok) return;
         const data = await res.json();
         if (seq === searchSeq.current) setResults(data.ingredients ?? []);
@@ -227,7 +228,7 @@ export default function PantryClient({
     setCookingCuisine(cuisine);
     setCookError("");
     try {
-      const res = await fetch("/api/pantry/cook-day", {
+      const res = await apiFetch("/api/pantry/cook-day", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cuisine }),
@@ -625,7 +626,8 @@ export default function PantryClient({
                             type="button"
                             onClick={() => toggle({ id: it.id, name: it.name })}
                             aria-pressed={sel}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${sel ? "text-white" : "text-[#5F1C35] bg-white hover:bg-[#812549]/10"}`}
+                            // ≥44px tap target on phones; desktop keeps the denser pill.
+                            className={`min-h-[44px] sm:min-h-0 px-3.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${sel ? "text-white" : "text-[#5F1C35] bg-white hover:bg-[#812549]/10"}`}
                             style={sel ? { background: "#812549", borderColor: "#812549" } : { borderColor: "rgba(129,37,73,0.3)" }}
                           >
                             {sel ? "✓ " : ""}{it.favorite ? "★ " : ""}{it.name}
