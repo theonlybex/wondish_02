@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import PremiumGate from "./PremiumGate";
 
 // Routes free users can access without a subscription
-const FREE_ROUTES = ["/profile", "/prediction", "/membership"];
+const FREE_ROUTES = ["/profile", "/membership", "/billing", "/pricing"];
 
 interface PremiumGuardProps {
   children: React.ReactNode;

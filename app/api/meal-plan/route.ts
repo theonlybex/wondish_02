@@ -1,3 +1,4 @@
+import { premiumGatesEnabled } from "@/lib/billing/gates";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -144,9 +145,7 @@ export async function POST(req: NextRequest) {
 
   const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const isPremium = isAdmin || accountHasActivePremium(account.subscriptions);
-  void isPremium;
-  // FREE-MODE (2026-09-06): premium gate disabled — everything free for now.
-  // if (!isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
+  if (premiumGatesEnabled() && !isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
   const patient = account.patient;
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });

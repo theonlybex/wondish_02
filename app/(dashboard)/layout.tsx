@@ -11,6 +11,7 @@ import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import PremiumGuard from "@/components/PremiumGuard";
 import PastDueBanner from "@/components/billing/PastDueBanner";
+import { premiumGatesEnabled } from "@/lib/billing/gates";
 
 export default async function DashboardLayout({
   children,
@@ -68,8 +69,8 @@ export default async function DashboardLayout({
   }
 
   // Onboarding: route users through the ingredient taste screen until it's done.
-  // FREE-MODE (2026-09-06): ingredient-taste is part of onboarding for EVERYONE,
-  // not just premium. Admins still skip it.
+  // Ingredient-taste is part of onboarding for EVERYONE, not just premium
+  // (the basket is the base of every plan). Admins still skip it.
   // Cookie-gated: once taste_complete=1 is set we skip the DB query entirely on every navigation.
   if (!isAdmin && account) {
     const tasteDone = cookies().get("taste_complete")?.value === "1";
@@ -106,11 +107,11 @@ export default async function DashboardLayout({
         />
         {account?.subscriptions?.some((s) => s.source === "STRIPE" && s.status === "PAST_DUE") && <PastDueBanner />}
         <main className="flex-1 overflow-y-auto p-5 sm:p-8">
-          {/* FREE-MODE (2026-09-06): PremiumGuard disabled — everything free for now.
-          <PremiumGuard isPremium={isPremium} isAdmin={isAdmin}>
-            {children}
-          </PremiumGuard> */}
-          {children}
+          {premiumGatesEnabled() ? (
+            <PremiumGuard isPremium={isPremium} isAdmin={isAdmin}>{children}</PremiumGuard>
+          ) : (
+            children
+          )}
         </main>
       </div>
     </div>

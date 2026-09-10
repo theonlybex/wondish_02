@@ -1,3 +1,4 @@
+import { premiumGatesEnabled } from "@/lib/billing/gates";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { MealLogSource } from "@prisma/client";
@@ -47,13 +48,12 @@ export async function POST(req: NextRequest) {
   const { localDate, items } = parsed.value;
 
   // Premium gate once if any item is CUSTOM.
-  // FREE-MODE (2026-09-06): premium gate disabled — everything free for now.
-  // if (items.some((it) => it.source === MealLogSource.CUSTOM)) {
-  //   const account = await getAccountWithSubscription(userId);
-  //   if (!accountHasActivePremium(account?.subscriptions ?? [])) {
-  //     return NextResponse.json({ error: "Premium required" }, { status: 402 });
-  //   }
-  // }
+  if (premiumGatesEnabled() && items.some((it) => it.source === MealLogSource.CUSTOM)) {
+    const account = await getAccountWithSubscription(userId);
+    if (!accountHasActivePremium(account?.subscriptions ?? [])) {
+      return NextResponse.json({ error: "Premium required" }, { status: 402 });
+    }
+  }
 
   // Opaque provenance recipeId (MANUAL/PICTURE/FRIDGE/CLARA — see validateItem
   // in lib/meal-log.ts): the column is still a real FK, so one nonexistent id
