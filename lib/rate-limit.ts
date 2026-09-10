@@ -27,7 +27,11 @@ function getUpstashLimiter(name: string, limit: number, windowSec: number): Rate
 }
 
 // ── In-memory fallback (dev only; per-instance, resets on cold start) ─────────
-const memStore = new Map<string, { count: number; resetAt: number }>();
+// Pinned to globalThis so Next's hot reload doesn't hand out a fresh, empty
+// store on every code edit — otherwise local quota testing (5 Clara messages,
+// 1 week/week…) silently resets between saves and looks broken.
+const g = globalThis as unknown as { __wondishRateLimitStore?: Map<string, { count: number; resetAt: number }> };
+const memStore = (g.__wondishRateLimitStore ??= new Map<string, { count: number; resetAt: number }>());
 
 function memoryLimit(id: string, limit: number, windowSec: number): RateLimitResult {
   const now = Date.now();
