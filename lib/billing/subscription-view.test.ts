@@ -32,7 +32,16 @@ test("coupon/admin sources never expose Stripe controls", () => {
   assert.equal(v.card, null);
 });
 
+test("a scheduled downgrade surfaces as pendingPlan", () => {
+  const v = buildSubscriptionView({ ...row, stripePriceId: "price_6" }, { card: null, pendingPriceId: "price_m", invoices: [] }, priceToPlan);
+  assert.equal(v.plan, "sixmonth");
+  assert.equal(v.pendingPlan, "monthly");
+  // Same price scheduled again is not a pending switch.
+  const same = buildSubscriptionView({ ...row, stripePriceId: "price_6" }, { card: null, pendingPriceId: "price_6", invoices: [] }, priceToPlan);
+  assert.equal(same.pendingPlan, null);
+});
+
 test("no row → free", () => {
   const v = buildSubscriptionView(null, null, priceToPlan);
-  assert.deepEqual(v, { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, cancelAtPeriodEnd: false, canSwitchTo: null, card: null, invoices: [] });
+  assert.deepEqual(v, { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [] });
 });

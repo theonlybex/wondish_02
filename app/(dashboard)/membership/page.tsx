@@ -57,7 +57,7 @@ export default async function MembershipPage() {
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const view = loaded?.view ?? {
     isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null,
-    cancelAtPeriodEnd: false, canSwitchTo: null, card: null, invoices: [],
+    cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [],
   };
   const firstName = account?.firstName ?? "there";
 

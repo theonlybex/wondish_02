@@ -4,7 +4,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { planByKey, planByLookupKey } from "@/lib/billing/plans";
 import { loadSubscriptionView } from "@/lib/billing/load-view";
 import { syncStripeSubscription } from "@/lib/billing/sync";
-import { resolvePlanPrice, setCancelAtPeriodEnd, stripe, switchPlanPrice } from "@/lib/stripe";
+import { releasePendingSwitch, resolvePlanPrice, setCancelAtPeriodEnd, stripe, switchPlanPrice } from "@/lib/stripe";
 
 export async function GET() {
   const { userId } = await auth();
@@ -14,7 +14,7 @@ export async function GET() {
   return NextResponse.json(loaded.view);
 }
 
-// PATCH { action: "cancel" | "resume" | "switch", plan? } — the app owns plan
+// PATCH { action: "cancel" | "resume" | "switch" | "keep", plan? } — the app owns plan
 // changes and cancellation (the Customer Portal only handles card + invoices),
 // so the DB row is re-synced right after every change.
 export async function PATCH(req: NextRequest) {
@@ -34,6 +34,9 @@ export async function PATCH(req: NextRequest) {
 
   if (action === "cancel" || action === "resume") {
     await setCancelAtPeriodEnd(row.stripeSubscriptionId, action === "cancel");
+  } else if (action === "keep") {
+    // Drop a scheduled downgrade; stay on the current plan.
+    await releasePendingSwitch(row.stripeSubscriptionId);
   } else if (action === "switch") {
     const target = typeof body?.plan === "string" ? planByKey(body.plan) : null;
     if (!target) return NextResponse.json({ error: "Unknown plan" }, { status: 400 });

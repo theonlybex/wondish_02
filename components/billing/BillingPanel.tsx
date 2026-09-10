@@ -21,7 +21,7 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function change(action: "cancel" | "resume" | "switch", plan?: string) {
+  async function change(action: "cancel" | "resume" | "switch" | "keep", plan?: string) {
     setBusy(action);
     setError(null);
     try {
@@ -93,7 +93,13 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
         <p className="font-bold text-lg">{view.priceLabel ?? "Full access"}</p>
         {isStripe && (
           <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.75)" }}>
-            {lapsed ? `Ended on ${fmtDate(view.periodEnd)}` : ending ? `Ends on ${fmtDate(view.periodEnd)}` : `Renews on ${fmtDate(view.periodEnd)}`}
+            {lapsed
+              ? `Ended on ${fmtDate(view.periodEnd)}`
+              : ending
+                ? `Ends on ${fmtDate(view.periodEnd)}`
+                : view.pendingPlan
+                  ? `Switches to ${priceLabelFor(view.pendingPlan)} on ${fmtDate(view.periodEnd)}`
+                  : `Renews on ${fmtDate(view.periodEnd)}`}
             {view.card ? ` · ${view.card.brand.toUpperCase()} •••• ${view.card.last4}` : ""}
           </p>
         )}
@@ -106,6 +112,10 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
             ) : ending ? (
               <button type="button" onClick={() => void change("resume")} disabled={busy !== null} className="min-h-[44px] px-5 rounded-xl bg-white text-[#5F1C35] font-semibold text-sm disabled:opacity-60">
                 {busy === "resume" ? "…" : "Resume subscription"}
+              </button>
+            ) : view.pendingPlan ? (
+              <button type="button" onClick={() => void change("keep")} disabled={busy !== null} className="min-h-[44px] px-5 rounded-xl bg-white text-[#5F1C35] font-semibold text-sm disabled:opacity-60">
+                {busy === "keep" ? "…" : `Keep ${view.priceLabel}`}
               </button>
             ) : (
               view.canSwitchTo && (

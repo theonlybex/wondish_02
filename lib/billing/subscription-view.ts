@@ -12,6 +12,8 @@ export interface SubscriptionView {
   periodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   canSwitchTo: PlanKey | null;
+  // A scheduled downgrade: the plan that takes over at periodEnd.
+  pendingPlan: PlanKey | null;
   card: { brand: string; last4: string } | null;
   invoices: { id: string; date: string; amount: string; status: string; pdfUrl: string | null }[];
 }
@@ -27,6 +29,7 @@ type Row = {
 
 type Summary = {
   card: { brand: string; last4: string } | null;
+  pendingPriceId?: string | null;
   invoices: { id: string; created: number; amountPaidCents: number; status: string; pdfUrl: string | null }[];
 } | null;
 
@@ -41,10 +44,11 @@ export function buildSubscriptionView(
   priceToPlan: (priceId: string | null) => PlanKey | null
 ): SubscriptionView {
   if (!row) {
-    return { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, cancelAtPeriodEnd: false, canSwitchTo: null, card: null, invoices: [] };
+    return { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [] };
   }
   const isStripe = row.source === "STRIPE";
   const plan = isStripe ? priceToPlan(row.stripePriceId) : null;
+  const pendingPlan = isStripe ? priceToPlan(summary?.pendingPriceId ?? null) : null;
   return {
     isPremium: hasActivePremium(row),
     source: row.source,
@@ -54,6 +58,7 @@ export function buildSubscriptionView(
     periodEnd: row.stripeCurrentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: row.cancelAtPeriodEnd,
     canSwitchTo: plan === "monthly" ? "sixmonth" : plan === "sixmonth" ? "monthly" : null,
+    pendingPlan: pendingPlan && pendingPlan !== plan ? pendingPlan : null,
     card: isStripe ? (summary?.card ?? null) : null,
     invoices: isStripe
       ? (summary?.invoices ?? []).map((i) => ({

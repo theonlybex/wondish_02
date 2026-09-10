@@ -177,16 +177,31 @@ export async function createPlanCheckoutSession(args: {
   });
 }
 
+function cardOf(pm: unknown): { brand: string; last4: string } | null {
+  const p = pm as { card?: { brand: string; last4: string } } | string | null | undefined;
+  return p && typeof p !== "string" && p.card ? { brand: p.card.brand, last4: p.card.last4 } : null;
+}
+
 export async function getStripeSubscriptionSummary(customerId: string, subscriptionId: string) {
   const s = getStripe();
-  const [sub, invoices] = await Promise.all([
-    s.subscriptions.retrieve(subscriptionId, { expand: ["default_payment_method"] }),
+  const [sub, customer, invoices] = await Promise.all([
+    s.subscriptions.retrieve(subscriptionId, { expand: ["default_payment_method", "schedule"] }),
+    s.customers.retrieve(customerId, { expand: ["invoice_settings.default_payment_method"] }),
     s.invoices.list({ customer: customerId, subscription: subscriptionId, limit: 5 }),
   ]);
-  const pm = sub.default_payment_method;
-  const card = pm && typeof pm !== "string" && pm.card ? { brand: pm.card.brand, last4: pm.card.last4 } : null;
+  // Checkout sets the card on the subscription; a card added later (portal,
+  // API) lands on the customer — show whichever exists.
+  const card =
+    cardOf(sub.default_payment_method) ??
+    (customer.deleted ? null : cardOf(customer.invoice_settings?.default_payment_method));
+  // A pending downgrade lives in a schedule: phase[1] carries the next price.
+  const schedule = sub.schedule && typeof sub.schedule !== "string" ? sub.schedule : null;
+  const nextPhase = schedule?.phases?.[1];
+  const nextPrice = nextPhase?.items?.[0]?.price;
+  const pendingPriceId = typeof nextPrice === "string" ? nextPrice : (nextPrice?.id ?? null);
   return {
     card,
+    pendingPriceId,
     invoices: invoices.data.map((inv) => ({
       id: inv.id,
       created: inv.created,
@@ -197,23 +212,55 @@ export async function getStripeSubscriptionSummary(customerId: string, subscript
   };
 }
 
+/**
+ * Drop a pending (scheduled) plan switch, if any, leaving the subscription
+ * on its current price. Returns the subscription as it stands afterwards.
+ */
+export async function releasePendingSwitch(subscriptionId: string): Promise<Stripe.Subscription> {
+  const s = getStripe();
+  const sub = await s.subscriptions.retrieve(subscriptionId);
+  const scheduleId = typeof sub.schedule === "string" ? sub.schedule : sub.schedule?.id;
+  if (scheduleId) await s.subscriptionSchedules.release(scheduleId);
+  return s.subscriptions.retrieve(subscriptionId);
+}
+
 export async function setCancelAtPeriodEnd(subscriptionId: string, cancel: boolean): Promise<void> {
+  // A schedule-managed subscription rejects cancel_at_period_end; cancelling
+  // supersedes any pending switch anyway.
+  if (cancel) await releasePendingSwitch(subscriptionId);
   await getStripe().subscriptions.update(subscriptionId, { cancel_at_period_end: cancel });
 }
 
 /**
- * Upgrade (monthly → 6-month): charge the prorated difference now.
- * Downgrade (6-month → monthly): no proration, new price from the next period.
+ * Upgrade (monthly → 6-month): charge the prorated difference now and start
+ * the new cycle today.
+ * Downgrade (6-month → monthly): Stripe can't change interval in place, so a
+ * schedule keeps the paid period intact and flips to monthly at period end.
  */
 export async function switchPlanPrice(subscriptionId: string, newPriceId: string, upgrade: boolean): Promise<void> {
   const s = getStripe();
-  const sub = await s.subscriptions.retrieve(subscriptionId);
-  const itemId = sub.items.data[0]?.id;
-  if (!itemId) throw new Error(`Subscription ${subscriptionId} has no items`);
-  await s.subscriptions.update(subscriptionId, {
-    items: [{ id: itemId, price: newPriceId }],
-    proration_behavior: upgrade ? "always_invoice" : "none",
-    billing_cycle_anchor: upgrade ? "now" : "unchanged",
-    cancel_at_period_end: false,
+  const sub = await releasePendingSwitch(subscriptionId);
+  const item = sub.items.data[0];
+  if (!item) throw new Error(`Subscription ${subscriptionId} has no items`);
+
+  if (upgrade) {
+    await s.subscriptions.update(subscriptionId, {
+      items: [{ id: item.id, price: newPriceId }],
+      proration_behavior: "always_invoice",
+      billing_cycle_anchor: "now",
+      cancel_at_period_end: false,
+    });
+    return;
+  }
+
+  if (sub.cancel_at_period_end) await s.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
+  const schedule = await s.subscriptionSchedules.create({ from_subscription: subscriptionId });
+  const current = schedule.phases[0];
+  await s.subscriptionSchedules.update(schedule.id, {
+    end_behavior: "release",
+    phases: [
+      { items: [{ price: item.price.id, quantity: 1 }], start_date: current.start_date, end_date: sub.current_period_end },
+      { items: [{ price: newPriceId, quantity: 1 }] },
+    ],
   });
 }
