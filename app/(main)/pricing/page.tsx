@@ -9,7 +9,7 @@ import PricingSection from "@/components/PricingSection";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Simple, transparent pricing. Start free, upgrade to Premium for $15/month.",
+    "Simple, transparent pricing. Start free, upgrade to Premium for $20/month or $100 for 6 months.",
 };
 
 const faqs = [

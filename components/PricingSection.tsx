@@ -1,5 +1,5 @@
 import Link from "next/link";
-import CheckoutButton from "./CheckoutButton";
+import PlanPicker from "./billing/PlanPicker";
 import IncludedFoodSection from "./IncludedFoodSection";
 import { getTranslations } from "next-intl/server";
 
@@ -83,12 +83,7 @@ export default async function PricingSection({ isLoggedIn = false }: { isLoggedI
             <div className="text-[15px] font-bold uppercase tracking-[0.1em]" style={{ color: "#FDC221" }}>
               {t("premiumName")}
             </div>
-            <div className="font-extrabold mt-3.5" style={{ fontSize: 52, letterSpacing: "-0.02em", lineHeight: 1.05 }}>
-              {t("premiumPrice")}
-              <span className="text-[17px] font-semibold ml-1" style={{ color: "rgba(255,255,255,0.7)", letterSpacing: 0 }}>{t("perMonth")}</span>
-            </div>
-            <p className="text-[15px] mb-1 mt-2" style={{ color: "rgba(255,255,255,0.8)" }}>{t("premiumTagline")}</p>
-            <p className="text-xs mb-6" style={{ color: "rgba(255,255,255,0.6)" }}>{t("premiumCancelAnytime")}</p>
+            <p className="text-[15px] mb-5 mt-3" style={{ color: "rgba(255,255,255,0.8)" }}>{t("premiumTagline")}</p>
             <ul className="flex flex-col gap-[13px] mb-[30px] flex-1">
               {premiumFeatures.map((f) => (
                 <li key={f} className="flex items-start gap-[11px] text-[14.5px]" style={{ color: "rgba(255,255,255,0.9)" }}>
@@ -97,10 +92,24 @@ export default async function PricingSection({ isLoggedIn = false }: { isLoggedI
                 </li>
               ))}
             </ul>
-            {/* Label stays a dark same-hue ink: #FFFFFF on the teal fill is 2.5:1 and fails WCAG AA. */}
-            <CheckoutButton className="w-full text-center px-7 py-[15px] rounded-full font-semibold text-[15px] bg-[#00B9A6] hover:bg-[#75C6BC] disabled:opacity-60 disabled:cursor-not-allowed text-[#00332D] transition-all hover:-translate-y-0.5">
-              {t("premiumCta")}
-            </CheckoutButton>
+            {/* CTA label stays a dark same-hue ink: #FFFFFF on the teal fill is 2.5:1 and fails WCAG AA. */}
+            <PlanPicker
+              labels={{
+                monthly: t("planMonthly"),
+                sixMonth: t("planSixMonth"),
+                perMonth: t("perMonthShort"),
+                save: t("save", { pct: "{pct}" }),
+                havePromo: t("havePromo"),
+                promoPlaceholder: t("promoPlaceholder"),
+                apply: t("apply"),
+                invalidPromo: t("invalidPromo"),
+                today: t("today", { amount: "{amount}" }),
+                then: t("then", { amount: "{amount}", period: "{period}" }),
+                cta: t("continueToPayment"),
+                cancelAnytime: t("premiumCancelAnytime"),
+                billedEvery6: t("billedEvery6", { amount: "{amount}" }),
+              }}
+            />
           </div>
         </div>
 

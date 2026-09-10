@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { PLANS, formatCents, perMonthCents } from "@/lib/billing/plans";
 
 export default function PremiumGate() {
+  const fromPerMonth = formatCents(perMonthCents(PLANS.find((p) => p.key === "sixmonth")!)).replace(/\.00$/, "");
   return (
     <div className="flex-1 flex items-center justify-center min-h-[60vh]">
       <div className="text-center max-w-md px-6">
@@ -42,7 +44,7 @@ export default function PremiumGate() {
           href="/pricing"
           className="inline-flex items-center justify-center w-full px-6 py-3 rounded-xl bg-primary text-white font-semibold text-sm hover:bg-primary/90 transition-colors"
         >
-          Upgrade to Premium — $15/mo
+          Upgrade to Premium — from {fromPerMonth}/mo
         </Link>
         <p className="text-xs text-[#848181] mt-3">Cancel anytime. Secure billing via Stripe.</p>
       </div>
