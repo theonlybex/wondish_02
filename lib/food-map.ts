@@ -52,6 +52,11 @@ export const CONDITION_GUIDANCE: Record<string, string> = {
   prediabetes: "steady carbohydrates with fibre and protein; avoid added sugars",
   gerd: "avoid very spicy, fried, acidic or late heavy meals",
   "fatty liver disease (nafld)": "limit added sugars, refined carbs and saturated fat",
+  pcos: "lower glycemic load — whole grains, legumes and vegetables over refined carbs and added sugars; steady protein at each meal",
+  "thyroid disorder": "cook cruciferous vegetables rather than serving them raw in quantity, keep soy moderate and away from medication time, avoid seaweed/kelp; do not restrict iodised salt without advice",
+  "recovering after illness/surgery": "nutrient-dense, protein-forward, small frequent meals, soft textures if appetite is low, plenty of fluids; never cut calories during recovery",
+  "hypertriglyceridemia": "limit added sugars, refined carbs and alcohol; favour fish, nuts and olive oil",
+  pregnancy: "no raw or undercooked fish, meat, eggs or sprouts, no unpasteurised dairy or soft cheeses, limit high-mercury fish, no alcohol; folate- and iron-rich foods",
 };
 
 // ── buildFoodMapText ────────────────────────────────────────────────────────

@@ -86,7 +86,7 @@ const HEALTH_GROUPS: { title: string; names: string[] }[] = [
 // profile); everything else is recorded for Clara and future rules.
 const HEALTH_WITH_RULES = new Set([
   "Type 2 Diabetes", "Prediabetes", "Hypertension", "Heart Disease", "High Cholesterol", "Kidney Disease stage 1-2", "Celiac Disease", "Thyroid Disorder",
-  "Fatty Liver Disease (NAFLD)", "Acne", "Hypertriglyceridemia", "Pregnancy",
+  "Fatty Liver Disease (NAFLD)", "Acne", "Hypertriglyceridemia", "Pregnancy", "PCOS", "Chronic kidney disease – stage 3",
 ]);
 
 export default function OnboardingWizard({ refData, accountData }: OnboardingWizardProps) {
