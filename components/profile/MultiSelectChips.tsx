@@ -37,10 +37,11 @@ export default function MultiSelectChips({
               key={opt.id}
               type="button"
               onClick={() => toggle(opt.id)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+              aria-pressed={active}
+              className={`min-h-[44px] px-4 py-2 rounded-full text-sm font-medium transition-all ${
                 active
                   ? "bg-primary text-white shadow-sm shadow-primary/30"
-                  : "bg-[#F3F2FF] text-[#848181] hover:bg-primary/10 hover:text-primary"
+                  : "bg-[#F3F2FF] text-[#4A4646] hover:bg-primary/10 hover:text-primary"
               }`}
             >
               {opt.name}

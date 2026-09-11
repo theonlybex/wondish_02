@@ -40,7 +40,8 @@ type StepId =
   | "activity"
   | "reveal"
   | "safety"
-  | "preferences"
+  | "diet"
+  | "health"
   | "goal";
 
 const STEPS: { id: StepId; skippable: boolean }[] = [
@@ -51,9 +52,41 @@ const STEPS: { id: StepId; skippable: boolean }[] = [
   { id: "activity", skippable: false },
   { id: "reveal", skippable: false },
   { id: "safety", skippable: true },
-  { id: "preferences", skippable: true },
+  { id: "diet", skippable: true },
+  { id: "health", skippable: true },
   { id: "goal", skippable: true },
 ];
+
+// One-line hints under each diet chip; keyed by the FoodPreference name in
+// the DB. Diets without a hint just show their name.
+const DIET_HINTS: Record<string, string> = {
+  "Vegan": "no meat, fish, dairy, eggs or honey",
+  "Vegetarian": "no meat or fish",
+  "Pescatarian": "fish and seafood, no other meat",
+  "Gluten-free": "no wheat, barley or rye",
+  "Dairy-free": "no milk, cheese, butter or yogurt",
+  "Keto": "very low carb, higher fat",
+  "Low-carb": "fewer grains, sugars and starches",
+  "Paleo": "no grains, legumes or dairy",
+  "Mediterranean": "olive oil, fish, vegetables, whole grains",
+  "High-protein": "protein-forward dishes",
+};
+
+// Health conditions grouped for scanning (35 rows is too many for one flat
+// row of chips). Unlisted names fall into "Other".
+const HEALTH_GROUPS: { title: string; names: string[] }[] = [
+  { title: "Metabolic & weight", names: ["Type 2 Diabetes", "Prediabetes", "Overweight", "PCOS", "Thyroid Disorder", "Fatty Liver Disease (NAFLD)"] },
+  { title: "Heart & kidneys", names: ["Hypertension", "Heart Disease", "High Cholesterol", "Stroke", "Kidney Disease stage 1-2", "Chronic kidney disease – stage 3"] },
+  { title: "Digestive", names: ["Celiac Disease", "GERD", "Gastritis", "IBS-C", "IBS-D", "IBD – active", "IBD – in remission", "Constipation", "Chronic Diarrhea", "Candidiasis"] },
+  { title: "Skin & hair", names: ["Acne", "Eczema", "Rosacea", "Seborrheic Dermatitis", "Hair Shedding"] },
+  { title: "Brain, immune & recovery", names: ["Migraine", "Foggy brain", "Alzheimer's Disease", "Chronic Inflammatory Conditions", "Respiratory Allergies", "Cancer – during treatment", "Cancer – after treatment", "Recovering after illness/surgery"] },
+];
+
+// Conditions that change the plan today (banned ingredients or macro
+// profile); everything else is recorded for Clara and future rules.
+const HEALTH_WITH_RULES = new Set([
+  "Type 2 Diabetes", "Hypertension", "Heart Disease", "High Cholesterol", "Kidney Disease stage 1-2", "Celiac Disease", "Thyroid Disorder",
+]);
 
 export default function OnboardingWizard({ refData, accountData }: OnboardingWizardProps) {
   const [stepIndex, setStepIndex] = useState(0);
@@ -237,10 +270,8 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
       setFoodAllergyIds([]);
       setFoodToAvoidIds([]);
     }
-    if (step.id === "preferences") {
-      setFoodPreferenceIds([]);
-      setHealthConditionIds([]);
-    }
+    if (step.id === "diet") setFoodPreferenceIds([]);
+    if (step.id === "health") setHealthConditionIds([]);
     if (step.id === "goal") {
       setGoalWeight("");
       void submit();
@@ -631,26 +662,115 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
           </div>
         )}
 
-        {step.id === "preferences" && (
+        {step.id === "diet" && (
           <div>
-            <h2 className="text-xl font-bold text-[#1E1A1A] mb-1">Diet &amp; health</h2>
-            <p className="text-sm mb-6" style={{ color: "#848181" }}>
-              Optional — both refine what lands on your plate.
+            <h2 className="text-xl font-bold text-[#1E1A1A] mb-1">Do you follow a way of eating?</h2>
+            <p className="text-sm mb-5" style={{ color: "#848181" }}>
+              Optional. Pick any that apply — every dish, swap and Clara suggestion stays inside them.
             </p>
-            <div className="space-y-6">
-              <MultiSelectChips
-                label="Diets you follow"
-                options={refData.foodPreferences}
-                selected={foodPreferenceIds}
-                onChange={setFoodPreferenceIds}
-              />
-              <MultiSelectChips
-                label="Health conditions"
-                options={refData.healthConditions}
-                selected={healthConditionIds}
-                onChange={setHealthConditionIds}
-              />
+            <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label="Diets you follow">
+              {refData.foodPreferences.map((opt) => {
+                const active = foodPreferenceIds.includes(opt.id);
+                const hint = DIET_HINTS[opt.name];
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() =>
+                      setFoodPreferenceIds(active ? foodPreferenceIds.filter((id) => id !== opt.id) : [...foodPreferenceIds, opt.id])
+                    }
+                    className={`min-h-[52px] w-full rounded-xl border px-4 py-2.5 text-left transition-colors ${
+                      active ? "border-primary bg-primary/5" : "border-[#EAE4CA] bg-white hover:bg-[#FBFAF5]"
+                    }`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <span
+                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${active ? "bg-primary border-primary" : "border-[#EAE4CA]"}`}
+                        aria-hidden="true"
+                      >
+                        {active && (
+                          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                            <path d="M10 3L5 8.5 2 5.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </span>
+                      <span className="min-w-0">
+                        <span className={`block text-sm font-semibold ${active ? "text-primary" : "text-[#1E1A1A]"}`}>{opt.name}</span>
+                        {hint && <span className="block text-xs mt-0.5" style={{ color: "#6B6767" }}>{hint}</span>}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+            <p className="text-xs mt-4" style={{ color: "#848181" }}>
+              {foodPreferenceIds.length === 0
+                ? "No diet selected — you'll see the full menu. Skip if that's right."
+                : `${foodPreferenceIds.length} selected. You can change this anytime in Settings.`}
+            </p>
+          </div>
+        )}
+
+        {step.id === "health" && (
+          <div>
+            <h2 className="text-xl font-bold text-[#1E1A1A] mb-1">Any health conditions we should plan around?</h2>
+            <p className="text-sm mb-5" style={{ color: "#848181" }}>
+              Optional and private. Conditions marked with a dot change your plan today — Type 2 Diabetes
+              shifts your macros toward fewer carbs; the others exclude specific ingredients. The rest are
+              recorded so Clara can take them into account.
+            </p>
+            <div className="space-y-5" role="group" aria-label="Health conditions">
+              {(() => {
+                const byName = new Map(refData.healthConditions.map((c) => [c.name, c]));
+                const placed = new Set<string>();
+                const groups = HEALTH_GROUPS.map((g) => ({
+                  title: g.title,
+                  items: g.names.flatMap((n) => { const c = byName.get(n); if (!c) return []; placed.add(n); return [c]; }),
+                }));
+                const rest = refData.healthConditions.filter((c) => !placed.has(c.name));
+                if (rest.length > 0) groups.push({ title: "Other", items: rest });
+                return groups.filter((g) => g.items.length > 0).map((g) => (
+                  <div key={g.title}>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: "#848181" }}>{g.title}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {g.items.map((opt) => {
+                        const active = healthConditionIds.includes(opt.id);
+                        const hasRules = HEALTH_WITH_RULES.has(opt.name);
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            aria-pressed={active}
+                            title={hasRules ? "Changes what we serve you" : "Noted for Clara"}
+                            onClick={() =>
+                              setHealthConditionIds(active ? healthConditionIds.filter((id) => id !== opt.id) : [...healthConditionIds, opt.id])
+                            }
+                            className={`min-h-[44px] inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                              active ? "bg-primary text-white" : "bg-[#F3F2FF] text-[#4A4646] hover:bg-primary/10 hover:text-primary"
+                            }`}
+                          >
+                            {hasRules && (
+                              <span
+                                aria-hidden="true"
+                                className="w-1.5 h-1.5 rounded-full shrink-0"
+                                style={{ background: active ? "rgba(255,255,255,0.9)" : "#812549" }}
+                              />
+                            )}
+                            {opt.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+            <p className="text-xs mt-4" style={{ color: "#848181" }}>
+              {healthConditionIds.length === 0
+                ? "Nothing selected — skip if that's right."
+                : `${healthConditionIds.length} selected. Not medical advice — check changes with your clinician.`}
+            </p>
           </div>
         )}
 
