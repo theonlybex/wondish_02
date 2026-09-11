@@ -164,6 +164,7 @@ model Patient {
   menus             Menu[]
   orders            Order[]
   journalEntries    JournalEntry[]
+  triggerTrials     TriggerTrial[]
   customIngredients PatientCustomIngredient[]
   mealLogs          MealLog[]
   pantryItems       PatientPantryItem[]
@@ -301,8 +302,134 @@ model PatientFoodAllergy {
 model HealthCondition {
   id                String                            @id @default(cuid())
   name              String                            @unique
+  // Wondish workbook profile_factor_id (03/04/05). Not unique: Type 2
+  // Diabetes and Prediabetes share factor 4.
+  profileFactorId   Int?
   patients          PatientHealthCondition[]
   bannedIngredients HealthConditionBannedIngredient[]
+  trackingItems     ConditionTrackingItem[]
+  triggerRules      TriggerRule[]
+}
+
+// ── Symptom journal + trigger trials (workbooks 05 / 04) ────────────────────
+
+enum TrackingCategory {
+  SYMPTOM
+  OBJECTIVE
+}
+
+enum SymptomSeverity {
+  NOT_PRESENT
+  MILD
+  MODERATE
+  SEVERE
+}
+
+enum TrialStatus {
+  ACTIVE
+  STOPPED
+  COMPLETED
+}
+
+enum TrialClassification {
+  TOLERATED
+  DOSE_DEPENDENT
+  LIKELY_TRIGGER
+}
+
+// Workbook 05: 274 user-reported symptoms + 49 objective (lab/test) items.
+// Objective items are imported but not asked in the UI (v1).
+model ConditionTrackingItem {
+  id           String                    @id @default(cuid())
+  code         String                    @unique // "JT-0108"
+  conditionId  String
+  condition    HealthCondition           @relation(fields: [conditionId], references: [id], onDelete: Cascade)
+  category     TrackingCategory
+  itemCode     String                    // "HEARTBURN"
+  label        String                    // "Heartburn"
+  inputSource  String                    // USER_REPORTED | LAB | DIAGNOSTIC_TEST | MEASUREMENT
+  active       Boolean                   @default(true)
+  symptoms     JournalSymptom[]
+  triggerLinks TriggerRuleTrackingItem[]
+
+  @@index([conditionId, category])
+}
+
+// One row per journal entry per tracking item; no row = not tracked that day.
+model JournalSymptom {
+  id             String                @id @default(cuid())
+  journalEntryId String
+  journalEntry   JournalEntry          @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  trackingItemId String
+  trackingItem   ConditionTrackingItem @relation(fields: [trackingItemId], references: [id], onDelete: Cascade)
+  severity       SymptomSeverity
+
+  @@unique([journalEntryId, trackingItemId])
+}
+
+// Workbook 04: 55 trigger rules (47 map to our conditions).
+model TriggerRule {
+  id                 String                    @id @default(cuid())
+  code               String                    @unique // "TR-001"
+  conditionId        String
+  condition          HealthCondition           @relation(fields: [conditionId], references: [id], onDelete: Cascade)
+  category           String                    // "ACIDIC_CITRUS" — terms live in TriggerCategoryTerm
+  action             String                    // workbook default_action_code
+  baselineDays       Int
+  trialDays          Int
+  reintroductionDays Int
+  washoutDays        Int
+  doseDependent      Boolean                   @default(true)
+  examples           String
+  symptomsToMonitor  String
+  safetyNote         String?
+  sourceUrl          String?
+  active             Boolean                   @default(true)
+  monitored          TriggerRuleTrackingItem[]
+  trials             TriggerTrial[]
+
+  @@index([conditionId])
+}
+
+model TriggerRuleTrackingItem {
+  ruleId         String
+  rule           TriggerRule           @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  trackingItemId String
+  trackingItem   ConditionTrackingItem @relation(fields: [trackingItemId], references: [id], onDelete: Cascade)
+
+  @@id([ruleId, trackingItemId])
+}
+
+// Ingredient phrases (and optional Big-9 group) a trigger category removes.
+// Seeded from lib/trials/category-terms.ts; matched like a condition ban.
+model TriggerCategoryTerm {
+  id       String  @id @default(cuid())
+  category String
+  term     String
+  group    String?
+
+  @@unique([category, term])
+  @@index([category])
+}
+
+model TriggerTrial {
+  id               String               @id @default(cuid())
+  patientId        String
+  patient          Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  ruleId           String
+  rule             TriggerRule          @relation(fields: [ruleId], references: [id])
+  startDate        DateTime             // day 1 of elimination (local midnight)
+  status           TrialStatus          @default(ACTIVE)
+  classification   TrialClassification?
+  baselineScore    Float?
+  eliminationScore Float?
+  challengeScore   Float?
+  lastPhase        String?              // phase at the last read; a change flips Patient.mealPlanStale
+  notes            String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([patientId, status])
 }
 
 model HealthConditionBannedIngredient {
@@ -912,6 +1039,7 @@ model JournalEntry {
   notes         String?
   meals         JournalMeal[]
   createdAt     DateTime      @default(now())
+  symptoms      JournalSymptom[]
 
   @@index([patientId, date])
 }
