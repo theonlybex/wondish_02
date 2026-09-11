@@ -77,8 +77,17 @@ export default function PantryClient({
   const [cookingCuisine, setCookingCuisine] = useState<string | null>(null);
   // "What to buy" — smart stocking list: ingredients that unlock the most
   // dishes, favorites first, minus what's already on hand. null = not loaded.
+  // `needed` = this week's purchase amount (only for ingredients in the active
+  // plan's next 7 days); `approx` when a conversion was estimated or partial.
   const [groceryItems, setGroceryItems] = useState<
-    { ingredientId: string; name: string; dishCount: number; marginal: number; favorite: boolean }[] | null
+    {
+      ingredientId: string;
+      name: string;
+      dishCount: number;
+      marginal: number;
+      favorite: boolean;
+      needed?: { amount: string; approx: boolean };
+    }[] | null
   >(null);
   const [groceryLoading, setGroceryLoading] = useState(false);
   const [groceryError, setGroceryError] = useState("");
@@ -322,6 +331,7 @@ export default function PantryClient({
   if (view === "buy") {
     const ownedLower = new Set(Array.from(selected.values()).map((n) => n.toLowerCase()));
     const checklists = buildCuisineChecklists(ownedLower);
+    const neededById = new Map((groceryItems ?? []).flatMap((i) => (i.needed ? [[i.ingredientId, i.needed] as const] : [])));
     return (
       <div>
         {tabs}
@@ -388,6 +398,15 @@ export default function PantryClient({
                               <span className="flex-1 min-w-0 flex items-center gap-1.5">
                                 {it.favorite && <span aria-label="favorite" style={{ color: "#812549" }}>★</span>}
                                 <span className={`text-sm font-medium ${have ? "line-through text-[#ABA6A6]" : "text-[#1E1A1A]"}`}>{it.name}</span>
+                                {!have && neededById.get(it.id) && (
+                                  <span
+                                    className="text-[11px] tabular-nums whitespace-nowrap shrink-0"
+                                    style={{ color: "#6B6767" }}
+                                    title="Estimated amount for this week's plan; may vary by brand and size"
+                                  >
+                                    · {neededById.get(it.id)!.approx ? "≈ " : ""}{neededById.get(it.id)!.amount}
+                                  </span>
+                                )}
                               </span>
                               {have && <span className="text-[10px] shrink-0" style={{ color: "#812549" }}>In your ingredients</span>}
                             </button>
@@ -448,6 +467,15 @@ export default function PantryClient({
                       <span className={`text-sm font-medium truncate ${have ? "line-through text-[#ABA6A6]" : "text-[#1E1A1A]"}`}>
                         {item.name}
                       </span>
+                      {item.needed && !have && (
+                        <span
+                          className="text-[11px] tabular-nums whitespace-nowrap shrink-0"
+                          style={{ color: "#6B6767" }}
+                          title="Estimated amount for this week's plan; may vary by brand and size"
+                        >
+                          · {item.needed.approx ? "≈ " : ""}{item.needed.amount}
+                        </span>
+                      )}
                     </span>
                     <span className="text-[10px] flex-shrink-0" style={{ color: have ? "#812549" : "#ABA6A6" }}>
                       {have
@@ -513,6 +541,11 @@ export default function PantryClient({
                             </span>
                             <span className="flex-1 min-w-0">
                               <span className={`text-sm font-medium ${s.have ? "line-through text-[#ABA6A6]" : "text-[#1E1A1A]"}`}>{s.name}</span>
+                              {id && !s.have && neededById.get(id) && (
+                                <span className="ml-1.5 text-[11px] tabular-nums whitespace-nowrap" style={{ color: "#6B6767" }}>
+                                  · {neededById.get(id)!.approx ? "≈ " : ""}{neededById.get(id)!.amount}
+                                </span>
+                              )}
                               {s.alsoIn.length > 0 && (
                                 <span className="block text-[10px] mt-0.5" style={{ color: "#ABA6A6" }}>also {s.alsoIn.slice(0, 3).join(", ")}</span>
                               )}
