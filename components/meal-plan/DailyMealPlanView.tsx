@@ -306,16 +306,20 @@ export default function DailyMealPlanView({
   // the next 7 days from the pantry basket (see /api/meal-plan/new-week).
   const [newWeekLoading, setNewWeekLoading] = useState(false);
   const [newWeekError, setNewWeekError] = useState("");
+  // Set when the 429 body says the premium tier has a higher weekly limit.
+  const [newWeekUpgrade, setNewWeekUpgrade] = useState(false);
   const generateNewWeek = async () => {
     if (newWeekLoading) return;
     setNewWeekLoading(true);
     setNewWeekError("");
+    setNewWeekUpgrade(false);
     setSelectedId(null);
     try {
       const res = await apiFetch("/api/meal-plan/new-week", { method: "POST" });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         setNewWeekError(data?.error ?? "Couldn't generate your week — try again.");
+        setNewWeekUpgrade(data?.code === "quota" && data?.upgrade === true);
         void loadBasketStatus();
         return;
       }
@@ -486,9 +490,25 @@ export default function DailyMealPlanView({
       )}
 
       {stale && startDate && (
-        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-4 text-sm">
-          <span className="flex-1 text-amber-800">Your profile changed — generate a new week to apply it to your meal plan.</span>
-          <Button size="sm" loading={newWeekLoading} onClick={() => void generateNewWeek()}>New week</Button>
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-4 text-sm">
+          <div className="flex items-center gap-3">
+            <span className="flex-1 text-amber-800">Your profile changed — generate a new week to apply it to your meal plan.</span>
+            <Button size="sm" loading={newWeekLoading} onClick={() => void generateNewWeek()}>New week</Button>
+          </div>
+          {/* The error used to render only next to the bottom "Generate a new
+              week" button — off-screen from this banner on a phone, so a
+              weekly-limit 429 looked like a dead tap (mobile QA 2026-09-11). */}
+          {newWeekError && (
+            <p role="alert" className="text-xs mt-2 text-error">
+              {newWeekError}
+              {newWeekUpgrade && (
+                <>
+                  {" "}
+                  <a href="/membership" className="underline font-semibold">Upgrade for more →</a>
+                </>
+              )}
+            </p>
+          )}
         </div>
       )}
 
