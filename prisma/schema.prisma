@@ -368,6 +368,13 @@ model Recipe {
   carbs           Float?
   fat             Float?
   fiber           Float?
+  sodium          Float?
+  saturatedFat    Float?
+  sugars          Float?
+  addedSugars     Float?
+  // Wondish 02 lineage + provenance of `steps` ("author" | "clara").
+  sourceRow       Int?
+  stepsSource     String?
   prepTime        Int?
   cookTime        Int?
   servings        Int?                    @default(1)
@@ -401,6 +408,28 @@ model Ingredient {
   restaurantUses RestaurantDishIngredient[]
   pantryUses     PatientPantryItem[]
   preferences    PatientIngredientPreference[]
+  // Wondish 01 identity + classification (nullable: Clara-created and
+  // user-added ingredients have none). formId is the join key to every
+  // workbook; components/allergenGroups drive component-based allergen bans.
+  formId          String?  @unique
+  canonicalId     String?
+  groceryCategory String?
+  components      String[] @default([])
+  allergenGroups  String[] @default([]) // e.g. "BIG9-COW-MILK" (Wondish 03)
+  conversions     IngredientUnitConversion[]
+}
+
+// Wondish 06: recipe unit → base amount for one ingredient form.
+model IngredientUnitConversion {
+  id           String     @id @default(cuid())
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  unit         String // recipe unit as written ("tablespoon", "cup", "oz")
+  baseQuantity Float // amount of baseUnit per 1 recipe unit
+  baseUnit     String // "g" | "mL"
+  confidence   String // HIGH | MEDIUM | LOW (Wondish 06 confidence_code)
+
+  @@unique([ingredientId, unit])
 }
 
 // What the patient currently has at home ("fridge/pantry"), maintained by the
