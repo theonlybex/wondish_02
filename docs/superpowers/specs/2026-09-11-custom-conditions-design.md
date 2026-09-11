@@ -36,8 +36,13 @@ would have needed a parallel branch in each of those.
 | Symptoms to track | up to 10 labels, each 2–40 chars | Rows in the journal's symptoms step, day view and trend card |
 | Conditions per user | 10 | |
 
-Trigger trials are not part of this: custom conditions have no `TriggerRule`
-rows, so no trial cards appear for them.
+| Triggers to test | up to 8 of the 28 workbook categories | One `TriggerRule` per category (`CUST-TR-<uuid>`, workbook schedule 7/28/3/3, the category's term list as examples, the condition's symptoms monitored); appears on the Trials page like a built-in rule. Kept categories keep their row (a running trial points at it), removed ones are deactivated, new ones created |
+
+Onboarding: the health step has an inline "Don't see yours?" form (name,
+ingredients, symptoms) kept in the wizard draft and posted to
+`/api/patient/conditions` right after the profile save (409 = already
+created on a retry). Note for Clara and triggers are added later in Settings.
+Deleting a condition removes its trials first (no cascade from rules).
 
 ## API (`app/api/patient/conditions`)
 

@@ -114,8 +114,10 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
       `docs/qa/feature-checklist-2026-09-11.md`. Data script (idempotent):
       `scripts/diet-rules-2026-09-11.ts`.
 - [ ] **`/terms` is a placeholder** ("Terms of service will be published…")
-      while onboarding requires consent to it. Content, not code.
-      **[verified 2026-09-11]**
+      while onboarding requires consent to it. A plain-language draft now
+      lives in `scripts/seed-terms-2026-09-11.ts` (dry-run prints it);
+      `--apply` publishes it as the active version on the live site, so it
+      waits for counsel's review and your go. **[verified 2026-09-11]**
 - [ ] **Clerk dev instance: first navigation after a sign-in ticket can loop**
       (`/taste → /login → /overview 307 → /taste`, React "Maximum update depth"
       in HandleRedirect, blank page). Reproducible only in the headless harness
@@ -159,10 +161,12 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
       `docs/superpowers/specs/2026-09-11-custom-conditions-design.md`). A user
       adds a condition with ingredients to avoid (hard bans everywhere), a
       note for Clara (food-map guidance) and symptoms to track (journal),
-      under Settings → My conditions. Reuses `HealthCondition` with
-      `ownerPatientId` + `guidance`; migration `20260911180000_custom_conditions`
-      applied to the shared DB. Not covered: trigger trials for custom
-      conditions (no `TriggerRule` rows) — add if users ask.
+      under Settings → My conditions, and (name, bans, symptoms) inline in
+      the onboarding health step. Trigger trials: the user picks up to 8 of
+      the 28 workbook categories and they appear on the Trials page as their
+      own rules (`CUST-TR-*`, workbook schedule, their symptoms monitored).
+      Reuses `HealthCondition` with `ownerPatientId` + `guidance`; migration
+      `20260911180000_custom_conditions` applied to the shared DB.
 - [x] **Kidney Disease stage 1-2: potassium/phosphorus rows → guidance**
       (2026-09-11, `scripts/kidney-stage12-rules-2026-09-11.ts`, 43 rows
       retired, 12 sodium/processed rows kept; CKD stage 3 unchanged). NKF/KDIGO

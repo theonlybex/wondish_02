@@ -2,6 +2,7 @@
 // Pure validation + helpers; the routes under app/api/patient/conditions do
 // the database work. Kept free of Prisma so it is unit-testable.
 import { normalizeBannedIngredientName } from "./diet-match";
+import { TRIGGER_CATEGORY_TERMS, categoryTitle, termsForCategory } from "./trials/category-terms";
 
 export const CUSTOM_CONDITION_LIMITS = {
   perPatient: 10,
@@ -13,15 +14,27 @@ export const CUSTOM_CONDITION_LIMITS = {
   symptomsMax: 10,
   symptomMin: 2,
   symptomMax: 40,
+  triggersMax: 8,
 } as const;
+
+// Trigger categories a user may attach to their own condition: the workbook
+// 04 categories, whose term lists (lib/trials/category-terms) drive the ban
+// during a trial. Listed for the picker with a human title.
+export const TRIGGER_CATEGORY_OPTIONS: { code: string; title: string; examples: string }[] = Object.keys(TRIGGER_CATEGORY_TERMS).map((code) => ({
+  code,
+  title: categoryTitle(code),
+  examples: termsForCategory(code).terms.slice(0, 4).join(", "),
+}));
+const TRIGGER_CODES = new Set(Object.keys(TRIGGER_CATEGORY_TERMS));
 
 export interface CustomConditionInput {
   name: string;
   avoid: string[];
   guidance: string | null;
   symptoms: string[];
+  triggers: string[]; // trigger category codes
 }
-export type CustomConditionField = "name" | "avoid" | "guidance" | "symptoms";
+export type CustomConditionField = "name" | "avoid" | "guidance" | "symptoms" | "triggers";
 export type CustomConditionValidation =
   | { ok: true; value: CustomConditionInput }
   | { ok: false; error: string; field: CustomConditionField };
@@ -81,8 +94,40 @@ export function validateCustomCondition(body: unknown): CustomConditionValidatio
   const symptoms = dedupe(symptomsRaw);
   if (symptoms.length > L.symptomsMax) return { ok: false, field: "symptoms", error: `Up to ${L.symptomsMax} symptoms per condition.` };
 
-  return { ok: true, value: { name, avoid: avoidUnique, guidance, symptoms } };
+  const triggersRaw = stringList(b.triggers);
+  if (!triggersRaw) return { ok: false, field: "triggers", error: "Triggers must be a list of category codes." };
+  const triggers = dedupe(triggersRaw.map((t) => t.toUpperCase()));
+  const unknown = triggers.find((t) => !TRIGGER_CODES.has(t));
+  if (unknown) return { ok: false, field: "triggers", error: `"${unknown}" is not a trigger category.` };
+  if (triggers.length > L.triggersMax) return { ok: false, field: "triggers", error: `Up to ${L.triggersMax} triggers per condition.` };
+
+  return { ok: true, value: { name, avoid: avoidUnique, guidance, symptoms, triggers } };
 }
+
+// TriggerRule row for a user's condition: the workbook schedule (7-day
+// baseline, 28-day elimination, 3-day challenge, 3-day washout) with the
+// category's own term list; examples and monitored symptoms come from the
+// user's input. `code` and `conditionId` are added by the caller.
+export const CUSTOM_TRIAL_SAFETY_NOTE =
+  "Your own trial, not a clinical protocol — one trigger at a time, and talk to your clinician before restricting food groups.";
+export function customTriggerRuleData(category: string, symptomLabels: readonly string[]) {
+  const terms = termsForCategory(category).terms;
+  return {
+    category,
+    action: "TEMPORARY_ELIMINATION",
+    baselineDays: 7,
+    trialDays: 28,
+    reintroductionDays: 3,
+    washoutDays: 3,
+    doseDependent: true,
+    examples: `${categoryTitle(category)}: ${terms.slice(0, 6).join(", ")}${terms.length > 6 ? "…" : ""}`,
+    symptomsToMonitor: symptomLabels.length ? symptomLabels.join("; ") : "The symptoms you log in your journal",
+    safetyNote: CUSTOM_TRIAL_SAFETY_NOTE,
+    sourceUrl: null as string | null,
+    active: true,
+  };
+}
+export const customTriggerRuleCode = (uuid: string) => `CUST-TR-${uuid}`;
 
 // ConditionTrackingItem.itemCode for a user label: "Brain fog" → "BRAIN_FOG".
 export function symptomItemCode(label: string): string {

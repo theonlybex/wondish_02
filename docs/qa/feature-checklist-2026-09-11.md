@@ -236,6 +236,18 @@ Verified on `qa.variant.20260911@wondish.io` (Pescatarian, Shellfish), desktop a
 | Delete with confirm | ✅ | — | Condition, link, tracking items and their journal symptoms all gone |
 | Onboarding health step pointer | ✅ | — | One line: add your own under Settings after setup |
 
+Second pass (trigger trials + onboarding, 2026-09-11):
+
+| Feature | Desktop | Mobile | Notes |
+|---|---|---|---|
+| "Triggers you could test" chips (28 workbook categories, up to 8) in the add/edit form | ✅ | — | Card shows "2 triggers to test · Alcohol, High fat" |
+| Trials page lists the custom condition's triggers | ✅ | — | Two cards under "GOUT" with the category's terms as examples and the custom safety note; Trials nav appears |
+| Start a custom trial (skip baseline) | ✅ | — | "Elimination · day 1 of 27", removed-from-plan list = alcohol terms; `evaluateDishAgainstProfile` bans "red wine"/"beer" (source `trial`); food map carries the trial line; plan flagged stale |
+| Edit drops a trigger while another is running | ✅ | — | HIGH_FAT card gone, Alcohol trial still active |
+| Delete a condition with an active trial | ✅ | — | 200; trial, rules, link, items all gone (trials have no cascade from rules, so the route deletes them first; confirm text says so) |
+| Onboarding health step: "Don't see yours?" inline add (name, ingredients, symptoms) | ✅ | — | Throwaway account `qa.custom.20260911` walked through all 10 steps; "Gout · 1 avoided · 1 tracked" listed; after submit `/api/patient/conditions` returns it with the ban and the symptom, profile complete; account deleted afterwards |
+| `/terms` content | ⏭ | — | `scripts/seed-terms-2026-09-11.ts` prints a 12-section plain-language draft; **not applied** — `--apply` publishes it to the live site, so it waits for review |
+
 Also in this pass: Kidney Disease stage 1-2 potassium/phosphorus rows (43) moved from hard bans to portion guidance (`scripts/kidney-stage12-rules-2026-09-11.ts`, applied; CKD stage 3 unchanged) — authored, needs clinician review; the settings form now shows the shared inline bounds message instead of the browser's native bubble (`noValidate`).
 
 ## Not exercised

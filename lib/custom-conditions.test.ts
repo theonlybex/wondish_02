@@ -1,6 +1,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CUSTOM_CONDITION_LIMITS, sameLabel, symptomItemCode, validateCustomCondition } from "./custom-conditions";
+import { CUSTOM_CONDITION_LIMITS, TRIGGER_CATEGORY_OPTIONS, customTriggerRuleData, sameLabel, symptomItemCode, validateCustomCondition } from "./custom-conditions";
+
+test("validateCustomCondition: triggers must be known category codes, up to 8", () => {
+  const ok = validateCustomCondition({ name: "Gout", triggers: ["alcohol", "ALCOHOL", "HIGH_FAT"] });
+  assert.ok(ok.ok && ok.value.triggers.join(",") === "ALCOHOL,HIGH_FAT");
+  const bad = validateCustomCondition({ name: "Gout", triggers: ["PIZZA"] });
+  assert.ok(!bad.ok && bad.field === "triggers" && bad.error.includes("PIZZA"));
+  const many = validateCustomCondition({ name: "Gout", triggers: TRIGGER_CATEGORY_OPTIONS.slice(0, 9).map((t) => t.code) });
+  assert.ok(!many.ok && many.error.includes("Up to 8"));
+  assert.equal(TRIGGER_CATEGORY_OPTIONS.length, 28);
+  assert.equal(TRIGGER_CATEGORY_OPTIONS.find((t) => t.code === "ACIDIC_CITRUS")?.title, "Acidic citrus");
+});
+
+test("customTriggerRuleData: workbook schedule, category terms as examples, user symptoms monitored", () => {
+  const r = customTriggerRuleData("ALCOHOL", ["Joint pain", "Fatigue"]);
+  assert.equal(r.baselineDays + r.trialDays + r.reintroductionDays + r.washoutDays, 41);
+  assert.equal(r.action, "TEMPORARY_ELIMINATION");
+  assert.match(r.examples, /^Alcohol: /);
+  assert.equal(r.symptomsToMonitor, "Joint pain; Fatigue");
+  assert.equal(customTriggerRuleData("ALCOHOL", []).symptomsToMonitor, "The symptoms you log in your journal");
+});
 
 test("validateCustomCondition: a full input is normalised and deduplicated", () => {
   const r = validateCustomCondition({
@@ -15,6 +35,7 @@ test("validateCustomCondition: a full input is normalised and deduplicated", () 
     avoid: ["Aged cheese", "red wine", "sauerkraut"],
     guidance: "prefer fresh food, avoid leftovers",
     symptoms: ["Flushing", "Headache"],
+    triggers: [],
   });
 });
 

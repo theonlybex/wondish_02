@@ -9,6 +9,7 @@ import {
   flagPlanStale,
   patientForClerk,
   syncSymptomItems,
+  syncTriggerRules,
   toCustomConditionView,
 } from "@/lib/custom-conditions-server";
 
@@ -49,6 +50,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       await tx.healthConditionBannedIngredient.createMany({ data: v.value.avoid.map((name) => ({ conditionId: condition.id, name })), skipDuplicates: true });
     }
     await syncSymptomItems(tx, condition.id, v.value.symptoms);
+    await syncTriggerRules(tx, condition.id, v.value.triggers);
     return tx.healthCondition.findUniqueOrThrow({ where: { id: condition.id }, select: CUSTOM_CONDITION_SELECT });
   });
   await flagPlanStale(patient);
@@ -62,7 +64,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
   if (!condition) return NextResponse.json({ error: "Condition not found" }, { status: 404 });
 
+  // Trials point at the condition's rules without a cascade, so they go
+  // first (the confirm dialog says so); then the link rows; the condition's
+  // bans, rules and tracking items (with their journal symptoms) cascade.
   await prisma.$transaction([
+    prisma.triggerTrial.deleteMany({ where: { rule: { conditionId: condition.id } } }),
     prisma.patientHealthCondition.deleteMany({ where: { conditionId: condition.id } }),
     prisma.healthCondition.delete({ where: { id: condition.id } }),
   ]);

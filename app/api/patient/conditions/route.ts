@@ -10,6 +10,7 @@ import {
   listCustomConditions,
   newTrackingItem,
   patientForClerk,
+  syncTriggerRules,
   toCustomConditionView,
 } from "@/lib/custom-conditions-server";
 
@@ -56,10 +57,11 @@ export async function POST(req: NextRequest) {
         bannedIngredients: { create: v.value.avoid.map((name) => ({ name })) },
         trackingItems: { create: v.value.symptoms.map(newTrackingItem) },
       },
-      select: CUSTOM_CONDITION_SELECT,
+      select: { id: true },
     });
     await tx.patientHealthCondition.create({ data: { patientId: patient.id, conditionId: created.id } });
-    return created;
+    if (v.value.triggers.length) await syncTriggerRules(tx, created.id, v.value.triggers);
+    return tx.healthCondition.findUniqueOrThrow({ where: { id: created.id }, select: CUSTOM_CONDITION_SELECT });
   });
   await flagPlanStale(patient);
   return NextResponse.json({ condition: toCustomConditionView(row) }, { status: 201 });

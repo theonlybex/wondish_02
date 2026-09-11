@@ -15,6 +15,10 @@ import {
 } from "@/lib/caloric-engine";
 import { kgToLbs, toKg } from "@/lib/prediction-data";
 import { checkBodyMetrics } from "@/lib/body-bounds";
+import { CUSTOM_CONDITION_LIMITS } from "@/lib/custom-conditions";
+import TagInput from "@/components/ui/TagInput";
+
+type CustomDraft = { name: string; avoid: string[]; symptoms: string[] };
 
 interface RefData {
   genders: { id: string; name: string }[];
@@ -119,6 +123,13 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
   const [foodToAvoidIds, setFoodToAvoidIds] = useState<string[]>([]);
   const [foodPreferenceIds, setFoodPreferenceIds] = useState<string[]>([]);
   const [healthConditionIds, setHealthConditionIds] = useState<string[]>([]);
+  // The user's own conditions (name, ingredients to avoid, symptoms). Created
+  // through /api/patient/conditions right after the profile is saved — the
+  // patient row has to exist first. Note for Clara and triggers: Settings.
+  const [customConditions, setCustomConditions] = useState<CustomDraft[]>([]);
+  const [ccOpen, setCcOpen] = useState(false);
+  const [ccDraft, setCcDraft] = useState<CustomDraft>({ name: "", avoid: [], symptoms: [] });
+  const [ccError, setCcError] = useState("");
 
   // A reload used to restart at 1/9. Draft answers live in sessionStorage
   // (per tab, gone when the tab closes) and are restored after mount — after,
@@ -151,6 +162,13 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
         if (arr("foodToAvoidIds")) setFoodToAvoidIds(arr("foodToAvoidIds")!);
         if (arr("foodPreferenceIds")) setFoodPreferenceIds(arr("foodPreferenceIds")!);
         if (arr("healthConditionIds")) setHealthConditionIds(arr("healthConditionIds")!);
+        if (Array.isArray(d.customConditions)) {
+          setCustomConditions(
+            (d.customConditions as unknown[])
+              .filter((c): c is CustomDraft => !!c && typeof c === "object" && typeof (c as CustomDraft).name === "string" && Array.isArray((c as CustomDraft).avoid) && Array.isArray((c as CustomDraft).symptoms))
+              .slice(0, CUSTOM_CONDITION_LIMITS.perPatient)
+          );
+        }
       }
     } catch { /* corrupt or blocked storage: start fresh */ }
     setDraftRestored(true);
@@ -161,10 +179,11 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
       window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
         stepIndex, agreedTerms, firstName, lastName, sexAtBirth, birthday, heightUnit, heightFt, heightIn, heightCm,
         weightUnit, weight, physicalActivityId, goalWeight, motivationIds, foodAllergyIds, foodToAvoidIds, foodPreferenceIds, healthConditionIds,
+        customConditions,
       }));
     } catch { /* storage unavailable — progress simply isn't kept */ }
   }, [draftRestored, stepIndex, agreedTerms, firstName, lastName, sexAtBirth, birthday, heightUnit, heightFt, heightIn, heightCm,
-    weightUnit, weight, physicalActivityId, goalWeight, motivationIds, foodAllergyIds, foodToAvoidIds, foodPreferenceIds, healthConditionIds]);
+    weightUnit, weight, physicalActivityId, goalWeight, motivationIds, foodAllergyIds, foodToAvoidIds, foodPreferenceIds, healthConditionIds, customConditions]);
 
   const step = STEPS[stepIndex];
   const progress = Math.round((stepIndex / (STEPS.length - 1)) * 100);
@@ -280,7 +299,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
       setFoodToAvoidIds([]);
     }
     if (step.id === "diet") setFoodPreferenceIds([]);
-    if (step.id === "health") setHealthConditionIds([]);
+    if (step.id === "health") { setHealthConditionIds([]); setCustomConditions([]); setCcOpen(false); }
     if (step.id === "goal") {
       setGoalWeight("");
       void submit();
@@ -337,6 +356,22 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
         }
         setSubmitError(msg);
         return;
+      }
+      // The profile exists now — create the user's own conditions. A 409
+      // means a retry already created it; anything else stops here with the
+      // profile saved, so the user can retry (the PATCH above is idempotent).
+      for (const c of customConditions) {
+        const r = await fetch("/api/patient/conditions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: c.name, avoid: c.avoid, symptoms: c.symptoms, guidance: null, triggers: [] }),
+        });
+        if (!r.ok && r.status !== 409) {
+          let why = "";
+          try { why = (await r.json()).error ?? ""; } catch { /* keep generic */ }
+          setSubmitError(`Your profile is saved, but "${c.name}" couldn't be added${why ? `: ${why}` : ""}. Try again, or add it under Settings after setup.`);
+          return;
+        }
       }
       // Hard navigation so the dashboard layout re-runs its onboarding gate
       // against fresh data. Next stop: "what's in your fridge?" — the pantry
@@ -731,10 +766,6 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
               shifts your macros toward fewer carbs; the others exclude specific ingredients. The rest are
               recorded so Clara can take them into account.
             </p>
-            <p className="text-xs mb-5 -mt-3" style={{ color: "#848181" }}>
-              Don&apos;t see yours? After setup you can add your own condition — with the ingredients it rules
-              out, a note for Clara and the symptoms to track — under Settings.
-            </p>
             <div className="space-y-5" role="group" aria-label="Health conditions">
               {(() => {
                 const byName = new Map(refData.healthConditions.map((c) => [c.name, c]));
@@ -781,10 +812,96 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
                 ));
               })()}
             </div>
+            {/* The user's own conditions — created right after the profile saves. */}
+            <div className="mt-5 rounded-xl border-2 border-dashed border-[#EAE4CA] p-4" role="group" aria-label="Your own conditions">
+              <p className="text-sm font-medium text-[#1E1A1A]">Don&apos;t see yours?</p>
+              <p className="text-xs mt-0.5 mb-3" style={{ color: "#848181" }}>
+                Add it with the ingredients it rules out and the symptoms to track. A note for Clara and triggers to test can be added later under Settings.
+              </p>
+              {customConditions.length > 0 && (
+                <ul className="space-y-2 mb-3" aria-label="Conditions you added">
+                  {customConditions.map((c) => (
+                    <li key={c.name} className="flex items-center gap-2 rounded-lg bg-[#F3F2FF] pl-3 pr-1 py-1">
+                      <span className="text-sm font-medium text-[#1E1A1A] flex-1 min-w-0 truncate">
+                        {c.name} <span className="font-normal text-xs" style={{ color: "#848181" }}>· {c.avoid.length} avoided · {c.symptoms.length} tracked</span>
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${c.name}`}
+                        onClick={() => setCustomConditions((list) => list.filter((x) => x.name !== c.name))}
+                        className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full text-[#812549] hover:bg-[#812549]/10"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" /></svg>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {ccOpen ? (
+                <div className="space-y-4">
+                  <Input
+                    label="Condition name"
+                    value={ccDraft.name}
+                    onChange={(e) => { setCcDraft((d) => ({ ...d, name: e.target.value })); setCcError(""); }}
+                    placeholder="e.g. Gout"
+                    maxLength={CUSTOM_CONDITION_LIMITS.nameMax}
+                    error={ccError || undefined}
+                  />
+                  <TagInput
+                    id="onb-cc-avoid"
+                    label="Ingredients to avoid"
+                    helper="Excluded from every dish, like an allergy. Press Enter after each."
+                    values={ccDraft.avoid}
+                    onChange={(avoid) => setCcDraft((d) => ({ ...d, avoid }))}
+                    placeholder="e.g. anchovies"
+                    max={CUSTOM_CONDITION_LIMITS.avoidMax}
+                    maxLength={CUSTOM_CONDITION_LIMITS.avoidNameMax}
+                  />
+                  <TagInput
+                    id="onb-cc-symptoms"
+                    label="Symptoms to track"
+                    helper="Shown in your daily journal."
+                    values={ccDraft.symptoms}
+                    onChange={(symptoms) => setCcDraft((d) => ({ ...d, symptoms }))}
+                    placeholder="e.g. joint pain"
+                    max={CUSTOM_CONDITION_LIMITS.symptomsMax}
+                    maxLength={CUSTOM_CONDITION_LIMITS.symptomMax}
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <Button type="button" variant="ghost" onClick={() => { setCcOpen(false); setCcError(""); }}>Cancel</Button>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        const name = ccDraft.name.trim().replace(/\s+/g, " ");
+                        if (name.length < CUSTOM_CONDITION_LIMITS.nameMin) { setCcError("Give the condition a name."); return; }
+                        const taken = refData.healthConditions.some((c) => c.name.toLowerCase() === name.toLowerCase()) || customConditions.some((c) => c.name.toLowerCase() === name.toLowerCase());
+                        if (taken) { setCcError("That condition is already in the list above."); return; }
+                        setCustomConditions((list) => [...list, { name, avoid: ccDraft.avoid, symptoms: ccDraft.symptoms }]);
+                        setCcDraft({ name: "", avoid: [], symptoms: [] });
+                        setCcOpen(false);
+                        setCcError("");
+                      }}
+                    >
+                      Add condition
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setCcOpen(true)}
+                  disabled={customConditions.length >= CUSTOM_CONDITION_LIMITS.perPatient}
+                >
+                  + Add your own condition
+                </Button>
+              )}
+            </div>
             <p className="text-xs mt-4" style={{ color: "#848181" }}>
-              {healthConditionIds.length === 0
+              {healthConditionIds.length + customConditions.length === 0
                 ? "Nothing selected — skip if that's right."
-                : `${healthConditionIds.length} selected. Not medical advice — check changes with your clinician.`}
+                : `${healthConditionIds.length + customConditions.length} selected. Not medical advice — check changes with your clinician.`}
             </p>
           </div>
         )}
