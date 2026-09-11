@@ -51,6 +51,10 @@ export interface FridgeRecipe {
   // Optional, whole minutes; persisted to Recipe.prepTime / cookTime.
   prepMinutes?: number;
   cookMinutes?: number;
+  // Optional per-serving amounts, one per usesIngredients entry (matched by
+  // name). Persisted to RecipeIngredient.quantity/unit so What-to-buy can sum
+  // a week's purchase amounts for Clara-generated dishes too.
+  amounts?: { name: string; quantity: number; unit: string }[];
 }
 
 // ── normalizeIngredients ────────────────────────────────────────────────────
@@ -157,7 +161,24 @@ function parseOneRecipe(raw: unknown, mealTypeHint?: string): FridgeRecipe | nul
     ...(typeof r.cuisine === "string" && r.cuisine.trim() ? { cuisine: r.cuisine.trim() } : {}),
     ...(minutes(r.prepMinutes) !== null ? { prepMinutes: minutes(r.prepMinutes)! } : {}),
     ...(minutes(r.cookMinutes) !== null ? { cookMinutes: minutes(r.cookMinutes)! } : {}),
+    ...(coerceAmounts(r.amounts).length > 0 ? { amounts: coerceAmounts(r.amounts) } : {}),
   };
+}
+
+// Model-authored amounts: keep only well-formed rows with a positive, finite
+// quantity; unit is free text (trimmed, ≤ 24 chars, may be empty = "count").
+export function coerceAmounts(input: unknown): { name: string; quantity: number; unit: string }[] {
+  if (!Array.isArray(input)) return [];
+  const out: { name: string; quantity: number; unit: string }[] = [];
+  for (const row of input.slice(0, 40)) {
+    if (!row || typeof row !== "object") continue;
+    const { name, quantity, unit } = row as Record<string, unknown>;
+    if (typeof name !== "string" || !name.trim()) continue;
+    const q = typeof quantity === "number" ? quantity : typeof quantity === "string" ? Number(quantity) : NaN;
+    if (!Number.isFinite(q) || q <= 0 || q > 10000) continue;
+    out.push({ name: name.trim().slice(0, 80), quantity: Math.round(q * 1000) / 1000, unit: typeof unit === "string" ? unit.trim().slice(0, 24) : "" });
+  }
+  return out;
 }
 
 // Exchange endpoints re-validate the client-supplied fridge-recipe snapshot
@@ -284,6 +305,15 @@ export const SUGGEST_RECIPES_SCHEMA: { type: "object"; properties: Record<string
           servings: { type: "number" },
           prepMinutes: { type: "number" },
           cookMinutes: { type: "number" },
+          amounts: {
+            type: "array",
+            description: "One entry per usesIngredients item: the per-serving amount, e.g. {name:'chicken breast', quantity:6, unit:'oz'}. Units: g, oz, lb, ml, cup, tablespoon, teaspoon, or '' for whole items.",
+            items: {
+              type: "object",
+              properties: { name: { type: "string" }, quantity: { type: "number" }, unit: { type: "string" } },
+              required: ["name", "quantity", "unit"],
+            },
+          },
           perServing: {
             type: "object",
             properties: {

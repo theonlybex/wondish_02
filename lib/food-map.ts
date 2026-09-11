@@ -28,11 +28,27 @@ export const PATIENT_FOOD_MAP_INCLUDE = {
 export interface FoodMapPatient {
   mealType?: { name: string } | null;
   foodAllergies: { food: { name: string; bannedIngredients: { name: string }[] } }[];
-  foodToAvoid: { food: { name: string } }[];
+  foodToAvoid: { food: { name: string; bannedIngredients?: { name: string }[] } }[];
   foodPreferences: { food: { name: string; bannedIngredients: { name: string }[] } }[];
   healthConditions: { condition: { name: string; bannedIngredients: { name: string }[] } }[];
   motivations: { motivation: { name: string; bannedIngredients: { name: string }[] } }[];
 }
+
+// Soft, prompt-level guidance per condition — the "how to cook for it" that a
+// hard ingredient ban can't express. Plain salt was a hard ban for
+// Hypertension / Heart Disease / Kidney Disease until 2026-09-11, which left a
+// Hypertension profile 3 library dinners; sodium restriction is guidance.
+export const CONDITION_GUIDANCE: Record<string, string> = {
+  hypertension: "keep sodium low — season with herbs, citrus and spices, only a pinch of salt, no cured meats or salty sauces",
+  "heart disease": "keep sodium and saturated fat low — minimal salt, lean proteins, olive oil over butter",
+  "kidney disease stage 1-2": "keep sodium moderate and avoid very high-potassium/phosphorus loads — minimal salt, no processed meats",
+  "chronic kidney disease – stage 3": "low sodium, moderate protein portions, limit high-potassium and high-phosphorus foods",
+  "high cholesterol": "favour unsaturated fats, fibre and lean proteins; limit saturated fat",
+  "type 2 diabetes": "steady carbohydrates with fibre and protein; avoid added sugars and refined starches",
+  prediabetes: "steady carbohydrates with fibre and protein; avoid added sugars",
+  gerd: "avoid very spicy, fried, acidic or late heavy meals",
+  "fatty liver disease (nafld)": "limit added sugars, refined carbs and saturated fat",
+};
 
 // ── buildFoodMapText ────────────────────────────────────────────────────────
 // Verbatim lift of dish-checker/route.ts's private buildFoodMapText.
@@ -54,6 +70,8 @@ export function buildFoodMapText(patient: FoodMapPatient | null | undefined): st
 
   if (patient.foodToAvoid?.length > 0) {
     lines.push(`Foods to avoid: ${patient.foodToAvoid.map((f) => f.food.name).join(", ")}`);
+    const banned = patient.foodToAvoid.flatMap((f) => (f.food.bannedIngredients ?? []).map((b) => b.name));
+    if (banned.length > 0) lines.push(`Restricted from foods to avoid: ${banned.join(", ")}`);
   }
 
   if (patient.foodPreferences?.length > 0) {
@@ -68,6 +86,10 @@ export function buildFoodMapText(patient: FoodMapPatient | null | undefined): st
     const banned = patient.healthConditions.flatMap((c) => c.condition.bannedIngredients.map((b) => b.name));
     lines.push(`Health conditions: ${names}`);
     if (banned.length > 0) lines.push(`Restricted from conditions: ${banned.join(", ")}`);
+    const guidance = patient.healthConditions
+      .map((c) => CONDITION_GUIDANCE[c.condition.name.trim().toLowerCase()])
+      .filter((g): g is string => Boolean(g));
+    if (guidance.length > 0) lines.push(`Condition guidance: ${guidance.join("; ")}`);
   }
 
   if (patient.motivations?.length > 0) {

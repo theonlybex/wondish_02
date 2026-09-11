@@ -25,7 +25,7 @@ interface ParameterCrudTableProps {
   initialItems: ParameterItem[];
 }
 
-const SUPPORTS_BANNED = ["health-condition", "food-preference", "food-allergy", "motivation"];
+const SUPPORTS_BANNED = ["health-condition", "food-preference", "food-allergy", "motivation", "food-to-avoid"];
 const SUPPORTS_MEALS = ["ethnic"];
 
 // ─── Banned Ingredients Panel ────────────────────────────────────────────────

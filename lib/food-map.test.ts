@@ -140,3 +140,17 @@ test("collectBannedTerms: dedupes case-insensitively", () => {
   };
   assert.deepEqual(collectBannedTerms(p), ["peanut"]);
 });
+
+test("buildFoodMapText: avoid children and condition guidance reach the prompt", () => {
+  const patient: FoodMapPatient = {
+    foodAllergies: [],
+    foodToAvoid: [{ food: { name: "Red meat", bannedIngredients: [{ name: "beef" }, { name: "lamb" }] } }],
+    foodPreferences: [],
+    healthConditions: [{ condition: { name: "Hypertension", bannedIngredients: [{ name: "soy sauce" }] } }],
+    motivations: [],
+  };
+  const text = buildFoodMapText(patient);
+  assert.match(text, /Restricted from foods to avoid: beef, lamb/);
+  assert.match(text, /Condition guidance: keep sodium low/);
+  assert.match(text, /Restricted from conditions: soy sauce/);
+});

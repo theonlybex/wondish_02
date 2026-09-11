@@ -26,14 +26,34 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
         const pre = new Set<string>();
         for (const l of lv) for (const it of l.items) if (it.liked) pre.add(it.id);
         setSelected(pre);
+        return lv;
       })
       .finally(() => setLoading(false));
   };
 
+  // A refresh used to drop the user back to level 1 (selections survived on
+  // the server, the position and the "Favorites saved" screen didn't). The
+  // position lives in sessionStorage per tab, like the onboarding draft.
+  const POS_KEY = `wondish.taste.pos.v1.${mode}`;
+  const [posRestored, setPosRestored] = useState(false);
   useEffect(() => {
-    void loadDeck();
+    void loadDeck().then((lv) => {
+      try {
+        const raw = window.sessionStorage.getItem(POS_KEY);
+        if (raw && lv && lv.length > 0) {
+          const d = JSON.parse(raw) as { levelIdx?: unknown; done?: unknown };
+          if (typeof d.levelIdx === "number" && d.levelIdx >= 0) setLevelIdx(Math.min(d.levelIdx, lv.length - 1));
+          if (d.done === true) setDone(true);
+        }
+      } catch { /* blocked or corrupt storage: start at level 1 */ }
+      setPosRestored(true);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => {
+    if (!posRestored) return;
+    try { window.sessionStorage.setItem(POS_KEY, JSON.stringify({ levelIdx, done })); } catch { /* not kept */ }
+  }, [posRestored, levelIdx, done, POS_KEY]);
 
   // Mark taste complete so the layout gate stops redirecting here.
   useEffect(() => {

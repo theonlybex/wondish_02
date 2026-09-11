@@ -102,6 +102,7 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     `- prepMinutes and cookMinutes: realistic whole minutes for a home cook (prep = washing/chopping/mixing, cook = time on heat; 0 for no-cook dishes).`,
     `- Each dish is a COMPLETE MEAL for its slot (protein + carb + veg where sensible), close to the stated per-serving calorie target.`,
     `- usesIngredients lists EVERY ingredient in the dish; leave missingIngredients empty.`,
+    `- amounts: one entry per usesIngredients item with the PER-SERVING quantity and unit (g, oz, lb, ml, cup, tablespoon, teaspoon, or "" for whole items like eggs). Same spelling as in usesIngredients.`,
     `- steps: provide 5–10 clear, numbered cooking instructions a home cook can follow (prep, cook, assemble, serve). Every dish MUST have real steps.`,
     `- perServing macros must be realistic and self-consistent (protein/carbs/fat roughly explain the calories).${macro}`,
     `- mealType must be exactly one of: ${args.requests.map((r) => r.mealTypeName).join(", ")}.`,
@@ -218,12 +219,17 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
   const withinBasket = (r: FridgeRecipe): boolean => {
     if (!allowed) return true;
     const canonical: string[] = [];
+    const rename = new Map<string, string>();
     for (const n of r.usesIngredients) {
       const m = findBasketMatch(n, allowed);
       if (m === null) return false;
-      canonical.push(m === "" ? n.trim() : m);
+      const target = m === "" ? n.trim() : m;
+      rename.set(n.trim().toLowerCase(), target);
+      canonical.push(target);
     }
     r.usesIngredients = Array.from(new Set(canonical));
+    // Amounts follow the rename so they still match by name at persist time.
+    if (r.amounts) r.amounts = r.amounts.map((a) => ({ ...a, name: rename.get(a.name.trim().toLowerCase()) ?? a.name }));
     return true;
   };
   const accepted: { recipe: FridgeRecipe; mealTypeId: string }[] = [];
@@ -365,7 +371,16 @@ export async function persistValidatedRecipes(
           mealTypeId,
           dishTypeId,
           ethnicId,
-          ingredients: { create: ingredientIds.map((ingredientId) => ({ ingredientId })) },
+          ingredients: {
+            create: ingredientIds.map((ingredientId) => {
+              // Per-serving amount by name (usesIngredients and amounts share
+              // the basket's canonical spelling after withinBasket).
+              const amount = recipe.amounts?.find((a) => idByLower.get(a.name.trim().toLowerCase()) === ingredientId);
+              return amount
+                ? { ingredientId, quantity: amount.quantity, unit: amount.unit || null }
+                : { ingredientId };
+            }),
+          },
         },
         select: { id: true },
       });

@@ -422,3 +422,12 @@ test("applyAllergenFilter: an ALLERGY in the steps alone still rejects (safety s
   const inSteps = parseFridgeRecipes([validRecipeInput({ steps: ["Garnish with crushed peanuts."] })], 3)!;
   assert.deepEqual(applyAllergenFilter(inSteps, matchers), []);
 });
+
+// ─── amounts (per-serving quantities from the model) ─────────────────────────
+
+test("validateFridgeRecipeSnapshot keeps well-formed amounts and drops junk rows", () => {
+  const base = { name: "Bowl", steps: ["cook"], usesIngredients: ["chicken breast", "brown rice"], perServing: { calories: 500, protein: 40, carbs: 50, fat: 12, fiber: 4 }, fitsPlan: true };
+  const ok = validateFridgeRecipeSnapshot({ ...base, amounts: [{ name: "chicken breast", quantity: 6, unit: "oz" }, { name: "brown rice", quantity: "0.5", unit: "cup" }, { name: "", quantity: 1, unit: "" }, { name: "x", quantity: -2, unit: "g" }, { name: "y", quantity: "abc", unit: "g" }] });
+  assert.deepEqual(ok?.amounts, [{ name: "chicken breast", quantity: 6, unit: "oz" }, { name: "brown rice", quantity: 0.5, unit: "cup" }]);
+  assert.equal(validateFridgeRecipeSnapshot(base)?.amounts, undefined);
+});

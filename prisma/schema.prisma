@@ -246,9 +246,22 @@ model PatientFoodPreference {
 }
 
 model FoodToAvoid {
-  id       String               @id @default(cuid())
-  name     String               @unique
-  patients PatientFoodToAvoid[]
+  id                String                        @id @default(cuid())
+  name              String                        @unique
+  patients          PatientFoodToAvoid[]
+  // Ingredient names the avoid-rule expands to ("Red meat" → beef, lamb…).
+  // Without these an avoid rule only matched an ingredient literally named
+  // "red meat" and What-to-buy offered ground beef to a red-meat avoider.
+  bannedIngredients FoodToAvoidBannedIngredient[]
+}
+
+model FoodToAvoidBannedIngredient {
+  id      String      @id @default(cuid())
+  avoidId String
+  food    FoodToAvoid @relation(fields: [avoidId], references: [id], onDelete: Cascade)
+  name    String
+
+  @@unique([avoidId, name])
 }
 
 model PatientFoodToAvoid {

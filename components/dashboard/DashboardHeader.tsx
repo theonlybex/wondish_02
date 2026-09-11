@@ -11,6 +11,8 @@ interface DashboardHeaderProps {
   name?: string | null;
   plan: string;
   onMenuToggle?: () => void;
+  // Account created today → "Welcome", not "Welcome back".
+  isNew?: boolean;
 }
 
 function CouponInput({ onClose }: { onClose: () => void }) {
@@ -76,7 +78,7 @@ function CouponInput({ onClose }: { onClose: () => void }) {
   );
 }
 
-export default function DashboardHeader({ email, name, plan, onMenuToggle }: DashboardHeaderProps) {
+export default function DashboardHeader({ email, name, plan, onMenuToggle, isNew = false }: DashboardHeaderProps) {
   const t = useTranslations("dashboardHeader");
   const [open, setOpen] = useState(false);
   const [showCoupon, setShowCoupon] = useState(false);
@@ -108,7 +110,7 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle }: Das
           {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
         </p>
         <p className="text-sm font-bold text-[#1E1A1A] leading-tight">
-          Welcome back, {name?.split(" ")[0]}.
+          {isNew ? "Welcome" : "Welcome back"}, {name?.split(" ")[0]}.
         </p>
       </div>
 

@@ -302,7 +302,7 @@ test("exact-ban: a whitespace-padded ban name still matches (build-time trim sym
 test("PATIENT_DIET_INCLUDE: shape matches the 5-source graph (allergies/avoid/conditions/preferences/motivations)", () => {
   assert.deepEqual(PATIENT_DIET_INCLUDE, {
     foodAllergies:    { include: { food: { include: { bannedIngredients: true } } } },
-    foodToAvoid:      { include: { food: true } },
+    foodToAvoid:      { include: { food: { include: { bannedIngredients: true } } } },
     healthConditions: { include: { condition: { include: { bannedIngredients: true } } } },
     foodPreferences:  { include: { food: { include: { bannedIngredients: true } } } },
     motivations:      { include: { motivation: { include: { bannedIngredients: true } } } },
@@ -490,4 +490,21 @@ test("an allergy still bans the oil pressed from it (peanut oil) — safety bran
   const cond = buildDietMatchers(derivePatientBans({ ...emptyPatient(), healthConditions: [{ condition: { bannedIngredients: [{ name: "olives" }] } }] }));
   assert.equal(evaluateDishAgainstProfile(["extra virgin olive oil"], cond).passed, true);
   assert.equal(evaluateDishAgainstProfile(["green olives"], cond).passed, false);
+});
+
+// ─── foods to avoid expand to their bannedIngredients children ───────────────
+
+test("a 'Red meat' avoid rule bans beef through its children, and still bans the literal name", () => {
+  const patient: PatientDietGraph = {
+    ...emptyPatient(),
+    foodToAvoid: [{ food: { name: "Red meat", bannedIngredients: [{ name: "beef" }, { name: "ground beef" }, { name: "lamb" }] } }],
+  };
+  const m = buildDietMatchers(derivePatientBans(patient));
+  const r = evaluateDishAgainstProfile(["ground beef", "onion"], m);
+  assert.equal(r.passed, false);
+  assert.equal(r.violations[0].source, "avoid");
+  assert.equal(evaluateDishAgainstProfile(["chicken breast"], m).passed, true);
+  // Graphs built without children (older callers) still work name-only.
+  const legacy = buildDietMatchers(derivePatientBans({ ...emptyPatient(), foodToAvoid: [{ food: { name: "Pork" } }] }));
+  assert.equal(evaluateDishAgainstProfile(["pork chops"], legacy).passed, false);
 });

@@ -118,6 +118,7 @@ export default async function DashboardLayout({
           plan={isAdmin ? "ADMIN" : isPremium ? "PREMIUM" : "FREE"}
           isAdmin={isAdmin}
           isRestaurantStaff={isRestaurantStaff}
+          isNew={Boolean(account && Date.now() - new Date(account.createdAt).getTime() < 24 * 60 * 60 * 1000)}
         />
         {account?.subscriptions?.some((s) => s.source === "STRIPE" && s.status === "PAST_DUE") && <PastDueBanner />}
         <main className="flex-1 overflow-y-auto p-5 sm:p-8">

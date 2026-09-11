@@ -15,12 +15,14 @@ export default function MobileNav({
   plan,
   isAdmin,
   isRestaurantStaff,
+  isNew = false,
 }: {
   email: string;
   name: string;
   plan: "ADMIN" | "PREMIUM" | "FREE";
   isAdmin: boolean;
   isRestaurantStaff: boolean;
+  isNew?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -39,7 +41,7 @@ export default function MobileNav({
 
   return (
     <>
-      <DashboardHeader email={email} name={name} plan={plan} onMenuToggle={() => setOpen((v) => !v)} />
+      <DashboardHeader email={email} name={name} plan={plan} isNew={isNew} onMenuToggle={() => setOpen((v) => !v)} />
       {open && (
         <div className="lg:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Navigation">
           <button

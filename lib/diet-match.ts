@@ -18,7 +18,8 @@ export interface ExactBan {
 // a local type, not a Prisma model import, so the module stays Prisma-free.
 export interface PatientDietGraph {
   foodAllergies: { food: { name: string; bannedIngredients: { name: string }[] } }[];
-  foodToAvoid: { food: { name: string } }[];
+  // bannedIngredients optional: older callers/tests build the graph by hand.
+  foodToAvoid: { food: { name: string; bannedIngredients?: { name: string }[] } }[];
   healthConditions: { condition: { bannedIngredients: { name: string }[] } }[];
   foodPreferences: { food: { bannedIngredients: { name: string }[] } }[];
   motivations: { motivation: { bannedIngredients: { name: string }[] } }[];
@@ -78,7 +79,7 @@ export interface Violation {
 //
 // 5-source union, asymmetric by design (mirrors lib/meal-plan.ts:162-166):
 //   - allergies        → own food name AND bannedIngredients children (allergyNames)
-//   - foodToAvoid      → own food name only                            (exactBanned, source "avoid")
+//   - foodToAvoid      → own food name AND bannedIngredients children (exactBanned, source "avoid")
 //   - healthConditions → bannedIngredients children only                (exactBanned, source "condition")
 //   - foodPreferences  → bannedIngredients children only                (exactBanned, source "preference")
 //   - motivations      → bannedIngredients children only                (exactBanned, source "motivation")
@@ -89,7 +90,13 @@ export function derivePatientBans(patient: PatientDietGraph): DerivedBans {
   ]);
 
   const exactBanned: ExactBan[] = [
-    ...patient.foodToAvoid.map((f) => ({ name: f.food.name, source: "avoid" as const })),
+    // foodToAvoid: own name AND its bannedIngredients children ("Red meat" →
+    // beef, lamb, veal…). The children were added 2026-09-11; before that a
+    // red-meat avoider was offered ground beef.
+    ...patient.foodToAvoid.flatMap((f) => [
+      { name: f.food.name, source: "avoid" as const },
+      ...(f.food.bannedIngredients ?? []).map((b) => ({ name: b.name, source: "avoid" as const })),
+    ]),
     ...patient.healthConditions.flatMap((hc) =>
       hc.condition.bannedIngredients.map((b) => ({ name: b.name, source: "condition" as const }))
     ),
@@ -292,7 +299,7 @@ export function evaluateDishAgainstProfile(
 // include shape structurally at each call site.
 export const PATIENT_DIET_INCLUDE = {
   foodAllergies:    { include: { food: { include: { bannedIngredients: true } } } },
-  foodToAvoid:      { include: { food: true } },
+  foodToAvoid:      { include: { food: { include: { bannedIngredients: true } } } },
   healthConditions: { include: { condition: { include: { bannedIngredients: true } } } },
   foodPreferences:  { include: { food: { include: { bannedIngredients: true } } } },
   motivations:      { include: { motivation: { include: { bannedIngredients: true } } } },

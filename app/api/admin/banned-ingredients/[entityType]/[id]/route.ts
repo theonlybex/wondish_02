@@ -85,6 +85,12 @@ async function getItems(entityType: string, id: string) {
       orderBy: { name: "asc" },
     });
   }
+  if (entityType === "food-to-avoid") {
+    return prisma.foodToAvoidBannedIngredient.findMany({
+      where: { avoidId: id },
+      orderBy: { name: "asc" },
+    });
+  }
   throw new Error(`Unknown entityType: ${entityType}`);
 }
 
@@ -109,6 +115,11 @@ async function createItem(entityType: string, id: string, name: string) {
       data: { motivationId: id, name },
     });
   }
+  if (entityType === "food-to-avoid") {
+    return prisma.foodToAvoidBannedIngredient.create({
+      data: { avoidId: id, name },
+    });
+  }
   throw new Error(`Unknown entityType: ${entityType}`);
 }
 
@@ -124,6 +135,9 @@ async function deleteItem(entityType: string, itemId: string) {
   }
   if (entityType === "motivation") {
     return prisma.motivationBannedIngredient.delete({ where: { id: itemId } });
+  }
+  if (entityType === "food-to-avoid") {
+    return prisma.foodToAvoidBannedIngredient.delete({ where: { id: itemId } });
   }
   throw new Error(`Unknown entityType: ${entityType}`);
 }
