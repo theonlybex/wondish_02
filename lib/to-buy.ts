@@ -1,3 +1,4 @@
+import { BASKET_STAPLES } from "@/lib/basket-coverage";
 // Pure ranking for the "What to buy" smart-stocking list. The route diet-filters
 // recipes first (only eatable dishes reach here), then this module counts how
 // many dishes each ingredient unlocks and orders: favorites first, then by
@@ -13,7 +14,9 @@ export type ToBuyItem = {
   favorite: boolean;
 };
 
-export const STAPLE_NAMES = new Set(["salt", "pepper", "black pepper", "water"]);
+// One staple list for the whole basket model (lib/basket-coverage): the
+// shorter local list here let "tap water · 1 fl oz" reach What-to-buy.
+export const STAPLE_NAMES: Set<string> = BASKET_STAPLES;
 
 // For each recipe that is exactly ONE ingredient short of the basket (staples
 // free), that missing ingredient "unlocks" the recipe. Returns marginal unlock
