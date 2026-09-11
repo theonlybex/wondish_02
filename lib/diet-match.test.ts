@@ -6,6 +6,7 @@ import {
   derivePatientBans,
   buildDietMatchers,
   evaluateDishAgainstProfile,
+  exactBanPattern,
   PATIENT_DIET_INCLUDE,
   type PatientDietGraph,
 } from "./diet-match";
@@ -462,4 +463,31 @@ test("every FoodAllergy name maps to at least one Big-9 group, and a trailing sp
   assert.ok(wheat.bannedGroups.has("BIG9-WHEAT"));
   // A patient without allergies bans no groups.
   assert.equal(buildDietMatchers(derivePatientBans(emptyPatient())).bannedGroups.size, 0);
+});
+
+// ─── exact bans: a food is not the product pressed/fermented from it ─────────
+
+test("exactBanPattern: 'olives' bans olives but not olive oil; 'olive oil' still bans olive oil", () => {
+  const olives = exactBanPattern("olives");
+  assert.equal(olives.test("kalamata olives"), true);
+  assert.equal(olives.test("olive tapenade"), true);
+  assert.equal(olives.test("Extra virgin olive oil"), false);
+  assert.equal(olives.test("Olive oil spray"), false);
+  assert.equal(exactBanPattern("olive oil").test("extra virgin olive oil"), true);
+  assert.equal(exactBanPattern("avocado").test("avocado oil"), false);
+  assert.equal(exactBanPattern("avocado").test("avocado"), true);
+  assert.equal(exactBanPattern("rice").test("rice vinegar"), false);
+  assert.equal(exactBanPattern("apple").test("apple cider vinegar"), false);
+  assert.equal(exactBanPattern("apple").test("apple slices"), true);
+  // Phrase bans keep their substring behaviour.
+  assert.equal(exactBanPattern("sugar").test("brown sugar"), true);
+});
+
+test("an allergy still bans the oil pressed from it (peanut oil) — safety branch unchanged", () => {
+  const m = buildDietMatchers(derivePatientBans(peanutAllergyPatient()));
+  assert.equal(evaluateDishAgainstProfile(["peanut oil"], m).passed, false);
+  // …while a condition ban on olives leaves olive oil alone.
+  const cond = buildDietMatchers(derivePatientBans({ ...emptyPatient(), healthConditions: [{ condition: { bannedIngredients: [{ name: "olives" }] } }] }));
+  assert.equal(evaluateDishAgainstProfile(["extra virgin olive oil"], cond).passed, true);
+  assert.equal(evaluateDishAgainstProfile(["green olives"], cond).passed, false);
 });

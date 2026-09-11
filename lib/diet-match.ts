@@ -181,7 +181,24 @@ function stemUnionBody(lowered: string): string {
 // Shared by evaluateDishAgainstProfile (discrete ingredient names) and
 // lib/fridge.ts's applyAllergenFilter (free-text recipe fields) so both
 // surfaces block the identical term set.
-export const exactBanPattern = (name: string) => boundaryPattern(stemUnionBody(name.trim().toLowerCase()));
+//
+// Dietary bans name a food, not the products pressed or fermented from it:
+// Hypertension's "olives" (brine sodium) must not match "extra virgin olive
+// oil" (435 library recipes → the Hypertension pool collapsed to 3 dinners,
+// 2026-09-11), "avocado" must not match "avocado oil", "rice" must not match
+// "rice vinegar". A negative lookahead skips a match directly followed by a
+// derived-product word, unless the ban itself names that product ("olive
+// oil"). Allergy matchers deliberately keep the broad match (peanut oil).
+const DERIVED_PRODUCT_RE = /\b(oil|vinegar|spray|extract)\b/;
+export const exactBanPattern = (name: string) => {
+  const lowered = name.trim().toLowerCase();
+  const body = stemUnionBody(lowered);
+  if (DERIVED_PRODUCT_RE.test(lowered)) return boundaryPattern(body);
+  return new RegExp(
+    `(?<![\\p{L}\\p{N}])(?:${body})(?![\\p{L}\\p{N}])(?!\\s+(?:cider\\s+)?(?:oil|vinegar|spray|extract)\\b)`,
+    "iu"
+  );
+};
 
 export function buildDietMatchers({ allergyNames, exactBanned, allergyGroupCodes = [] }: DerivedBans): DietMatchers {
   const allergyMatchers = Array.from(new Set(allergyNames.flatMap(expandBanName)))

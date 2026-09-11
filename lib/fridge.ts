@@ -217,11 +217,22 @@ export function applyAllergenFilter(recipes: FridgeRecipe[], matchers: DietMatch
     .map((b) => exactBanPattern(b.name));
 
   return recipes.filter((recipe) => {
+    // Allergies are safety-critical: every model-authored field is scanned.
     const text = recipeSearchText(recipe);
     if (matchers.allergyMatchers.some((m) => m.test(text))) return false;
-    if (exactPatterns.some((re) => re.test(text))) return false;
+    // Diet/condition/avoid bans are dietary rules, not safety: judge the dish
+    // by what it is made of (name + ingredient lists), not by prose. A step
+    // reading "season to taste" or a description mentioning "no salt needed"
+    // must not reject a dish for a hypertension "salt" rule — that rejected
+    // 28/28 generated dishes for a Hypertension profile (2026-09-11).
+    const composition = recipeCompositionText(recipe);
+    if (exactPatterns.some((re) => re.test(composition))) return false;
     return true;
   });
+}
+
+function recipeCompositionText(recipe: FridgeRecipe): string {
+  return [recipe.name, ...recipe.usesIngredients, ...recipe.missingIngredients].join(" \n ").toLowerCase();
 }
 
 // ── buildFridgePrompt ────────────────────────────────────────────────────────

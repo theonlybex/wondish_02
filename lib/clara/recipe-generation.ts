@@ -6,8 +6,8 @@ import {
   SUGGEST_RECIPES_SCHEMA,
   type FridgeRecipe,
 } from "@/lib/fridge";
-import type { DietMatchers } from "@/lib/diet-match";
-import { BASKET_STAPLES } from "@/lib/basket-coverage";
+import { evaluateDishAgainstProfile, type DietMatchers } from "@/lib/diet-match";
+import { findBasketMatch } from "@/lib/basket-match";
 
 // ── Clara catalog top-up ─────────────────────────────────────────────────────
 //
@@ -66,6 +66,15 @@ interface TopUpArgs {
   allowedIngredients?: string[];
 }
 
+// Staples the basket clause hands out for free — minus any the profile bans.
+// The prompt used to say "(plus salt, pepper, water)" while the ban line said
+// "NEVER include salt": the model obeyed the first, the filter enforced the
+// second, and a Hypertension profile got 0 of 28 dishes.
+const FREE_STAPLES = ["salt", "pepper", "water"] as const;
+export function freeStaplesFor(matchers: DietMatchers): string[] {
+  return FREE_STAPLES.filter((s) => evaluateDishAgainstProfile([s], matchers).passed);
+}
+
 function systemPrompt(args: TopUpArgs, total: number): string {
   const perType = args.requests
     .map((r) => `- ${r.count} × ${r.mealTypeName} (target ≈${Math.round(r.targetCalories)} kcal per serving)`)
@@ -80,8 +89,9 @@ function systemPrompt(args: TopUpArgs, total: number): string {
   const cuisine = args.cuisine
     ? `\n- EVERY dish must be authentic ${args.cuisine} cuisine.`
     : "";
+  const free = freeStaplesFor(args.matchers);
   const basket = args.allowedIngredients && args.allowedIngredients.length > 0
-    ? `\n- Every dish may use ONLY these ingredients (plus salt, pepper, water): ${args.allowedIngredients.join(", ")}. Use no other ingredient.`
+    ? `\n- Every dish may use ONLY these ingredients${free.length > 0 ? ` (plus ${free.join(", ")})` : ""}: ${args.allowedIngredients.join(", ")}. Use no other ingredient.`
     : "";
   return [
     `You are Clara, Wondish's nutrition assistant. Generate ${total} realistic, home-cookable ${args.cuisine ? args.cuisine + " " : ""}dishes to expand a meal-plan catalog:`,
@@ -199,14 +209,23 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
   // Basket constraint (deterministic): reject any dish using an ingredient not
   // in the allowed basket (staples are free). The prompt asks for it; this
   // enforces it.
-  const allowed = args.allowedIngredients
-    ? new Set(args.allowedIngredients.map((n) => n.trim().toLowerCase()))
-    : null;
-  const withinBasket = (r: FridgeRecipe): boolean =>
-    !allowed ||
-    r.usesIngredients.every(
-      (n) => allowed.has(n.trim().toLowerCase()) || BASKET_STAPLES.has(n.trim().toLowerCase())
-    );
+  // Tolerant match (lib/basket-match): "chicken breast" ↔ "Boneless chicken
+  // breasts". A matched name is rewritten to the basket's catalog name before
+  // persisting, so the dish points at the same Ingredient row the pantry,
+  // What-to-buy and the allergen groups use — no fragment rows like
+  // "olive oil" next to "Extra virgin olive oil".
+  const allowed = args.allowedIngredients ?? null;
+  const withinBasket = (r: FridgeRecipe): boolean => {
+    if (!allowed) return true;
+    const canonical: string[] = [];
+    for (const n of r.usesIngredients) {
+      const m = findBasketMatch(n, allowed);
+      if (m === null) return false;
+      canonical.push(m === "" ? n.trim() : m);
+    }
+    r.usesIngredients = Array.from(new Set(canonical));
+    return true;
+  };
   const accepted: { recipe: FridgeRecipe; mealTypeId: string }[] = [];
   const rejected: Record<string, number> = {};
   const reject = (why: string, r: FridgeRecipe) => {
@@ -215,6 +234,18 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
   };
   const filtered = applyAllergenFilter(recipes, args.matchers);
   rejected.allergen = recipes.length - filtered.length;
+  // Which ban terms did the rejecting, so a wipe-out is diagnosable from the
+  // log line alone (e.g. {"salt":28} → a condition rule, not an allergy).
+  const banTerms: Record<string, number> = {};
+  if (rejected.allergen > 0) {
+    const kept = new Set(filtered);
+    for (const r of recipes) {
+      if (kept.has(r)) continue;
+      const { violations } = evaluateDishAgainstProfile([r.name, ...r.usesIngredients, ...r.missingIngredients, ...r.steps], args.matchers);
+      for (const term of new Set(violations.map((v) => v.term))) banTerms[term] = (banTerms[term] ?? 0) + 1;
+      if (process.env.AI_DEBUG) console.warn(`[recipe-generation] rejected (allergen): ${r.name} — ${violations.map((v) => `${v.term}←${v.ingredient}`).slice(0, 3).join(", ")}`);
+    }
+  }
   for (const r of filtered) {
     if (accepted.length >= total) break;
     if (!withinBasket(r)) { reject("out-of-basket", r); continue; }
@@ -226,7 +257,7 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     seen.add(nameKey);
     accepted.push({ recipe: r, mealTypeId: slot.mealTypeId });
   }
-  console.info(`[recipe-generation] generated=${recipes.length} accepted=${accepted.length} rejected=${JSON.stringify(rejected)}`);
+  console.info(`[recipe-generation] generated=${recipes.length} accepted=${accepted.length} rejected=${JSON.stringify(rejected)}${rejected.allergen > 0 ? ` banTerms=${JSON.stringify(banTerms)}` : ""}`);
   if (accepted.length === 0) return [];
   // dishType "complete meal" so the builder's primary-dish step (Step 1) can
   // select these under the full calorie-window + macro + variety rules, not

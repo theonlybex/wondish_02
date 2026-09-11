@@ -285,9 +285,11 @@ test("applyAllergenFilter: exactBanned single-word phrase ('cilantro') drops a r
 
 test("applyAllergenFilter: exactBanned multi-word phrase ('red meat') matches only the full phrase, not 'meat' or 'red' alone", () => {
   const matchers = buildDietMatchers(derivePatientBans(redMeatAvoidPatient()));
-  const withRedMeat = parseFridgeRecipes([validRecipeInput({ steps: ["Sear the red meat until browned."] })], 3)!;
-  const withMeatOnly = parseFridgeRecipes([validRecipeInput({ steps: ["Braise the meat for two hours."] })], 3)!;
-  const withRedOnly = parseFridgeRecipes([validRecipeInput({ steps: ["Roast the red peppers."] })], 3)!;
+  // Dietary bans are judged on composition (name + ingredient lists), so the
+  // phrase sits in usesIngredients here.
+  const withRedMeat = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["red meat", "onion"] })], 3)!;
+  const withMeatOnly = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["stew meat", "onion"] })], 3)!;
+  const withRedOnly = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["red peppers", "onion"] })], 3)!;
   assert.deepEqual(applyAllergenFilter(withRedMeat, matchers), []);
   assert.equal(applyAllergenFilter(withMeatOnly, matchers).length, 1);
   assert.equal(applyAllergenFilter(withRedOnly, matchers).length, 1);
@@ -341,7 +343,7 @@ test("SUGGEST_RECIPES_SCHEMA: is a valid tool input_schema shape", () => {
 
 // ─── 2026-07-24 logic-audit Task 2: punctuation-edged exact bans ────────────
 
-test("audit-T2: exact ban with punctuation edges ('Nuts (tree)') blocks matching free text", () => {
+test("audit-T2: exact ban with punctuation edges ('Nuts (tree)') blocks a matching ingredient", () => {
   const patient: PatientDietGraph = {
     foodAllergies: [],
     foodToAvoid: [{ food: { name: "Nuts (tree)" } }],
@@ -350,7 +352,7 @@ test("audit-T2: exact ban with punctuation edges ('Nuts (tree)') blocks matching
     motivations: [],
   };
   const matchers = buildDietMatchers(derivePatientBans(patient));
-  const recipes = parseFridgeRecipes([validRecipeInput({ steps: ["Top with nuts (tree) mix."] })], 3)!;
+  const recipes = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["nuts (tree) mix", "honey"] })], 3)!;
   assert.deepEqual(applyAllergenFilter(recipes, matchers), []);
 });
 
@@ -384,4 +386,39 @@ test("validateFridgeRecipeSnapshot: parseOneRecipe exported — accepts well-for
   });
   assert.ok(good && good.name === "Veggie Omelette");
   assert.equal(validateFridgeRecipeSnapshot({ name: 42 }), null);
+});
+
+// ─── applyAllergenFilter: dietary bans judge composition, allergies judge everything ───
+
+function saltConditionPatient(): PatientDietGraph {
+  return {
+    foodAllergies: [],
+    foodToAvoid: [],
+    healthConditions: [{ condition: { bannedIngredients: [{ name: "salt" }] } }],
+    foodPreferences: [],
+    motivations: [],
+  };
+}
+
+test("applyAllergenFilter: a condition ban in the steps/description only does NOT reject the dish", () => {
+  const matchers = buildDietMatchers(derivePatientBans(saltConditionPatient()));
+  const recipes = parseFridgeRecipes(
+    [validRecipeInput({ name: "Herb Chicken", usesIngredients: ["chicken breast", "olive oil"], description: "No salt needed.", steps: ["Season to taste with salt and pepper."] })],
+    3
+  )!;
+  assert.equal(applyAllergenFilter(recipes, matchers).length, 1);
+});
+
+test("applyAllergenFilter: a condition ban in usesIngredients or the name still rejects", () => {
+  const matchers = buildDietMatchers(derivePatientBans(saltConditionPatient()));
+  const inUses = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["chicken", "kosher salt"] })], 3)!;
+  const inName = parseFridgeRecipes([validRecipeInput({ name: "Salt-Baked Fish" })], 3)!;
+  assert.deepEqual(applyAllergenFilter(inUses, matchers), []);
+  assert.deepEqual(applyAllergenFilter(inName, matchers), []);
+});
+
+test("applyAllergenFilter: an ALLERGY in the steps alone still rejects (safety scan is unchanged)", () => {
+  const matchers = buildDietMatchers(derivePatientBans(peanutAllergyPatient()));
+  const inSteps = parseFridgeRecipes([validRecipeInput({ steps: ["Garnish with crushed peanuts."] })], 3)!;
+  assert.deepEqual(applyAllergenFilter(inSteps, matchers), []);
 });

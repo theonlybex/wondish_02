@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { passesSanity, chunkTopUpRequests } from "./recipe-generation";
+import { passesSanity, chunkTopUpRequests, freeStaplesFor } from "./recipe-generation";
+import { buildDietMatchers, derivePatientBans } from "../diet-match";
 import { validateFridgeRecipeSnapshot, type FridgeRecipe } from "../fridge";
 
 test("validateFridgeRecipeSnapshot parses an optional per-dish cuisine", () => {
@@ -81,4 +82,11 @@ test("chunkTopUpRequests: one chunk per meal type, empty counts dropped, per-chu
     { mealTypeId: "d", mealTypeName: "Dinner", count: 12, targetCalories: 600 },
   ], 8);
   assert.deepEqual(chunks.map((c) => c.map((r) => [r.mealTypeName, r.count])), [[["Breakfast", 7]], [["Dinner", 8]]]);
+});
+
+test("freeStaplesFor drops a staple the profile bans (Hypertension → no free salt)", () => {
+  const empty = { foodAllergies: [], foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [] };
+  assert.deepEqual(freeStaplesFor(buildDietMatchers(derivePatientBans(empty))), ["salt", "pepper", "water"]);
+  const hypertension = { ...empty, healthConditions: [{ condition: { bannedIngredients: [{ name: "salt" }, { name: "kosher salt" }] } }] };
+  assert.deepEqual(freeStaplesFor(buildDietMatchers(derivePatientBans(hypertension))), ["pepper", "water"]);
 });

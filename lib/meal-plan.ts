@@ -628,13 +628,14 @@ export async function buildMealPlanMenus(
           r.calories !== null && r.calories >= minCals && r.calories <= maxCals &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
           !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id) || weekUsedSignatures.has(dishSignature(r.ingredients))));
-        // Same ladder as the meals: fresh → week reuse (never today) → anything.
+        // Same ladder as the meals: fresh → week reuse — but never the same
+        // dish twice in one day. A thin snack pool used to fall through to
+        // "anything" and served "Salmon Fillet with Zucchini" twice on the
+        // same day (2026-09-11); leaving the day under target is the honest
+        // outcome and stays visible as "kcal free".
         let extraCandidates = selectionPool.filter((r) => matchesExtra(r, true) && !todayUsedIds.has(r.id));
         if (extraCandidates.length === 0) {
           extraCandidates = selectionPool.filter((r) => matchesExtra(r, false) && !todayUsedIds.has(r.id));
-        }
-        if (extraCandidates.length === 0) {
-          extraCandidates = selectionPool.filter((r) => matchesExtra(r, false));
         }
         if (extraCandidates.length === 0) break;
         const extra = pickByMotivation(extraCandidates, motivationNames, affinityMap, seenIngredientNames, macroTarget);
