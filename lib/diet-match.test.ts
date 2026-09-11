@@ -538,6 +538,19 @@ test("exactBanPattern: '<term>-free' / '<term> free' products are not the term",
   assert.equal(exactBanPattern("eggs").test("eggplant"), false);
 });
 
+test("exactBanPattern: a gluten-free / grain-free marker exempts grain terms only, up to three words back", () => {
+  assert.equal(exactBanPattern("pasta").test("Gluten-free chickpeas rotini pasta"), false);
+  assert.equal(exactBanPattern("bread").test("gluten-free multiple whole grain bread mix"), false);
+  assert.equal(exactBanPattern("flour").test("gluten free all-purpose flour"), false);
+  assert.equal(exactBanPattern("bread").test("whole wheat bread"), true);
+  assert.equal(exactBanPattern("pasta").test("penne pasta"), true);
+  // The marker does not exempt anything that is not a grain product.
+  assert.equal(exactBanPattern("sugar").test("gluten-free sugar cookies"), true);
+  // Allergy matchers stay broad: gluten-free pasta is still excluded for a wheat allergy.
+  const wheat = buildDietMatchers(derivePatientBans({ ...emptyPatient(), foodAllergies: [{ food: { name: "Wheat", bannedIngredients: [{ name: "pasta" }] } }] }));
+  assert.equal(evaluateDishAgainstProfile(["Gluten-free chickpeas rotini pasta"], wheat).passed, false);
+});
+
 test("a Vegan preference passes plant substitutes but the allergy safety branch stays broad", () => {
   const vegan = buildDietMatchers(derivePatientBans({ ...emptyPatient(), foodPreferences: [{ food: { bannedIngredients: [{ name: "milk" }, { name: "eggs" }, { name: "beef" }] } }] }));
   assert.equal(evaluateDishAgainstProfile(["Almond milk", "Mung bean plant-based egg", "meatless beef strips"], vegan).passed, true);

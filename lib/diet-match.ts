@@ -264,19 +264,23 @@ const DECAF_RE = /\bdecaf/;
 //     "milk"/"cream" away from — a dairy/egg term exempts it ("almond milk
 //     yogurt", "cashew cream cheese"). Meat and fish terms are NOT exempted
 //     this way: "coconut shrimp" and "apple chicken sausage" are dishes.
+//   - A gluten-free / wheat-free / grain-free marker up to three words before
+//     a grain term exempts it ("Gluten-free chickpeas rotini pasta").
 //   - "<term>-free" / "<term> free" never matches the term.
 // Allergy matchers (boundaryPattern) deliberately keep the broad match.
 const SUBSTITUTE_MARKERS = "vegan|vegetarian|plant-based|plant based|meatless|meat-free|meat free|dairy-free|dairy free|non-dairy|nondairy|egg-free|egg free|mock|faux";
 const PLANT_BASES = "almond|oat|soy|soya|coconut|cashew|rice|hemp|pea|nut|peanut|cocoa|shea|apple|macadamia|hazelnut|walnut|pistachio|sunflower|flax|sesame";
 const DAIRY_EGG_TERM_RE = /^(?:milk|cream|butter|cheese|yogurt|yoghurt|eggs?|mayonnaise|mayo|creamer|ice cream|sour cream|cream cheese|whipped cream|heavy cream|buttermilk|custard|whole milk|kefir)$/;
+const GRAIN_TERM_RE = /^(?:pasta|noodles?|bread|flour|all-purpose flour|crackers?|cracker crumbs|buns?|muffins?|english muffins?|rotini|orzo|penne|spaghetti|macaroni|fettuccine|linguine|lasagna|tortillas?|flour tortillas?|wraps?|cereal|granola|oats|breadcrumbs|bread crumbs|panko|couscous|pizza|pizza dough|dough|bagels?|pita|croutons|pretzels?|pastry|cookies?|cake|biscuits?|pancakes?|waffles?)$/;
 const MARKER_LOOKBEHIND = `(?<!\\b(?:${SUBSTITUTE_MARKERS})\\s(?:[\\p{L}-]+\\s)?)`;
 const PLANT_BASE_LOOKBEHIND = `(?<!\\b(?:${PLANT_BASES})\\s(?:(?:milk|cream)\\s)?)`;
+const GRAIN_MARKER_LOOKBEHIND = `(?<!\\b(?:gluten-free|gluten free|wheat-free|wheat free|grain-free|grain free),?\\s(?:[\\p{L}&-]+,?\\s){0,3})`;
 const FREE_LOOKAHEAD = `(?!(?:-|\\s)free\\b)`;
 
 export const exactBanPattern = (name: string) => {
   const lowered = name.trim().toLowerCase();
   const body = stemUnionBody(lowered);
-  const substitutable = DAIRY_EGG_TERM_RE.test(lowered) ? PLANT_BASE_LOOKBEHIND : "";
+  const substitutable = (DAIRY_EGG_TERM_RE.test(lowered) ? PLANT_BASE_LOOKBEHIND : "") + (GRAIN_TERM_RE.test(lowered) ? GRAIN_MARKER_LOOKBEHIND : "");
   const derived = DERIVED_PRODUCT_RE.test(lowered) || DECAF_RE.test(lowered);
   const prefix = derived ? "" : "(?<!\\bdecaf\\s)(?<!\\bdecaffeinated\\s)";
   const suffix = derived ? "" : "(?!\\s+(?:cider\\s+)?(?:oil|vinegar|spray|extract)\\b)";
