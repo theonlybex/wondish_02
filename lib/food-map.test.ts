@@ -154,3 +154,13 @@ test("buildFoodMapText: avoid children and condition guidance reach the prompt",
   assert.match(text, /Condition guidance: keep sodium low/);
   assert.match(text, /Restricted from conditions: soy sauce/);
 });
+
+test("buildFoodMapText: trial lines for elimination, reintroduction and a likely-trigger result", () => {
+  const rule = { category: "ACIDIC_CITRUS", baselineDays: 7, trialDays: 28, reintroductionDays: 3, washoutDays: 3 };
+  const base: FoodMapPatient = { foodAllergies: [], foodToAvoid: [], foodPreferences: [], healthConditions: [], motivations: [] };
+  const daysAgo = (n: number) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - n); return d; };
+  assert.match(buildFoodMapText({ ...base, triggerTrials: [{ status: "ACTIVE", startDate: daysAgo(4), classification: null, rule }] }), /Trigger trial: eliminating Acidic citrus \(day 5 of 28\) — never include: orange, /);
+  assert.match(buildFoodMapText({ ...base, triggerTrials: [{ status: "ACTIVE", startDate: daysAgo(29), classification: null, rule }] }), /reintroducing Acidic citrus — include one normal portion/);
+  assert.match(buildFoodMapText({ ...base, triggerTrials: [{ status: "COMPLETED", startDate: daysAgo(60), classification: "LIKELY_TRIGGER", rule }] }), /likely trigger — never include: orange/);
+  assert.doesNotMatch(buildFoodMapText({ ...base, triggerTrials: [{ status: "STOPPED", startDate: daysAgo(4), classification: null, rule }] }), /Trigger trial/);
+});

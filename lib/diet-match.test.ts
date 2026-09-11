@@ -306,6 +306,7 @@ test("PATIENT_DIET_INCLUDE: shape matches the 5-source graph (allergies/avoid/co
     healthConditions: { include: { condition: { include: { bannedIngredients: true } } } },
     foodPreferences:  { include: { food: { include: { bannedIngredients: true } } } },
     motivations:      { include: { motivation: { include: { bannedIngredients: true } } } },
+    triggerTrials:    { where: { status: { in: ["ACTIVE", "COMPLETED"] } }, include: { rule: true } },
   });
 });
 
@@ -527,4 +528,39 @@ test("Celiac bans a wheat-component ingredient by group with source 'condition',
   assert.equal(evaluateDishAgainstProfile(["Sliced bread"], both, [["BIG9-WHEAT"]]).violations[0].source, "allergy");
   // Conditions without a name (older hand-built graphs) add no groups.
   assert.equal(buildDietMatchers(derivePatientBans({ ...emptyPatient(), healthConditions: [{ condition: { bannedIngredients: [] } }] })).bannedGroups.size, 0);
+});
+
+// ─── trigger trials (workbook 04) ban their category during enforced phases ──
+
+const trialRule = { category: "ACIDIC_CITRUS", baselineDays: 7, trialDays: 28, reintroductionDays: 3, washoutDays: 3 };
+const day = (n: number) => new Date(2026, 8, 20 + (n - 1)); // start = 20 Sep → day n
+function trialPatient(status: "ACTIVE" | "STOPPED" | "COMPLETED", classification: string | null = null): PatientDietGraph {
+  return { ...emptyPatient(), triggerTrials: [{ status, startDate: day(1), classification, rule: trialRule }] };
+}
+
+test("an active trial bans its terms with source 'trial' only in enforced phases", () => {
+  const elimination = buildDietMatchers(derivePatientBans(trialPatient("ACTIVE"), day(5)));
+  const r = evaluateDishAgainstProfile(["orange juice", "chicken"], elimination);
+  assert.equal(r.passed, false);
+  // "orange" and "orange juice" both match the ingredient; every hit is a trial ban.
+  assert.ok(r.violations.length >= 1);
+  assert.ok(r.violations.every((v) => v.ingredient === "orange juice" && v.source === "trial"));
+  assert.equal(evaluateDishAgainstProfile(["orange juice"], buildDietMatchers(derivePatientBans(trialPatient("ACTIVE"), day(0)))).passed, true, "baseline");
+  assert.equal(evaluateDishAgainstProfile(["orange juice"], buildDietMatchers(derivePatientBans(trialPatient("ACTIVE"), day(30)))).passed, true, "reintroduction");
+  assert.equal(evaluateDishAgainstProfile(["orange juice"], buildDietMatchers(derivePatientBans(trialPatient("ACTIVE"), day(33)))).passed, false, "washout");
+  assert.equal(evaluateDishAgainstProfile(["orange juice"], buildDietMatchers(derivePatientBans(trialPatient("ACTIVE"), day(40)))).passed, false, "final");
+});
+
+test("a completed likely-trigger keeps the ban; stopped and tolerated release it", () => {
+  assert.equal(evaluateDishAgainstProfile(["lemon"], buildDietMatchers(derivePatientBans(trialPatient("COMPLETED", "LIKELY_TRIGGER"), day(90)))).passed, false);
+  assert.equal(evaluateDishAgainstProfile(["lemon"], buildDietMatchers(derivePatientBans(trialPatient("COMPLETED", "TOLERATED"), day(90)))).passed, true);
+  assert.equal(evaluateDishAgainstProfile(["lemon"], buildDietMatchers(derivePatientBans(trialPatient("STOPPED", "LIKELY_TRIGGER"), day(5)))).passed, true);
+});
+
+test("a FODMAP fructans trial bans wheat by component group with source 'trial'", () => {
+  const p: PatientDietGraph = { ...emptyPatient(), triggerTrials: [{ status: "ACTIVE", startDate: day(1), classification: null, rule: { ...trialRule, category: "FODMAP_FRUCTANS" } }] };
+  const m = buildDietMatchers(derivePatientBans(p, day(3)));
+  const r = evaluateDishAgainstProfile(["Sliced bread"], m, [["BIG9-WHEAT"]]);
+  assert.equal(r.passed, false);
+  assert.equal(r.violations[0].source, "trial");
 });

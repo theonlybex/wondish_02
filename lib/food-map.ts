@@ -12,6 +12,9 @@
 // diet-match engine).
 
 import { PATIENT_DIET_INCLUDE, derivePatientBans, type PatientDietGraph } from "@/lib/diet-match";
+import type { TrialGraphRow } from "@/lib/diet-match";
+import { phaseFor, isEnforced } from "@/lib/trials/schedule";
+import { termsForCategory, categoryTitle } from "@/lib/trials/category-terms";
 
 // ── PATIENT_FOOD_MAP_INCLUDE ────────────────────────────────────────────────
 // Composes the shared diet-graph include with `mealType: true` rather than
@@ -32,6 +35,7 @@ export interface FoodMapPatient {
   foodPreferences: { food: { name: string; bannedIngredients: { name: string }[] } }[];
   healthConditions: { condition: { name: string; bannedIngredients: { name: string }[] } }[];
   motivations: { motivation: { name: string; bannedIngredients: { name: string }[] } }[];
+  triggerTrials?: TrialGraphRow[];
 }
 
 // Soft, prompt-level guidance per condition — the "how to cook for it" that a
@@ -90,6 +94,26 @@ export function buildFoodMapText(patient: FoodMapPatient | null | undefined): st
       .map((c) => CONDITION_GUIDANCE[c.condition.name.trim().toLowerCase()])
       .filter((g): g is string => Boolean(g));
     if (guidance.length > 0) lines.push(`Condition guidance: ${guidance.join("; ")}`);
+  }
+
+  // Trigger trials (workbook 04): the eliminated category during enforced
+  // phases; the challenge instruction during reintroduction.
+  const today = new Date();
+  for (const t of patient.triggerTrials ?? []) {
+    const { terms } = termsForCategory(t.rule.category);
+    const title = categoryTitle(t.rule.category);
+    if (t.status === "COMPLETED" && t.classification === "LIKELY_TRIGGER") {
+      lines.push(`Trigger trial result: ${title} is a likely trigger — never include: ${terms.join(", ")}`);
+      continue;
+    }
+    if (t.status !== "ACTIVE") continue;
+    const p = phaseFor(t.rule, new Date(t.startDate), today);
+    if (isEnforced(p.phase)) {
+      const where = p.phase === "ELIMINATION" || p.phase === "EVALUATION" ? `day ${p.dayNumber} of ${t.rule.trialDays}` : p.phase.toLowerCase();
+      lines.push(`Trigger trial: eliminating ${title} (${where}) — never include: ${terms.join(", ")}`);
+    } else if (p.phase === "REINTRODUCTION") {
+      lines.push(`Trigger trial: reintroducing ${title} — include one normal portion a day and note symptoms`);
+    }
   }
 
   if (patient.motivations?.length > 0) {

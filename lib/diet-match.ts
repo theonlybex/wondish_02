@@ -7,7 +7,10 @@
 // is a lift, not a rewrite, of that logic; `evaluateDishAgainstProfile` is
 // the one new capability (all-violations reporting) layered on top.
 
-export type BanSource = "allergy" | "avoid" | "condition" | "preference" | "motivation";
+import { phaseFor, isEnforced } from "@/lib/trials/schedule";
+import { termsForCategory } from "@/lib/trials/category-terms";
+
+export type BanSource = "allergy" | "avoid" | "condition" | "preference" | "motivation" | "trial";
 
 export interface ExactBan {
   name: string;
@@ -25,6 +28,25 @@ export interface PatientDietGraph {
   healthConditions: { condition: { name?: string; bannedIngredients: { name: string }[] } }[];
   foodPreferences: { food: { bannedIngredients: { name: string }[] } }[];
   motivations: { motivation: { bannedIngredients: { name: string }[] } }[];
+  // Trigger trials (workbook 04). Optional: most callers/tests predate them.
+  // Terms come from lib/trials/category-terms by rule.category.
+  triggerTrials?: TrialGraphRow[];
+}
+
+export interface TrialGraphRow {
+  status: "ACTIVE" | "STOPPED" | "COMPLETED";
+  startDate: Date | string;
+  classification: string | null;
+  rule: { category: string; baselineDays: number; trialDays: number; reintroductionDays: number; washoutDays: number };
+}
+
+/** Trials whose trigger is banned today: ACTIVE in an enforced phase, or COMPLETED as a likely trigger. */
+export function enforcedTrials(trials: readonly TrialGraphRow[] | undefined, today: Date): TrialGraphRow[] {
+  return (trials ?? []).filter((t) => {
+    if (t.status === "COMPLETED") return t.classification === "LIKELY_TRIGGER";
+    if (t.status !== "ACTIVE") return false;
+    return isEnforced(phaseFor(t.rule, new Date(t.startDate), today).phase);
+  });
 }
 
 export interface DerivedBans {
@@ -35,6 +57,8 @@ export interface DerivedBans {
   allergyGroupCodes?: string[];
   // Same, implied by health conditions (CONDITION_GROUPS).
   conditionGroupCodes?: string[];
+  // Same, implied by enforced trigger trials (FODMAP_FRUCTANS → BIG9-WHEAT).
+  trialGroupCodes?: string[];
 }
 
 // FoodAllergy.name → Wondish 03 "Baseline & Restriction Rules" allergen group
@@ -102,7 +126,7 @@ export interface Violation {
 //   - healthConditions → bannedIngredients children only                (exactBanned, source "condition")
 //   - foodPreferences  → bannedIngredients children only                (exactBanned, source "preference")
 //   - motivations      → bannedIngredients children only                (exactBanned, source "motivation")
-export function derivePatientBans(patient: PatientDietGraph): DerivedBans {
+export function derivePatientBans(patient: PatientDietGraph, today: Date = new Date()): DerivedBans {
   const allergyNames = patient.foodAllergies.flatMap((a) => [
     a.food.name,
     ...a.food.bannedIngredients.map((b) => b.name),
@@ -134,7 +158,16 @@ export function derivePatientBans(patient: PatientDietGraph): DerivedBans {
     new Set(patient.healthConditions.flatMap((hc) => (hc.condition.name ? conditionGroupCodesFor(hc.condition.name) : [])))
   );
 
-  return { allergyNames, exactBanned, allergyGroupCodes, conditionGroupCodes };
+  // Trigger trials: the eliminated category's terms are banned during the
+  // enforced phases (and for a completed "likely trigger" until cleared).
+  const trialGroupCodes: string[] = [];
+  for (const t of enforcedTrials(patient.triggerTrials, today)) {
+    const { terms, groups } = termsForCategory(t.rule.category);
+    for (const term of terms) exactBanned.push({ name: term, source: "trial" });
+    for (const g of groups ?? []) if (!trialGroupCodes.includes(g)) trialGroupCodes.push(g);
+  }
+
+  return { allergyNames, exactBanned, allergyGroupCodes, conditionGroupCodes, trialGroupCodes };
 }
 
 // ── buildDietMatchers ───────────────────────────────────────────────────────
@@ -229,7 +262,7 @@ export const exactBanPattern = (name: string) => {
   );
 };
 
-export function buildDietMatchers({ allergyNames, exactBanned, allergyGroupCodes = [], conditionGroupCodes = [] }: DerivedBans): DietMatchers {
+export function buildDietMatchers({ allergyNames, exactBanned, allergyGroupCodes = [], conditionGroupCodes = [], trialGroupCodes = [] }: DerivedBans): DietMatchers {
   const allergyMatchers = Array.from(new Set(allergyNames.flatMap(expandBanName)))
     .map((lowered) => ({ lowered, stem: singularize(lowered) }))
     .filter(({ stem }) => stem.length >= 2)
@@ -253,6 +286,7 @@ export function buildDietMatchers({ allergyNames, exactBanned, allergyGroupCodes
   }
 
   const groupSources = new Map<string, BanSource>();
+  for (const g of trialGroupCodes) groupSources.set(g, "trial");
   for (const g of conditionGroupCodes) groupSources.set(g, "condition");
   for (const g of allergyGroupCodes) groupSources.set(g, "allergy");
   return { allergyMatchers, exactBanned: dedupedExactBanned, bannedGroups: new Set(groupSources.keys()), groupSources };
@@ -328,6 +362,8 @@ export const PATIENT_DIET_INCLUDE = {
   healthConditions: { include: { condition: { include: { bannedIngredients: true } } } },
   foodPreferences:  { include: { food: { include: { bannedIngredients: true } } } },
   motivations:      { include: { motivation: { include: { bannedIngredients: true } } } },
+  // Only trials that can ban today: ACTIVE (phase decides) or COMPLETED (likely trigger).
+  triggerTrials:    { where: { status: { in: ["ACTIVE", "COMPLETED"] as ("ACTIVE" | "COMPLETED")[] } }, include: { rule: true } },
 } as const;
 
 // Convenience for Prisma rows: `ingredients[i].ingredient.allergenGroups` →
