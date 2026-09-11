@@ -126,9 +126,11 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
       workbook-03 rules and the nine held-back Fatty Liver rows need a
       clinician/client sign-off; nutrient budgets (sodium 1,500 mg/day etc.)
       need per-recipe sodium/potassium data (we hold sodium on 50 recipes).
-      (b) Six workbook-only conditions (IBS-M, Hypertriglyceridemia, Pregnancy,
-      Leaky Gut, Autoimmune, AERD) are not in our list; five of ours (kidney ×2,
-      thyroid, PCOS, recovering) have no workbook factor. (c) Objective/lab
+      (b) The six workbook-only conditions (IBS-M, Hypertriglyceridemia,
+      Pregnancy, Leaky Gut, Autoimmune, AERD) were added 2026-09-11 with their
+      symptoms, IBS-M's 10 trials and 11 deployable rules; five of ours (kidney
+      ×2, thyroid, PCOS, recovering) have no workbook factor and keep only our
+      own ban lists. (c) Objective/lab
       tracking items (49) are imported but have no UI. (d) Clara chat does not
       read symptom history. (e) Conversion coverage for condiments/sweeteners
       (teaspoon/tablespoon/cup). Kidney Disease stage 1-2 still keeps ~394 of

@@ -75,18 +75,18 @@ const DIET_HINTS: Record<string, string> = {
 // Health conditions grouped for scanning (35 rows is too many for one flat
 // row of chips). Unlisted names fall into "Other".
 const HEALTH_GROUPS: { title: string; names: string[] }[] = [
-  { title: "Metabolic & weight", names: ["Type 2 Diabetes", "Prediabetes", "Overweight", "PCOS", "Thyroid Disorder", "Fatty Liver Disease (NAFLD)"] },
+  { title: "Metabolic & weight", names: ["Type 2 Diabetes", "Prediabetes", "Overweight", "PCOS", "Thyroid Disorder", "Fatty Liver Disease (NAFLD)", "Hypertriglyceridemia"] },
   { title: "Heart & kidneys", names: ["Hypertension", "Heart Disease", "High Cholesterol", "Stroke", "Kidney Disease stage 1-2", "Chronic kidney disease – stage 3"] },
-  { title: "Digestive", names: ["Celiac Disease", "GERD", "Gastritis", "IBS-C", "IBS-D", "IBD – active", "IBD – in remission", "Constipation", "Chronic Diarrhea", "Candidiasis"] },
+  { title: "Digestive", names: ["Celiac Disease", "GERD", "Gastritis", "IBS-C", "IBS-D", "IBS-M", "IBD – active", "IBD – in remission", "Constipation", "Chronic Diarrhea", "Candidiasis", "Leaky Gut Syndrome"] },
   { title: "Skin & hair", names: ["Acne", "Eczema", "Rosacea", "Seborrheic Dermatitis", "Hair Shedding"] },
-  { title: "Brain, immune & recovery", names: ["Migraine", "Foggy brain", "Alzheimer's Disease", "Chronic Inflammatory Conditions", "Respiratory Allergies", "Cancer – during treatment", "Cancer – after treatment", "Recovering after illness/surgery"] },
+  { title: "Brain, immune, recovery & pregnancy", names: ["Migraine", "Foggy brain", "Alzheimer's Disease", "Chronic Inflammatory Conditions", "Autoimmune Diseases", "Respiratory Allergies", "Aspirin-Exacerbated Respiratory Disease (AERD)", "Cancer – during treatment", "Cancer – after treatment", "Recovering after illness/surgery", "Pregnancy"] },
 ];
 
 // Conditions that change the plan today (banned ingredients or macro
 // profile); everything else is recorded for Clara and future rules.
 const HEALTH_WITH_RULES = new Set([
   "Type 2 Diabetes", "Prediabetes", "Hypertension", "Heart Disease", "High Cholesterol", "Kidney Disease stage 1-2", "Celiac Disease", "Thyroid Disorder",
-  "Fatty Liver Disease (NAFLD)", "Acne",
+  "Fatty Liver Disease (NAFLD)", "Acne", "Hypertriglyceridemia", "Pregnancy",
 ]);
 
 export default function OnboardingWizard({ refData, accountData }: OnboardingWizardProps) {

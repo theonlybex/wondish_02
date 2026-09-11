@@ -34,6 +34,13 @@ export const CONDITION_FACTOR_MAP: Record<number, string[]> = {
   342: ["Seborrheic Dermatitis"],
   54: ["Stroke"],
   61: ["Foggy brain"],
+  // Added 2026-09-11 so the workbook-only factors have a condition to attach to.
+  356: ["IBS-M"],
+  12: ["Hypertriglyceridemia"],
+  355: ["Pregnancy"],
+  58: ["Leaky Gut Syndrome"],
+  62: ["Autoimmune Diseases"],
+  357: ["Aspirin-Exacerbated Respiratory Disease (AERD)"],
 };
 
 export function conditionNamesForFactor(profileFactorId: number): string[] {
