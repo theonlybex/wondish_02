@@ -12,6 +12,24 @@ import { findClaimableInvites } from "@/lib/restaurant-pending-invites-server";
 
 export const metadata = { title: "Overview" };
 
+const OVERVIEW_CSS = `
+  @keyframes ov-rise {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .ov { animation: ov-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  /* Below lg the bento stacks: one column, natural heights, page scroll. The
+     inline template in the JSX is the desktop layout. */
+  @media (max-width: 1023px) {
+    .ov-bento {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: auto !important;
+      grid-template-areas: "caloric" "log" "streak" "journal" !important;
+    }
+    .ov-bento > * { min-height: 0; }
+  }
+`;
+
 export default async function OverviewPage() {
   const { userId } = await auth();
   if (!userId) redirect("/login");
@@ -114,23 +132,11 @@ export default async function OverviewPage() {
     // Phones scroll the page; the fixed-height, inner-scrolling bento is a
     // desktop layout (below lg it was a clipped, unscrollable viewport).
     <div className="lg:h-full lg:overflow-hidden flex flex-col gap-4">
-      <style>{`
-        @keyframes ov-rise {
-          from { opacity: 0; transform: translateY(18px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .ov { animation: ov-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
-        /* Below lg the bento stacks: one column, natural heights, page scroll.
-           The inline template below is the desktop layout. */
-        @media (max-width: 1023px) {
-          .ov-bento {
-            grid-template-columns: 1fr !important;
-            grid-template-rows: auto !important;
-            grid-template-areas: "caloric" "log" "streak" "journal" !important;
-          }
-          .ov-bento > * { min-height: 0; }
-        }
-      `}</style>
+      {/* innerHTML, not a text child: React hydrated the CSS as a text node
+          and the browser's raw-text parsing of <style> (quotes + comment)
+          made server and client disagree → "Text content did not match",
+          full client re-render of the page (mobile QA 2026-09-11). */}
+      <style dangerouslySetInnerHTML={{ __html: OVERVIEW_CSS }} />
 
       {pendingRestaurantInvites.length > 0 && (
         <div className="ov">
