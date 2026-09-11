@@ -28,11 +28,12 @@ Confidence is marked per item: **[verified]** checked against code this session 
       `docs/billing/stripe-setup.md`; Customer Portal with cancel/switch OFF;
       Upstash variables in Vercel; then `PREMIUM_GATES=on` to start charging.
       Every migration is already applied to the shared Neon DB.
-- [ ] **`feat/workbooks-tier2`** (24 commits from `main`, not pushed) —
+- [ ] **`feat/workbooks-tier2`** (27 commits from `main`, not pushed) —
       symptom journal, trigger trials, deployable workbook-03 rules, the six
       workbook-only conditions + five backfilled ones, and the pass-4 fixes
       (neutral calories for "Prefer not to say", pantry save race, diet-list
-      gaps, plant-substitute false bans). Suite 1144/1144, tsc clean, seeds
+      gaps on every allergy and preference, plant-substitute and gluten-free
+      false bans). Suite 1145/1145, tsc clean, seeds
       idempotent, verified end to end (see
       `docs/qa/feature-checklist-2026-09-11.md`, passes 1–4). Migration
       `20260911120000_symptom_journal_trials` and the data scripts
