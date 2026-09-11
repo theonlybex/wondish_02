@@ -128,9 +128,14 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
       need per-recipe sodium/potassium data (we hold sodium on 50 recipes).
       (b) The six workbook-only conditions (IBS-M, Hypertriglyceridemia,
       Pregnancy, Leaky Gut, Autoimmune, AERD) were added 2026-09-11 with their
-      symptoms, IBS-M's 10 trials and 11 deployable rules; five of ours (kidney
-      ×2, thyroid, PCOS, recovering) have no workbook factor and keep only our
-      own ban lists. (c) Objective/lab
+      symptoms, IBS-M's 10 trials and 11 deployable rules. The five of ours
+      with no workbook factor (kidney ×2, thyroid, PCOS, recovering) were
+      backfilled the same day from NKF/NIDDK/NHS/PMC sources
+      (`scripts/backfill-conditions-2026-09-11.ts`, rows coded `WB-*`,
+      input sources `*_BACKFILL`): 76 symptom/lab items, CKD stage 3 inherits
+      the stage 1-2 bans, PCOS gets a low-glycemic ban list and a
+      HIGH_GLYCEMIC_PATTERN trial. **Authored, not client-supplied — needs the
+      same clinician review as the REVIEW_REQUIRED workbook rows.** (c) Objective/lab
       tracking items (49) are imported but have no UI. (d) Clara chat does not
       read symptom history. (e) Conversion coverage for condiments/sweeteners
       (teaspoon/tablespoon/cup). Kidney Disease stage 1-2 still keeps ~394 of

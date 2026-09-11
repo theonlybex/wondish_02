@@ -128,6 +128,8 @@ Migraine) and `qa.nocond.20260911@wondish.io` (no conditions).
 | Classify likely trigger → ban persists (What-to-buy hides citrus) | ✅ | ⏭ | |
 | Clear ban → citrus back, category eligible again, plan stale | ✅ | ⏭ | |
 | Workbook-03 deployable rules imported | ✅ | — | 31 rows; nine Fatty Liver rows held for client review |
+| Six workbook-only conditions added (IBS-M, Hypertriglyceridemia, Pregnancy, Leaky Gut, Autoimmune, AERD) | ✅ | — | 55 items, 10 IBS-M trials, 11 rules; seeds idempotent |
+| Five conditions with no workbook factor backfilled from clinical sources | ✅ | — | 76 items, CKD3 bans, PCOS bans + trial; marked `WB-*` for clinician review |
 
 ## Not exercised
 
