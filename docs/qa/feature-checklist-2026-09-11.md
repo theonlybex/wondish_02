@@ -110,6 +110,25 @@ with a caveat (listed) · ⏭ not exercised (reason) · ❌ open finding
 | `/terms` | — | ❌ | Placeholder text ("Terms of service will be published…") while onboarding collects consent to it |
 | `/api/health` | — | ✅ | 200 JSON |
 
+## Symptom journal, trigger trials, condition rules (added 2026-09-11, `feat/workbooks-tier2`)
+
+Accounts: `qa.desktop.20260911@wondish.io` (Celiac, GERD, High Cholesterol,
+Migraine) and `qa.nocond.20260911@wondish.io` (no conditions).
+
+| Feature | Desktop | Mobile | Notes |
+|---|---|---|---|
+| Symptoms step in the quick log, only for users with condition items | ✅ | ⏭ | GERD+Celiac+Migraine account: 6 steps, 31 items; no-condition account: 5 steps |
+| Symptom severity saved and shown in the journal day view | ✅ | ⏭ | Three items saved, listed with severity chips |
+| Journey cards (symptom trend, trials), only for condition users | ✅ | ⏭ | Absent for the no-condition account |
+| Trials nav item, only for eligible users | ✅ | ✅ | Absent for the no-condition account; `/trials` redirects to `/journey` |
+| Eligible triggers listed per condition | ✅ | ⏭ | 15 for GERD + Migraine |
+| Start trial (skip baseline) → elimination day 1, plan flagged stale | ✅ | ⏭ | Second start → 409 |
+| Regenerate week from the trials page → no citrus in the plan | ✅ | ⏭ | 22 menus, 0 citrus ingredients |
+| Phase walk (start date rewound in DB) → washout, classification radios | ✅ | ⏭ | |
+| Classify likely trigger → ban persists (What-to-buy hides citrus) | ✅ | ⏭ | |
+| Clear ban → citrus back, category eligible again, plan stale | ✅ | ⏭ | |
+| Workbook-03 deployable rules imported | ✅ | — | 31 rows; nine Fatty Liver rows held for client review |
+
 ## Not exercised
 
 - **Admin** (`/admin/*`: users, recipes, parameters, banned ingredients, coupons, promo codes, restaurants, review queue, Clara gaps, prune): needs a SUPER-role account; the QA accounts are ordinary users.

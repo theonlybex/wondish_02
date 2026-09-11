@@ -137,22 +137,23 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
       in HandleRedirect, blank page). Reproducible only in the headless harness
       on the dev instance; going through `/overview` first avoids it. Real fix
       is the production Clerk instance. **[verified 2026-09-11]**
-- [ ] **Wondish workbooks Tier 2 — health rules + conversion coverage.**
-      (Clara quantities, formerly (a), shipped 2026-09-11; Celiac's deployable
-      rows are covered by the BIG9-WHEAT component group since the condition
-      audit — see `docs/qa/condition-audit-2026-09-11.md`.) (b) Map the
-      remaining workbook-03 profile-factor ids onto our `HealthCondition` rows
-      (the workbook carries ids only) and import the 231 DEPLOYABLE rules;
-      the other 4,477 are `REVIEW_REQUIRED` and need a clinician pass. The 26
-      conditions without ingredient rules reach Clara through the prompt only.
-      Kidney Disease stage 1-2 keeps 394 of 1,200 library dishes (31 dinners):
-      its potassium/phosphorus rules need per-ingredient nutrient data to be
-      anything but blanket bans. (c) Per-ingredient conversion coverage: 470 (form,
-      unit) pairs cover ~88% of a library week; the misses are
-      teaspoon/tablespoon/cup on condiments and sweeteners. **[verified]**
-- [ ] **Wondish workbooks Tier 3 — Trial Process (04) and Symptom Journal
-      (05).** New data model (trial phases, reintroduction schedule, symptom
-      entries) and UI; nothing in the app consumes them yet. **[reported]**
+- [x] **Wondish workbooks Tier 2 + 3 — shipped 2026-09-11 on
+      `feat/workbooks-tier2`** (spec `docs/superpowers/specs/2026-09-11-workbooks-tier2-3-design.md`,
+      plan `docs/superpowers/plans/2026-09-11-workbooks-tier2-3.md`). Symptom
+      journal (05: 273 items on 30 mapped conditions), trigger trials (04: 45
+      rules, 34-day schedule, plan-enforced), deployable 03 rules (31 rows).
+      Seeds: `import-workbooks.ts --phase c`, `import-condition-rules.ts`.
+- [ ] **Workbook follow-ups still open.** (a) 4,477 `REVIEW_REQUIRED`
+      workbook-03 rules and the nine held-back Fatty Liver rows need a
+      clinician/client sign-off; nutrient budgets (sodium 1,500 mg/day etc.)
+      need per-recipe sodium/potassium data (we hold sodium on 50 recipes).
+      (b) Six workbook-only conditions (IBS-M, Hypertriglyceridemia, Pregnancy,
+      Leaky Gut, Autoimmune, AERD) are not in our list; five of ours (kidney ×2,
+      thyroid, PCOS, recovering) have no workbook factor. (c) Objective/lab
+      tracking items (49) are imported but have no UI. (d) Clara chat does not
+      read symptom history. (e) Conversion coverage for condiments/sweeteners
+      (teaspoon/tablespoon/cup). Kidney Disease stage 1-2 still keeps ~394 of
+      1,200 library dishes.
 - [ ] **Clara repo drift — uncommitted, and one item is a real config change.**
       `~/Desktop/BeTech/Clara` has 7 unpushed commits plus 2 uncommitted files
       (noticed 2026-08-26). **[verified]**
