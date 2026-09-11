@@ -79,6 +79,20 @@ export function freeStaplesFor(matchers: DietMatchers): string[] {
   return FREE_STAPLES.filter((s) => evaluateDishAgainstProfile([s], matchers).passed);
 }
 
+// Protein sources that survive the profile's bans. A restrictive profile
+// (Vegan + Kidney: legumes and nuts banned) otherwise gets a week of grains
+// and vegetables because the model is told what to avoid, never what is
+// left to build a main around (QA 2026-09-11). Only used without a basket —
+// with one, the basket is the whole menu.
+const PROTEIN_OPTIONS = [
+  "chicken breast", "turkey breast", "lean beef", "pork loin", "salmon", "tuna", "cod", "shrimp", "eggs",
+  "greek yogurt", "cottage cheese", "tofu", "tempeh", "edamame", "lentils", "chickpeas", "black beans",
+  "seitan", "plant-based egg", "meatless chicken", "quinoa", "peanut butter", "almonds",
+] as const;
+export function proteinOptionsFor(matchers: DietMatchers): string[] {
+  return PROTEIN_OPTIONS.filter((p) => evaluateDishAgainstProfile([p], matchers).passed);
+}
+
 function systemPrompt(args: TopUpArgs, total: number): string {
   const perType = args.requests
     .map((r) => `- ${r.count} × ${r.mealTypeName} (target ≈${Math.round(r.targetCalories)} kcal per serving)`)
@@ -96,6 +110,10 @@ function systemPrompt(args: TopUpArgs, total: number): string {
   const free = freeStaplesFor(args.matchers);
   const basket = args.allowedIngredients && args.allowedIngredients.length > 0
     ? `\n- Every dish may use ONLY these ingredients${free.length > 0 ? ` (plus ${free.join(", ")})` : ""}: ${args.allowedIngredients.join(", ")}. Use no other ingredient.`
+    : "";
+  const proteinOptions = basket ? [] : proteinOptionsFor(args.matchers);
+  const proteins = proteinOptions.length > 0 && args.bannedNames.length > 0
+    ? `\n- Protein sources that fit this diner — build every main around one of them: ${proteinOptions.join(", ")}.`
     : "";
   return [
     `You are Clara, Wondish's nutrition assistant. Generate ${total} realistic, home-cookable ${args.cuisine ? args.cuisine + " " : ""}dishes to expand a meal-plan catalog:`,
@@ -115,6 +133,7 @@ function systemPrompt(args: TopUpArgs, total: number): string {
       : `- Vary the cuisine across the dishes (e.g. Italian, Mexican, Chinese, Thai, Indian, Japanese, Mediterranean, American, French, Korean, Middle Eastern) and set each dish's "cuisine" field to that cuisine. Avoid near-duplicates.`,
     cuisine,
     basket,
+    proteins,
     banned,
     args.profileContext ? `\nThe diner's profile (respect every line, especially condition guidance):\n${args.profileContext}` : "",
   ].join("\n");

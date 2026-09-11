@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { passesSanity, chunkTopUpRequests, freeStaplesFor } from "./recipe-generation";
+import { passesSanity, chunkTopUpRequests, freeStaplesFor, proteinOptionsFor } from "./recipe-generation";
 import { buildDietMatchers, derivePatientBans } from "../diet-match";
 import { validateFridgeRecipeSnapshot, type FridgeRecipe } from "../fridge";
 
@@ -82,6 +82,19 @@ test("chunkTopUpRequests: one chunk per meal type, empty counts dropped, per-chu
     { mealTypeId: "d", mealTypeName: "Dinner", count: 12, targetCalories: 600 },
   ], 8);
   assert.deepEqual(chunks.map((c) => c.map((r) => [r.mealTypeName, r.count])), [[["Breakfast", 7]], [["Dinner", 8]]]);
+});
+
+test("proteinOptionsFor keeps only proteins the profile allows (Vegan + Kidney → tofu, tempeh, plant-based egg…)", () => {
+  const vegan = ["chicken", "turkey", "beef", "pork", "salmon", "tuna", "cod", "shrimp", "eggs", "yogurt", "cheese"];
+  const kidney = ["lentils", "chickpeas", "black beans", "peanut butter", "almonds"];
+  const empty = { foodAllergies: [], foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [] };
+  const m = buildDietMatchers(derivePatientBans({
+    ...empty,
+    foodPreferences: [{ food: { bannedIngredients: vegan.map((name) => ({ name })) } }],
+    healthConditions: [{ condition: { bannedIngredients: kidney.map((name) => ({ name })) } }],
+  }));
+  assert.deepEqual(proteinOptionsFor(m), ["tofu", "tempeh", "edamame", "seitan", "plant-based egg", "meatless chicken", "quinoa"]);
+  assert.equal(proteinOptionsFor(buildDietMatchers(derivePatientBans(empty))).length, 23);
 });
 
 test("freeStaplesFor drops a staple the profile bans (Hypertension → no free salt)", () => {

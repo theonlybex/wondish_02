@@ -68,13 +68,15 @@ export default function MealStreakGrid({ days, totalCompleted, firstDay }: MealS
   // Build flat cell array for CSS grid (row-major: top-to-bottom, left-to-right)
   const cells: ReactNode[] = [];
 
-  // Row 0: empty corner + month labels
-  cells.push(<div key="corner" />);
+  // Row 0: empty corner + month labels. The label is absolutely positioned so
+  // its text width never widens a `1fr` column: on a 390-px phone "Sep"
+  // forced the columns past the card and the last week was clipped.
+  cells.push(<div key="corner" className="h-3" />);
   for (let ci = 0; ci < numCols; ci++) {
     cells.push(
-      <div key={`month-${ci}`} className="text-center">
+      <div key={`month-${ci}`} className="relative h-3 min-w-0">
         {monthLabels.has(ci) && (
-          <span className="text-[9px] text-[#848181] select-none leading-none">
+          <span className="absolute left-0 top-0 text-[9px] text-[#848181] select-none leading-none whitespace-nowrap">
             {monthLabels.get(ci)}
           </span>
         )}
@@ -97,7 +99,7 @@ export default function MealStreakGrid({ days, totalCompleted, firstDay }: MealS
       cells.push(
         <div
           key={`cell-${ci}-${rowIdx}`}
-          className="aspect-square rounded-[2px] cursor-default"
+          className="aspect-square min-w-0 rounded-[2px] cursor-default"
           style={{ backgroundColor: day && !hidden ? COLORS[day.status] : "transparent" }}
           title={day && !hidden ? tooltipLabel(day) : undefined}
         />
@@ -123,7 +125,7 @@ export default function MealStreakGrid({ days, totalCompleted, firstDay }: MealS
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: `24px repeat(${numCols}, 1fr)`,
+            gridTemplateColumns: `24px repeat(${numCols}, minmax(0, 1fr))`,
             gap: "3px",
           }}
         >

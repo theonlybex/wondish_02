@@ -15,6 +15,12 @@ export type BanSource = "allergy" | "avoid" | "condition" | "preference" | "moti
 export interface ExactBan {
   name: string;
   source: BanSource;
+  // Whether a "gluten-free" marker may exempt a grain term for this ban.
+  // Set from the list the ban came from: a list that also bans gluten or
+  // wheat (Celiac, Gluten-free) is about gluten, so gluten-free pasta is
+  // fine; a Keto or Low-carb list bans bread as a carb, so it is not.
+  // Undefined = exempt (lenient default for callers that build bans by hand).
+  grainExempt?: boolean;
 }
 
 // Narrowest structural shape this module reads from the patient diet graph —
@@ -132,23 +138,32 @@ export function derivePatientBans(patient: PatientDietGraph, today: Date = new D
     ...a.food.bannedIngredients.map((b) => b.name),
   ]);
 
+  // A list that bans gluten or wheat is about gluten: its grain terms may be
+  // exempted by a "gluten-free" marker (see ExactBan.grainExempt).
+  const aboutGluten = (list: readonly { name: string }[]) => list.some((b) => /^(gluten|wheat)$/i.test(b.name.trim()));
   const exactBanned: ExactBan[] = [
     // foodToAvoid: own name AND its bannedIngredients children ("Red meat" →
     // beef, lamb, veal…). The children were added 2026-09-11; before that a
     // red-meat avoider was offered ground beef.
-    ...patient.foodToAvoid.flatMap((f) => [
-      { name: f.food.name, source: "avoid" as const },
-      ...(f.food.bannedIngredients ?? []).map((b) => ({ name: b.name, source: "avoid" as const })),
-    ]),
-    ...patient.healthConditions.flatMap((hc) =>
-      hc.condition.bannedIngredients.map((b) => ({ name: b.name, source: "condition" as const }))
-    ),
-    ...patient.foodPreferences.flatMap((fp) =>
-      fp.food.bannedIngredients.map((b) => ({ name: b.name, source: "preference" as const }))
-    ),
-    ...patient.motivations.flatMap((pm) =>
-      pm.motivation.bannedIngredients.map((b) => ({ name: b.name, source: "motivation" as const }))
-    ),
+    ...patient.foodToAvoid.flatMap((f) => {
+      const grainExempt = aboutGluten(f.food.bannedIngredients ?? []);
+      return [
+        { name: f.food.name, source: "avoid" as const, grainExempt },
+        ...(f.food.bannedIngredients ?? []).map((b) => ({ name: b.name, source: "avoid" as const, grainExempt })),
+      ];
+    }),
+    ...patient.healthConditions.flatMap((hc) => {
+      const grainExempt = aboutGluten(hc.condition.bannedIngredients);
+      return hc.condition.bannedIngredients.map((b) => ({ name: b.name, source: "condition" as const, grainExempt }));
+    }),
+    ...patient.foodPreferences.flatMap((fp) => {
+      const grainExempt = aboutGluten(fp.food.bannedIngredients);
+      return fp.food.bannedIngredients.map((b) => ({ name: b.name, source: "preference" as const, grainExempt }));
+    }),
+    ...patient.motivations.flatMap((pm) => {
+      const grainExempt = aboutGluten(pm.motivation.bannedIngredients);
+      return pm.motivation.bannedIngredients.map((b) => ({ name: b.name, source: "motivation" as const, grainExempt }));
+    }),
   ];
 
   const allergyGroupCodes = Array.from(
@@ -277,10 +292,11 @@ const PLANT_BASE_LOOKBEHIND = `(?<!\\b(?:${PLANT_BASES})\\s(?:(?:milk|cream)\\s)
 const GRAIN_MARKER_LOOKBEHIND = `(?<!\\b(?:gluten-free|gluten free|wheat-free|wheat free|grain-free|grain free),?\\s(?:[\\p{L}&-]+,?\\s){0,3})`;
 const FREE_LOOKAHEAD = `(?!(?:-|\\s)free\\b)`;
 
-export const exactBanPattern = (name: string) => {
+export const exactBanPattern = (name: string, opts: { grainExempt?: boolean } = {}) => {
   const lowered = name.trim().toLowerCase();
   const body = stemUnionBody(lowered);
-  const substitutable = (DAIRY_EGG_TERM_RE.test(lowered) ? PLANT_BASE_LOOKBEHIND : "") + (GRAIN_TERM_RE.test(lowered) ? GRAIN_MARKER_LOOKBEHIND : "");
+  const grainExempt = (opts.grainExempt ?? true) && GRAIN_TERM_RE.test(lowered);
+  const substitutable = (DAIRY_EGG_TERM_RE.test(lowered) ? PLANT_BASE_LOOKBEHIND : "") + (grainExempt ? GRAIN_MARKER_LOOKBEHIND : "");
   const derived = DERIVED_PRODUCT_RE.test(lowered) || DECAF_RE.test(lowered);
   const prefix = derived ? "" : "(?<!\\bdecaf\\s)(?<!\\bdecaffeinated\\s)";
   const suffix = derived ? "" : "(?!\\s+(?:cider\\s+)?(?:oil|vinegar|spray|extract)\\b)";
@@ -303,15 +319,20 @@ export function buildDietMatchers({ allergyNames, exactBanned, allergyGroupCodes
   // violation entries. Distinct sources for the same name are kept separate
   // — a name banned via two dimensions must surface both source-tagged
   // violations (see evaluateDishAgainstProfile's multi-source behavior).
-  const seen = new Set<string>();
-  const dedupedExactBanned: ExactBan[] = [];
-  for (const { name, source } of exactBanned) {
+  // Same name from two lists of one source (Keto + Gluten-free both ban
+  // "bread"): the stricter list wins, so grainExempt is AND-ed.
+  const deduped = new Map<string, ExactBan>();
+  for (const { name, source, grainExempt } of exactBanned) {
     const lowered = name.trim().toLowerCase();
     const key = `${source}:${lowered}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    dedupedExactBanned.push({ name: lowered, source });
+    const prev = deduped.get(key);
+    if (!prev) {
+      deduped.set(key, { name: lowered, source, ...(grainExempt !== undefined ? { grainExempt } : {}) });
+    } else if (grainExempt === false) {
+      prev.grainExempt = false;
+    }
   }
+  const dedupedExactBanned = Array.from(deduped.values());
 
   const groupSources = new Map<string, BanSource>();
   for (const g of trialGroupCodes) groupSources.set(g, "trial");
@@ -342,7 +363,7 @@ export function evaluateDishAgainstProfile(
   // (wire contract: violation.term is what the user's profile banned).
   const exactMatchers = matchers.exactBanned.map((b) => ({
     ...b,
-    re: exactBanPattern(b.name),
+    re: exactBanPattern(b.name, { grainExempt: b.grainExempt }),
   }));
 
   ingredientNames.forEach((ingredient, i) => {

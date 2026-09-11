@@ -19,8 +19,11 @@ export default function SymptomChips({
   collapseAfter?: number;
 }) {
   const [showAll, setShowAll] = useState(false);
-  const visible = showAll ? items : items.slice(0, collapseAfter);
+  // Collapsed view keeps the first `collapseAfter` rows plus any row that
+  // already has a value today, so a prefilled symptom is never hidden.
+  const visible = showAll ? items : items.filter((it, i) => i < collapseAfter || values[it.id] != null);
   const hidden = items.length - visible.length;
+  const collapsible = showAll && items.length > collapseAfter;
 
   return (
     <div className="space-y-2" role="group" aria-label="Symptoms today">
@@ -60,9 +63,15 @@ export default function SymptomChips({
           </div>
         );
       })}
-      {hidden > 0 && (
-        <button type="button" onClick={() => setShowAll(true)} className="text-xs font-bold underline" style={{ color: "#812549" }}>
-          Show all ({hidden} more)
+      {(hidden > 0 || collapsible) && (
+        <button
+          type="button"
+          onClick={() => setShowAll(!showAll)}
+          aria-expanded={showAll}
+          className="min-h-[44px] px-2 -ml-2 text-xs font-bold underline rounded-lg"
+          style={{ color: "#812549" }}
+        >
+          {showAll ? "Show fewer" : `Show all (${hidden} more)`}
         </button>
       )}
     </div>

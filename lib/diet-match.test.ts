@@ -71,7 +71,7 @@ test("derivePatientBans: allergies contribute own food name AND bannedIngredient
 test("derivePatientBans: foodToAvoid contributes only its own food name (exact source 'avoid')", () => {
   const patient = { ...emptyPatient(), foodToAvoid: [{ food: { name: "Red Meat" } }] };
   const { exactBanned } = derivePatientBans(patient);
-  assert.deepEqual(exactBanned, [{ name: "Red Meat", source: "avoid" }]);
+  assert.deepEqual(exactBanned, [{ name: "Red Meat", source: "avoid", grainExempt: false }]);
 });
 
 test("derivePatientBans: healthConditions contribute only bannedIngredients children (source 'condition')", () => {
@@ -80,7 +80,7 @@ test("derivePatientBans: healthConditions contribute only bannedIngredients chil
     healthConditions: [{ condition: { bannedIngredients: [{ name: "Sugar" }] } }],
   };
   const { exactBanned } = derivePatientBans(patient);
-  assert.deepEqual(exactBanned, [{ name: "Sugar", source: "condition" }]);
+  assert.deepEqual(exactBanned, [{ name: "Sugar", source: "condition", grainExempt: false }]);
 });
 
 test("derivePatientBans: foodPreferences contribute only bannedIngredients children (source 'preference')", () => {
@@ -89,7 +89,8 @@ test("derivePatientBans: foodPreferences contribute only bannedIngredients child
     foodPreferences: [{ food: { bannedIngredients: [{ name: "Gluten" }] } }],
   };
   const { exactBanned } = derivePatientBans(patient);
-  assert.deepEqual(exactBanned, [{ name: "Gluten", source: "preference" }]);
+  // A list that bans gluten is about gluten → its grain terms may be exempted by a gluten-free marker.
+  assert.deepEqual(exactBanned, [{ name: "Gluten", source: "preference", grainExempt: true }]);
 });
 
 test("derivePatientBans: motivations contribute only bannedIngredients children (source 'motivation')", () => {
@@ -98,7 +99,7 @@ test("derivePatientBans: motivations contribute only bannedIngredients children 
     motivations: [{ motivation: { bannedIngredients: [{ name: "Alcohol" }] } }],
   };
   const { exactBanned } = derivePatientBans(patient);
-  assert.deepEqual(exactBanned, [{ name: "Alcohol", source: "motivation" }]);
+  assert.deepEqual(exactBanned, [{ name: "Alcohol", source: "motivation", grainExempt: false }]);
 });
 
 test("derivePatientBans: full 5-source union pinned against fixture patient", () => {
@@ -549,6 +550,23 @@ test("exactBanPattern: a gluten-free / grain-free marker exempts grain terms onl
   // Allergy matchers stay broad: gluten-free pasta is still excluded for a wheat allergy.
   const wheat = buildDietMatchers(derivePatientBans({ ...emptyPatient(), foodAllergies: [{ food: { name: "Wheat", bannedIngredients: [{ name: "pasta" }] } }] }));
   assert.equal(evaluateDishAgainstProfile(["Gluten-free chickpeas rotini pasta"], wheat).passed, false);
+});
+
+test("the gluten-free exemption applies only to lists that are about gluten", () => {
+  const pref = (names: string[]) => buildDietMatchers(derivePatientBans({ ...emptyPatient(), foodPreferences: [{ food: { bannedIngredients: names.map((name) => ({ name })) } }] }));
+  // Gluten-free / Celiac style list: bans wheat, so gluten-free bread is fine.
+  assert.equal(evaluateDishAgainstProfile(["gluten-free multiple whole grain bread mix"], pref(["bread", "wheat", "flour"])).passed, true);
+  // Keto style list: bans bread as a carb — gluten-free bread is still bread.
+  assert.equal(evaluateDishAgainstProfile(["gluten-free multiple whole grain bread mix"], pref(["bread", "sugar", "rice"])).passed, false);
+  // Keto + Gluten-free together: the stricter list wins for the shared term.
+  const both = buildDietMatchers(derivePatientBans({ ...emptyPatient(), foodPreferences: [
+    { food: { bannedIngredients: [{ name: "bread" }, { name: "wheat" }] } },
+    { food: { bannedIngredients: [{ name: "bread" }, { name: "sugar" }] } },
+  ] }));
+  assert.equal(evaluateDishAgainstProfile(["gluten-free multiple whole grain bread mix"], both).passed, false);
+  // Hand-built bans (no flag) keep the lenient default.
+  assert.equal(exactBanPattern("bread", { grainExempt: false }).test("gluten-free bread"), true);
+  assert.equal(exactBanPattern("bread").test("gluten-free bread"), false);
 });
 
 test("a Vegan preference passes plant substitutes but the allergy safety branch stays broad", () => {
