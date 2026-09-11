@@ -171,6 +171,26 @@ Fixes from the passes above (verified live):
 | "Decaf coffee" banned by a Caffeine avoid rule | `exactBanPattern` skips matches preceded by "decaf"/"decaffeinated" | unit test |
 | Journal day view ignored meals logged through the meal log ("No history yet") | Calendar merges `MealLog` rows as unrated ✓ entries | "+ Add" a meal → day view lists "✓ QA logged snack" |
 
+Verification pass 4 (different onboarding / profile choices, 2026-09-11):
+
+| Scenario | Desktop | Mobile | Notes |
+|---|---|---|---|
+| C. "Prefer not to say" + ft/in + lbs + Build muscle + gain goal | ✅ | — | Was a 422 on the calorie card and a flat 2,000-kcal plan; now a neutral (male/female average) profile: 2,873 kcal/day card, 2,753 plan target, 228 g protein |
+| A/D. Vegan + Tree nuts + Kidney 1-2 + Hypertension, vegetables-only basket | ✅ | — | Gate wrongly passed ("green beans"/"eggplant" counted as protein) and rapid taps lost items; both fixed. The week generated before the fix (28 menus, 0 violations) had **no protein source** — caused by that basket, not the rules: tofu, plant-based egg and meatless chicken all pass this profile. Gate is enforced in `/api/meal-plan/new-week` too |
+| B. Pescatarian + Shellfish allergy + Shellfish avoid | ✅ | — | Profile saves; taste level 1 shows no shrimp; to-buy has canned tuna and no shellfish. Beef is still dealt in the taste deck (see caveats) |
+| Diet-list audit against every catalog ingredient (Vegan / Vegetarian / Pescatarian) | ✅ | — | Before: "Sirloin steak" (25 recipes), "Catfish fillets" (20), trout, sardines, clam juice passed all three; Vegan banned "Mung bean plant-based egg" (41), "Almond milk" (35), "meatless chicken" (17). After: 0 leaks, 0 substitute false bans |
+| E. Restart a category after it was cleared (Citrus) | ✅ | — | Card offered again; started at "Baseline · day 1 of 7" |
+| E. Classify Dose-dependent | ✅ | — | Rewound to "Reintroduction · day 2 of 3"; Confirm → history "COMPLETED / DOSE_DEPENDENT", no trial ban left in the pipeline, food map has no trial line, plan flagged stale + "generate a new week" banner on Trials and Meal Plan |
+| E. Symptoms step with 53 items (5 conditions) | — | ✅ | 8 shown, "Show all (45 more)" expands to all 53 (212 severity buttons), today's saved severities prefilled, no horizontal page scroll |
+
+Fixes from pass 4 (verified live or by unit test):
+
+| Finding | Fix | Commit |
+|---|---|---|
+| "Prefer not to say" → 422 caloric card, 2,000-kcal fallback plan | `resolveSexForCalories` + `neutralProfile` averaging male/female | `7a41bf8` |
+| Pantry rapid taps lost items (PUT race); vegetables classified as protein; "Add 0 more" copy | Serialised saves, `OVERRIDES` in `lib/ingredient-categories.ts`, clearer readiness copy | `220d3af` |
+| Vegan/Vegetarian/Pescatarian ban gaps; plant substitutes and "-free" products banned | `exactBanPattern` substitute-marker / plant-base lookbehinds + "-free" lookahead; `scripts/preference-rules-2026-09-11.ts` (149 rows, applied) | `10333e9` |
+
 ## Not exercised
 
 - **Admin** (`/admin/*`: users, recipes, parameters, banned ingredients, coupons, promo codes, restaurants, review queue, Clara gaps, prune): needs a SUPER-role account; the QA accounts are ordinary users.
@@ -185,3 +205,7 @@ Fixes from the passes above (verified live):
 - Clara swap is not constrained to the basket (a swapped lunch used a lemon dressing that isn't in the pantry). Amounts for such dishes still persist.
 - On the Clerk **dev** instance the first navigation right after a sign-in ticket can loop (`/taste → /login → /overview → /taste`). Only seen in the headless harness; a production Clerk instance is the fix.
 - `Decaf coffee` is still excluded for a Caffeine avoider (children match "coffee"); conservative on purpose.
+- The taste deck is filtered by allergies and avoid rules, not by diet-preference children: a Pescatarian is still dealt sirloin and ribeye cards (dishes are filtered correctly).
+- A Vegan + Kidney 1-2 profile keeps only 5 protein ingredients in the library (tofu 68 recipes, plant-based egg 41, meatless chicken 17, meatless beef strips 5): legumes and nuts are kidney bans. Weeks generate, but the protein pool is thin.
+- The symptoms step has no "Show fewer" after "Show all"; a five-condition account scrolls 53 items × 4 buttons. Overlapping labels (Abdominal pain, Bloating, Nausea) appear once per condition, each with its condition name.
+- Overview activity heatmap (390 px): the last column clips at the card edge; the page itself does not scroll sideways.

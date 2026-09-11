@@ -28,12 +28,16 @@ Confidence is marked per item: **[verified]** checked against code this session 
       `docs/billing/stripe-setup.md`; Customer Portal with cancel/switch OFF;
       Upstash variables in Vercel; then `PREMIUM_GATES=on` to start charging.
       Every migration is already applied to the shared Neon DB.
-- [ ] **`feat/workbooks-tier2`** (13 commits from `main`, not pushed) —
-      symptom journal, trigger trials, deployable workbook-03 rules. Suite
-      1138/1138, tsc clean, seeds idempotent, verified end to end on desktop
-      (see `docs/qa/feature-checklist-2026-09-11.md`). Migration
-      `20260911120000_symptom_journal_trials` already applied to the shared DB.
-      Decision pending: merge / PR / keep.
+- [ ] **`feat/workbooks-tier2`** (24 commits from `main`, not pushed) —
+      symptom journal, trigger trials, deployable workbook-03 rules, the six
+      workbook-only conditions + five backfilled ones, and the pass-4 fixes
+      (neutral calories for "Prefer not to say", pantry save race, diet-list
+      gaps, plant-substitute false bans). Suite 1144/1144, tsc clean, seeds
+      idempotent, verified end to end (see
+      `docs/qa/feature-checklist-2026-09-11.md`, passes 1–4). Migration
+      `20260911120000_symptom_journal_trials` and the data scripts
+      (`preference-rules-2026-09-11.ts`, `backfill-conditions-2026-09-11.ts`)
+      are already applied to the shared DB. Decision pending: merge / PR / keep.
 
 ---
 
@@ -140,6 +144,16 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
       read symptom history. (e) Conversion coverage for condiments/sweeteners
       (teaspoon/tablespoon/cup). Kidney Disease stage 1-2 still keeps ~394 of
       1,200 library dishes.
+- [ ] **Scenario-pass observations (2026-09-11, pass 4) — open, small.**
+      (a) The taste deck filters by allergies/avoid rules only, so a
+      Pescatarian still swipes sirloin/ribeye cards (dishes are filtered
+      correctly) — apply preference children to the deck. (b) Vegan + Kidney
+      1-2 keeps 5 protein ingredients in the library (tofu-dominated): decide
+      whether kidney's legume/nut bans should soften for vegans or the library
+      needs low-potassium plant proteins. (c) Symptoms step: add "Show fewer"
+      and consider remembering the items a user actually logs — a
+      five-condition account gets 53 items. (d) Overview activity heatmap
+      clips its last column at 390 px.
 - [ ] **Clara repo drift — uncommitted, and one item is a real config change.**
       `~/Desktop/BeTech/Clara` has 7 unpushed commits plus 2 uncommitted files
       (noticed 2026-08-26). **[verified]**
