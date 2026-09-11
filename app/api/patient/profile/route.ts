@@ -27,7 +27,8 @@ export async function GET() {
       }),
       prisma.physicalActivity.findMany({ orderBy: { level: "asc" }, where: { level: { lte: 4 } } }),
       prisma.motivation.findMany({ orderBy: { name: "asc" } }),
-      prisma.healthCondition.findMany({ orderBy: { name: "asc" } }),
+      // Built-in only; a user's own conditions come from /api/patient/conditions.
+      prisma.healthCondition.findMany({ where: { ownerPatientId: null }, orderBy: { name: "asc" } }),
       prisma.foodPreference.findMany({ orderBy: { name: "asc" } }),
       prisma.foodToAvoid.findMany({ orderBy: { name: "asc" } }),
       prisma.foodAllergy.findMany({ orderBy: { name: "asc" } }),
@@ -125,7 +126,7 @@ export async function PATCH(req: NextRequest) {
       foodAllergies:    { select: { foodId: true } },
       foodToAvoid:      { select: { foodId: true } },
       foodPreferences:  { select: { foodId: true } },
-      healthConditions: { select: { conditionId: true } },
+      healthConditions: { select: { conditionId: true, condition: { select: { ownerPatientId: true } } } },
     },
   });
 
@@ -210,10 +211,12 @@ export async function PATCH(req: NextRequest) {
           ...(motivationList.length ? [prisma.patientMotivation.createMany({ data: motivationList.map((id) => ({ patientId: patient.id, motivationId: id })) })] : []),
         ]
       : []),
+    // The built-in list is replaced; the user's own conditions (owner = this
+    // patient, managed under /api/patient/conditions) keep their links.
     ...(conditionList
       ? [
-          prisma.patientHealthCondition.deleteMany({ where: { patientId: patient.id } }),
-          ...(conditionList.length ? [prisma.patientHealthCondition.createMany({ data: conditionList.map((id) => ({ patientId: patient.id, conditionId: id })) })] : []),
+          prisma.patientHealthCondition.deleteMany({ where: { patientId: patient.id, condition: { ownerPatientId: null } } }),
+          ...(conditionList.length ? [prisma.patientHealthCondition.createMany({ data: conditionList.map((id) => ({ patientId: patient.id, conditionId: id })), skipDuplicates: true })] : []),
         ]
       : []),
     ...(preferenceList
@@ -256,7 +259,8 @@ export async function PATCH(req: NextRequest) {
     listChanged(existing.foodAllergies.map((f) => f.foodId), allergyList) ||
     listChanged(existing.foodToAvoid.map((f) => f.foodId), avoidList) ||
     listChanged(existing.foodPreferences.map((f) => f.foodId), preferenceList) ||
-    listChanged(existing.healthConditions.map((c) => c.conditionId), conditionList)
+    // Built-in links only: custom links are untouched by this route.
+    listChanged(existing.healthConditions.filter((c) => c.condition.ownerPatientId == null).map((c) => c.conditionId), conditionList)
   );
 
   // Strategy B: the profile save NEVER generates. If a plan already exists and a

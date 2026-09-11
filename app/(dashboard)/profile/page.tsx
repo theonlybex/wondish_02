@@ -8,6 +8,8 @@ import ProfileForm from "@/components/profile/ProfileForm";
 import OnboardingWizard from "@/components/onboarding/OnboardingWizard";
 import DeleteAccountSection from "@/components/profile/DeleteAccountSection";
 import PendingInviteBanner from "@/components/restaurant/PendingInviteBanner";
+import CustomConditions from "@/components/profile/CustomConditions";
+import { listCustomConditions } from "@/lib/custom-conditions-server";
 
 export const metadata = { title: "Profile" };
 
@@ -38,7 +40,7 @@ export default async function ProfilePage({
       prisma.gender.findMany({ orderBy: { name: "asc" } }),
       prisma.physicalActivity.findMany({ orderBy: { level: "asc" } }),
       prisma.motivation.findMany({ orderBy: { name: "asc" } }),
-      prisma.healthCondition.findMany({ orderBy: { name: "asc" } }),
+      prisma.healthCondition.findMany({ where: { ownerPatientId: null }, orderBy: { name: "asc" } }),
       prisma.foodPreference.findMany({ orderBy: { name: "asc" } }),
       prisma.foodToAvoid.findMany({ orderBy: { name: "asc" } }),
       prisma.foodAllergy.findMany({ orderBy: { name: "asc" } }),
@@ -59,6 +61,9 @@ export default async function ProfilePage({
     // getAccount is React-cached, so this shares the lookup above.
     getAccount(userId).then((a) => (a ? findClaimableInvites(a.email) : [])),
   ]);
+
+  // The user's own conditions (spec 2026-09-11-custom-conditions-design.md).
+  const customConditions = patient && !isOnboarding ? await listCustomConditions(patient.id) : [];
 
   // Old accounts predate the onboarding flag. If the profile is already complete
   // but they were forced here, heal the cached flag and return them to the
@@ -142,6 +147,7 @@ export default async function ProfilePage({
                   : { firstName: "", lastName: "", email: "" }
               }
             />
+            <CustomConditions initial={customConditions} />
             <DeleteAccountSection />
           </div>
         </>

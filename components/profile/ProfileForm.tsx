@@ -236,7 +236,9 @@ export default function ProfileForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-10 max-w-2xl">
+    // noValidate: out-of-range numbers get the shared inline message from
+    // handleSubmit instead of the browser's native bubble.
+    <form onSubmit={handleSubmit} noValidate className="space-y-10 max-w-2xl">
       {isOnboarding && (
         <div className="bg-primary/10 border border-primary/20 text-primary rounded-xl px-4 py-3 text-sm font-medium">
           Welcome! Complete your profile to get a personalized meal plan.

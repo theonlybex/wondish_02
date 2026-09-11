@@ -158,6 +158,7 @@ model Patient {
   foodToAvoid       PatientFoodToAvoid[]
   foodAllergies     PatientFoodAllergy[]
   healthConditions  PatientHealthCondition[]
+  customConditions  HealthCondition[]        @relation("CustomConditions")
   motivations       PatientMotivation[]
   dishPreferences   PatientDishPreference[]
   ingredientPreferences PatientIngredientPreference[]
@@ -301,14 +302,27 @@ model PatientFoodAllergy {
 
 model HealthCondition {
   id                String                            @id @default(cuid())
-  name              String                            @unique
+  // Global rows are unique by name through a partial index
+  // ("HealthCondition_global_name_key", WHERE ownerPatientId IS NULL —
+  // raw SQL in migration 20260911180000); a user's own rows are unique per
+  // owner (@@unique below). See docs/superpowers/specs/2026-09-11-custom-conditions-design.md.
+  name              String
   // Wondish workbook profile_factor_id (03/04/05). Not unique: Type 2
   // Diabetes and Prediabetes share factor 4.
   profileFactorId   Int?
+  // Set on a user-defined condition; null for the built-in list.
+  ownerPatientId    String?
+  owner             Patient?                          @relation("CustomConditions", fields: [ownerPatientId], references: [id], onDelete: Cascade)
+  // Prompt-level guidance for Clara; user-written on custom rows. Built-in
+  // rows fall back to lib/food-map CONDITION_GUIDANCE when null.
+  guidance          String?
   patients          PatientHealthCondition[]
   bannedIngredients HealthConditionBannedIngredient[]
   trackingItems     ConditionTrackingItem[]
   triggerRules      TriggerRule[]
+
+  @@unique([ownerPatientId, name])
+  @@index([ownerPatientId])
 }
 
 // ── Symptom journal + trigger trials (workbooks 05 / 04) ────────────────────

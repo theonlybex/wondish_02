@@ -155,12 +155,20 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
       form, the journal weigh-in and the caloric-profile read; names ≤100
       chars, journal notes ≤2000; partial `PATCH /api/patient/profile` no
       longer wipes omitted fields and relation lists.
-- [ ] **Kidney Disease stage 1-2 bans legumes and nuts outright**, which
-      leaves a vegan with tofu, tempeh and plant-based substitutes. NKF/KDIGO
-      guidance restricts potassium/phosphorus by lab values, not by stage 1-2
-      diagnosis — a clinician should decide whether these rows become
-      guidance ("moderate portions") like the salt rows did. Data only:
-      `HealthConditionBannedIngredient` for that condition.
+- [x] **Custom health conditions — shipped 2026-09-11** (spec
+      `docs/superpowers/specs/2026-09-11-custom-conditions-design.md`). A user
+      adds a condition with ingredients to avoid (hard bans everywhere), a
+      note for Clara (food-map guidance) and symptoms to track (journal),
+      under Settings → My conditions. Reuses `HealthCondition` with
+      `ownerPatientId` + `guidance`; migration `20260911180000_custom_conditions`
+      applied to the shared DB. Not covered: trigger trials for custom
+      conditions (no `TriggerRule` rows) — add if users ask.
+- [x] **Kidney Disease stage 1-2: potassium/phosphorus rows → guidance**
+      (2026-09-11, `scripts/kidney-stage12-rules-2026-09-11.ts`, 43 rows
+      retired, 12 sodium/processed rows kept; CKD stage 3 unchanged). NKF/KDIGO
+      restrict those by lab values, not by stage. **Authored, not
+      client-supplied — clinician review still wanted**, same as the other
+      backfills in "Workbook follow-ups".
 - [ ] **Clara repo drift — uncommitted, and one item is a real config change.**
       `~/Desktop/BeTech/Clara` has 7 unpushed commits plus 2 uncommitted files
       (noticed 2026-08-26). **[verified]**

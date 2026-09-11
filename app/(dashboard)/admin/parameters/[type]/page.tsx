@@ -28,7 +28,7 @@ async function fetchItems(type: string): Promise<{ id: string; name: string }[]>
     "food-preference": () => prisma.foodPreference.findMany({ orderBy: { name: "asc" } }),
     "food-to-avoid": () => prisma.foodToAvoid.findMany({ orderBy: { name: "asc" } }),
     "food-allergy": () => prisma.foodAllergy.findMany({ orderBy: { name: "asc" } }),
-    "health-condition": () => prisma.healthCondition.findMany({ orderBy: { name: "asc" } }),
+    "health-condition": () => prisma.healthCondition.findMany({ where: { ownerPatientId: null }, orderBy: { name: "asc" } }),
   };
   const fn = map[type];
   if (!fn) return [];

@@ -731,6 +731,10 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
               shifts your macros toward fewer carbs; the others exclude specific ingredients. The rest are
               recorded so Clara can take them into account.
             </p>
+            <p className="text-xs mb-5 -mt-3" style={{ color: "#848181" }}>
+              Don&apos;t see yours? After setup you can add your own condition — with the ingredients it rules
+              out, a note for Clara and the symptoms to track — under Settings.
+            </p>
             <div className="space-y-5" role="group" aria-label="Health conditions">
               {(() => {
                 const byName = new Map(refData.healthConditions.map((c) => [c.name, c]));

@@ -33,7 +33,9 @@ export interface FoodMapPatient {
   foodAllergies: { food: { name: string; bannedIngredients: { name: string }[] } }[];
   foodToAvoid: { food: { name: string; bannedIngredients?: { name: string }[] } }[];
   foodPreferences: { food: { name: string; bannedIngredients: { name: string }[] } }[];
-  healthConditions: { condition: { name: string; bannedIngredients: { name: string }[] } }[];
+  // `guidance` is the DB column (custom conditions, or an admin override);
+  // the code map below is the fallback for built-in rows.
+  healthConditions: { condition: { name: string; guidance?: string | null; bannedIngredients: { name: string }[] } }[];
   motivations: { motivation: { name: string; bannedIngredients: { name: string }[] } }[];
   triggerTrials?: TrialGraphRow[];
 }
@@ -45,7 +47,9 @@ export interface FoodMapPatient {
 export const CONDITION_GUIDANCE: Record<string, string> = {
   hypertension: "keep sodium low — season with herbs, citrus and spices, only a pinch of salt, no cured meats or salty sauces",
   "heart disease": "keep sodium and saturated fat low — minimal salt, lean proteins, olive oil over butter",
-  "kidney disease stage 1-2": "keep sodium moderate and avoid very high-potassium/phosphorus loads — minimal salt, no processed meats",
+  // Stage 1-2 (2026-09-11): potassium/phosphorus foods moved from hard bans to
+  // portion guidance — NKF/KDIGO restrict them by lab values, not by stage.
+  "kidney disease stage 1-2": "keep sodium low — minimal salt, no processed or cured meats, canned soups or pickles; legumes, nuts, dairy and high-potassium fruit and vegetables in moderate portions rather than never",
   "chronic kidney disease – stage 3": "low sodium, moderate protein portions, limit high-potassium and high-phosphorus foods",
   "high cholesterol": "favour unsaturated fats, fibre and lean proteins; limit saturated fat",
   "type 2 diabetes": "steady carbohydrates with fibre and protein; avoid added sugars and refined starches",
@@ -95,8 +99,14 @@ export function buildFoodMapText(patient: FoodMapPatient | null | undefined): st
     const banned = patient.healthConditions.flatMap((c) => c.condition.bannedIngredients.map((b) => b.name));
     lines.push(`Health conditions: ${names}`);
     if (banned.length > 0) lines.push(`Restricted from conditions: ${banned.join(", ")}`);
+    // A user-written guidance line is quoted so the model reads it as the
+    // diner's instruction, not as ours.
     const guidance = patient.healthConditions
-      .map((c) => CONDITION_GUIDANCE[c.condition.name.trim().toLowerCase()])
+      .map((c) => {
+        const own = c.condition.guidance?.trim();
+        if (own) return `${c.condition.name} (the diner's own note): "${own}"`;
+        return CONDITION_GUIDANCE[c.condition.name.trim().toLowerCase()];
+      })
       .filter((g): g is string => Boolean(g));
     if (guidance.length > 0) lines.push(`Condition guidance: ${guidance.join("; ")}`);
   }

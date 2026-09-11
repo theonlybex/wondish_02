@@ -219,6 +219,25 @@ Fixes for the pass-4 observations:
 | Overview heatmap clipped its last column at 390 px | Month labels no longer widen the `1fr` columns (`minmax(0, 1fr)` + absolutely positioned labels); overflow audit 0 elements |
 | Gluten-free bread mix passed Keto / Low-carb | The gluten-free marker now exempts grain terms only for lists that also ban gluten or wheat (`ExactBan.grainExempt`); Keto + Gluten-free together take the stricter rule |
 
+## Custom conditions (added 2026-09-11, spec `docs/superpowers/specs/2026-09-11-custom-conditions-design.md`)
+
+Verified on `qa.variant.20260911@wondish.io` (Pescatarian, Shellfish), desktop and 390 px:
+
+| Feature | Desktop | Mobile | Notes |
+|---|---|---|---|
+| "My conditions" section on the profile page, add form (name, ingredient tags, note for Clara, symptom tags) | ✅ | ✅ | Tags via Enter / comma / Add; 44 px chips and remove targets; overflow audit 0 |
+| Create "Gout" (avoid canned tuna, anchovies, beer; note; 2 symptoms) | ✅ | — | Saved notice; card shows avoids / tracks / note; profile links it; built-in picker does not list it |
+| Bans reach the diet pipeline | ✅ | — | `evaluateDishAgainstProfile`: "Canned tuna" and "anchovy paste" banned (source `condition`); taste deck lost "Canned tuna" |
+| Clara food map carries the note | ✅ | — | `Condition guidance: Gout (the diner's own note): "small portions of red meat, no beer, plenty of water"` |
+| Symptoms in the journal | ✅ | ✅ | Quick log gains the symptoms step (1/6) with "Joint pain · Gout"; logging a severity works |
+| Edit: rename, drop "beer", drop a symptom, add "Fatigue" | ✅ | — | Kept symptom keeps its row (logged history intact, same id), dropped one deactivated (row kept), new one created; plan flagged stale |
+| Name clash with a built-in ("hypertension") | ✅ | — | 409 with a pointer to the list |
+| Settings save with an empty built-in list | ✅ | — | Custom link kept |
+| Delete with confirm | ✅ | — | Condition, link, tracking items and their journal symptoms all gone |
+| Onboarding health step pointer | ✅ | — | One line: add your own under Settings after setup |
+
+Also in this pass: Kidney Disease stage 1-2 potassium/phosphorus rows (43) moved from hard bans to portion guidance (`scripts/kidney-stage12-rules-2026-09-11.ts`, applied; CKD stage 3 unchanged) — authored, needs clinician review; the settings form now shows the shared inline bounds message instead of the browser's native bubble (`noValidate`).
+
 ## Not exercised
 
 - **Admin** (`/admin/*`: users, recipes, parameters, banned ingredients, coupons, promo codes, restaurants, review queue, Clara gaps, prune): needs a SUPER-role account; the QA accounts are ordinary users.

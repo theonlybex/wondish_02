@@ -164,3 +164,20 @@ test("buildFoodMapText: trial lines for elimination, reintroduction and a likely
   assert.match(buildFoodMapText({ ...base, triggerTrials: [{ status: "COMPLETED", startDate: daysAgo(60), classification: "LIKELY_TRIGGER", rule }] }), /likely trigger — never include: orange/);
   assert.doesNotMatch(buildFoodMapText({ ...base, triggerTrials: [{ status: "STOPPED", startDate: daysAgo(4), classification: null, rule }] }), /Trigger trial/);
 });
+
+// ─── custom conditions: the DB guidance column beats the code map ───────────
+
+test("buildFoodMapText: a condition's own guidance is quoted as the diner's note; built-ins fall back to the code map", () => {
+  const p: FoodMapPatient = {
+    ...emptyPatient(),
+    healthConditions: [
+      { condition: { name: "Gout", guidance: "no beer, small portions of red meat", bannedIngredients: [{ name: "anchovies" }] } },
+      { condition: { name: "Hypertension", guidance: null, bannedIngredients: [] } },
+    ],
+  };
+  const text = buildFoodMapText(p);
+  assert.match(text, /Health conditions: Gout, Hypertension/);
+  assert.match(text, /Restricted from conditions: anchovies/);
+  assert.match(text, /Gout \(the diner's own note\): "no beer, small portions of red meat"/);
+  assert.match(text, /keep sodium low — season with herbs/);
+});
