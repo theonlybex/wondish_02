@@ -131,6 +131,20 @@ Migraine) and `qa.nocond.20260911@wondish.io` (no conditions).
 | Six workbook-only conditions added (IBS-M, Hypertriglyceridemia, Pregnancy, Leaky Gut, Autoimmune, AERD) | ✅ | — | 55 items, 10 IBS-M trials, 11 rules; seeds idempotent |
 | Five conditions with no workbook factor backfilled from clinical sources | ✅ | — | 76 items, CKD3 bans, PCOS bans + trial; marked `WB-*` for clinician review |
 
+Verification pass 2 (after the six added and five backfilled conditions):
+
+| Feature | Desktop | Mobile | Notes |
+|---|---|---|---|
+| New conditions selectable in Settings; saving them adds symptoms, trials and the Trials nav | ✅ | — | PCOS + IBS-M added: 6 journal steps, 53 items, 23 eligible triggers |
+| Symptoms step on mobile, trial-linked items first with a "trial" tag | — | ✅ | No horizontal overflow |
+| Trials page and Journey cards on mobile | — | ✅ | 3×2 timeline, no overflow |
+| PCOS low-glycemic trial → regenerate → plan has no high-glycemic term | ✅ | — | 22 menus, 0 hits |
+| Clara chat refuses a trial-banned food and names the trial | ✅ | — | "day 1 of a 28-day trial eliminating high glycemic foods" |
+| Clara swap honours the trial | ✅ | — | Asked for jasmine rice + honey glaze, got brown rice & quinoa with herb glaze |
+| Phase change (elimination → reintroduction) flags the plan stale | ✅ | — | Lazy sync on the next trials read; meal-plan status agrees |
+| Weekly generation limit message on the trials page | 🔧 | — | Reload wiped the 429 message; fixed |
+| PCOS standing bans vs its trial | 🔧 | — | Standing bans swallowed the trial's foods; refined grains and juices now belong to the trial only |
+
 ## Not exercised
 
 - **Admin** (`/admin/*`: users, recipes, parameters, banned ingredients, coupons, promo codes, restaurants, review queue, Clara gaps, prune): needs a SUPER-role account; the QA accounts are ordinary users.
