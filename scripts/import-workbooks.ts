@@ -2,6 +2,7 @@
 //   set -a; source .env.local; set +a
 //   npx tsx scripts/import-workbooks.ts --phase a            # ingredients: ids, classification, Big-9 groups, conversions
 //   npx tsx scripts/import-workbooks.ts --phase b            # library recipes: quantities, author steps, nutrition, lineage
+//   npx tsx scripts/import-workbooks.ts --phase c            # symptom items, trigger rules + links, category terms (05/04)
 //   npx tsx scripts/import-workbooks.ts --phase all --apply
 // Idempotent: a second run plans zero changes. Every apply writes a rollback
 // JSON next to the script before touching rows.
@@ -10,6 +11,7 @@ import { PrismaClient } from "@prisma/client";
 import { findWorkbook, readForms, readRecipeRows, readBig9, readConversions } from "../lib/workbooks/read";
 import { planIngredientUpdates } from "../lib/workbooks/ingredient-plan";
 import { phaseB } from "./import-workbooks-b";
+import { phaseC } from "./import-workbooks-c";
 
 const prisma = new PrismaClient();
 const apply = process.argv.includes("--apply");
@@ -68,6 +70,7 @@ async function phaseA() {
 (async () => {
   if (phase === "a" || phase === "all") await phaseA();
   if (phase === "b" || phase === "all") await phaseB(prisma, apply);
+  if (phase === "c" || phase === "all") await phaseC(prisma, apply);
 })()
   .catch((e) => { console.error(e); process.exitCode = 1; })
   .finally(() => prisma.$disconnect());
