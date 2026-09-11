@@ -39,6 +39,22 @@ Confidence is marked per item: **[verified]** checked against code this session 
       applied to the shared Neon DB (`recipe_ingredient_note`,
       `subscription_cancel_at_period_end`). Manual test-mode pass (Task 14 of the
       plan) still to run — the Stripe CLI is not installed locally.
+- [ ] **Wondish workbooks Tier 1 on `feat/workbooks-tier1`** (stacked on
+      `feat/billing-v2`; plan: `docs/superpowers/plans/2026-09-10-workbooks-tier1.md`).
+      Ingredient form ids + Big-9 groups + 470 unit conversions (phase A),
+      author steps / quantities / sodium-sugar nutrition on 599 library recipes
+      (phase B), component-based allergen bans, weekly purchase amounts on
+      What-to-buy. **[verified]** Migration `20260911043642_workbooks_tier1`
+      already applied to the shared Neon DB; import re-runs plan 0 changes
+      (`npx tsx scripts/import-workbooks.ts --phase all`). Regression 2026-09-11
+      (1,107 public recipes, additive only — nothing previously banned is
+      released): Wheat now bans +168 dishes (workbook flags rolled oats and
+      sliced bread as BIG9-WHEAT), Soy +60 (soybean oil in crushed tomatoes,
+      mayonnaise), Eggs +7, Sesame +7. The workbook is deliberately
+      conservative ("may contain", oil-derived soy) — product should confirm
+      that is the intended strictness before launch.
+      Known gap: Clara-generated dishes carry no quantities, so basket-mode
+      plans (every new account) show no amounts yet — see Tier 2 below.
 
 ---
 
@@ -104,6 +120,19 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
 
 ## 4. Product + engineering backlog
 
+- [ ] **Wondish workbooks Tier 2 — quantities from Clara + health rules.**
+      (a) Ask Clara for `{name, quantity, unit}` per ingredient in
+      `lib/clara/recipe-generation.ts` and persist them on `RecipeIngredient`,
+      so weekly purchase amounts light up for basket-mode plans (today only the
+      599 library recipes carry quantities). (b) Map the 8 health-condition
+      names in Wondish 03 onto our `HealthCondition` rows and import the
+      ACTIVE rules; most rows are `REVIEW_REQUIRED` and need a clinician pass
+      first. (c) Per-ingredient conversion coverage: 470 (form, unit) pairs
+      cover ~88% of a library week; the misses are teaspoon/tablespoon/cup on
+      condiments and sweeteners. **[verified]**
+- [ ] **Wondish workbooks Tier 3 — Trial Process (04) and Symptom Journal
+      (05).** New data model (trial phases, reintroduction schedule, symptom
+      entries) and UI; nothing in the app consumes them yet. **[reported]**
 - [ ] **Clara repo drift — uncommitted, and one item is a real config change.**
       `~/Desktop/BeTech/Clara` has 7 unpushed commits plus 2 uncommitted files
       (noticed 2026-08-26). **[verified]**
