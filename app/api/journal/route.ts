@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { convertHeight, convertWeight, calcCBMI } from "@/lib/caloric-engine";
 import { parseLocalDateStrict, shouldReplaceMeals, validateJournalPost } from "@/lib/journal";
+import { trackingItemsForPatient, validateSymptoms } from "@/lib/journal-symptoms";
 
 // How far current weight must drift from the weight the active meal plan was
 // generated at before we flag the plan stale. Keeps daily weigh-in noise quiet.
@@ -30,12 +31,16 @@ export async function GET(req: NextRequest) {
   const dateEnd = new Date(date);
   dateEnd.setHours(23, 59, 59, 999);
 
-  const entry = await prisma.journalEntry.findFirst({
-    where: { patientId: patient.id, date: { gte: date, lte: dateEnd } },
-    include: { meals: true },
-  });
+  const [entry, trackingItems] = await Promise.all([
+    prisma.journalEntry.findFirst({
+      where: { patientId: patient.id, date: { gte: date, lte: dateEnd } },
+      include: { meals: true, symptoms: { select: { trackingItemId: true, severity: true } } },
+    }),
+    // Empty for a user without a condition → the UI shows no symptoms step.
+    trackingItemsForPatient(prisma, patient.id),
+  ]);
 
-  return NextResponse.json({ entry });
+  return NextResponse.json({ entry, symptoms: entry?.symptoms ?? [], trackingItems });
 }
 
 export async function POST(req: NextRequest) {
@@ -67,6 +72,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: validated.error }, { status: 400 });
   }
   const { date: entryDate, weight: parsedWeight, meals } = validated;
+  // Condition symptoms (workbook 05): only items the patient's conditions own.
+  const allowedItems = await trackingItemsForPatient(prisma, patient.id);
+  const symptomsValidated = validateSymptoms(body.symptoms, new Set(allowedItems.map((i) => i.id)));
+  if (!symptomsValidated.ok) return NextResponse.json({ error: symptomsValidated.error }, { status: 400 });
+  const symptomRows = symptomsValidated.rows;
   entryDate.setHours(0, 0, 0, 0);
   const dateEnd = new Date(entryDate);
   dateEnd.setHours(23, 59, 59, 999);
@@ -107,6 +117,18 @@ export async function POST(req: NextRequest) {
           skipped: m.skipped ?? false,
           rating: m.rating ?? null,
         })),
+      });
+    }
+
+    // Symptoms: null clears the item for the day, a severity upserts it.
+    const cleared = symptomRows.filter((s) => s.severity === null).map((s) => s.trackingItemId);
+    if (cleared.length) await tx.journalSymptom.deleteMany({ where: { journalEntryId: entry!.id, trackingItemId: { in: cleared } } });
+    for (const s of symptomRows) {
+      if (s.severity === null) continue;
+      await tx.journalSymptom.upsert({
+        where: { journalEntryId_trackingItemId: { journalEntryId: entry!.id, trackingItemId: s.trackingItemId } },
+        update: { severity: s.severity },
+        create: { journalEntryId: entry!.id, trackingItemId: s.trackingItemId, severity: s.severity },
       });
     }
   });

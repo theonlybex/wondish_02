@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import SymptomChips from "@/components/journal/SymptomChips";
+import type { Severity, TrackingItemView } from "@/lib/journal-symptoms";
 import { displayDishName } from "@/lib/dish-name";
 import { format } from "date-fns";
 import DatePicker from "@/components/ui/DatePicker";
@@ -65,6 +67,13 @@ export default function JournalForm({
     (initialEntry?.activityLevel as string) ?? ""
   );
   const [notes, setNotes] = useState((initialEntry?.notes as string) ?? "");
+  // Condition symptoms (workbook 05); items are empty for users without a condition.
+  const [trackingItems, setTrackingItems] = useState<TrackingItemView[]>([]);
+  const [symptoms, setSymptoms] = useState<Record<string, Severity>>({});
+  useEffect(() => {
+    void loadEntry(initialDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const initialMeals: JournalMealState[] = initialMenus.map((menu) => {
     const existing = (
@@ -104,6 +113,10 @@ export default function JournalForm({
       setActivityLevel(data.entry.activityLevel ?? "");
       setNotes(data.entry.notes ?? "");
     }
+    setTrackingItems(Array.isArray(data.trackingItems) ? data.trackingItems : []);
+    const initial: Record<string, Severity> = {};
+    for (const s of data.symptoms ?? []) initial[s.trackingItemId] = s.severity;
+    setSymptoms(initial);
   };
 
   const handleDateChange = async (d: Date) => {
@@ -127,6 +140,7 @@ export default function JournalForm({
           energyLevel: energyLevel || null,
           activityLevel: activityLevel || null,
           notes: notes || null,
+          symptoms: trackingItems.map((it) => ({ trackingItemId: it.id, severity: symptoms[it.id] ?? null })),
           meals: meals.map((m) => ({
             mealType: m.mealType,
             recipeId: m.recipeId,
@@ -278,6 +292,26 @@ export default function JournalForm({
               placeholder="150"
             />
           </div>
+
+          {/* Symptoms — only for users whose conditions have tracking items */}
+          {trackingItems.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-[#1E1A1A] block mb-1.5">Symptoms</label>
+              <SymptomChips
+                items={trackingItems}
+                values={symptoms}
+                onChange={(id, severity) =>
+                  setSymptoms((prev) => {
+                    const next = { ...prev };
+                    if (severity === null) delete next[id];
+                    else next[id] = severity;
+                    return next;
+                  })
+                }
+                collapseAfter={12}
+              />
+            </div>
+          )}
 
           {/* Notes */}
           <div>

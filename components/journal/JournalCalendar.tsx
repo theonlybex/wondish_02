@@ -15,6 +15,7 @@ interface DayEntry {
   notes: string | null;
   dailyCalorieTarget: number | null;
   meals: { mealType: string; recipeName: string; rating: number }[];
+  symptoms?: { label: string; severity: string }[];
 }
 
 interface CaloricSnapshot {
@@ -460,6 +461,7 @@ function DayDetailCard({
             activityLevel={entry.activityLevel}
             weight={entry.weight}
             notes={entry.notes}
+            symptoms={entry.symptoms ?? []}
           />
         </div>
       )}
@@ -626,15 +628,18 @@ function JournalSection({
   activityLevel,
   weight,
   notes,
+  symptoms = [],
 }: {
   mood: string | null;
   energyLevel: string | null;
   activityLevel: string | null;
   weight: number | null;
   notes: string | null;
+  symptoms?: { label: string; severity: string }[];
 }) {
-  const hasSomething = mood || energyLevel || activityLevel || weight || notes;
+  const hasSomething = mood || energyLevel || activityLevel || weight || notes || symptoms.length > 0;
   if (!hasSomething) return null;
+  const severityLabel: Record<string, string> = { NOT_PRESENT: "not present", MILD: "mild", MODERATE: "moderate", SEVERE: "severe" };
 
   return (
     <div className="px-5 py-4">
@@ -706,6 +711,20 @@ function JournalSection({
           </div>
         )}
       </div>
+
+      {/* Symptoms (condition tracking items, workbook 05) */}
+      {symptoms.length > 0 && (
+        <div className="mt-3">
+          <p className="text-[9px] uppercase tracking-wider mb-1.5" style={{ color: "#ABA6A6" }}>Symptoms</p>
+          <div className="flex flex-wrap gap-1.5">
+            {symptoms.map((s) => (
+              <span key={s.label} className="text-[11px] px-2 py-1 rounded-full" style={{ background: s.severity === "NOT_PRESENT" ? "#F0EFF5" : "rgba(129,37,73,0.10)", color: s.severity === "NOT_PRESENT" ? "#848181" : "#812549" }}>
+                {s.label} · {severityLabel[s.severity] ?? s.severity.toLowerCase()}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Notes */}
       {notes && (

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import SymptomChips from "@/components/journal/SymptomChips";
+import type { Severity, TrackingItemView } from "@/lib/journal-symptoms";
 
 const MOOD_OPTIONS = [
   { value: "1", emoji: "😞", label: "Bad" },
@@ -26,14 +28,15 @@ const ACTIVITY_OPTIONS = [
   { value: "intense", label: "Sport", emoji: "🏃" },
 ];
 
-const STEPS = ["mood", "weight", "energy", "activity", "notes"] as const;
-type Step = typeof STEPS[number];
+const BASE_STEPS = ["mood", "weight", "energy", "activity", "notes"] as const;
+type Step = typeof BASE_STEPS[number] | "symptoms";
 
 const STEP_QUESTIONS: Record<Step, string> = {
   mood: "How are you feeling?",
   weight: "What's your weight today?",
   energy: "How's your energy?",
   activity: "Any activity today?",
+  symptoms: "Any symptoms today?",
   notes: "Anything to note?",
 };
 
@@ -48,6 +51,28 @@ export default function QuickJournalLog() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  // Condition symptoms (workbook 05). The step exists only when the user's
+  // conditions have symptom items — a user without a condition keeps 5 steps.
+  const [trackingItems, setTrackingItems] = useState<TrackingItemView[]>([]);
+  const [symptoms, setSymptoms] = useState<Record<string, Severity>>({});
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/journal?date=${format(new Date(), "yyyy-MM-dd")}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setTrackingItems(Array.isArray(data.trackingItems) ? data.trackingItems : []);
+        const initial: Record<string, Severity> = {};
+        for (const s of data.symptoms ?? []) initial[s.trackingItemId] = s.severity;
+        setSymptoms(initial);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const STEPS: readonly Step[] = trackingItems.length > 0
+    ? ["mood", "weight", "energy", "activity", "symptoms", "notes"]
+    : BASE_STEPS;
 
   const currentStep = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
@@ -85,6 +110,8 @@ export default function QuickJournalLog() {
           activityLevel: activityLevel || null,
           notes: notes || null,
           meals: [],
+          // Every asked item: a severity, or null to clear a previous value.
+          symptoms: trackingItems.map((it) => ({ trackingItemId: it.id, severity: symptoms[it.id] ?? null })),
         }),
       });
       if (!res.ok) throw new Error("Failed");
@@ -101,13 +128,15 @@ export default function QuickJournalLog() {
     }
   };
 
-  const hasData = mood || weight || energyLevel || activityLevel || notes;
+  const hasSymptoms = Object.keys(symptoms).length > 0;
+  const hasData = mood || weight || energyLevel || activityLevel || notes || hasSymptoms;
 
   const stepFilled: Record<Step, boolean> = {
     mood: !!mood,
     weight: !!weight,
     energy: !!energyLevel,
     activity: !!activityLevel,
+    symptoms: hasSymptoms,
     notes: !!notes,
   };
   const currentFilled = stepFilled[currentStep];
@@ -295,6 +324,23 @@ export default function QuickJournalLog() {
                   </span>
                 </button>
               ))}
+            </div>
+          )}
+
+          {currentStep === "symptoms" && (
+            <div className="max-h-[300px] overflow-y-auto pr-1">
+              <SymptomChips
+                items={trackingItems}
+                values={symptoms}
+                onChange={(id, severity) =>
+                  setSymptoms((prev) => {
+                    const next = { ...prev };
+                    if (severity === null) delete next[id];
+                    else next[id] = severity;
+                    return next;
+                  })
+                }
+              />
             </div>
           )}
 

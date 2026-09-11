@@ -67,6 +67,7 @@ export async function GET(req: NextRequest) {
         meals: {
           select: { mealType: true, recipeId: true, rating: true, skipped: true, preparation: true },
         },
+        symptoms: { select: { severity: true, trackingItem: { select: { label: true } } } },
       },
       orderBy: { date: "asc" },
     }),
@@ -123,6 +124,7 @@ export async function GET(req: NextRequest) {
     notes: string | null;
     dailyCalorieTarget: number | null;
     meals: { mealType: string; recipeName: string; rating: number | null }[];
+    symptoms?: { label: string; severity: string }[];
   }> = {};
 
   // Index journal entries by date
@@ -169,6 +171,7 @@ export async function GET(req: NextRequest) {
         notes: entry.notes,
         dailyCalorieTarget,
         meals: ratedMeals,
+        symptoms: entry.symptoms.map((s) => ({ label: s.trackingItem.label, severity: s.severity })),
       };
     } else {
       // Day exists in plan but no journal entry — still include calorie target
