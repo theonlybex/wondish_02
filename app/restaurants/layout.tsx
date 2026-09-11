@@ -57,6 +57,7 @@ export default async function RestaurantsLayout({ children }: { children: React.
           email={account.email ?? ""}
           name={`${account.firstName} ${account.lastName}`}
           plan={isAdmin ? "ADMIN" : isPremium ? "PREMIUM" : "FREE"}
+          isNew={Date.now() - new Date((account as { createdAt?: Date }).createdAt ?? 0).getTime() < 24 * 60 * 60 * 1000}
         />
         <main className="flex-1 overflow-y-auto p-5 sm:p-8" style={{ background: SURFACE }}>
           {children}
