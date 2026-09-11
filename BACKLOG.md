@@ -120,6 +120,20 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
 
 ## 4. Product + engineering backlog
 
+- [ ] **Hypertension rule data bans plain salt — decide.** `HealthCondition`
+      "Hypertension" bans salt, table salt, sea salt and kosher salt as hard
+      rules. Nearly every library dinner lists salt, so a Hypertension profile
+      keeps 411 of 1,107 library dishes and only 3 dinners (Heart Disease:
+      449 / 5 dinners). Dropping the four salt rows (keeping soy sauce, broth,
+      cured meats, cheeses) gives 599 / 7 dinners; the olive-oil false match
+      is already fixed in code (→ 998 / 40 dinners with both). Sodium
+      restriction ≠ zero salt; recommend removing the four rows and telling
+      Clara "go easy on salt" via the food map instead. Product/clinical call —
+      not changed. **[verified 2026-09-11]**
+- [ ] **Taste tinder forgets its position on reload.** `/taste` restarts at
+      level 1 after a refresh (selections persist, the level and the
+      "Favorites saved" screen don't). Persist `levelIdx`/`done` in
+      sessionStorage like the onboarding draft. **[verified 2026-09-11]**
 - [ ] **Wondish workbooks Tier 2 — quantities from Clara + health rules.**
       (a) Ask Clara for `{name, quantity, unit}` per ingredient in
       `lib/clara/recipe-generation.ts` and persist them on `RecipeIngredient`,
