@@ -20,41 +20,20 @@ Confidence is marked per item: **[verified]** checked against code this session 
 
 ## 1. In flight — built but not landed
 
-- [ ] **Merge + push `feat/restaurants-phase-3-attribution`** (11 commits) and the
-      2 doc commits on `main`. Suite 1001/1001, tsc 19 pre-existing, build green.
-      **[verified]**
-      ⚠️ Pushing puts the sign-up redirect into production: every new account now
-      routes through `/r/claim`. Do one live sign-up test first — that path cannot
-      be exercised locally.
-      ⚠️ The migration is already applied to the shared Neon DB, so those tables
-      exist in prod ahead of the code.
-- [ ] **Billing v2 on `feat/billing-v2`** (stacked on
-      `feat/clara-generation-pantry-freemode`; plan:
-      `docs/superpowers/plans/2026-09-10-billing-v2.md`). $20/mo + $100/6mo,
-      in-app promo codes, instant activation, in-app switch/cancel/resume.
-      **[verified]** Production needs, in order: `npx tsx scripts/stripe-sync-prices.ts`
-      with the LIVE key; webhook endpoint pinned to API 2024-04-10 with the event
-      list in `docs/billing/stripe-setup.md`; Customer Portal with cancel/switch
-      OFF; then `PREMIUM_GATES=on` to start charging. Two migrations already
-      applied to the shared Neon DB (`recipe_ingredient_note`,
-      `subscription_cancel_at_period_end`). Manual test-mode pass (Task 14 of the
-      plan) still to run — the Stripe CLI is not installed locally.
-- [ ] **Wondish workbooks Tier 1 on `feat/workbooks-tier1`** (stacked on
-      `feat/billing-v2`; plan: `docs/superpowers/plans/2026-09-10-workbooks-tier1.md`).
-      Ingredient form ids + Big-9 groups + 470 unit conversions (phase A),
-      author steps / quantities / sodium-sugar nutrition on 599 library recipes
-      (phase B), component-based allergen bans, weekly purchase amounts on
-      What-to-buy. **[verified]** Migration `20260911043642_workbooks_tier1`
-      already applied to the shared Neon DB; import re-runs plan 0 changes
-      (`npx tsx scripts/import-workbooks.ts --phase all`). Regression 2026-09-11
-      (1,107 public recipes, additive only — nothing previously banned is
-      released): Wheat now bans +168 dishes (workbook flags rolled oats and
-      sliced bread as BIG9-WHEAT), Soy +60 (soybean oil in crushed tomatoes,
-      mayonnaise), Eggs +7, Sesame +7. The workbook is deliberately
-      conservative ("may contain", oil-derived soy) — product should confirm
-      that is the intended strictness before launch.
-      Known gap: Clara-generated dishes carry no quantities, so basket-mode
-      plans (every new account) show no amounts yet — see Tier 2 below.
+- [x] `feat/restaurants-phase-3-attribution`, `feat/clara-generation-pantry-freemode`,
+      `feat/billing-v2` and `feat/workbooks-tier1` — all fast-forwarded into
+      `main` on 2026-09-11 (`b7740e6`) and pushed. Production still needs, in
+      order: `npx tsx scripts/stripe-sync-prices.ts` with the LIVE key; the
+      webhook endpoint pinned to API 2024-04-10 with the event list in
+      `docs/billing/stripe-setup.md`; Customer Portal with cancel/switch OFF;
+      Upstash variables in Vercel; then `PREMIUM_GATES=on` to start charging.
+      Every migration is already applied to the shared Neon DB.
+- [ ] **`feat/workbooks-tier2`** (13 commits from `main`, not pushed) —
+      symptom journal, trigger trials, deployable workbook-03 rules. Suite
+      1138/1138, tsc clean, seeds idempotent, verified end to end on desktop
+      (see `docs/qa/feature-checklist-2026-09-11.md`). Migration
+      `20260911120000_symptom_journal_trials` already applied to the shared DB.
+      Decision pending: merge / PR / keep.
 
 ---
 
