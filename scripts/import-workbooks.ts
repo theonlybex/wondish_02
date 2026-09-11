@@ -21,16 +21,25 @@ async function phaseA() {
   const recipeRows = readRecipeRows(findWorkbook("Wondish_02"));
   const big9 = readBig9(findWorkbook("Wondish_03"));
   const conversions = readConversions(findWorkbook("Wondish_06"));
-  const dbIngredients = await prisma.ingredient.findMany({ select: { id: true, name: true, formId: true } });
+  const dbIngredients = (await prisma.ingredient.findMany({ select: { id: true, name: true, formId: true, _count: { select: { recipes: true } } } }))
+    .map((i) => ({ id: i.id, name: i.name, formId: i.formId, uses: i._count.recipes }));
   const aliases = JSON.parse(fs.readFileSync("data/ingredient-aliases.json", "utf8")).aliases as Record<string, string | null>;
   const plan = planIngredientUpdates({ forms, recipeRows, big9, conversions, dbIngredients, aliases });
-  console.log(`[A] ${apply ? "APPLY" : "DRY RUN"}: attach=${plan.attach.length} create=${plan.create.length} conversions=${plan.conversions.length} conflicts=${plan.conflicts.length}`);
+  console.log(`[A] ${apply ? "APPLY" : "DRY RUN"}: attach=${plan.attach.length} move=${plan.move.length} create=${plan.create.length} conversions=${plan.conversions.length} conflicts=${plan.conflicts.length}`);
   for (const c of plan.conflicts) console.log("  conflict:", c.formId, c.reason);
   if (!apply) {
     console.log("  create sample:", plan.create.slice(0, 10).map((c) => c.name).join(" | "));
     return;
   }
-  fs.writeFileSync(`workbooks-rollback-A-${Date.now()}.json`, JSON.stringify({ attach: plan.attach.map((x) => x.ingredientId), create: plan.create.map((x) => x.name) }));
+  fs.writeFileSync(`workbooks-rollback-A-${Date.now()}.json`, JSON.stringify({ attach: plan.attach.map((x) => x.ingredientId), move: plan.move.map((x) => [x.fromIngredientId, x.ingredientId, x.formId]), create: plan.create.map((x) => x.name) }));
+  for (const x of plan.move) {
+    // Conversions follow the form: re-home them so the unique (ingredientId, unit) key stays valid.
+    await prisma.$transaction([
+      prisma.ingredientUnitConversion.deleteMany({ where: { ingredientId: x.fromIngredientId } }),
+      prisma.ingredient.update({ where: { id: x.fromIngredientId }, data: { formId: null, canonicalId: null, groceryCategory: null, components: [], allergenGroups: [] } }),
+      prisma.ingredient.update({ where: { id: x.ingredientId }, data: { formId: x.formId, canonicalId: x.canonicalId, groceryCategory: x.groceryCategory, components: x.components, allergenGroups: x.allergenGroups } }),
+    ]);
+  }
   for (const x of plan.attach) {
     await prisma.ingredient.update({ where: { id: x.ingredientId }, data: { formId: x.formId, canonicalId: x.canonicalId, groceryCategory: x.groceryCategory, components: x.components, allergenGroups: x.allergenGroups } });
   }
