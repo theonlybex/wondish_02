@@ -52,7 +52,7 @@ test("free user: second new week in the same week is refused; premium gets three
   assert.equal((await guardAiSpend("u1", "planGen", "free", limiter)).ok, true);
   const r = await guardAiSpend("u1", "planGen", "free", limiter);
   assert.equal(r.ok, false);
-  if (!r.ok) assert.match(r.error, /1 free new weeks for this week/);
+  if (!r.ok) assert.match(r.error, /1 free new week for this week/);
   for (let i = 0; i < 3; i++) assert.equal((await guardAiSpend("u2", "planGen", "premium", limiter)).ok, true);
   assert.equal((await guardAiSpend("u2", "planGen", "premium", limiter)).ok, false);
 });

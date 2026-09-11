@@ -101,8 +101,11 @@ export function quotaExceededBody(kind: AiGuardKind, tier: AiTier): QuotaExceede
   const per = cfg.window === "week" ? "this week" : "today";
   const resets = cfg.window === "week" ? "next week" : "tomorrow";
   const upgrade = tier === "free" && cfg.premium > cfg.free;
+  // Every label is a regular plural ("new weeks", "Clara messages"): "1 free
+  // new weeks" read as a typo on the meal-plan banner (mobile QA 2026-09-11).
+  const noun = limit === 1 ? cfg.label.replace(/s$/, "") : cfg.label;
   const error = upgrade
-    ? `You've used your ${limit} free ${cfg.label} for ${per}. Premium gives you ${cfg.premium} ${cfg.window === "week" ? "a week" : "a day"}.`
+    ? `You've used your ${limit} free ${noun} for ${per}. Premium gives you ${cfg.premium} ${cfg.window === "week" ? "a week" : "a day"}.`
     : `You've reached ${per}'s limit for ${cfg.label} (${limit}) — it resets ${resets}.`;
   return { error, code: "quota", kind, tier, limit, window: cfg.window, upgrade };
 }
