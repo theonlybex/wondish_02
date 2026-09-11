@@ -491,3 +491,14 @@ test("guard: read tools are untouched on the first turn", async () => {
   );
   assert.equal(executed, 1);
 });
+
+test("narration and the post-tool answer are separated when the narration has no trailing space", async () => {
+  const { client } = stubClient([
+    { deltas: ["Let me check your dinner plan."], content: [textBlock("Let me check your dinner plan."), toolUse("t1", "x_get")] },
+    { deltas: ["No — peanut butter", " is off-limits."] },
+  ]);
+  const out = await drain(
+    await startClaraLoop({ client, system: "s", tools: [], messages: [], maxToolRounds: 2, execute: okTool })
+  );
+  assert.equal(out, "Let me check your dinner plan.\n\nNo — peanut butter is off-limits.");
+});

@@ -58,6 +58,11 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
     let stream = firstRound;
     let toolRoundsUsed = 0;
     let emitted = false;
+    // Last character streamed to the user. Narration before a tool call
+    // ("Let me check your plan.") and the answer after it ("No — …") are
+    // separate model rounds; without a separator they render glued together
+    // ("…tonight.No — …", desktop QA 2026-09-11).
+    let lastChar = "";
 
     for (;;) {
       // The assistant turn is taken from the round's terminal event, NEVER
@@ -66,11 +71,17 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
       // not preserve real block order.
       let assistant: ModelContentBlock[] = [];
       let stopReason: string | null = null;
+      let roundEmitted = false;
 
       try {
         for await (const event of stream) {
           if (event.type === "text") {
-            if (event.text.length > 0) emitted = true;
+            if (event.text.length > 0) {
+              if (!roundEmitted && emitted && /\S$/.test(lastChar) && /^\S/.test(event.text)) yield "\n\n";
+              emitted = true;
+              roundEmitted = true;
+              lastChar = event.text.slice(-1);
+            }
             yield event.text;
           } else {
             assistant = event.content;
