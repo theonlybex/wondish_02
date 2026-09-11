@@ -162,6 +162,15 @@ Verification pass 3 (the paths pass 2 had not exercised):
 | Full journal form (`components/journal/JournalForm.tsx`) with symptoms section | ⏭ | — | Component is not rendered by any page (dead code); quick log and day view are the live surfaces |
 | Objective/lab items hidden from the symptoms step | ✅ | — | API returns SYMPTOM items only |
 
+Fixes from the passes above (verified live):
+
+| Finding | Fix | Verified |
+|---|---|---|
+| Dead `JournalForm.tsx` / `MealRatingCard.tsx` | Removed | tsc, suite |
+| Clara swap ignored the pantry basket | Prompt lists the basket + free staples; candidate must fit the basket (names canonicalised) or the swap returns "Clara couldn't make that from your ingredients…" | Lemon/tahini/feta request → 422 message, lunch unchanged; salmon-quinoa request → swapped, 0 ingredients outside the basket, 10/10 amounts |
+| "Decaf coffee" banned by a Caffeine avoid rule | `exactBanPattern` skips matches preceded by "decaf"/"decaffeinated" | unit test |
+| Journal day view ignored meals logged through the meal log ("No history yet") | Calendar merges `MealLog` rows as unrated ✓ entries | "+ Add" a meal → day view lists "✓ QA logged snack" |
+
 ## Not exercised
 
 - **Admin** (`/admin/*`: users, recipes, parameters, banned ingredients, coupons, promo codes, restaurants, review queue, Clara gaps, prune): needs a SUPER-role account; the QA accounts are ordinary users.

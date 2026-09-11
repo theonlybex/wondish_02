@@ -120,6 +120,27 @@ function systemPrompt(args: TopUpArgs, total: number): string {
   ].join("\n");
 }
 
+/**
+ * Basket gate, shared by generation and the Clara swap: every ingredient must
+ * resolve to a basket entry or a free staple (lib/basket-match). Matched
+ * names are rewritten IN PLACE to the basket's catalog spelling (amounts
+ * follow), so the persisted dish points at the pantry's Ingredient rows.
+ */
+export function fitBasket(r: FridgeRecipe, allowed: readonly string[]): boolean {
+  const canonical: string[] = [];
+  const rename = new Map<string, string>();
+  for (const n of r.usesIngredients) {
+    const m = findBasketMatch(n, allowed);
+    if (m === null) return false;
+    const target = m === "" ? n.trim() : m;
+    rename.set(n.trim().toLowerCase(), target);
+    canonical.push(target);
+  }
+  r.usesIngredients = Array.from(new Set(canonical));
+  if (r.amounts) r.amounts = r.amounts.map((a) => ({ ...a, name: rename.get(a.name.trim().toLowerCase()) ?? a.name }));
+  return true;
+}
+
 /** Reject dishes with implausible numbers before they reach the catalog. */
 export function passesSanity(r: FridgeRecipe): boolean {
   const p = r.perServing;
@@ -221,22 +242,7 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
   // What-to-buy and the allergen groups use — no fragment rows like
   // "olive oil" next to "Extra virgin olive oil".
   const allowed = args.allowedIngredients ?? null;
-  const withinBasket = (r: FridgeRecipe): boolean => {
-    if (!allowed) return true;
-    const canonical: string[] = [];
-    const rename = new Map<string, string>();
-    for (const n of r.usesIngredients) {
-      const m = findBasketMatch(n, allowed);
-      if (m === null) return false;
-      const target = m === "" ? n.trim() : m;
-      rename.set(n.trim().toLowerCase(), target);
-      canonical.push(target);
-    }
-    r.usesIngredients = Array.from(new Set(canonical));
-    // Amounts follow the rename so they still match by name at persist time.
-    if (r.amounts) r.amounts = r.amounts.map((a) => ({ ...a, name: rename.get(a.name.trim().toLowerCase()) ?? a.name }));
-    return true;
-  };
+  const withinBasket = (r: FridgeRecipe): boolean => (allowed ? fitBasket(r, allowed) : true);
   const accepted: { recipe: FridgeRecipe; mealTypeId: string }[] = [];
   const rejected: Record<string, number> = {};
   const reject = (why: string, r: FridgeRecipe) => {

@@ -564,3 +564,12 @@ test("a FODMAP fructans trial bans wheat by component group with source 'trial'"
   assert.equal(r.passed, false);
   assert.equal(r.violations[0].source, "trial");
 });
+
+test("exactBanPattern: a caffeine rule on 'coffee' or 'black tea' leaves decaf products alone", () => {
+  assert.equal(exactBanPattern("coffee").test("coffee"), true);
+  assert.equal(exactBanPattern("coffee").test("Decaf coffee"), false);
+  assert.equal(exactBanPattern("coffee").test("decaffeinated coffee"), false);
+  assert.equal(exactBanPattern("black tea").test("decaf black tea"), false);
+  assert.equal(exactBanPattern("black tea").test("strong black tea"), true);
+  assert.equal(exactBanPattern("decaf coffee").test("decaf coffee"), true);
+});

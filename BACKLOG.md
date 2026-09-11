@@ -158,10 +158,10 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
       Neither repo is broken; this is drift that will confuse the next build.
 
 
-- [ ] **Journal shows "No history yet" despite logged meals.** `/api/journal/calendar`
-      reads only `JournalMeal`; Meal Plan "Add to log", Restaurants "Add to today"
-      and Fridge "Log it" all write `MealLog`, which the journal never reads. Fix:
-      merge `MealLog` rows into the `allMeals=1` mode. Own mini-cycle. **[reported]**
+- [x] **Journal shows "No history yet" despite logged meals.** Fixed 2026-09-11:
+      `/api/journal/calendar` merges `MealLog` rows (unrated, `source: "log"`)
+      into every day; the web day view shows them with a ✓. iOS `allMeals=1`
+      gets the same rows.
 - [ ] **Scan tab: real implementation** (currently a "coming soon" stub inside
       Cook). **[reported]**
 - [ ] **Promote Clerk from the dev instance** (`real-mollusk-38`, `pk_test`) to a

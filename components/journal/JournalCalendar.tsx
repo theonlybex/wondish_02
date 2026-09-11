@@ -14,7 +14,8 @@ interface DayEntry {
   activityLevel: string | null;
   notes: string | null;
   dailyCalorieTarget: number | null;
-  meals: { mealType: string; recipeName: string; rating: number }[];
+  // rating null = logged through the meal log (eaten, not rated)
+  meals: { mealType: string; recipeName: string; rating: number | null; source?: "rated" | "log" }[];
   symptoms?: { label: string; severity: string }[];
 }
 
@@ -571,7 +572,7 @@ function MealsSection({ meals }: { meals: DayEntry["meals"] }) {
           Completed Meals
         </p>
         <p className="text-xs" style={{ color: "#CCC6C6" }}>
-          No rated meals this day
+          No meals logged this day
         </p>
       </div>
     );
@@ -595,9 +596,10 @@ function MealsSection({ meals }: { meals: DayEntry["meals"] }) {
             {/* Like / Dislike icon */}
             <span
               className="text-sm flex-shrink-0"
-              style={{ color: meal.rating > 0 ? "#812549" : "#EA5455" }}
+              style={{ color: meal.rating == null ? "#2E7D5B" : meal.rating > 0 ? "#812549" : "#EA5455" }}
+              title={meal.rating == null ? "Logged as eaten" : meal.rating > 0 ? "Loved it" : "Not for me"}
             >
-              {meal.rating > 0 ? "👍" : "👎"}
+              {meal.rating == null ? "✓" : meal.rating > 0 ? "👍" : "👎"}
             </span>
             <div className="min-w-0 flex-1">
               <p

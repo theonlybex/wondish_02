@@ -251,13 +251,15 @@ function stemUnionBody(lowered: string): string {
 // "rice vinegar". A negative lookahead skips a match directly followed by a
 // derived-product word, unless the ban itself names that product ("olive
 // oil"). Allergy matchers deliberately keep the broad match (peanut oil).
+// Likewise "coffee" (a Caffeine avoid rule) must not match "Decaf coffee".
 const DERIVED_PRODUCT_RE = /\b(oil|vinegar|spray|extract)\b/;
+const DECAF_RE = /\bdecaf/;
 export const exactBanPattern = (name: string) => {
   const lowered = name.trim().toLowerCase();
   const body = stemUnionBody(lowered);
-  if (DERIVED_PRODUCT_RE.test(lowered)) return boundaryPattern(body);
+  if (DERIVED_PRODUCT_RE.test(lowered) || DECAF_RE.test(lowered)) return boundaryPattern(body);
   return new RegExp(
-    `(?<![\\p{L}\\p{N}])(?:${body})(?![\\p{L}\\p{N}])(?!\\s+(?:cider\\s+)?(?:oil|vinegar|spray|extract)\\b)`,
+    `(?<!\\bdecaf\\s)(?<!\\bdecaffeinated\\s)(?<![\\p{L}\\p{N}])(?:${body})(?![\\p{L}\\p{N}])(?!\\s+(?:cider\\s+)?(?:oil|vinegar|spray|extract)\\b)`,
     "iu"
   );
 };

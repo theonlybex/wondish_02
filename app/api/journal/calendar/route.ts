@@ -82,6 +82,18 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
+  // Meals logged through the meal log (Meal Plan "Loved it", overview
+  // "+ Add", Clara "log it", restaurants) live in MealLog, not JournalMeal —
+  // the journal never showed them ("No history yet", BACKLOG §4). Merge them
+  // in as unrated rows so the day view lists everything eaten.
+  const mealLogs = await prisma.mealLog.findMany({
+    where: { patientId: patient.id, deletedAt: null, localDate: { gte: fmtDate(planStart), lte: fmtDate(planEnd) } },
+    select: { localDate: true, mealType: true, name: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const logsByDate = new Map<string, { mealType: string; name: string }[]>();
+  for (const l of mealLogs) logsByDate.set(l.localDate, [...(logsByDate.get(l.localDate) ?? []), { mealType: l.mealType, name: l.name }]);
+
   // Build recipe name lookup from menus.
   // Plan-exchange note (spec 2026-07-30-plan-exchanges-design.md): menus here
   // feed ONLY this name lookup for journaled meals — they are not rendered as
@@ -123,9 +135,16 @@ export async function GET(req: NextRequest) {
     activityLevel: string | null;
     notes: string | null;
     dailyCalorieTarget: number | null;
-    meals: { mealType: string; recipeName: string; rating: number | null }[];
+    meals: { mealType: string; recipeName: string; rating: number | null; source?: "rated" | "log" }[];
     symptoms?: { label: string; severity: string }[];
   }> = {};
+  // MealLog rows for a day, minus any dish the journal already lists by name.
+  const loggedMealsFor = (key: string, already: { recipeName: string }[]) => {
+    const seen = new Set(already.map((m) => m.recipeName.toLowerCase()));
+    return (logsByDate.get(key) ?? [])
+      .filter((l) => !seen.has(l.name.toLowerCase()))
+      .map((l) => ({ mealType: l.mealType.charAt(0).toUpperCase() + l.mealType.slice(1), recipeName: l.name, rating: null, source: "log" as const }));
+  };
 
   // Index journal entries by date
   const journalByDate = new Map<string, typeof journalEntries[0]>();
@@ -170,11 +189,12 @@ export async function GET(req: NextRequest) {
         activityLevel: entry.activityLevel,
         notes: entry.notes,
         dailyCalorieTarget,
-        meals: ratedMeals,
+        meals: [...ratedMeals.map((m) => ({ ...m, source: "rated" as const })), ...loggedMealsFor(key, ratedMeals)],
         symptoms: entry.symptoms.map((s) => ({ label: s.trackingItem.label, severity: s.severity })),
       };
     } else {
       // Day exists in plan but no journal entry — still include calorie target
+      // and anything logged through the meal log.
       entries[key] = {
         mood: null,
         weight: null,
@@ -182,7 +202,7 @@ export async function GET(req: NextRequest) {
         activityLevel: null,
         notes: null,
         dailyCalorieTarget,
-        meals: [],
+        meals: loggedMealsFor(key, []),
       };
     }
 

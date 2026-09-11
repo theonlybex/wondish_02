@@ -25,6 +25,7 @@ import {
 } from "@/lib/caloric-engine";
 import { guardAiSpend } from "@/lib/ai-budget";
 import { buildFoodMapText } from "@/lib/food-map";
+import { fitBasket, freeStaplesFor } from "@/lib/clara/recipe-generation";
 
 // POST /api/meal-plan/[menuId]/clara-swap — the user asks Clara for something
 // else in this slot ("what would you like instead?") and Clara generates a
@@ -94,6 +95,16 @@ export async function POST(
   const matchers = buildDietMatchers({ allergyNames, exactBanned });
   const bannedNames = [...allergyNames, ...exactBanned.map((b) => b.name)];
 
+  // Basket constraint, same as week generation: a swapped dish must be
+  // cookable from what the user owns (plus free staples). Before 2026-09-11
+  // swaps ignored the basket and brought in lemon, tahini etc.
+  const pantry = await prisma.patientPantryItem.findMany({ where: { patientId: patient.id }, select: { ingredient: { select: { name: true } } } });
+  const basket = pantry.map((p) => p.ingredient.name);
+  const freeStaples = freeStaplesFor(matchers);
+  const basketLine = basket.length > 0
+    ? `- Every dish may use ONLY these ingredients${freeStaples.length ? ` (plus ${freeStaples.join(", ")})` : ""}: ${basket.join(", ")}. Use no other ingredient — if the request needs one you don't have, make the closest dish from this list.`
+    : ``;
+
   const system = [
     `You are Clara, Wondish's nutrition assistant. Generate ONE ${cuisine ? cuisine + " " : ""}${mealTypeName.toLowerCase()} dish to replace one the user didn't want.`,
     `Rules:`,
@@ -104,6 +115,7 @@ export async function POST(
     `- perServing macros must be realistic and self-consistent.`,
     cuisine ? `- The dish must be authentic ${cuisine} cuisine.` : ``,
     request ? `- Honour the user's request: "${request}".` : `- Pick something appealing and different.`,
+    basketLine,
     bannedNames.length > 0 ? `- NEVER include these ingredients or anything containing them: ${bannedNames.join(", ")}.` : ``,
     // Conditions without ingredient bans (GERD, IBS, PCOS…) only reach the
     // model through this profile text — see the 2026-09-11 condition audit.
@@ -133,8 +145,10 @@ export async function POST(
     const parsed = Array.isArray(rawList)
       ? rawList.map((item) => validateFridgeRecipeSnapshot(item)).filter((r): r is FridgeRecipe => r !== null)
       : [];
-    // Deterministic gates: diet-safe + sane numbers.
-    candidate = applyAllergenFilter(parsed, matchers).find((r) => passesSanity(r)) ?? null;
+    // Deterministic gates: diet-safe + within the basket (names rewritten to
+    // the pantry's catalog spelling) + sane numbers. The model's claim is
+    // never trusted.
+    candidate = applyAllergenFilter(parsed, matchers).find((r) => (basket.length === 0 || fitBasket(r, basket)) && passesSanity(r)) ?? null;
   } catch (err) {
     if (err instanceof Anthropic.APIError && err.status === 429) {
       return NextResponse.json({ error: "Clara is busy — try again in a moment." }, { status: 429 });
@@ -144,7 +158,11 @@ export async function POST(
 
   if (!candidate) {
     return NextResponse.json(
-      { error: "Clara couldn't find a safe alternative — try rewording your request." },
+      {
+        error: basket.length > 0
+          ? "Clara couldn't make that from your ingredients — add what you need under Ingredients, or try a different request."
+          : "Clara couldn't find a safe alternative — try rewording your request.",
+      },
       { status: 422 }
     );
   }
