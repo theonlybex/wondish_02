@@ -14,6 +14,7 @@ import {
   type CaloricProfileInput,
 } from "@/lib/caloric-engine";
 import { kgToLbs, toKg } from "@/lib/prediction-data";
+import { checkBodyMetrics } from "@/lib/body-bounds";
 
 interface RefData {
   genders: { id: string; name: string }[];
@@ -235,22 +236,26 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
       }
     }
     if (step.id === "body") {
-      if (heightCmValue() <= 0 || heightCmValue() > 300)
-        errs.height = "Please enter your height.";
-      if (weightLbs() <= 0)
-        errs.weight = "Please enter your weight.";
-      else if (weightLbs() < 50 || weightLbs() > 1000)
-        errs.weight = `Weight must be between ${weightUnit === "kg" ? "23 and 454 kg" : "50 and 1000 lbs"}.`;
+      const h = heightCmValue();
+      const w = weightLbs();
+      if (h <= 0) errs.height = "Please enter your height.";
+      if (w <= 0) errs.weight = "Please enter your weight.";
+      // Shared plausibility bounds (lib/body-bounds), same as the server.
+      const bounds = checkBodyMetrics({ weightLbs: w || null, heightCm: h || null }, { weight: weightUnit, height: heightUnit });
+      if (bounds.height) errs.height = bounds.height;
+      if (bounds.weight) errs.weight = bounds.weight;
     }
     if (step.id === "activity") {
       if (!physicalActivityId) errs.activity = "Pick the closest match — you can change it later.";
     }
     if (step.id === "goal" && goalWeight !== "") {
       const g = goalWeightLbs();
-      if (g === null || g < 50 || g > 1000)
-        errs.goalWeight = `Goal weight must be between ${
-          weightUnit === "kg" ? "23 and 454 kg" : "50 and 1000 lbs"
-        }.`;
+      if (g === null) {
+        errs.goalWeight = "Goal weight must be a number.";
+      } else {
+        const bounds = checkBodyMetrics({ goalWeightLbs: g, heightCm: heightCmValue() || null }, { weight: weightUnit, height: heightUnit });
+        if (bounds.goalWeight) errs.goalWeight = bounds.goalWeight;
+      }
     }
     return errs;
   };
@@ -471,6 +476,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
                   onChange={(e) => setFirstName(e.target.value)}
                   error={fieldErrors.firstName}
                   autoComplete="given-name"
+                  maxLength={100}
                 />
                 <Input
                   label="Last name"
@@ -478,6 +484,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
                   onChange={(e) => setLastName(e.target.value)}
                   error={fieldErrors.lastName}
                   autoComplete="family-name"
+                  maxLength={100}
                 />
               </div>
               <Select
@@ -521,7 +528,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
                 {heightUnit === "ftin" ? (
                   <div className="grid grid-cols-2 gap-3">
                     <Input
-                      type="number" min="0" max="9" step="1" placeholder="5"
+                      type="number" min="0" max="8" step="1" placeholder="5"
                       value={heightFt}
                       onChange={(e) => setHeightFt(e.target.value)}
                       aria-label="Height in feet"
@@ -535,7 +542,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
                   </div>
                 ) : (
                   <Input
-                    type="number" min="0" max="300" step="0.1" placeholder="170"
+                    type="number" min="90" max="250" step="0.1" placeholder="170"
                     value={heightCm}
                     onChange={(e) => setHeightCm(e.target.value)}
                     aria-label="Height in centimeters"
@@ -556,7 +563,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
                   )}
                 </div>
                 <Input
-                  type="number" min="0" step="0.1"
+                  type="number" min={weightUnit === "kg" ? "23" : "50"} max={weightUnit === "kg" ? "318" : "700"} step="0.1"
                   placeholder={weightUnit === "kg" ? "68" : "150"}
                   value={weight}
                   onChange={(e) => setWeight(e.target.value)}
@@ -786,7 +793,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
             </p>
             <Input
               label={`Goal weight (${weightUnit})`}
-              type="number" min="0" step="0.1"
+              type="number" min={weightUnit === "kg" ? "23" : "50"} max={weightUnit === "kg" ? "318" : "700"} step="0.1"
               placeholder={
                 // Suggest the healthy target computed two steps earlier, in the user's unit.
                 liveProfile

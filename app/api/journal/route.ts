@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+  const MAX_NOTES_CHARS = 2000;
   const { mood, energyLevel, activityLevel, notes } = body as {
     mood?: string | null;
     energyLevel?: string | null;
@@ -70,6 +71,10 @@ export async function POST(req: NextRequest) {
   const validated = validateJournalPost(body);
   if (!validated.ok) {
     return NextResponse.json({ error: validated.error }, { status: 400 });
+  }
+  // A 100,000-character note was accepted and stored (QA 2026-09-11).
+  if (typeof notes === "string" && notes.length > MAX_NOTES_CHARS) {
+    return NextResponse.json({ error: `notes must be ${MAX_NOTES_CHARS} characters or fewer` }, { status: 400 });
   }
   const { date: entryDate, weight: parsedWeight, meals } = validated;
   // Condition symptoms (workbook 05): only items the patient's conditions own.

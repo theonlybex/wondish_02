@@ -720,13 +720,14 @@ export async function getPlanDayCalories(patientId: string, localDate: string): 
   const dayNumber = Math.round((target.getTime() - planStart.getTime()) / 86400000) + 1;
   if (dayNumber < 1) return null;
 
-  return gradualDailyCals(
+  // Rounded for display (the engine's deficit-cap floor is a float).
+  return Math.round(gradualDailyCals(
     Math.round(profile.tdeeCBW),
     dayNumber,
     resolvePlanDirection(profile),
     profile.minCaloriesValue,
     maxDailyDeficit(profile.cbmi),
-  );
+  ));
 }
 
 // ─── deriveLoggedRecipeIds ──────────────────────────────────────────────────

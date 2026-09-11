@@ -193,6 +193,32 @@ Fixes from pass 4 (verified live or by unit test):
 | Vegan/Vegetarian/Pescatarian ban gaps; plant substitutes and "-free" products banned | `exactBanPattern` substitute-marker / plant-base lookbehinds + "-free" lookahead; `scripts/preference-rules-2026-09-11.ts` (149 rows, applied) | `10333e9` |
 | Wheat/Soy allergy and Paleo/Keto/Low-carb/Gluten-free gaps by name; gluten-free pasta banned for a Gluten-free profile | Gluten-free / grain-free marker exempts grain terms in the dietary branch (allergies stay broad); same script, second sweep (142 rows, applied) | `bcd798c` |
 
+Verification pass 5 (extreme inputs, 2026-09-11):
+
+| Input | Before | After |
+|---|---|---|
+| Weight 1000 lbs (also 20, "abc", 1e9) | Accepted (server limit was 0–1500); caloric card 8,292 kcal/day, body fat 169.8 %, plan target 8,249 kcal | 422 "Weight must be between 50 and 700 lbs." (kg users see 23–318 kg); wizard and settings inputs carry the same min/max and message |
+| Height 10 cm / 300 cm / 300 in / 20 ft | Accepted; BMI 8,000 | 422 "Height must be between 90 and 250 cm." (ft/in users: 2'11"–8'2") |
+| 700 lbs at 90 cm (each value in range) | Accepted; BMI 392 | 422 "Height and weight don't add up — please check both." (BMI must be 10–100) |
+| Goal weight 1000 lbs; goal 60 lbs at 175 cm | 1000 rejected (old 50–1000 band), 60 accepted and silently clamped by the engine | 422 with the safe band for the height: "For your height, a safe goal is between 101 lbs and 405 lbs." (BMI 15–60) |
+| Birthday in the future / 1850 | 422 (already) | unchanged (age 13–120) |
+| Journal weigh-in 1000 / 20 / −5 / "abc" | 1000 lbs accepted and synced into the profile weight (bypassing the profile bounds) | 400 "weight must be between 50 and 700 lbs" |
+| Stored implausible values (older rows, other clients) | Engine ran on them | `/api/patient/caloric-profile` answers 422 "Your saved weight or height looks implausible — please update it in Settings."; body-fat tile shows "—" outside 2–75 % |
+| Calorie target display | "7294.0976 kcal" once the ramp hit the deficit floor | Rounded at the three display call sites (engine left unrounded for the glide walk) |
+| First name of 5,000 characters | Stored | 422 "Name must be 100 characters or fewer."; inputs have `maxLength` |
+| Journal note of 100,000 characters | Stored | 400 "notes must be 2000 characters or fewer"; textarea has `maxLength` |
+| Partial `PATCH /api/patient/profile` (`{ weight }` only) | Wiped sex at birth, activity level and every diet / allergy / avoid / condition row (found because the probes above did exactly that to the variant QA account, since restored) | Omitted keys are left unchanged; web forms still send the full body |
+
+Fixes for the pass-4 observations:
+
+| Observation | Fix |
+|---|---|
+| Pescatarian still dealt steak cards in the taste deck | Resolved by the pass-4 ban terms (the deck already applies preference children); variant account now sees fish and tofu only |
+| Vegan + Kidney 1-2 week had no protein | Clara's system prompt now lists the protein sources that survive the profile's bans ("build every main around one of them") whenever the profile bans anything and no basket is set; the kidney legume/nut bans themselves are unchanged (clinician call, see BACKLOG) |
+| Symptoms step: no "Show fewer" | Toggle added (44 px, `aria-expanded`); collapsed view keeps the first 8 rows plus any row already logged today |
+| Overview heatmap clipped its last column at 390 px | Month labels no longer widen the `1fr` columns (`minmax(0, 1fr)` + absolutely positioned labels); overflow audit 0 elements |
+| Gluten-free bread mix passed Keto / Low-carb | The gluten-free marker now exempts grain terms only for lists that also ban gluten or wheat (`ExactBan.grainExempt`); Keto + Gluten-free together take the stricter rule |
+
 ## Not exercised
 
 - **Admin** (`/admin/*`: users, recipes, parameters, banned ingredients, coupons, promo codes, restaurants, review queue, Clara gaps, prune): needs a SUPER-role account; the QA accounts are ordinary users.
@@ -207,8 +233,6 @@ Fixes from pass 4 (verified live or by unit test):
 - Clara swap is not constrained to the basket (a swapped lunch used a lemon dressing that isn't in the pantry). Amounts for such dishes still persist.
 - On the Clerk **dev** instance the first navigation right after a sign-in ticket can loop (`/taste → /login → /overview → /taste`). Only seen in the headless harness; a production Clerk instance is the fix.
 - `Decaf coffee` is still excluded for a Caffeine avoider (children match "coffee"); conservative on purpose.
-- The gluten-free marker exempts grain terms for every dietary list, so a Keto or Low-carb profile can be offered "gluten-free multiple whole grain bread mix" (1 recipe). Accepted: the exemption is what keeps gluten-free pasta for celiac and Gluten-free profiles.
-- The taste deck is filtered by allergies and avoid rules, not by diet-preference children: a Pescatarian is still dealt sirloin and ribeye cards (dishes are filtered correctly).
-- A Vegan + Kidney 1-2 profile keeps only 5 protein ingredients in the library (tofu 68 recipes, plant-based egg 41, meatless chicken 17, meatless beef strips 5): legumes and nuts are kidney bans. Weeks generate, but the protein pool is thin.
-- The symptoms step has no "Show fewer" after "Show all"; a five-condition account scrolls 53 items × 4 buttons. Overlapping labels (Abdominal pain, Bloating, Nausea) appear once per condition, each with its condition name.
-- Overview activity heatmap (390 px): the last column clips at the card edge; the page itself does not scroll sideways.
+- A Vegan + Kidney 1-2 profile keeps only 5 protein ingredients in the library (tofu 68 recipes, plant-based egg 41, meatless chicken 17, meatless beef strips 5): legumes and nuts are kidney bans. Clara is now told which proteins remain; whether the stage 1-2 legume/nut bans should soften is a clinician call.
+- Overlapping symptom labels (Abdominal pain, Bloating, Nausea) appear once per condition, each with its condition name; a five-condition account has 53 items behind "Show all".
+- The settings form relies on the browser's native min/max bubble for out-of-range numbers (no inline text); the wizard shows inline text because its Next button validates in code. Both end in the same server 422 if bypassed.

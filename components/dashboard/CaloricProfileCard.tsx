@@ -13,8 +13,15 @@ import {
 } from "@/components/tracking/shared";
 
 function fmt(n: number | null | undefined, decimals = 1): string {
-  if (n == null) return "—";
+  if (n == null || !Number.isFinite(n)) return "—";
   return n.toFixed(decimals);
+}
+
+// The Deurenberg estimate is only meaningful in a human range; outside it
+// (an implausible weight or height on file) show a dash, not "169.8%".
+function fmtBodyFat(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n) || n < 2 || n > 75) return "—";
+  return `${n.toFixed(1)}%`;
 }
 
 export default function CaloricProfileCard() {
@@ -301,7 +308,7 @@ export default function CaloricProfileCard() {
         />
         <MetricTile
           label="Body Fat"
-          value={`${fmt(profile.bodyFatPct)}%`}
+          value={fmtBodyFat(profile.bodyFatPct)}
           delay="380ms"
         />
       </div>

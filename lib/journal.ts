@@ -42,7 +42,7 @@ export type JournalPostValidation =
     }
   | { ok: false; error: string };
 
-const MAX_WEIGHT_LBS = 1500;
+import { WEIGHT_LBS } from "./body-bounds";
 
 export function validateJournalPost(body: Record<string, unknown>): JournalPostValidation {
   const date = parseLocalDateStrict(body.date);
@@ -51,8 +51,10 @@ export function validateJournalPost(body: Record<string, unknown>): JournalPostV
   let weight: number | null = null;
   if (body.weight !== undefined && body.weight !== null && body.weight !== "") {
     const w = Number(body.weight);
-    if (!Number.isFinite(w) || w <= 0 || w >= MAX_WEIGHT_LBS) {
-      return { ok: false, error: "weight must be a positive number" };
+    // Same plausibility band as the profile (lib/body-bounds): a weigh-in
+    // syncs into Patient.weight, so it must not bypass the profile's bounds.
+    if (!Number.isFinite(w) || w < WEIGHT_LBS.min || w > WEIGHT_LBS.max) {
+      return { ok: false, error: `weight must be between ${WEIGHT_LBS.min} and ${WEIGHT_LBS.max} lbs` };
     }
     weight = w;
   }

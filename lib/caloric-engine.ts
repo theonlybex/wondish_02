@@ -594,6 +594,8 @@ export function gradualDailyCals(
 ): number {
   if (direction === "lose") {
     // Floor = the deeper of (min safe calories) and (maintenance − max deficit).
+    // Deliberately unrounded (the glide walk integrates it); callers that
+    // display a day target round it themselves.
     const floor = Math.max(minCal, tdeeCBW - maxDeficit);
     return Math.max(Math.round(tdeeCBW - gradualDailyDeficit(dayNumber)), floor);
   }

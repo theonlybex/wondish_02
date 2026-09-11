@@ -14,6 +14,7 @@ import {
   type CaloricProfile,
 } from "@/lib/caloric-engine";
 import { kgToLbs } from "@/lib/prediction-data";
+import { CM_PER_IN, checkBodyMetrics, firstBodyMetricsError } from "@/lib/body-bounds";
 
 interface RefData {
   genders: { id: string; name: string }[];
@@ -167,19 +168,21 @@ export default function ProfileForm({
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
-    // Same plausibility bounds as onboarding (stored lbs): 50–1000 lbs / 23–454 kg.
+    // Shared plausibility bounds (lib/body-bounds), identical to the server's.
     {
-      const w = parseFloat(form.weight);
-      const g = form.goalWeight ? parseFloat(form.goalWeight) : null;
-      const range = weightUnitShown === "kg" ? "23 and 454 kg" : "50 and 1000 lbs";
-      if (form.weight && (!Number.isFinite(w) || w < 50 || w > 1000)) {
+      const heightCm =
+        form.heightUnit === "ftin"
+          ? form.heightFt ? feetInchesToCm(parseFloat(form.heightFt) || 0, parseFloat(form.heightIn) || 0) : null
+          : form.height ? (form.heightUnit === "in" ? parseFloat(form.height) * CM_PER_IN : parseFloat(form.height)) : null;
+      const bodyErr = firstBodyMetricsError(
+        checkBodyMetrics(
+          { weightLbs: form.weight ? parseFloat(form.weight) : null, heightCm, goalWeightLbs: form.goalWeight ? parseFloat(form.goalWeight) : null },
+          { weight: weightUnitShown, height: form.heightUnit === "ftin" ? "ftin" : form.heightUnit === "in" ? "in" : "cm" }
+        )
+      );
+      if (bodyErr) {
         e.preventDefault();
-        setError(`Weight must be between ${range}.`);
-        return;
-      }
-      if (g !== null && (!Number.isFinite(g) || g < 50 || g > 1000)) {
-        e.preventDefault();
-        setError(`Goal weight must be between ${range}.`);
+        setError(bodyErr.message);
         return;
       }
     }
@@ -261,12 +264,14 @@ export default function ProfileForm({
             value={form.firstName}
             onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
             required
+            maxLength={100}
           />
           <Input
             label="Last Name"
             value={form.lastName}
             onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
             required
+            maxLength={100}
           />
           <Input
             label="Birthday"
@@ -294,6 +299,7 @@ export default function ProfileForm({
                 label="Height (ft)"
                 type="number"
                 min="0"
+                max="8"
                 step="1"
                 className="flex-1"
                 value={form.heightFt}
@@ -329,7 +335,8 @@ export default function ProfileForm({
               <Input
                 label="Height"
                 type="number"
-                min="0"
+                min={form.heightUnit === "in" ? "35" : "90"}
+                max={form.heightUnit === "in" ? "98" : "250"}
                 step="0.1"
                 className="flex-1"
                 value={form.height}
@@ -357,7 +364,8 @@ export default function ProfileForm({
                 <Input
                   label={`Weight (${weightUnitShown})`}
                   type="number"
-                  min="0"
+                  min={weightUnitShown === "kg" ? "23" : "50"}
+                  max={weightUnitShown === "kg" ? "318" : "700"}
                   step="0.1"
                   value={weightText}
                   onChange={(e) => { setWeightText(e.target.value); setForm((f) => ({ ...f, weight: toLbs(e.target.value, weightUnitShown) })); }}

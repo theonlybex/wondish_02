@@ -92,13 +92,13 @@ export default async function MealPlanPage() {
       planStart.setHours(0, 0, 0, 0);
       const dayNumber = Math.round((today.getTime() - planStart.getTime()) / 86400000) + 1;
       if (dayNumber >= 1) {
-        initialDailyCalorieTarget = gradualDailyCals(
+        initialDailyCalorieTarget = Math.round(gradualDailyCals(
           Math.round(profile.tdeeCBW),
           dayNumber,
           resolvePlanDirection(profile),
           profile.minCaloriesValue,
           maxDailyDeficit(profile.cbmi),
-        );
+        ));
       }
     }
   }

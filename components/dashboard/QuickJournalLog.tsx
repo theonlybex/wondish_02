@@ -349,6 +349,7 @@ export default function QuickJournalLog() {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
+              maxLength={2000}
               autoFocus
               className="w-full px-4 py-3 rounded-xl border-2 border-[#F5F1DD] bg-white text-sm text-[#1E1A1A] outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all resize-none"
               placeholder="How was your day…"

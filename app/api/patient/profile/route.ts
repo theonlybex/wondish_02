@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { convertWeight, convertHeight, calcCBMI } from "@/lib/caloric-engine";
 import { AccountClaimConflictError, getOrCreateAccount } from "@/lib/auth";
+import { CM_PER_IN, checkBodyMetrics, firstBodyMetricsError } from "@/lib/body-bounds";
 
 export async function GET() {
   const { userId } = await auth();
@@ -79,34 +80,40 @@ export async function PATCH(req: NextRequest) {
       );
     }
   }
-  // Numeric boundary validation (audit Task 16): NaN/negative weight/height
-  // previously reached the caloric engine — NaN propagated into a misleading
-  // EmptyPlanError; a negative height produced plausible-looking wrong BMR.
-  // Zero is left to the existing truthiness handling (treated as absent).
+  // Plausibility bounds (lib/body-bounds, shared with the wizard, the
+  // settings form and the journal weigh-in): weight 50–700 lbs, height
+  // 90–250 cm, the two must give a BMI of 10–100, and a goal weight must be
+  // a BMI 15–60 target for the height. Until 2026-09-11 the server took
+  // 0–1500 lbs and 0–300 cm with no cross-check. Zero/absent is left to the
+  // existing truthiness handling (treated as not provided).
   const badNumber = (raw: unknown, min: number, max: number): boolean => {
     if (raw == null || raw === "") return false;
     const n = parseFloat(String(raw));
     return !Number.isFinite(n) || n < min || n > max;
   };
-  if (badNumber(weight, 0, 1500)) {
-    return NextResponse.json({ error: "Weight must be a number between 0 and 1500." }, { status: 422 });
-  }
-  if (badNumber(height, 0, 300)) {
-    return NextResponse.json({ error: "Height must be a number between 0 and 300." }, { status: 422 });
-  }
-  if (badNumber(heightFt, 0, 9)) {
-    return NextResponse.json({ error: "Height (ft) must be a number between 0 and 9." }, { status: 422 });
+  if (badNumber(heightFt, 0, 8)) {
+    return NextResponse.json({ error: "Height (ft) must be a number between 0 and 8.", field: "height" }, { status: 422 });
   }
   if (badNumber(heightIn, 0, 11.999)) {
-    return NextResponse.json({ error: "Height (in) must be a number between 0 and 12." }, { status: 422 });
+    return NextResponse.json({ error: "Height (in) must be a number between 0 and 12.", field: "height" }, { status: 422 });
   }
-  if (goalWeight != null && goalWeight !== "") {
-    const gw = parseFloat(goalWeight);
-    if (!Number.isFinite(gw) || gw < 50 || gw > 1000) {
-      return NextResponse.json(
-        { error: "Goal weight must be between 50 and 1000 lbs." },
-        { status: 422 }
-      );
+  const num = (raw: unknown): number | null => (raw == null || raw === "" ? null : parseFloat(String(raw)));
+  const heightRaw = num(height);
+  const heightCm = heightRaw == null ? null : heightUnit === "in" ? heightRaw * CM_PER_IN : heightRaw;
+  const bodyErr = firstBodyMetricsError(
+    checkBodyMetrics(
+      { weightLbs: num(weight), heightCm, goalWeightLbs: num(goalWeight) },
+      { weight: "lbs", height: heightUnit === "ftin" ? "ftin" : heightUnit === "in" ? "in" : "cm" }
+    )
+  );
+  if (bodyErr) {
+    return NextResponse.json({ error: bodyErr.message, field: bodyErr.field }, { status: 422 });
+  }
+  // Names: a 5,000-character first name was accepted and stored (QA 2026-09-11).
+  const MAX_NAME_CHARS = 100;
+  for (const [field, value] of [["firstName", firstName], ["lastName", lastName]] as const) {
+    if (value != null && (typeof value !== "string" || value.trim().length > MAX_NAME_CHARS)) {
+      return NextResponse.json({ error: `Name must be ${MAX_NAME_CHARS} characters or fewer.`, field }, { status: 422 });
     }
   }
 
@@ -135,8 +142,8 @@ export async function PATCH(req: NextRequest) {
   await prisma.account.update({
     where: { id: account.id },
     data: {
-      firstName: firstName || account.firstName,
-      lastName: lastName || account.lastName,
+      firstName: (typeof firstName === "string" && firstName.trim()) || account.firstName,
+      lastName: (typeof lastName === "string" && lastName.trim()) || account.lastName,
       onboardingComplete: true,
       // Consent is recorded only when the client says the box was ticked —
       // never flipped back to false by a later save.
@@ -145,6 +152,21 @@ export async function PATCH(req: NextRequest) {
   });
 
   const isProfileComplete = !!(birthday && (height || (heightFt && heightIn)) && weight && physicalActivityId);
+
+  // PATCH semantics: a key the client did not send is left unchanged. Until
+  // 2026-09-11 an omitted sexAtBirth / physicalActivityId was written as null
+  // and every omitted relation list was wiped (deleteMany + nothing), so a
+  // client sending `{ weight }` alone silently erased the diet, allergies and
+  // conditions. The web forms always send the full body; other clients may not.
+  const sent = (key: string) => Object.prototype.hasOwnProperty.call(body, key);
+  const idList = (key: string, raw: unknown): string[] | undefined =>
+    sent(key) ? (Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : []) : undefined;
+  const motivationList = idList("motivationIds", motivationIds);
+  const conditionList = idList("healthConditionIds", healthConditionIds);
+  const preferenceList = idList("foodPreferenceIds", foodPreferenceIds);
+  const avoidList = idList("foodToAvoidIds", foodToAvoidIds);
+  const allergyList = idList("foodAllergyIds", foodAllergyIds);
+  const heightUnitValue = sent("heightUnit") ? (heightUnit ?? "ftin") : undefined;
 
   const patient = await prisma.patient.upsert({
     where: { accountId: account.id },
@@ -166,15 +188,15 @@ export async function PATCH(req: NextRequest) {
     },
     update: {
       birthday: birthday ? new Date(birthday) : undefined,
-      sexAtBirth: sexAtBirth || null,
+      sexAtBirth: sent("sexAtBirth") ? sexAtBirth || null : undefined,
       height: height ? parseFloat(height) : undefined,
-      heightUnit: heightUnit ?? "ftin",
-      heightFt: heightFt ? parseInt(heightFt) : null,
-      heightIn: heightIn ? parseFloat(heightIn) : null,
+      heightUnit: heightUnitValue,
+      heightFt: sent("heightFt") ? (heightFt ? parseInt(heightFt) : null) : undefined,
+      heightIn: sent("heightIn") ? (heightIn ? parseFloat(heightIn) : null) : undefined,
       weight: weight ? parseFloat(weight) : undefined,
       weightUnit: "lbs",
       bmi: bmi ?? undefined,
-      physicalActivityId: physicalActivityId || null,
+      physicalActivityId: sent("physicalActivityId") ? physicalActivityId || null : undefined,
       goalWeight: goalWeight ? parseFloat(goalWeight) : undefined,
       goalWeightUnit: "lbs",
       ...(isProfileComplete ? { profileCompleted: true } : {}),
@@ -182,25 +204,35 @@ export async function PATCH(req: NextRequest) {
   });
 
   await prisma.$transaction([
-    prisma.patientMotivation.deleteMany({ where: { patientId: patient.id } }),
-    ...(motivationIds?.length
-      ? [prisma.patientMotivation.createMany({ data: motivationIds.map((id: string) => ({ patientId: patient.id, motivationId: id })) })]
+    ...(motivationList
+      ? [
+          prisma.patientMotivation.deleteMany({ where: { patientId: patient.id } }),
+          ...(motivationList.length ? [prisma.patientMotivation.createMany({ data: motivationList.map((id) => ({ patientId: patient.id, motivationId: id })) })] : []),
+        ]
       : []),
-    prisma.patientHealthCondition.deleteMany({ where: { patientId: patient.id } }),
-    ...(healthConditionIds?.length
-      ? [prisma.patientHealthCondition.createMany({ data: healthConditionIds.map((id: string) => ({ patientId: patient.id, conditionId: id })) })]
+    ...(conditionList
+      ? [
+          prisma.patientHealthCondition.deleteMany({ where: { patientId: patient.id } }),
+          ...(conditionList.length ? [prisma.patientHealthCondition.createMany({ data: conditionList.map((id) => ({ patientId: patient.id, conditionId: id })) })] : []),
+        ]
       : []),
-    prisma.patientFoodPreference.deleteMany({ where: { patientId: patient.id } }),
-    ...(foodPreferenceIds?.length
-      ? [prisma.patientFoodPreference.createMany({ data: foodPreferenceIds.map((id: string) => ({ patientId: patient.id, foodId: id })) })]
+    ...(preferenceList
+      ? [
+          prisma.patientFoodPreference.deleteMany({ where: { patientId: patient.id } }),
+          ...(preferenceList.length ? [prisma.patientFoodPreference.createMany({ data: preferenceList.map((id) => ({ patientId: patient.id, foodId: id })) })] : []),
+        ]
       : []),
-    prisma.patientFoodToAvoid.deleteMany({ where: { patientId: patient.id } }),
-    ...(foodToAvoidIds?.length
-      ? [prisma.patientFoodToAvoid.createMany({ data: foodToAvoidIds.map((id: string) => ({ patientId: patient.id, foodId: id })) })]
+    ...(avoidList
+      ? [
+          prisma.patientFoodToAvoid.deleteMany({ where: { patientId: patient.id } }),
+          ...(avoidList.length ? [prisma.patientFoodToAvoid.createMany({ data: avoidList.map((id) => ({ patientId: patient.id, foodId: id })) })] : []),
+        ]
       : []),
-    prisma.patientFoodAllergy.deleteMany({ where: { patientId: patient.id } }),
-    ...(foodAllergyIds?.length
-      ? [prisma.patientFoodAllergy.createMany({ data: foodAllergyIds.map((id: string) => ({ patientId: patient.id, foodId: id })) })]
+    ...(allergyList
+      ? [
+          prisma.patientFoodAllergy.deleteMany({ where: { patientId: patient.id } }),
+          ...(allergyList.length ? [prisma.patientFoodAllergy.createMany({ data: allergyList.map((id) => ({ patientId: patient.id, foodId: id })) })] : []),
+        ]
       : []),
   ]);
 
@@ -211,19 +243,20 @@ export async function PATCH(req: NextRequest) {
   // (audit Task 16). goalWeight was missing entirely despite driving the
   // ramp direction via resolvePlanDirection.
   const sorted = (arr: string[]) => JSON.stringify([...arr].sort());
+  const listChanged = (current: string[], next: string[] | undefined) => next !== undefined && sorted(current) !== sorted(next);
   const mealPlanFieldsChanged = existing != null && (
-    existing.physicalActivityId !== (physicalActivityId || null) ||
+    (sent("physicalActivityId") && existing.physicalActivityId !== (physicalActivityId || null)) ||
     (!!weight     && existing.weight     !== parseFloat(weight)) ||
     (!!height     && existing.height     !== parseFloat(height)) ||
     (!!goalWeight && existing.goalWeight !== parseFloat(goalWeight)) ||
-    existing.heightUnit         !== (heightUnit ?? "ftin") ||
+    (heightUnitValue !== undefined && existing.heightUnit !== heightUnitValue) ||
     (!!birthday && (existing.birthday?.getTime() ?? null) !== new Date(birthday).getTime()) ||
-    existing.sexAtBirth         !== (sexAtBirth        || null) ||
-    sorted(existing.motivations.map((m) => m.motivationId))      !== sorted(motivationIds      ?? []) ||
-    sorted(existing.foodAllergies.map((f) => f.foodId))           !== sorted(foodAllergyIds     ?? []) ||
-    sorted(existing.foodToAvoid.map((f) => f.foodId))             !== sorted(foodToAvoidIds     ?? []) ||
-    sorted(existing.foodPreferences.map((f) => f.foodId))         !== sorted(foodPreferenceIds  ?? []) ||
-    sorted(existing.healthConditions.map((c) => c.conditionId))   !== sorted(healthConditionIds ?? [])
+    (sent("sexAtBirth") && existing.sexAtBirth !== (sexAtBirth || null)) ||
+    listChanged(existing.motivations.map((m) => m.motivationId), motivationList) ||
+    listChanged(existing.foodAllergies.map((f) => f.foodId), allergyList) ||
+    listChanged(existing.foodToAvoid.map((f) => f.foodId), avoidList) ||
+    listChanged(existing.foodPreferences.map((f) => f.foodId), preferenceList) ||
+    listChanged(existing.healthConditions.map((c) => c.conditionId), conditionList)
   );
 
   // Strategy B: the profile save NEVER generates. If a plan already exists and a

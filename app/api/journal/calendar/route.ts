@@ -163,13 +163,15 @@ export async function GET(req: NextRequest) {
     if (caloricProfile) {
       const dayNumber = Math.round((cursor.getTime() - planStart.getTime()) / 86400000) + 1;
       if (dayNumber >= 1) {
-        dailyCalorieTarget = gradualDailyCals(
+        // Rounded for display: the engine's floor is a float once the ramp
+        // reaches the deficit cap ("7294.0976 kcal").
+        dailyCalorieTarget = Math.round(gradualDailyCals(
           Math.round(caloricProfile.tdeeCBW),
           dayNumber,
           resolvePlanDirection(caloricProfile),
           caloricProfile.minCaloriesValue,
           maxDailyDeficit(caloricProfile.cbmi),
-        );
+        ));
       }
     }
 

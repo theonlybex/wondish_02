@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { CM_PER_IN, LBS_PER_KG, checkBodyMetrics, firstBodyMetricsError } from "@/lib/body-bounds";
 import {
   computeAllMetrics, computeWeeklyTarget, convertWeight, resolveSex, resolveSexForCalories,
   type Sex, type SexInput, type CaloricProfileInput,
@@ -32,6 +33,18 @@ export async function GET() {
   if (!patient.weight || !patient.height || !patient.birthday || !patient.physicalActivity?.level) {
     return NextResponse.json(
       { error: "Incomplete profile. Please fill in weight, height, birthday, and activity level." },
+      { status: 422 }
+    );
+  }
+
+  // Values saved before the plausibility bounds existed (or written by
+  // another client) must not reach the engine: 1000 lbs read as an
+  // 8,300-kcal day and 170 % body fat.
+  const storedHeightCm = patient.heightUnit === "in" ? patient.height * CM_PER_IN : patient.height;
+  const storedWeightLbs = patient.weightUnit === "lbs" ? patient.weight : patient.weight * LBS_PER_KG;
+  if (firstBodyMetricsError(checkBodyMetrics({ weightLbs: storedWeightLbs, heightCm: storedHeightCm }, { weight: "lbs", height: "cm" }))) {
+    return NextResponse.json(
+      { error: "Your saved weight or height looks implausible — please update it in Settings." },
       { status: 422 }
     );
   }

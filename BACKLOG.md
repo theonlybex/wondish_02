@@ -145,16 +145,22 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
       read symptom history. (e) Conversion coverage for condiments/sweeteners
       (teaspoon/tablespoon/cup). Kidney Disease stage 1-2 still keeps ~394 of
       1,200 library dishes.
-- [ ] **Scenario-pass observations (2026-09-11, pass 4) — open, small.**
-      (a) The taste deck filters by allergies/avoid rules only, so a
-      Pescatarian still swipes sirloin/ribeye cards (dishes are filtered
-      correctly) — apply preference children to the deck. (b) Vegan + Kidney
-      1-2 keeps 5 protein ingredients in the library (tofu-dominated): decide
-      whether kidney's legume/nut bans should soften for vegans or the library
-      needs low-potassium plant proteins. (c) Symptoms step: add "Show fewer"
-      and consider remembering the items a user actually logs — a
-      five-condition account gets 53 items. (d) Overview activity heatmap
-      clips its last column at 390 px.
+- [x] **Scenario-pass observations (2026-09-11, pass 4) — fixed the same day**
+      (taste deck, symptoms "Show fewer", heatmap clip, gluten-free bread on
+      Keto, Clara protein-source line). Details in
+      `docs/qa/feature-checklist-2026-09-11.md` (pass 5 tables).
+- [x] **Extreme inputs (2026-09-11, pass 5).** Shared plausibility bounds in
+      `lib/body-bounds.ts` (weight 50–700 lbs, height 90–250 cm, BMI 10–100,
+      goal BMI 15–60) enforced by the profile API, the wizard, the settings
+      form, the journal weigh-in and the caloric-profile read; names ≤100
+      chars, journal notes ≤2000; partial `PATCH /api/patient/profile` no
+      longer wipes omitted fields and relation lists.
+- [ ] **Kidney Disease stage 1-2 bans legumes and nuts outright**, which
+      leaves a vegan with tofu, tempeh and plant-based substitutes. NKF/KDIGO
+      guidance restricts potassium/phosphorus by lab values, not by stage 1-2
+      diagnosis — a clinician should decide whether these rows become
+      guidance ("moderate portions") like the salt rows did. Data only:
+      `HealthConditionBannedIngredient` for that condition.
 - [ ] **Clara repo drift — uncommitted, and one item is a real config change.**
       `~/Desktop/BeTech/Clara` has 7 unpushed commits plus 2 uncommitted files
       (noticed 2026-08-26). **[verified]**
