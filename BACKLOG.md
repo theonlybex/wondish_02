@@ -120,45 +120,30 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
 
 ## 4. Product + engineering backlog
 
-- [ ] **Hypertension rule data bans plain salt — decide.** `HealthCondition`
-      "Hypertension" bans salt, table salt, sea salt and kosher salt as hard
-      rules. Nearly every library dinner lists salt, so a Hypertension profile
-      keeps 411 of 1,107 library dishes and only 3 dinners (Heart Disease:
-      449 / 5 dinners). Dropping the four salt rows (keeping soy sauce, broth,
-      cured meats, cheeses) gives 599 / 7 dinners; the olive-oil false match
-      is already fixed in code (→ 998 / 40 dinners with both). Sodium
-      restriction ≠ zero salt; recommend removing the four rows and telling
-      Clara "go easy on salt" via the food map instead. Product/clinical call —
-      not changed. **[verified 2026-09-11]**
-- [ ] **"Foods to avoid" are name-only rules.** `FoodToAvoid` has no
-      `bannedIngredients`, so "Red meat" only matches an ingredient literally
-      called "red meat": a red-meat avoider was offered "ground beef · unlocks
-      7 more dishes" on What-to-buy, and "Fried foods"/"Processed foods" cannot
-      match anything. Add the relation (like FoodAllergy) and seed beef, lamb,
-      veal, venison under Red meat; bacon, ham, sausage under Pork; etc.
-      **[verified 2026-09-11, desktop QA]**
-- [ ] **Header says "Welcome back" to a brand-new account** (shown during
-      onboarding with the Clerk first name, e.g. "Welcome back, QA."). Use
-      "Welcome" when the account was created today. **[verified 2026-09-11]**
+- [x] **QA findings of 2026-09-11 — fixed on `feat/workbooks-tier1`** (commit
+      `8627d23` and follow-ups). Plain-salt hard bans removed from Hypertension,
+      Heart Disease and Kidney Disease (sodium advice now reaches Clara via
+      `CONDITION_GUIDANCE`); "Foods to avoid" expand to ingredient children
+      (new `FoodToAvoidBannedIngredient`, 84 seeded, admin-editable); first-day
+      greeting; taste tinder keeps its position; Clara dishes carry per-serving
+      amounts; staples never reach What-to-buy. Full per-feature status:
+      `docs/qa/feature-checklist-2026-09-11.md`. Data script (idempotent):
+      `scripts/diet-rules-2026-09-11.ts`.
+- [ ] **`/terms` is a placeholder** ("Terms of service will be published…")
+      while onboarding requires consent to it. Content, not code.
+      **[verified 2026-09-11]**
 - [ ] **Clerk dev instance: first navigation after a sign-in ticket can loop**
       (`/taste → /login → /overview 307 → /taste`, React "Maximum update depth"
       in HandleRedirect, blank page). Reproducible only in the headless harness
       on the dev instance; going through `/overview` first avoids it. Real fix
       is the production Clerk instance. **[verified 2026-09-11]**
-- [ ] **Taste tinder forgets its position on reload.** `/taste` restarts at
-      level 1 after a refresh (selections persist, the level and the
-      "Favorites saved" screen don't). Persist `levelIdx`/`done` in
-      sessionStorage like the onboarding draft. **[verified 2026-09-11]**
-- [ ] **Wondish workbooks Tier 2 — quantities from Clara + health rules.**
-      (a) Ask Clara for `{name, quantity, unit}` per ingredient in
-      `lib/clara/recipe-generation.ts` and persist them on `RecipeIngredient`,
-      so weekly purchase amounts light up for basket-mode plans (today only the
-      599 library recipes carry quantities). (b) Map the 8 health-condition
-      names in Wondish 03 onto our `HealthCondition` rows and import the
-      ACTIVE rules; most rows are `REVIEW_REQUIRED` and need a clinician pass
-      first. (c) Per-ingredient conversion coverage: 470 (form, unit) pairs
-      cover ~88% of a library week; the misses are teaspoon/tablespoon/cup on
-      condiments and sweeteners. **[verified]**
+- [ ] **Wondish workbooks Tier 2 — health rules + conversion coverage.**
+      (Clara quantities, formerly (a), shipped 2026-09-11.) (b) Map the 8
+      health-condition names in Wondish 03 onto our `HealthCondition` rows and
+      import the ACTIVE rules; most rows are `REVIEW_REQUIRED` and need a
+      clinician pass first. (c) Per-ingredient conversion coverage: 470 (form,
+      unit) pairs cover ~88% of a library week; the misses are
+      teaspoon/tablespoon/cup on condiments and sweeteners. **[verified]**
 - [ ] **Wondish workbooks Tier 3 — Trial Process (04) and Symptom Journal
       (05).** New data model (trial phases, reintroduction schedule, symptom
       entries) and UI; nothing in the app consumes them yet. **[reported]**
