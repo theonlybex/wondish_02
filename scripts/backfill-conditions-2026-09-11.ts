@@ -50,7 +50,7 @@ const KIDNEY_LABS: Item[] = [
   lab("BLOOD_PRESSURE", "Blood pressure", "MEASUREMENT"),
 ];
 
-const BACKFILL: { condition: string; prefix: string; items: Item[]; bans?: string[]; copyBansFrom?: string }[] = [
+const BACKFILL: { condition: string; prefix: string; items: Item[]; bans?: string[]; retire?: string[]; copyBansFrom?: string }[] = [
   { condition: "Kidney Disease stage 1-2", prefix: "WB-KID12", items: [...KIDNEY_SYMPTOMS, ...KIDNEY_LABS] },
   { condition: "Chronic kidney disease – stage 3", prefix: "WB-CKD3", items: [...KIDNEY_SYMPTOMS, sym("SHORTNESS_OF_BREATH", "Shortness of breath"), sym("METALLIC_TASTE", "Metallic taste"), ...KIDNEY_LABS], copyBansFrom: "Kidney Disease stage 1-2" },
   {
@@ -70,9 +70,12 @@ const BACKFILL: { condition: string; prefix: string; items: Item[]; bans?: strin
       sym("SLEEP_PROBLEMS", "Sleep problems"), sym("BLOATING", "Bloating"), sym("PELVIC_PAIN", "Pelvic pain"),
       lab("FASTING_GLUCOSE", "Fasting glucose"), lab("HBA1C", "HbA1c"), lab("FASTING_INSULIN", "Fasting insulin"), lab("WEIGHT", "Weight", "MEASUREMENT"), lab("WAIST", "Waist circumference", "MEASUREMENT"),
     ],
-    // Low-glycemic pattern: the refined-carbohydrate and added-sugar rows the
-    // diabetes factor already deploys, in our catalog's names.
-    bans: ["white sugar", "brown sugar", "cane sugar", "granulated sugar", "powdered sugar", "corn syrup", "high fructose corn syrup", "maple syrup", "honey", "agave", "molasses", "candy", "soda", "fruit juice", "orange juice", "apple juice", "white bread", "sliced bread", "white rice", "jasmine rice", "basmati rice", "all-purpose flour", "refined pasta", "instant oats", "jam", "jelly", "ice cream", "sports drink"],
+    // Standing bans: added sugars only (the diabetes factor's deployable
+    // subset). Refined grains and juices are left to the HIGH_GLYCEMIC_PATTERN
+    // trial below so its reintroduction phase can actually test them — a
+    // standing ban on white rice made the challenge impossible (QA 2026-09-11).
+    bans: ["white sugar", "brown sugar", "cane sugar", "granulated sugar", "powdered sugar", "corn syrup", "high fructose corn syrup", "maple syrup", "honey", "agave", "molasses", "candy", "soda", "sports drink"],
+    retire: ["fruit juice", "orange juice", "apple juice", "white bread", "sliced bread", "white rice", "jasmine rice", "basmati rice", "all-purpose flour", "refined pasta", "instant oats", "jam", "jelly", "ice cream"],
   },
   {
     condition: "Recovering after illness/surgery", prefix: "WB-RECOV",
@@ -109,9 +112,11 @@ const PCOS_TRIAL = {
       banNames = [...banNames, ...(src?.bannedIngredients.map((x) => x.name) ?? [])];
     }
     const bansToAdd = Array.from(new Set(banNames.filter((n) => !have.has(n.toLowerCase()))));
+    const bansToRetire = (b.retire ?? []).filter((n) => have.has(n.toLowerCase()));
     bans += bansToAdd.length;
-    console.log(`${b.condition}: items +${toAdd.length} (${b.items.length} total), bans +${bansToAdd.length}`);
+    console.log(`${b.condition}: items +${toAdd.length} (${b.items.length} total), bans +${bansToAdd.length}${bansToRetire.length ? ` -${bansToRetire.length} (${bansToRetire.join(", ")})` : ""}`);
     if (!apply) continue;
+    if (bansToRetire.length) await prisma.healthConditionBannedIngredient.deleteMany({ where: { conditionId: cond.id, name: { in: bansToRetire, mode: "insensitive" } } });
     for (const i of toAdd) {
       await prisma.conditionTrackingItem.upsert({
         where: { code: `${b.prefix}-${i.code}` },

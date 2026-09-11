@@ -65,8 +65,9 @@ export default function TrialsClient() {
   const [notes, setNotes] = useState("");
   const [regenState, setRegenState] = useState<"idle" | "running" | "done" | "error">("idle");
 
+  // Does not clear `error`: a failed action reloads the view afterwards and
+  // must keep its message (a 429 from "Generate a new week" was wiped here).
   const load = useCallback(async () => {
-    setError("");
     try {
       const res = await apiFetch("/api/trials");
       if (!res.ok) throw new Error();
