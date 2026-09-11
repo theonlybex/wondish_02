@@ -21,8 +21,18 @@ const KEYWORDS: [CategoryKey, string[]][] = [
   ["fat", ["oil", "olive", "avocado", "nut", "almond", "peanut", "seed", "tahini"]],
 ];
 
+// Substring keywords misfire on a few vegetables ("green beans" → bean →
+// protein, "eggplant" → egg → protein): a vegetables-only basket passed the
+// readiness gate as if it had a protein (QA 2026-09-11). Checked first.
+const OVERRIDES: [string, CategoryKey][] = [
+  ["green bean", "vegetable"],
+  ["bean sprout", "vegetable"],
+  ["eggplant", "vegetable"],
+];
+
 export function classifyIngredient(name: string): CategoryKey {
   const n = name.toLowerCase();
+  for (const [w, cat] of OVERRIDES) if (n.includes(w)) return cat;
   for (const [cat, words] of KEYWORDS) if (words.some((w) => n.includes(w))) return cat;
   return "other";
 }

@@ -181,24 +181,44 @@ export default function PantryClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
-  const persist = async (next: Map<string, string>) => {
-    const seq = ++saveSeq.current;
+  // PUT replaces the whole list, so overlapping saves from quick taps could
+  // land out of order and an older, shorter list won (12 taps → 3 saved,
+  // QA 2026-09-11). Saves are now serialised: one in flight, and only the
+  // newest pending list is sent when it finishes.
+  const pendingSave = useRef<Map<string, string> | null>(null);
+  const saving = useRef(false);
+  const flushSaves = async () => {
+    if (saving.current) return;
+    saving.current = true;
     try {
-      const res = await apiFetch("/api/pantry", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ingredientIds: Array.from(next.keys()) }),
-      });
-      if (!res.ok) throw new Error();
-      if (seq === saveSeq.current) {
-        setSyncError("");
-        void refreshCookable();
+      while (pendingSave.current) {
+        const next = pendingSave.current;
+        pendingSave.current = null;
+        const seq = ++saveSeq.current;
+        try {
+          const res = await apiFetch("/api/pantry", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ingredientIds: Array.from(next.keys()) }),
+          });
+          if (!res.ok) throw new Error();
+          if (seq === saveSeq.current) {
+            setSyncError("");
+            void refreshCookable();
+          }
+        } catch {
+          if (seq === saveSeq.current) {
+            setSyncError("Couldn't save that change — it may not stick. Check your connection.");
+          }
+        }
       }
-    } catch {
-      if (seq === saveSeq.current) {
-        setSyncError("Couldn't save that change — it may not stick. Check your connection.");
-      }
+    } finally {
+      saving.current = false;
     }
+  };
+  const persist = async (next: Map<string, string>) => {
+    pendingSave.current = next;
+    await flushSaves();
   };
 
   const toggle = (ing: Ing) => {
@@ -850,9 +870,12 @@ export default function PantryClient({
               <span className="text-xs text-right" style={{ color: "#848181" }}>
                 {status.ready
                   ? "Enough to fill a full week"
-                  : `Add ${Math.max(0, status.min - status.count)} more${
-                      status.missingCategories.length ? ` (a ${status.missingCategories.join(", ")})` : ""
-                    }`}
+                  : status.count >= status.min
+                    // Count is fine, a food group is missing ("Add 0 more (a carb)" read as done).
+                    ? `Add a ${status.missingCategories.join(" and a ")} to cover a full week`
+                    : `Add ${status.min - status.count} more${
+                        status.missingCategories.length ? ` (including a ${status.missingCategories.join(", a ")})` : ""
+                      }`}
               </span>
             </div>
             <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "#F0EFF5" }}>
