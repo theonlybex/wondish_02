@@ -130,6 +130,21 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
       restriction ≠ zero salt; recommend removing the four rows and telling
       Clara "go easy on salt" via the food map instead. Product/clinical call —
       not changed. **[verified 2026-09-11]**
+- [ ] **"Foods to avoid" are name-only rules.** `FoodToAvoid` has no
+      `bannedIngredients`, so "Red meat" only matches an ingredient literally
+      called "red meat": a red-meat avoider was offered "ground beef · unlocks
+      7 more dishes" on What-to-buy, and "Fried foods"/"Processed foods" cannot
+      match anything. Add the relation (like FoodAllergy) and seed beef, lamb,
+      veal, venison under Red meat; bacon, ham, sausage under Pork; etc.
+      **[verified 2026-09-11, desktop QA]**
+- [ ] **Header says "Welcome back" to a brand-new account** (shown during
+      onboarding with the Clerk first name, e.g. "Welcome back, QA."). Use
+      "Welcome" when the account was created today. **[verified 2026-09-11]**
+- [ ] **Clerk dev instance: first navigation after a sign-in ticket can loop**
+      (`/taste → /login → /overview 307 → /taste`, React "Maximum update depth"
+      in HandleRedirect, blank page). Reproducible only in the headless harness
+      on the dev instance; going through `/overview` first avoids it. Real fix
+      is the production Clerk instance. **[verified 2026-09-11]**
 - [ ] **Taste tinder forgets its position on reload.** `/taste` restarts at
       level 1 after a refresh (selections persist, the level and the
       "Favorites saved" screen don't). Persist `levelIdx`/`done` in
