@@ -508,3 +508,23 @@ test("a 'Red meat' avoid rule bans beef through its children, and still bans the
   const legacy = buildDietMatchers(derivePatientBans({ ...emptyPatient(), foodToAvoid: [{ food: { name: "Pork" } }] }));
   assert.equal(evaluateDishAgainstProfile(["pork chops"], legacy).passed, false);
 });
+
+// ─── condition component groups (Celiac → BIG9-WHEAT) ─────────────────────
+
+test("Celiac bans a wheat-component ingredient by group with source 'condition', without any name rule", () => {
+  const patient: PatientDietGraph = {
+    ...emptyPatient(),
+    healthConditions: [{ condition: { name: "Celiac Disease", bannedIngredients: [] } }],
+  };
+  const m = buildDietMatchers(derivePatientBans(patient));
+  assert.ok(m.bannedGroups.has("BIG9-WHEAT"));
+  const r = evaluateDishAgainstProfile(["Sliced bread", "Large eggs"], m, [["BIG9-WHEAT"], ["BIG9-EGG"]]);
+  assert.equal(r.passed, false);
+  assert.deepEqual(r.violations, [{ ingredient: "Sliced bread", term: "BIG9-WHEAT", source: "condition" }]);
+  assert.equal(evaluateDishAgainstProfile(["Sliced bread"], m).passed, true); // no groups supplied → name-only
+  // A Wheat allergy on top of Celiac reports the group as an allergy.
+  const both = buildDietMatchers(derivePatientBans({ ...patient, foodAllergies: [{ food: { name: "Wheat", bannedIngredients: [] } }] }));
+  assert.equal(evaluateDishAgainstProfile(["Sliced bread"], both, [["BIG9-WHEAT"]]).violations[0].source, "allergy");
+  // Conditions without a name (older hand-built graphs) add no groups.
+  assert.equal(buildDietMatchers(derivePatientBans({ ...emptyPatient(), healthConditions: [{ condition: { bannedIngredients: [] } }] })).bannedGroups.size, 0);
+});

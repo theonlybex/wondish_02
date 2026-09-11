@@ -19,6 +19,7 @@ import { macroDeviation } from "@/lib/macros";
 import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
 import { isCoveredByBasket, BASKET_STAPLES } from "@/lib/basket-coverage";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { buildFoodMapText } from "@/lib/food-map";
 // Type-only import (erased at runtime). The implementation is loaded lazily at
 // the call site below via dynamic import — a static import here would create a
 // module cycle (meal-log → meal-plan → recipe-generation → fridge → meal-log)
@@ -388,6 +389,7 @@ export async function buildMealPlanMenus(
         macroTarget,
         cuisine: opts.cuisine ?? null,
         allowedIngredients: opts.basket ? Array.from(opts.basket) : undefined,
+        profileContext: buildFoodMapText(patient),
       });
       if (createdIds.length > 0) {
         const created: PoolRecipe[] = await prisma.recipe.findMany({

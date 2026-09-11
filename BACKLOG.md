@@ -138,10 +138,16 @@ attribution slice (§1/§2/§5), Phase 6a (the whole owner portal).
       on the dev instance; going through `/overview` first avoids it. Real fix
       is the production Clerk instance. **[verified 2026-09-11]**
 - [ ] **Wondish workbooks Tier 2 — health rules + conversion coverage.**
-      (Clara quantities, formerly (a), shipped 2026-09-11.) (b) Map the 8
-      health-condition names in Wondish 03 onto our `HealthCondition` rows and
-      import the ACTIVE rules; most rows are `REVIEW_REQUIRED` and need a
-      clinician pass first. (c) Per-ingredient conversion coverage: 470 (form,
+      (Clara quantities, formerly (a), shipped 2026-09-11; Celiac's deployable
+      rows are covered by the BIG9-WHEAT component group since the condition
+      audit — see `docs/qa/condition-audit-2026-09-11.md`.) (b) Map the
+      remaining workbook-03 profile-factor ids onto our `HealthCondition` rows
+      (the workbook carries ids only) and import the 231 DEPLOYABLE rules;
+      the other 4,477 are `REVIEW_REQUIRED` and need a clinician pass. The 26
+      conditions without ingredient rules reach Clara through the prompt only.
+      Kidney Disease stage 1-2 keeps 394 of 1,200 library dishes (31 dinners):
+      its potassium/phosphorus rules need per-ingredient nutrient data to be
+      anything but blanket bans. (c) Per-ingredient conversion coverage: 470 (form,
       unit) pairs cover ~88% of a library week; the misses are
       teaspoon/tablespoon/cup on condiments and sweeteners. **[verified]**
 - [ ] **Wondish workbooks Tier 3 — Trial Process (04) and Symptom Journal

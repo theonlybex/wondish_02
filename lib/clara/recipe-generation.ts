@@ -64,6 +64,10 @@ interface TopUpArgs {
   // ingredient names (plus free staples). Enforced in the prompt AND by a
   // deterministic post-filter (the model's claim is never trusted).
   allowedIngredients?: string[];
+  // The diner's profile as the food map renders it (allergies, diets,
+  // conditions + guidance). Until 2026-09-11 generation saw only the flat ban
+  // list, so a GERD or IBS profile was cooked for like a healthy one.
+  profileContext?: string;
 }
 
 // Staples the basket clause hands out for free — minus any the profile bans.
@@ -112,6 +116,7 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     cuisine,
     basket,
     banned,
+    args.profileContext ? `\nThe diner's profile (respect every line, especially condition guidance):\n${args.profileContext}` : "",
   ].join("\n");
 }
 

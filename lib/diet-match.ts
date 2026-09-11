@@ -20,7 +20,9 @@ export interface PatientDietGraph {
   foodAllergies: { food: { name: string; bannedIngredients: { name: string }[] } }[];
   // bannedIngredients optional: older callers/tests build the graph by hand.
   foodToAvoid: { food: { name: string; bannedIngredients?: { name: string }[] } }[];
-  healthConditions: { condition: { bannedIngredients: { name: string }[] } }[];
+  // condition.name optional for hand-built graphs; when present it unlocks
+  // CONDITION_GROUPS (Celiac → BIG9-WHEAT components).
+  healthConditions: { condition: { name?: string; bannedIngredients: { name: string }[] } }[];
   foodPreferences: { food: { bannedIngredients: { name: string }[] } }[];
   motivations: { motivation: { bannedIngredients: { name: string }[] } }[];
 }
@@ -31,6 +33,8 @@ export interface DerivedBans {
   // Wondish 03 Big-9 group codes implied by the patient's FoodAllergy rows.
   // Optional so hand-built callers/tests that predate groups keep compiling.
   allergyGroupCodes?: string[];
+  // Same, implied by health conditions (CONDITION_GROUPS).
+  conditionGroupCodes?: string[];
 }
 
 // FoodAllergy.name → Wondish 03 "Baseline & Restriction Rules" allergen group
@@ -54,6 +58,18 @@ export function allergyGroupCodesFor(allergyName: string): string[] {
   return ALLERGY_GROUPS[allergyName.trim().toLowerCase()] ?? [];
 }
 
+// HealthCondition.name → Big-9 groups the condition must avoid by component.
+// Celiac needs this: no recipe ingredient is literally named "wheat", so a
+// name-only rule let sliced bread, tortillas and English muffins through
+// (condition audit 2026-09-11). Violations carry source "condition".
+export const CONDITION_GROUPS: Record<string, string[]> = {
+  "celiac disease": ["BIG9-WHEAT"],
+};
+
+export function conditionGroupCodesFor(conditionName: string): string[] {
+  return CONDITION_GROUPS[conditionName.trim().toLowerCase()] ?? [];
+}
+
 // Allergy matchers are RegExp instances carrying the original (lowercased,
 // singular-stemmed) term alongside, so evaluateDishAgainstProfile can report
 // which term matched without re-deriving it from `.source`. Still
@@ -67,6 +83,9 @@ export interface DietMatchers {
   // ingredient's `allergenGroups` (Ingredient.allergenGroups, from Wondish 01/03)
   // when the caller supplies them — additive to the name matching above.
   bannedGroups: Set<string>;
+  // Which profile dimension banned each group ("allergy" wins over
+  // "condition" when both name the same group). Optional for older callers.
+  groupSources?: Map<string, BanSource>;
 }
 
 export interface Violation {
@@ -111,8 +130,11 @@ export function derivePatientBans(patient: PatientDietGraph): DerivedBans {
   const allergyGroupCodes = Array.from(
     new Set(patient.foodAllergies.flatMap((a) => allergyGroupCodesFor(a.food.name)))
   );
+  const conditionGroupCodes = Array.from(
+    new Set(patient.healthConditions.flatMap((hc) => (hc.condition.name ? conditionGroupCodesFor(hc.condition.name) : [])))
+  );
 
-  return { allergyNames, exactBanned, allergyGroupCodes };
+  return { allergyNames, exactBanned, allergyGroupCodes, conditionGroupCodes };
 }
 
 // ── buildDietMatchers ───────────────────────────────────────────────────────
@@ -207,7 +229,7 @@ export const exactBanPattern = (name: string) => {
   );
 };
 
-export function buildDietMatchers({ allergyNames, exactBanned, allergyGroupCodes = [] }: DerivedBans): DietMatchers {
+export function buildDietMatchers({ allergyNames, exactBanned, allergyGroupCodes = [], conditionGroupCodes = [] }: DerivedBans): DietMatchers {
   const allergyMatchers = Array.from(new Set(allergyNames.flatMap(expandBanName)))
     .map((lowered) => ({ lowered, stem: singularize(lowered) }))
     .filter(({ stem }) => stem.length >= 2)
@@ -230,7 +252,10 @@ export function buildDietMatchers({ allergyNames, exactBanned, allergyGroupCodes
     dedupedExactBanned.push({ name: lowered, source });
   }
 
-  return { allergyMatchers, exactBanned: dedupedExactBanned, bannedGroups: new Set(allergyGroupCodes) };
+  const groupSources = new Map<string, BanSource>();
+  for (const g of conditionGroupCodes) groupSources.set(g, "condition");
+  for (const g of allergyGroupCodes) groupSources.set(g, "allergy");
+  return { allergyMatchers, exactBanned: dedupedExactBanned, bannedGroups: new Set(groupSources.keys()), groupSources };
 }
 
 // ── evaluateDishAgainstProfile ──────────────────────────────────────────────
@@ -274,7 +299,7 @@ export function evaluateDishAgainstProfile(
     if (bannedGroups.size > 0) {
       for (const group of ingredientGroups?.[i] ?? []) {
         if (bannedGroups.has(group)) {
-          violations.push({ ingredient, term: group, source: "allergy" });
+          violations.push({ ingredient, term: group, source: matchers.groupSources?.get(group) ?? "allergy" });
         }
       }
     }

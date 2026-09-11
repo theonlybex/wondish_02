@@ -24,6 +24,7 @@ import {
   getMacroPercentages,
 } from "@/lib/caloric-engine";
 import { guardAiSpend } from "@/lib/ai-budget";
+import { buildFoodMapText } from "@/lib/food-map";
 
 // POST /api/meal-plan/[menuId]/clara-swap — the user asks Clara for something
 // else in this slot ("what would you like instead?") and Clara generates a
@@ -104,6 +105,9 @@ export async function POST(
     cuisine ? `- The dish must be authentic ${cuisine} cuisine.` : ``,
     request ? `- Honour the user's request: "${request}".` : `- Pick something appealing and different.`,
     bannedNames.length > 0 ? `- NEVER include these ingredients or anything containing them: ${bannedNames.join(", ")}.` : ``,
+    // Conditions without ingredient bans (GERD, IBS, PCOS…) only reach the
+    // model through this profile text — see the 2026-09-11 condition audit.
+    `\nThe diner's profile (respect every line, especially condition guidance):\n${buildFoodMapText(patient)}`,
   ].join("\n");
 
   let candidate: FridgeRecipe | null = null;

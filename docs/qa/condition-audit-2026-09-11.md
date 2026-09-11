@@ -103,7 +103,34 @@ dedicated sheets; the rest need the client to confirm). Deployable today:
 - **Not enforced at all:** 26 conditions, plus every condition during week
   generation and swap.
 
-## Recommended fixes, in order of value
+## Fixes applied (same day, `feat/workbooks-tier1`)
+
+1. **Generation and swap prompts now carry the diner's profile** (food-map
+   text: allergies, diets, foods to avoid, conditions and their guidance).
+   Live check: a Celiac + GERD + High Cholesterol profile generated 21 dishes,
+   16 accepted, 0 wheat ingredients in the 22-menu week.
+2. **Celiac uses the BIG9-WHEAT component group** (`CONDITION_GROUPS`;
+   violations report source "condition"). Sliced bread, tortillas, penne,
+   spaghetti, all-purpose flour and bulgur are excluded through their
+   components; the 26 recipes built on gluten-free products are allowed
+   again. The 18 deployable workbook-03 Celiac AVOID rows that resolve to
+   ingredients in use are all covered by the group, so no separate import.
+3. **Ban lists cleaned** (`scripts/condition-rules-2026-09-11.ts`, 13 rows
+   removed, 47 added): bare "sugar"/"butter"/"beans"/"nuts"/"yogurt"/"kidney"
+   replaced by the specific products; catalog names added where rules were
+   dead (Jasmine/Basmati rice, Sliced bread, Flour tortillas, orange/apple
+   juice, walnuts, almonds…).
+
+Pools after the fixes (of 1,200): Celiac 885 (60 dinners, 0 bread leaks) ·
+Heart 1,043 · High Cholesterol 1,081 · Hypertension 1,079 · Kidney 394 (31
+dinners — inherent to a potassium/phosphorus rule set until nutrient data
+exists) · Thyroid 1,150 · Type 2 Diabetes 1,010.
+
+Still open: the 26 rule-less conditions now reach Clara in every prompt, but
+have no deterministic rules; workbook-03 mapping for them and the nutrient
+budgets remain a client/clinician decision (BACKLOG Tier 2).
+
+## Recommended fixes, in order of value (original list)
 
 1. Pass condition names + `CONDITION_GUIDANCE` into the generation and swap
    prompts (small code change, no data).
