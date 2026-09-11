@@ -493,6 +493,59 @@ test("an allergy still bans the oil pressed from it (peanut oil) — safety bran
   assert.equal(evaluateDishAgainstProfile(["green olives"], cond).passed, false);
 });
 
+// ─── exact bans: plant-based substitutes and "-free" products are not the food ─
+
+test("exactBanPattern: a substitute marker (vegan / plant-based / meatless) exempts any dietary ban", () => {
+  assert.equal(exactBanPattern("beef").test("meatless beef strips"), false);
+  assert.equal(exactBanPattern("beef").test("plant based ground beef"), false);
+  assert.equal(exactBanPattern("beef").test("ground beef"), true);
+  assert.equal(exactBanPattern("chicken").test("meatless chicken"), false);
+  assert.equal(exactBanPattern("chicken").test("chicken breast"), true);
+  assert.equal(exactBanPattern("eggs").test("Mung bean plant-based egg"), false);
+  assert.equal(exactBanPattern("eggs").test("Large eggs"), true);
+  assert.equal(exactBanPattern("cheese").test("vegan cream cheese"), false);
+  assert.equal(exactBanPattern("cream cheese").test("vegan cream cheese"), false);
+  assert.equal(exactBanPattern("mayonnaise").test("vegan mayonnaise"), false);
+  assert.equal(exactBanPattern("crab").test("imitation crab"), true); // surimi is fish
+});
+
+test("exactBanPattern: a plant base exempts dairy/egg terms only — never meat or fish", () => {
+  assert.equal(exactBanPattern("milk").test("Almond milk"), false);
+  assert.equal(exactBanPattern("milk").test("Oat Milk"), false);
+  assert.equal(exactBanPattern("milk").test("whole milk"), true);
+  assert.equal(exactBanPattern("milk").test("goat milk"), true);
+  assert.equal(exactBanPattern("cream").test("coconut cream"), false);
+  assert.equal(exactBanPattern("cream").test("heavy cream"), true);
+  assert.equal(exactBanPattern("butter").test("unsalted creamy peanut butter"), false);
+  assert.equal(exactBanPattern("butter").test("cocoa butter"), false);
+  assert.equal(exactBanPattern("butter").test("unsalted butter"), true);
+  assert.equal(exactBanPattern("yogurt").test("plain unsweetened almond milk yogurt"), false);
+  assert.equal(exactBanPattern("yogurt").test("greek yogurt"), true);
+  assert.equal(exactBanPattern("cheese").test("cashew cream cheese"), false);
+  assert.equal(exactBanPattern("cheese").test("goat cheese"), true);
+  // A plant word before a meat/fish term is a dish, not a substitute.
+  assert.equal(exactBanPattern("shrimp").test("coconut shrimp"), true);
+  assert.equal(exactBanPattern("sausage").test("apple chicken sausage"), true);
+  assert.equal(exactBanPattern("chicken").test("apple chicken sausage"), true);
+});
+
+test("exactBanPattern: '<term>-free' / '<term> free' products are not the term", () => {
+  assert.equal(exactBanPattern("gluten").test("Gluten-free rice buns"), false);
+  assert.equal(exactBanPattern("gluten").test("vital wheat gluten"), true);
+  assert.equal(exactBanPattern("sugar").test("Sugar-free granola"), false);
+  assert.equal(exactBanPattern("salt").test("salt free mexican seasoning blend"), false);
+  assert.equal(exactBanPattern("eggs").test("egg-free mayonnaise"), false);
+  assert.equal(exactBanPattern("eggs").test("eggplant"), false);
+});
+
+test("a Vegan preference passes plant substitutes but the allergy safety branch stays broad", () => {
+  const vegan = buildDietMatchers(derivePatientBans({ ...emptyPatient(), foodPreferences: [{ food: { bannedIngredients: [{ name: "milk" }, { name: "eggs" }, { name: "beef" }] } }] }));
+  assert.equal(evaluateDishAgainstProfile(["Almond milk", "Mung bean plant-based egg", "meatless beef strips"], vegan).passed, true);
+  assert.equal(evaluateDishAgainstProfile(["whole milk"], vegan).passed, false);
+  const milkAllergy = buildDietMatchers(derivePatientBans({ ...emptyPatient(), foodAllergies: [{ food: { name: "Milk", bannedIngredients: [] } }] }));
+  assert.equal(evaluateDishAgainstProfile(["whole milk"], milkAllergy).passed, false);
+});
+
 // ─── foods to avoid expand to their bannedIngredients children ───────────────
 
 test("a 'Red meat' avoid rule bans beef through its children, and still bans the literal name", () => {

@@ -254,12 +254,34 @@ function stemUnionBody(lowered: string): string {
 // Likewise "coffee" (a Caffeine avoid rule) must not match "Decaf coffee".
 const DERIVED_PRODUCT_RE = /\b(oil|vinegar|spray|extract)\b/;
 const DECAF_RE = /\bdecaf/;
+
+// A substitute is not the food it imitates. A Vegan profile banned "Mung bean
+// plant-based egg" (41 recipes), "Almond milk" (35), "meatless chicken" (17)
+// and "Gluten-free rice buns" carried a "gluten" ban (QA 2026-09-11).
+//   - A substitute marker ("vegan", "plant-based", "meatless", …) up to one
+//     word before the term exempts ANY dietary ban ("plant based ground beef").
+//   - A plant base ("almond", "oat", "coconut", …) directly before — or one
+//     "milk"/"cream" away from — a dairy/egg term exempts it ("almond milk
+//     yogurt", "cashew cream cheese"). Meat and fish terms are NOT exempted
+//     this way: "coconut shrimp" and "apple chicken sausage" are dishes.
+//   - "<term>-free" / "<term> free" never matches the term.
+// Allergy matchers (boundaryPattern) deliberately keep the broad match.
+const SUBSTITUTE_MARKERS = "vegan|vegetarian|plant-based|plant based|meatless|meat-free|meat free|dairy-free|dairy free|non-dairy|nondairy|egg-free|egg free|mock|faux";
+const PLANT_BASES = "almond|oat|soy|soya|coconut|cashew|rice|hemp|pea|nut|peanut|cocoa|shea|apple|macadamia|hazelnut|walnut|pistachio|sunflower|flax|sesame";
+const DAIRY_EGG_TERM_RE = /^(?:milk|cream|butter|cheese|yogurt|yoghurt|eggs?|mayonnaise|mayo|creamer|ice cream|sour cream|cream cheese|whipped cream|heavy cream|buttermilk|custard|whole milk|kefir)$/;
+const MARKER_LOOKBEHIND = `(?<!\\b(?:${SUBSTITUTE_MARKERS})\\s(?:[\\p{L}-]+\\s)?)`;
+const PLANT_BASE_LOOKBEHIND = `(?<!\\b(?:${PLANT_BASES})\\s(?:(?:milk|cream)\\s)?)`;
+const FREE_LOOKAHEAD = `(?!(?:-|\\s)free\\b)`;
+
 export const exactBanPattern = (name: string) => {
   const lowered = name.trim().toLowerCase();
   const body = stemUnionBody(lowered);
-  if (DERIVED_PRODUCT_RE.test(lowered) || DECAF_RE.test(lowered)) return boundaryPattern(body);
+  const substitutable = DAIRY_EGG_TERM_RE.test(lowered) ? PLANT_BASE_LOOKBEHIND : "";
+  const derived = DERIVED_PRODUCT_RE.test(lowered) || DECAF_RE.test(lowered);
+  const prefix = derived ? "" : "(?<!\\bdecaf\\s)(?<!\\bdecaffeinated\\s)";
+  const suffix = derived ? "" : "(?!\\s+(?:cider\\s+)?(?:oil|vinegar|spray|extract)\\b)";
   return new RegExp(
-    `(?<!\\bdecaf\\s)(?<!\\bdecaffeinated\\s)(?<![\\p{L}\\p{N}])(?:${body})(?![\\p{L}\\p{N}])(?!\\s+(?:cider\\s+)?(?:oil|vinegar|spray|extract)\\b)`,
+    `${MARKER_LOOKBEHIND}${substitutable}${prefix}(?<![\\p{L}\\p{N}])(?:${body})(?![\\p{L}\\p{N}])${FREE_LOOKAHEAD}${suffix}`,
     "iu"
   );
 };
