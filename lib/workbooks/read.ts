@@ -94,3 +94,13 @@ export const readTriggerLinks = (file: WorkbookSource): TriggerLinkRow[] =>
     .filter((r) => s(r.status_code).toUpperCase() === "ACTIVE")
     .map((r) => ({ ruleCode: s(r.trigger_rule_id), trackingCode: s(r.tracking_item_id) }))
     .filter((r) => r.ruleCode && r.trackingCode);
+
+// ── Workbook 03 "Health Restriction Rules" (4,708 rows, 231 deployable) ──────
+export type HealthRuleRow = { ruleId: string; profileFactorId: number; ingredientFormId: string; action: string; gate: string; status: string };
+export const readHealthRules = (file: WorkbookSource): HealthRuleRow[] =>
+  rows(file, "Health Restriction Rules")
+    .map((r) => ({
+      ruleId: s(r.rule_id), profileFactorId: int(r.profile_factor_id, -1), ingredientFormId: s(r.ingredient_id),
+      action: s(r.selected_action_code) || s(r.proposed_action_code), gate: s(r.deployment_gate_code), status: s(r.review_status_code),
+    }))
+    .filter((r) => r.ruleId && r.profileFactorId >= 0 && r.ingredientFormId);
