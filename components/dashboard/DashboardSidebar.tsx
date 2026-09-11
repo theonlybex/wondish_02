@@ -8,9 +8,12 @@ import BrandLogo from "@/components/BrandLogo";
 export default function DashboardSidebar({
   isAdmin,
   isRestaurantStaff = false,
+  showTrials = false,
 }: {
   isAdmin: boolean;
   isRestaurantStaff?: boolean;
+  // Trigger trials exist only for users with an eligible condition or a trial on record.
+  showTrials?: boolean;
 }) {
   const pathname = usePathname();
   const t = useTranslations("sidebar");
@@ -27,6 +30,7 @@ export default function DashboardSidebar({
     { href: "/pantry", label: t("myFridge") },
     { href: "/journal", label: t("myJournal") },
     { href: "/journey", label: t("myJourney") },
+    ...(showTrials ? [{ href: "/trials", label: t("trials") }] : []),
     { href: "/taste", label: t("myTaste") },
     // Grocery List merged into the Ingredients screen as a "What to buy" tab
     // (2026-09-07) — standalone nav entry removed.

@@ -6,6 +6,8 @@ import { getAccount } from "@/lib/queries";
 import { computeJourneyStats, computeMacroStats } from "@/lib/journey";
 import { getJourneyPayload, type JourneyPayload } from "@/lib/journey-data";
 import JourneyDashboard from "@/components/journey/JourneyDashboard";
+import SymptomTrendCard from "@/components/journey/SymptomTrendCard";
+import TrialsCard from "@/components/journey/TrialsCard";
 // import PredictionWhatIf from "@/components/journey/PredictionWhatIf"; // prediction removed 2026-09-07
 
 export const metadata = { title: "Journey" };
@@ -26,8 +28,17 @@ export default async function JourneyPage() {
   // degrades the same way here: empty stats, never a redirect.
   const patient = await prisma.patient.findFirst({
     where: { account: { clerkId: userId } },
-    select: { id: true },
+    select: {
+      id: true,
+      // Condition-specific cards (symptoms, trigger trials) exist only for
+      // users whose conditions carry tracking items or trigger rules, or who
+      // have a trial on record — everyone else sees the page as before.
+      _count: { select: { triggerTrials: true } },
+      healthConditions: { select: { condition: { select: { _count: { select: { trackingItems: true, triggerRules: true } } } } } },
+    },
   });
+  const showSymptoms = patient?.healthConditions.some((hc) => hc.condition._count.trackingItems > 0) ?? false;
+  const showTrials = (patient?.healthConditions.some((hc) => hc.condition._count.triggerRules > 0) ?? false) || (patient?._count.triggerTrials ?? 0) > 0;
   const totalDays = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000));
   const emptyPayload: JourneyPayload = {
     stats: computeJourneyStats([], totalDays),
@@ -71,6 +82,13 @@ export default async function JourneyPage() {
       <div className="jy" style={{ animationDelay: "120ms" }}>
         <JourneyDashboard initialStats={stats} initialMacroStats={macroStats} />
       </div>
+
+      {(showSymptoms || showTrials) && (
+        <div className="jy mt-6 grid gap-4 md:grid-cols-2" style={{ animationDelay: "240ms" }}>
+          {showSymptoms && <SymptomTrendCard />}
+          {showTrials && <TrialsCard />}
+        </div>
+      )}
 
       {/* Prediction what-if card commented out (2026-09-07) — prediction removed.
       <div className="jy mt-8 max-w-md mx-auto" style={{ animationDelay: "240ms" }}>

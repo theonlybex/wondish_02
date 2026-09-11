@@ -16,6 +16,7 @@ export default function MobileNav({
   isAdmin,
   isRestaurantStaff,
   isNew = false,
+  showTrials = false,
 }: {
   email: string;
   name: string;
@@ -23,6 +24,7 @@ export default function MobileNav({
   isAdmin: boolean;
   isRestaurantStaff: boolean;
   isNew?: boolean;
+  showTrials?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -51,7 +53,7 @@ export default function MobileNav({
             className="absolute inset-0 bg-black/40"
           />
           <div className="absolute inset-y-0 left-0 w-64 max-w-[85vw] shadow-2xl" style={{ animation: "mn-slide 0.22s ease-out both" }}>
-            <DashboardSidebar isAdmin={isAdmin} isRestaurantStaff={isRestaurantStaff} />
+            <DashboardSidebar isAdmin={isAdmin} isRestaurantStaff={isRestaurantStaff} showTrials={showTrials} />
           </div>
           <style>{`
             @keyframes mn-slide { from { transform: translateX(-100%); } to { transform: translateX(0); } }

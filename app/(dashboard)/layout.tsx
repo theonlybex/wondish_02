@@ -41,6 +41,21 @@ export default async function DashboardLayout({
     account?.roles?.some((r) => r.role.name === RESTAURANT_ADMIN_ROLE) ?? false;
   const isPremium = accountHasActivePremium(account?.subscriptions ?? []);
 
+  // "Trials" nav item only for users with a condition that has trigger rules
+  // or a trial on record — a user without a condition never sees it.
+  const trialsProbe = account
+    ? await prisma.patient.findUnique({
+        where: { accountId: account.id },
+        select: {
+          _count: { select: { triggerTrials: true } },
+          healthConditions: { select: { condition: { select: { _count: { select: { triggerRules: true } } } } } },
+        },
+      })
+    : null;
+  const showTrials =
+    (trialsProbe?.healthConditions.some((hc) => hc.condition._count.triggerRules > 0) ?? false) ||
+    (trialsProbe?._count.triggerTrials ?? 0) > 0;
+
   // ── Onboarding gate (single source of truth) ───────────────────────────────
   // The profile data itself decides whether onboarding is done; account.onboarding-
   // Complete is only a cache. If the cache is stale (e.g. accounts predating the
@@ -108,7 +123,7 @@ export default async function DashboardLayout({
   return (
     <div className="flex h-screen bg-surface overflow-hidden">
       <div className="hidden lg:block">
-        <DashboardSidebar isAdmin={isAdmin} isRestaurantStaff={isRestaurantStaff} />
+        <DashboardSidebar isAdmin={isAdmin} isRestaurantStaff={isRestaurantStaff} showTrials={showTrials} />
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 lg:ml-64">
@@ -118,6 +133,7 @@ export default async function DashboardLayout({
           plan={isAdmin ? "ADMIN" : isPremium ? "PREMIUM" : "FREE"}
           isAdmin={isAdmin}
           isRestaurantStaff={isRestaurantStaff}
+          showTrials={showTrials}
           isNew={Boolean(account && Date.now() - new Date(account.createdAt).getTime() < 24 * 60 * 60 * 1000)}
         />
         {account?.subscriptions?.some((s) => s.source === "STRIPE" && s.status === "PAST_DUE") && <PastDueBanner />}
