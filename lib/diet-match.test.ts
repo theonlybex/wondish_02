@@ -434,3 +434,32 @@ test("audit-T4: multi-word exact ban still phrase-matches ('red meat' in 'ground
   const matchers = buildDietMatchers(derivePatientBans(conditionBan("red meat")));
   assert.equal(evaluateDishAgainstProfile(["ground red meat"], matchers).passed, false);
 });
+
+// ─── component-based allergen bans (Wondish 03 Big-9 groups) ─────────────────
+
+test("allergen groups ban a dish even when the ingredient name doesn't mention the allergen", () => {
+  const bans = derivePatientBans({
+    ...emptyPatient(),
+    foodAllergies: [{ food: { name: "Milk", bannedIngredients: [] } }],
+  });
+  const m = buildDietMatchers(bans);
+  assert.ok(m.bannedGroups.has("BIG9-COW-MILK"));
+  // "Cream of chicken soup" says nothing about milk by name; its Wondish groups do.
+  const failed = evaluateDishAgainstProfile(["Cream of chicken soup"], m, [["BIG9-COW-MILK", "BIG9-WHEAT"]]);
+  assert.equal(failed.passed, false);
+  assert.deepEqual(failed.violations, [{ ingredient: "Cream of chicken soup", term: "BIG9-COW-MILK", source: "allergy" }]);
+  assert.equal(evaluateDishAgainstProfile(["Cream of chicken soup"], m, [[]]).passed, true);
+  // No groups supplied at all (Clara dishes, legacy callers) → name matching only.
+  assert.equal(evaluateDishAgainstProfile(["Cream of chicken soup"], m).passed, true);
+});
+
+test("every FoodAllergy name maps to at least one Big-9 group, and a trailing space still resolves", () => {
+  for (const name of ["Milk", "Eggs", "Peanuts", "Tree nuts", "Soy", "Fish", "Shellfish", "Sesame", "Wheat"]) {
+    const m = buildDietMatchers(derivePatientBans({ ...emptyPatient(), foodAllergies: [{ food: { name, bannedIngredients: [] } }] }));
+    assert.ok(m.bannedGroups.size >= 1, `${name} has no group`);
+  }
+  const wheat = buildDietMatchers(derivePatientBans({ ...emptyPatient(), foodAllergies: [{ food: { name: "Wheat ", bannedIngredients: [] } }] }));
+  assert.ok(wheat.bannedGroups.has("BIG9-WHEAT"));
+  // A patient without allergies bans no groups.
+  assert.equal(buildDietMatchers(derivePatientBans(emptyPatient())).bannedGroups.size, 0);
+});

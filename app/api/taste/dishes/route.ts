@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { accountHasActivePremium } from "@/lib/auth";
-import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 
 // DISHES-RETIRED (2026-09-07): the app now swipes INGREDIENTS
 // (/api/taste/ingredients + /api/taste/ingredient-swipe). This dish-swipe
@@ -63,7 +63,7 @@ export async function GET() {
       tags: true,
       mealType: { select: { name: true } },
       ethnic: { select: { name: true } },
-      ingredients: { select: { ingredient: { select: { name: true } } } },
+      ingredients: { select: { ingredient: { select: { name: true, allergenGroups: true } } } },
     },
     take: 80,
   });
@@ -72,7 +72,7 @@ export async function GET() {
   const allowed = !hasBans
     ? candidates
     : candidates.filter(
-        (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed
+        (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers, ingredientGroupsOf(r.ingredients)).passed
       );
 
   // Shuffle and return 10 for variety; drop the ingredients field used only

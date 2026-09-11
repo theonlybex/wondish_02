@@ -18,7 +18,7 @@ import {
 import { macroDeviation } from "@/lib/macros";
 import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
 import { isCoveredByBasket, BASKET_STAPLES } from "@/lib/basket-coverage";
-import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 // Type-only import (erased at runtime). The implementation is loaded lazily at
 // the call site below via dynamic import — a static import here would create a
 // module cycle (meal-log → meal-plan → recipe-generation → fridge → meal-log)
@@ -47,7 +47,7 @@ type RecipeCandidate = {
   family:    string | null;
   subFamily: string | null;
   dishType:  { name: string } | null;
-  ingredients: { ingredient: { name: string } }[];
+  ingredients: { ingredient: { name: string; allergenGroups?: string[] } }[];
 };
 
 // A dish's "sameness" signature: its sorted, non-staple ingredient names. Two
@@ -302,7 +302,7 @@ export async function buildMealPlanMenus(
     id: true, protein: true, calories: true, carbs: true, fiber: true, fat: true,
     family: true, subFamily: true,
     dishType:    { select: { name: true } },
-    ingredients: { select: { ingredient: { select: { name: true } } } },
+    ingredients: { select: { ingredient: { select: { name: true, allergenGroups: true } } } },
   };
 
   // Product decision 2026-07-20: no "snack" meal type in the DB means NO calorie
@@ -324,7 +324,7 @@ export async function buildMealPlanMenus(
   const recipePool = !hasBans
     ? recipePoolRaw
     : recipePoolRaw.filter(
-        (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed
+        (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers, ingredientGroupsOf(r.ingredients)).passed
       );
 
   // Basket mode (cache-first): selection is limited to library dishes the
@@ -398,7 +398,7 @@ export async function buildMealPlanMenus(
         const safe = !hasBans
           ? created
           : created.filter(
-              (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed
+              (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers, ingredientGroupsOf(r.ingredients)).passed
             );
         selectionPool.push(...safe);
       }
@@ -762,7 +762,7 @@ export interface AlternativeRecipe {
   fat: number | null;
   mealType: unknown;
   dishType: unknown;
-  ingredients: { ingredient: { name: string } }[];
+  ingredients: { ingredient: { name: string; allergenGroups?: string[] } }[];
 }
 
 export interface AlternativesDb {
@@ -808,7 +808,7 @@ export async function findAlternatives(
     !hasBans
       ? candidates
       : candidates.filter(
-          (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers).passed
+          (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers, ingredientGroupsOf(r.ingredients)).passed
         )
   ).slice(0, 3);
 }
@@ -829,7 +829,7 @@ export interface SwapCandidateRecipe {
   family: string | null;
   subFamily: string | null;
   dishType: { name: string } | null;
-  ingredients: { ingredient: { name: string } }[];
+  ingredients: { ingredient: { name: string; allergenGroups?: string[] } }[];
 }
 
 export interface SameDayMenuLike {
@@ -868,7 +868,8 @@ export function validateSwapCandidate(
   const matchers = buildDietMatchers({ allergyNames, exactBanned });
   const { passed } = evaluateDishAgainstProfile(
     recipe.ingredients.map((ri) => ri.ingredient.name),
-    matchers
+    matchers,
+    ingredientGroupsOf(recipe.ingredients)
   );
   if (!passed) {
     return { ok: false, code: "BANNED_INGREDIENTS", message: "Recipe contains ingredients you cannot eat" };

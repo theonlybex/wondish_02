@@ -27,6 +27,30 @@ export interface PatientDietGraph {
 export interface DerivedBans {
   allergyNames: string[];
   exactBanned: ExactBan[];
+  // Wondish 03 Big-9 group codes implied by the patient's FoodAllergy rows.
+  // Optional so hand-built callers/tests that predate groups keep compiling.
+  allergyGroupCodes?: string[];
+}
+
+// FoodAllergy.name → Wondish 03 "Baseline & Restriction Rules" allergen group
+// codes. Codes verified against the sheet's DISTINCT allergen_group_code
+// (2026-09-11): BIG9-COW-MILK, BIG9-CRUSTACEAN, BIG9-EGG, BIG9-FISH,
+// BIG9-PEANUT, BIG9-SESAME, BIG9-SOY, BIG9-TREE-NUT, BIG9-WHEAT. Keys are
+// matched case-insensitively after trimming (the DB once held "Wheat ").
+export const ALLERGY_GROUPS: Record<string, string[]> = {
+  milk: ["BIG9-COW-MILK"],
+  eggs: ["BIG9-EGG"],
+  peanuts: ["BIG9-PEANUT"],
+  "tree nuts": ["BIG9-TREE-NUT"],
+  soy: ["BIG9-SOY"],
+  fish: ["BIG9-FISH"],
+  shellfish: ["BIG9-CRUSTACEAN"],
+  sesame: ["BIG9-SESAME"],
+  wheat: ["BIG9-WHEAT"],
+};
+
+export function allergyGroupCodesFor(allergyName: string): string[] {
+  return ALLERGY_GROUPS[allergyName.trim().toLowerCase()] ?? [];
 }
 
 // Allergy matchers are RegExp instances carrying the original (lowercased,
@@ -38,6 +62,10 @@ export type AllergyMatcher = RegExp & { readonly term: string };
 export interface DietMatchers {
   allergyMatchers: AllergyMatcher[];
   exactBanned: ExactBan[];
+  // Big-9 group codes the patient must not eat. Checked against each
+  // ingredient's `allergenGroups` (Ingredient.allergenGroups, from Wondish 01/03)
+  // when the caller supplies them — additive to the name matching above.
+  bannedGroups: Set<string>;
 }
 
 export interface Violation {
@@ -73,7 +101,11 @@ export function derivePatientBans(patient: PatientDietGraph): DerivedBans {
     ),
   ];
 
-  return { allergyNames, exactBanned };
+  const allergyGroupCodes = Array.from(
+    new Set(patient.foodAllergies.flatMap((a) => allergyGroupCodesFor(a.food.name)))
+  );
+
+  return { allergyNames, exactBanned, allergyGroupCodes };
 }
 
 // ── buildDietMatchers ───────────────────────────────────────────────────────
@@ -151,7 +183,7 @@ function stemUnionBody(lowered: string): string {
 // surfaces block the identical term set.
 export const exactBanPattern = (name: string) => boundaryPattern(stemUnionBody(name.trim().toLowerCase()));
 
-export function buildDietMatchers({ allergyNames, exactBanned }: DerivedBans): DietMatchers {
+export function buildDietMatchers({ allergyNames, exactBanned, allergyGroupCodes = [] }: DerivedBans): DietMatchers {
   const allergyMatchers = Array.from(new Set(allergyNames.flatMap(expandBanName)))
     .map((lowered) => ({ lowered, stem: singularize(lowered) }))
     .filter(({ stem }) => stem.length >= 2)
@@ -174,18 +206,24 @@ export function buildDietMatchers({ allergyNames, exactBanned }: DerivedBans): D
     dedupedExactBanned.push({ name: lowered, source });
   }
 
-  return { allergyMatchers, exactBanned: dedupedExactBanned };
+  return { allergyMatchers, exactBanned: dedupedExactBanned, bannedGroups: new Set(allergyGroupCodes) };
 }
 
 // ── evaluateDishAgainstProfile ──────────────────────────────────────────────
 //
 // New capability: runs every ingredient against every matcher and returns
 // ALL violations (not first-hit).
+//
+// `ingredientGroups[i]` are the Big-9 group codes of `ingredientNames[i]`
+// (Ingredient.allergenGroups, from Wondish 01/03). Omit it and the check is
+// name-only, exactly as before — Clara-generated dishes carry no groups.
 export function evaluateDishAgainstProfile(
   ingredientNames: string[],
-  matchers: DietMatchers
+  matchers: DietMatchers,
+  ingredientGroups?: readonly (readonly string[])[]
 ): { passed: boolean; violations: Violation[] } {
   const violations: Violation[] = [];
+  const bannedGroups = matchers.bannedGroups ?? new Set<string>();
 
   // Word-boundary phrase matching (was whole-string equality): free-text
   // ingredient names rarely equal the stored ban verbatim — a "sugar"
@@ -196,7 +234,7 @@ export function evaluateDishAgainstProfile(
     re: exactBanPattern(b.name),
   }));
 
-  for (const ingredient of ingredientNames) {
+  ingredientNames.forEach((ingredient, i) => {
     for (const matcher of matchers.allergyMatchers) {
       if (matcher.test(ingredient)) {
         violations.push({ ingredient, term: matcher.term, source: "allergy" });
@@ -208,7 +246,15 @@ export function evaluateDishAgainstProfile(
         violations.push({ ingredient, term: banned.name, source: banned.source });
       }
     }
-  }
+
+    if (bannedGroups.size > 0) {
+      for (const group of ingredientGroups?.[i] ?? []) {
+        if (bannedGroups.has(group)) {
+          violations.push({ ingredient, term: group, source: "allergy" });
+        }
+      }
+    }
+  });
 
   return { passed: violations.length === 0, violations };
 }
@@ -234,3 +280,12 @@ export const PATIENT_DIET_INCLUDE = {
   foodPreferences:  { include: { food: { include: { bannedIngredients: true } } } },
   motivations:      { include: { motivation: { include: { bannedIngredients: true } } } },
 } as const;
+
+// Convenience for Prisma rows: `ingredients[i].ingredient.allergenGroups` →
+// the `ingredientGroups` argument of evaluateDishAgainstProfile. Rows selected
+// without `allergenGroups` yield `[]` per ingredient (name-only check).
+export function ingredientGroupsOf(
+  ingredients: readonly { ingredient: { allergenGroups?: readonly string[] | null } }[]
+): string[][] {
+  return ingredients.map((ri) => [...(ri.ingredient.allergenGroups ?? [])]);
+}

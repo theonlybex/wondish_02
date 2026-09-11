@@ -6,6 +6,7 @@ import {
   derivePatientBans,
   buildDietMatchers,
   evaluateDishAgainstProfile,
+  ingredientGroupsOf,
   PATIENT_DIET_INCLUDE,
 } from "@/lib/diet-match";
 import {
@@ -61,7 +62,7 @@ export async function GET() {
       calories: true,
       tags: true,
       mealType: { select: { name: true } },
-      ingredients: { select: { ingredientId: true, ingredient: { select: { name: true } } } },
+      ingredients: { select: { ingredientId: true, ingredient: { select: { name: true, allergenGroups: true } } } },
     },
   });
 
@@ -79,7 +80,7 @@ export async function GET() {
 
   for (const r of recipes) {
     const names = r.ingredients.map((ri) => ri.ingredient.name);
-    if (hasBans && !evaluateDishAgainstProfile(names, matchers).passed) continue;
+    if (hasBans && !evaluateDishAgainstProfile(names, matchers, ingredientGroupsOf(r.ingredients)).passed) continue;
 
     const missing = r.ingredients
       .filter((ri) => !onHand.has(ri.ingredientId))
