@@ -6,6 +6,18 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 export type Sex = "male" | "female";
+// "unspecified" = the user chose "Prefer not to say": every sex-dependent
+// formula is run for both sexes and averaged (see computeAllMetrics). Before
+// 2026-09-11 that choice produced a 2000-kcal fallback plan and a 422 on the
+// caloric-profile card.
+export type SexInput = Sex | "unspecified";
+
+/** Like resolveSex, but a non-empty answer that is neither male nor female is "unspecified". */
+export function resolveSexForCalories(sexAtBirth: string | null | undefined, genderName?: string | null): SexInput | null {
+  const s = resolveSex(sexAtBirth, genderName);
+  if (s) return s;
+  return sexAtBirth && sexAtBirth.trim() ? "unspecified" : null;
+}
 
 // Canonical sex resolution for every caloric consumer (audit Task 16):
 // sexAtBirth wins; a binary gender name is the fallback. Previously only
@@ -359,7 +371,7 @@ export function maxDailyDeficit(cbmi: number): number {
 // ─── Full Caloric Profile ────────────────────────────────────────────────────
 
 export interface CaloricProfileInput {
-  sex: Sex;
+  sex: SexInput;
   birthday: Date;
   heightValue: number;
   heightUnit: "cm" | "in";
@@ -372,7 +384,7 @@ export interface CaloricProfileInput {
 
 export interface CaloricProfile {
   // Inputs (normalized)
-  sex: Sex;
+  sex: SexInput;
   age: number;
   heightCm: number;
   heightM: number;
@@ -422,6 +434,7 @@ export interface CaloricProfile {
  * CaloricProfile.
  */
 export function computeAllMetrics(input: CaloricProfileInput, now: Date = new Date()): CaloricProfile {
+  if (input.sex === "unspecified") return neutralProfile(input, now);
   const { sex, birthday, heightValue, heightUnit, cbwValue, cbwUnit, activityLevel } = input;
 
   // 1. Age — computed against the injectable clock so callers (and tests) can
@@ -632,8 +645,28 @@ function clampTowardGoal(w: number, startKg: number, goalKg: number): number {
  * simulated weight moves, mirroring how the real plan is rebuilt at the new
  * weight once it drifts.
  */
-export function tdeeSlopePerKg(sex: Sex, activityMultiplier: number): number {
-  return BMR_WEIGHT_COEF[sex] * activityMultiplier;
+export function tdeeSlopePerKg(sex: SexInput, activityMultiplier: number): number {
+  const coef = sex === "unspecified" ? (BMR_WEIGHT_COEF.male + BMR_WEIGHT_COEF.female) / 2 : BMR_WEIGHT_COEF[sex];
+  return coef * activityMultiplier;
+}
+
+/**
+ * "Prefer not to say": run the full profile as male and as female and average
+ * every numeric field (BMI-derived classes are identical for both). Null
+ * fields stay null; the resolved sex is reported as "unspecified".
+ */
+function neutralProfile(input: CaloricProfileInput, now: Date): CaloricProfile {
+  const m = computeAllMetrics({ ...input, sex: "male" }, now);
+  const f = computeAllMetrics({ ...input, sex: "female" }, now);
+  const out = { ...m } as Record<string, unknown>;
+  for (const key of Object.keys(m) as (keyof CaloricProfile)[]) {
+    const a = m[key];
+    const b = f[key];
+    if (typeof a === "number" && typeof b === "number") out[key] = (a + b) / 2;
+    else if (a === null || b === null) out[key] = null;
+  }
+  out.sex = "unspecified";
+  return out as unknown as CaloricProfile;
 }
 
 // Simulation anchor for the glide-path walks below. TDEE and the severity cap

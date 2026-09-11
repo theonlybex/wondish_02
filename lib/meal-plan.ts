@@ -14,6 +14,7 @@ import {
   type MacroPercentages,
   type PlanDirection,
   resolveSex,
+  resolveSexForCalories,
 } from "@/lib/caloric-engine";
 import { macroDeviation } from "@/lib/macros";
 import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
@@ -223,7 +224,7 @@ export async function buildMealPlanMenus(
   let maxDeficit: number = 0; // severity-scaled per-day deficit cap (see maxDailyDeficit)
 
   if (patient.weight && patient.height && patient.birthday && patient.physicalActivity?.level) {
-    const sex = resolveSex(patient.sexAtBirth, patient.gender?.name);
+    const sex = resolveSexForCalories(patient.sexAtBirth, patient.gender?.name);
     if (sex) {
       const profileInput: CaloricProfileInput = {
         sex,
@@ -697,7 +698,7 @@ export async function getPlanDayCalories(patientId: string, localDate: string): 
   if (!patient.mealPlanStartDate || !patient.weight || !patient.height || !patient.birthday || !patient.physicalActivity?.level) {
     return null;
   }
-  const sex = resolveSex(patient.sexAtBirth, patient.gender?.name);
+  const sex = resolveSexForCalories(patient.sexAtBirth, patient.gender?.name);
   if (!sex) return null;
 
   const profileInput: CaloricProfileInput = {

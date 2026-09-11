@@ -10,6 +10,7 @@ import {
   type Sex,
   type CaloricProfileInput,
   type CaloricProfile,
+  resolveSexForCalories,
 } from "@/lib/caloric-engine";
 
 function fmtDate(d: Date): string {
@@ -109,8 +110,7 @@ export async function GET(req: NextRequest) {
   // Compute caloric profile if possible
   let caloricProfile: CaloricProfile | null = null;
   if (patient.weight && patient.height && patient.birthday && patient.physicalActivity?.level) {
-    const s = (patient.sexAtBirth ?? "").toLowerCase();
-    const sex: Sex | null = s === "male" ? "male" : s === "female" ? "female" : null;
+    const sex = resolveSexForCalories(patient.sexAtBirth);
     if (sex) {
       const input: CaloricProfileInput = {
         sex,

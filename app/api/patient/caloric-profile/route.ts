@@ -2,8 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import {
-  computeAllMetrics, computeWeeklyTarget, convertWeight, resolveSex,
-  type Sex, type CaloricProfileInput,
+  computeAllMetrics, computeWeeklyTarget, convertWeight, resolveSex, resolveSexForCalories,
+  type Sex, type SexInput, type CaloricProfileInput,
 } from "@/lib/caloric-engine";
 
 /**
@@ -39,7 +39,8 @@ export async function GET() {
   // Canonical resolution with the gender-name fallback (audit Task 16) —
   // this route previously 422'd for gender-only patients while the plan
   // builder correctly sexed the same profile.
-  const sex: Sex | null = resolveSex(patient.sexAtBirth, patient.gender?.name);
+  // "Prefer not to say" → neutral profile (male/female average), never a 422.
+  const sex: SexInput | null = resolveSexForCalories(patient.sexAtBirth, patient.gender?.name);
 
   if (!sex) {
     return NextResponse.json(

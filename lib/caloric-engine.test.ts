@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  resolveSexForCalories,
   computeAllMetrics,
   computeWeeklyTarget,
   capWindowToDayBudget,
@@ -961,4 +962,22 @@ test("resolveSex: parity table — sexAtBirth, gender fallback, both, neither", 
   assert.equal(resolveSex(null, null), null);
   assert.equal(resolveSex(undefined, "Non-binary"), null);
   assert.equal(resolveSex("", "male"), "male");
+});
+
+test("computeAllMetrics: 'unspecified' sex averages the male and female profiles", () => {
+  const base = { birthday: new Date(1995, 1, 2), heightValue: 175, heightUnit: "cm" as const, cbwValue: 150, cbwUnit: "lbs" as const, activityLevel: 3, utbwValue: null, utbwUnit: null };
+  const now = new Date(2026, 8, 11);
+  const m = computeAllMetrics({ ...base, sex: "male" }, now);
+  const f = computeAllMetrics({ ...base, sex: "female" }, now);
+  const n = computeAllMetrics({ ...base, sex: "unspecified" }, now);
+  assert.equal(n.sex, "unspecified");
+  assert.equal(n.bmrCBW, (m.bmrCBW + f.bmrCBW) / 2);
+  assert.equal(n.tdeeCBW, (m.tdeeCBW + f.tdeeCBW) / 2);
+  assert.equal(n.cbmi, m.cbmi);
+  assert.equal(n.cbmiClass, m.cbmiClass);
+  assert.equal(n.utbwKg, null);
+  assert.ok(n.dailyCalories > f.dailyCalories && n.dailyCalories < m.dailyCalories);
+  assert.equal(resolveSexForCalories("Prefer not to say"), "unspecified");
+  assert.equal(resolveSexForCalories("", null), null);
+  assert.equal(resolveSexForCalories(null, "Female"), "female");
 });

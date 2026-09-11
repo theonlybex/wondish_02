@@ -9,6 +9,7 @@ import {
   computeAllMetrics,
   feetInchesToCm,
   type Sex,
+  type SexInput,
   type CaloricProfile,
   type CaloricProfileInput,
 } from "@/lib/caloric-engine";
@@ -187,8 +188,10 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
   };
 
   const liveProfile: CaloricProfile | null = useMemo(() => {
-    const sex = sexAtBirth.toLowerCase() as Sex;
-    if (sex !== "male" && sex !== "female") return null;
+    // "Prefer not to say" still gets a summary: the engine averages both formulas.
+    const lowered = sexAtBirth.toLowerCase();
+    const sex: SexInput | null = lowered === "male" || lowered === "female" ? (lowered as Sex) : sexAtBirth ? "unspecified" : null;
+    if (!sex) return null;
     if (!birthday) return null;
     const h = heightCmValue();
     const w = weightLbs();
