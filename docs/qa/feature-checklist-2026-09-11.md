@@ -145,6 +145,23 @@ Verification pass 2 (after the six added and five backfilled conditions):
 | Weekly generation limit message on the trials page | 🔧 | — | Reload wiped the 429 message; fixed |
 | PCOS standing bans vs its trial | 🔧 | — | Standing bans swallowed the trial's foods; refined grains and juices now belong to the trial only |
 
+Verification pass 3 (the paths pass 2 had not exercised):
+
+| Feature | Desktop | Mobile | Notes |
+|---|---|---|---|
+| Stop trial from the UI | ✅ | — | History shows "Stopped", plan flagged stale |
+| Start a trial with the 7-day baseline | ✅ | — | Baseline day 1 of 7, "allowed right now", start date = today + 7 |
+| Phase flip baseline → elimination flags the plan stale on the next read | ✅ | — | |
+| Group-based trial (IBS-M fructans → BIG9-WHEAT + onion/garlic) enforced in generation | ✅ | — | Regenerated week: 0 fructans terms, 0 wheat-group ingredients |
+| Evaluation with real symptom data | ✅ | — | Seeded 3 baseline days (2.67) vs 3 elimination days (0.67) → "improved 75% — the protocol suggests testing the trigger" |
+| Classify as Tolerated | ✅ | — | Scores frozen on the history row, category eligible again, plan stale |
+| Journey symptom trend values | ✅ | — | `/api/journal/symptoms` returns per-day means; chart shows the 30-day window |
+| Onboarding health card with all 41 conditions in groups | ✅ | — | Throwaway account walked to step 9, then deleted |
+| Trials nav label in ES / RU | ✅ | — | "Pruebas" / "Пробы" |
+| Admin: foods-to-avoid banned-ingredient editor (page + API add/delete) | ✅ | — | Temporary SUPER role on the QA account, revoked after; test row removed |
+| Full journal form (`components/journal/JournalForm.tsx`) with symptoms section | ⏭ | — | Component is not rendered by any page (dead code); quick log and day view are the live surfaces |
+| Objective/lab items hidden from the symptoms step | ✅ | — | API returns SYMPTOM items only |
+
 ## Not exercised
 
 - **Admin** (`/admin/*`: users, recipes, parameters, banned ingredients, coupons, promo codes, restaurants, review queue, Clara gaps, prune): needs a SUPER-role account; the QA accounts are ordinary users.
