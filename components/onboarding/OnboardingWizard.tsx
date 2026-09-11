@@ -85,7 +85,8 @@ const HEALTH_GROUPS: { title: string; names: string[] }[] = [
 // Conditions that change the plan today (banned ingredients or macro
 // profile); everything else is recorded for Clara and future rules.
 const HEALTH_WITH_RULES = new Set([
-  "Type 2 Diabetes", "Hypertension", "Heart Disease", "High Cholesterol", "Kidney Disease stage 1-2", "Celiac Disease", "Thyroid Disorder",
+  "Type 2 Diabetes", "Prediabetes", "Hypertension", "Heart Disease", "High Cholesterol", "Kidney Disease stage 1-2", "Celiac Disease", "Thyroid Disorder",
+  "Fatty Liver Disease (NAFLD)", "Acne",
 ]);
 
 export default function OnboardingWizard({ refData, accountData }: OnboardingWizardProps) {
