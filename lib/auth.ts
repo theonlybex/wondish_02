@@ -62,6 +62,24 @@ export function accountHasActivePremium(
   return subs.some(hasActivePremium);
 }
 
+// The one row that best describes an account's billing state, shared by
+// /api/me (iOS) and the billing page so they never disagree. A live paid
+// row wins over a live coupon grant (the user must see card/invoices/cancel,
+// not "Premium · coupon"); any live row wins over dead ones; the Stripe row
+// (lapsed / past-due state) beats an expired coupon row; else whatever is
+// first. Prisma returns rows in unspecified order — never rely on rows[0].
+export function primarySubscriptionRow<
+  T extends { source: string; plan: string; status: string; stripeCurrentPeriodEnd?: Date | null },
+>(rows: T[]): T | null {
+  return (
+    rows.find((r) => (r.source === "STRIPE" || r.source === "APPLE") && hasActivePremium(r)) ??
+    rows.find(hasActivePremium) ??
+    rows.find((r) => r.source === "STRIPE") ??
+    rows[0] ??
+    null
+  );
+}
+
 type ClaimTarget = { id: string; clerkId: string | null; email: string } | null;
 
 export type AccountClaimDecision =

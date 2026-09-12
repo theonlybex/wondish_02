@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { accountHasActivePremium, hasActivePremium, resolveAccountClaim } from "./auth";
+import { accountHasActivePremium, hasActivePremium, primarySubscriptionRow, resolveAccountClaim } from "./auth";
 
 // Extracted verbatim from the inline check formerly at
 // app/(dashboard)/layout.tsx:11-14 — plan === "PREMIUM" AND status in
@@ -169,4 +169,33 @@ test("audit-T10: account with STRIPE/FREE + COUPON/PREMIUM-ACTIVE rows is premiu
     accountHasActivePremium([{ plan: "FREE", status: "ACTIVE" }]),
     false
   );
+});
+
+// ─── 2026-09-12 primarySubscriptionRow ───────────────────────────────────────
+
+const FUTURE = new Date("2100-01-01T00:00:00.000Z");
+const PAST = new Date("2020-01-01T00:00:00.000Z");
+const stripeFree = { source: "STRIPE", plan: "FREE", status: "ACTIVE", stripeCurrentPeriodEnd: null };
+const stripeLive = { source: "STRIPE", plan: "PREMIUM", status: "ACTIVE", stripeCurrentPeriodEnd: FUTURE };
+const stripeLapsed = { source: "STRIPE", plan: "PREMIUM", status: "CANCELED", stripeCurrentPeriodEnd: PAST };
+const couponLive = { source: "COUPON", plan: "PREMIUM", status: "ACTIVE", stripeCurrentPeriodEnd: FUTURE };
+const couponDead = { source: "COUPON", plan: "PREMIUM", status: "ACTIVE", stripeCurrentPeriodEnd: PAST };
+
+test("primarySubscriptionRow: live paid row beats a live coupon row regardless of order", () => {
+  assert.equal(primarySubscriptionRow([couponLive, stripeLive]), stripeLive);
+  assert.equal(primarySubscriptionRow([stripeLive, couponLive]), stripeLive);
+});
+
+test("primarySubscriptionRow: live coupon beats a free Stripe row", () => {
+  assert.equal(primarySubscriptionRow([stripeFree, couponLive]), couponLive);
+});
+
+test("primarySubscriptionRow: dead coupon never wins over the Stripe row", () => {
+  assert.equal(primarySubscriptionRow([couponDead, stripeFree]), stripeFree);
+  assert.equal(primarySubscriptionRow([couponDead, stripeLapsed]), stripeLapsed);
+});
+
+test("primarySubscriptionRow: falls back to the first row, then null", () => {
+  assert.equal(primarySubscriptionRow([couponDead]), couponDead);
+  assert.equal(primarySubscriptionRow([]), null);
 });

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { hasActivePremium } from "@/lib/auth";
+import { primarySubscriptionRow } from "@/lib/auth";
 import { planByKey, type PlanKey } from "./plans";
 import { buildSubscriptionView } from "./subscription-view";
 import { getStripeSubscriptionSummary, resolvePlanPrice } from "@/lib/stripe";
@@ -22,9 +22,9 @@ export async function loadSubscriptionView(clerkId: string) {
   const account = await prisma.account.findUnique({ where: { clerkId }, include: { subscriptions: true } });
   if (!account) return null;
   const rows = account.subscriptions;
-  // Prefer the row that currently grants premium; otherwise the Stripe row
-  // (so PAST_DUE / cancelled state still shows), otherwise anything.
-  const row = rows.find(hasActivePremium) ?? rows.find((s) => s.source === "STRIPE") ?? rows[0] ?? null;
+  // One rule with /api/me (lib/auth.ts primarySubscriptionRow): live paid
+  // row → any live row → Stripe row (PAST_DUE / cancelled still shows) → any.
+  const row = primarySubscriptionRow(rows);
   const summary =
     row?.source === "STRIPE" && row.stripeCustomerId && row.stripeSubscriptionId
       ? await getStripeSubscriptionSummary(row.stripeCustomerId, row.stripeSubscriptionId).catch(() => null)

@@ -124,3 +124,44 @@ test("currentPeriodEnd coalesces stripeCurrentPeriodEnd then appleExpiresAt", ()
   );
   assert.equal(dto.subscription?.currentPeriodEnd, "2100-06-15T00:00:00.000Z");
 });
+
+// ─── 2026-09-12 beta premium coupons ────────────────────────────────────────
+
+test("expired COUPON grant listed first, free STRIPE row second: STRIPE row is reported, isPremium false", () => {
+  const me = serializeMe(
+    account([
+      sub({ source: "COUPON", stripeCurrentPeriodEnd: new Date("2020-01-01T00:00:00.000Z") }),
+      sub({ source: "STRIPE", plan: "FREE", stripeCurrentPeriodEnd: null }),
+    ]),
+    null
+  );
+  assert.equal(me.isPremium, false);
+  assert.equal(me.subscription?.source, "STRIPE");
+  assert.equal(me.subscription?.plan, "FREE");
+});
+
+test("live COUPON grant is the reported subscription with its end date", () => {
+  const until = new Date("2099-12-31T23:59:59.999Z");
+  const me = serializeMe(
+    account([
+      sub({ source: "STRIPE", plan: "FREE", stripeCurrentPeriodEnd: null }),
+      sub({ source: "COUPON", stripeCurrentPeriodEnd: until }),
+    ]),
+    null
+  );
+  assert.equal(me.isPremium, true);
+  assert.equal(me.subscription?.source, "COUPON");
+  assert.equal(me.subscription?.currentPeriodEnd, until.toISOString());
+});
+
+test("live COUPON grant plus live STRIPE subscription: the paid row is reported", () => {
+  const me = serializeMe(
+    account([
+      sub({ source: "COUPON", stripeCurrentPeriodEnd: new Date("2099-12-31T23:59:59.999Z") }),
+      sub({ source: "STRIPE" }),
+    ]),
+    null
+  );
+  assert.equal(me.isPremium, true);
+  assert.equal(me.subscription?.source, "STRIPE");
+});

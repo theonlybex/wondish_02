@@ -1,4 +1,4 @@
-import { hasActivePremium, accountHasActivePremium } from "@/lib/auth";
+import { accountHasActivePremium, primarySubscriptionRow } from "@/lib/auth";
 import { isProfileComplete, type ProfileCompletionInput } from "@/lib/onboarding";
 
 export type MeSubscriptionDTO = {
@@ -48,7 +48,10 @@ export function serializeMe(
   patient: ProfileCompletionInput | null
 ): MeDTO {
   const subs = account.subscriptions ?? [];
-  const active = subs.find(hasActivePremium) ?? subs[0] ?? null;
+  // Shared with lib/billing/load-view.ts so iOS and the billing page always
+  // describe the same row (paid beats coupon; live beats dead; Stripe beats
+  // an expired coupon row).
+  const active = primarySubscriptionRow(subs);
   return {
     id: account.id,
     email: account.email,

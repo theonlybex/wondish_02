@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
-import { accountHasActivePremium } from "@/lib/auth";
+import { hasPaidPremium } from "@/lib/coupon";
 import PricingSection from "@/components/PricingSection";
 
 export const metadata: Metadata = {
@@ -47,9 +47,10 @@ export default async function PricingPage({
       where: { clerkId: userId },
       include: { subscriptions: true, roles: { include: { role: true } } },
     });
-    // Active premium users see their membership page instead
+    // Paid premium (and admins) manage their plan on /membership. Coupon-only
+    // premium may still buy: the coupon ends on a date, a subscription doesn't.
     const isAdmin = account?.roles?.some((r: { role: { name: string } }) => r.role.name === "SUPER") ?? false;
-    if (isAdmin || accountHasActivePremium(account?.subscriptions ?? [])) {
+    if (isAdmin || hasPaidPremium(account?.subscriptions ?? [])) {
       redirect("/membership");
     }
     isLoggedIn = !!account;

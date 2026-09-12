@@ -103,6 +103,21 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
             {view.card ? ` · ${view.card.brand.toUpperCase()} •••• ${view.card.last4}` : ""}
           </p>
         )}
+        {!isStripe && view.periodEnd && (
+          <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.75)" }}>
+            Access until {fmtDate(view.periodEnd)}
+          </p>
+        )}
+        {view.source === "COUPON" && view.isPremium && (
+          <div className="mt-5">
+            <Link
+              href="/pricing"
+              className="min-h-[44px] px-5 rounded-xl bg-white text-[#5F1C35] font-semibold text-sm inline-flex items-center"
+            >
+              Subscribe to keep Premium{view.periodEnd ? ` after ${fmtDate(view.periodEnd)}` : ""} →
+            </Link>
+          </div>
+        )}
         {isStripe && (
           <div className="flex flex-wrap gap-2 mt-5">
             {lapsed ? (
