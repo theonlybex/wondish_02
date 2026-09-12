@@ -39,6 +39,18 @@ Confidence is marked per item: **[verified]** checked against code this session 
       `20260911120000_symptom_journal_trials` and the data scripts
       (`preference-rules-2026-09-11.ts`, `backfill-conditions-2026-09-11.ts`)
       are already applied to the shared DB. Decision pending: merge / PR / keep.
+- [ ] **`feat/beta-premium-coupons`** (stacked on `feat/workbooks-tier2`,
+      2026-09-12) — PREMIUM DB coupons restored for the beta: quantity
+      (`maxUses`), redeem-by (`expiresAt`), access-until (`accessUntil` →
+      COUPON row `stripeCurrentPeriodEnd`), "Extend access", "Premium ends
+      soon" banner, paid subscribers refused, coupon holders can still buy,
+      one `primarySubscriptionRow` rule for `/api/me` and the billing page.
+      Migration `20260912090000_coupon_access_until` applied to the shared DB.
+      Runbook: `docs/billing/coupons.md`. **Manual before beta (user's call,
+      decided yes on 2026-09-12):** set `PREMIUM_GATES=on` in the beta
+      environment, create the cohort codes at `/admin/coupons`. iOS follow-up:
+      SubscriptionCard says "Renews <date>" for COUPON source; should read
+      "Access until".
 
 ---
 
