@@ -45,6 +45,8 @@ Confidence is marked per item: **[verified]** checked against code this session 
       COUPON row `stripeCurrentPeriodEnd`), "Extend access", "Premium ends
       soon" banner, paid subscribers refused, coupon holders can still buy,
       one `primarySubscriptionRow` rule for `/api/me` and the billing page.
+      Admins have Premium by default via an `ADMIN`-source row written by
+      `grantSuper()` (`lib/admin-grant.ts`); backfilled for both admins.
       Migration `20260912090000_coupon_access_until` applied to the shared DB.
       Runbook: `docs/billing/coupons.md`. **Manual before beta (user's call,
       decided yes on 2026-09-12):** set `PREMIUM_GATES=on` in the beta

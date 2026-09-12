@@ -5,7 +5,7 @@ Two kinds of code exist. Both are created at `/admin/coupons` by a SUPER user.
 | Kind | What it grants | Where it lives | Use for |
 |---|---|---|---|
 | **Premium coupon** (DB, type `PREMIUM`) | Premium on the account's `COUPON`-source `Subscription` row until **Access until** | Postgres `Coupon` | Beta testers, gifts, partners |
-| **Admin coupon** (DB, type `ADMIN`) | The SUPER role, permanently | Postgres `Coupon` | Team members only |
+| **Admin coupon** (DB, type `ADMIN`) | The SUPER role, permanently, plus Premium with no end (an `ADMIN`-source `Subscription` row) | Postgres `Coupon` | Team members only |
 | Stripe promo code | A discount on paid checkout | Stripe | Marketing discounts |
 
 ## Fields on a premium coupon
@@ -28,6 +28,14 @@ Two kinds of code exist. Both are created at `/admin/coupons` by a SUPER user.
 - In the last 7 days of a grant the dashboard shows a "Your Premium access ends on <date>" banner (only when gates are on). There is no email. After the date the user sees the Premium gate on the next page load; nothing is deleted.
 - Ten wrong codes in an hour lock the redeem box for the rest of the hour.
 - iOS: the subscription card says "Managed on the web" for a coupon grant and, for now, "Renews <date>" instead of "Access until <date>" (cosmetic, tracked as an iOS follow-up).
+
+## Admins have Premium by default
+
+Granting SUPER (an admin coupon, or `npx tsx scripts/make-admin.ts <email>`) also upserts an
+`ADMIN`-source subscription row: `PREMIUM / ACTIVE`, no end date. That is what makes admins premium
+everywhere, including `/api/me` for iOS and the billing page ("Premium · admin"), without per-route
+bypasses. `scripts/make-admin.ts --backfill` ensures the row for every existing SUPER account (run
+2026-09-12 for the two admins). `revokeSuper()` in `lib/admin-grant.ts` removes both the role and the row.
 
 ## Turning gates on for the beta
 

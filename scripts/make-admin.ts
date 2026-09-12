@@ -3,14 +3,28 @@
  *
  * Usage:
  *   npx tsx scripts/make-admin.ts your@email.com
+ *   npx tsx scripts/make-admin.ts --backfill   # ADMIN premium row for every existing SUPER
  */
 
 import { PrismaClient } from "@prisma/client";
+import { grantSuper } from "../lib/admin-grant";
 
 const prisma = new PrismaClient();
 
 async function main() {
   const email = process.argv[2];
+  if (email === "--backfill") {
+    const supers = await prisma.accountRole.findMany({
+      where: { role: { name: "SUPER" } },
+      select: { account: { select: { id: true, email: true } } },
+    });
+    for (const s of supers) {
+      await grantSuper(prisma, s.account.id);
+      console.log(`✓ ADMIN premium row ensured for ${s.account.email}`);
+    }
+    console.log(`${supers.length} admin account(s) backfilled`);
+    return;
+  }
   if (!email) {
     console.error("Usage: npx tsx scripts/make-admin.ts your@email.com");
     process.exit(1);
@@ -32,23 +46,12 @@ async function main() {
     process.exit(1);
   }
 
-  // Upsert the SUPER role
-  const role = await prisma.role.upsert({
-    where: { name: "SUPER" },
-    update: {},
-    create: { name: "SUPER" },
-  });
-
-  // Assign to account
-  await prisma.accountRole.upsert({
-    where: { accountId_roleId: { accountId: account.id, roleId: role.id } },
-    update: {},
-    create: { accountId: account.id, roleId: role.id },
-  });
+  // SUPER role + ADMIN-source premium row (admins have Premium by default).
+  await grantSuper(prisma, account.id);
 
   console.log(`✓ Admin access granted to ${email}`);
   console.log(`  Account ID: ${account.id}`);
-  console.log(`  Role: SUPER`);
+  console.log(`  Role: SUPER · Premium: ADMIN row (no end)`);
 }
 
 main()

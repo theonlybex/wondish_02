@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
+import { grantSuper } from "@/lib/admin-grant";
 import {
   classifyCoupon,
   couponCapWhere,
@@ -114,16 +115,8 @@ export async function POST(req: NextRequest) {
       if (capped.count === 0) throw new CouponUnavailableError();
 
       if (coupon.type === "ADMIN") {
-        const role = await tx.role.upsert({
-          where: { name: "SUPER" },
-          update: {},
-          create: { name: "SUPER" },
-        });
-        await tx.accountRole.upsert({
-          where: { accountId_roleId: { accountId: account.id, roleId: role.id } },
-          update: {},
-          create: { accountId: account.id, roleId: role.id },
-        });
+        // SUPER role + the ADMIN-source premium row (admins have Premium by default).
+        await grantSuper(tx, account.id);
         return null;
       }
 
