@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
@@ -18,6 +18,8 @@ export default function RedeemCodeBox({
   compact?: boolean;
 }) {
   const t = useTranslations("dashboardHeader");
+  // Two boxes can be on screen at once (Settings menu + Free card / gate).
+  const inputId = useId();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -69,11 +71,12 @@ export default function RedeemCodeBox({
   return (
     <div>
       <form onSubmit={handleSubmit} className="flex gap-2">
-        <label htmlFor="redeem-code" className="sr-only">
+        <label htmlFor={inputId} className="sr-only">
           {t("redeemCouponTitle")}
         </label>
         <input
-          id="redeem-code"
+          id={inputId}
+          data-testid="redeem-code"
           autoFocus={autoFocus}
           type="text"
           value={code}
