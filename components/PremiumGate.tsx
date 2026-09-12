@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PLANS, formatCents, perMonthCents } from "@/lib/billing/plans";
+import RedeemCodeBox from "@/components/billing/RedeemCodeBox";
 
 export default function PremiumGate() {
   const fromPerMonth = formatCents(perMonthCents(PLANS.find((p) => p.key === "sixmonth")!)).replace(/\.00$/, "");
@@ -47,6 +48,13 @@ export default function PremiumGate() {
           Upgrade to Premium — from {fromPerMonth}/mo
         </Link>
         <p className="text-xs text-[#848181] mt-3">Cancel anytime. Secure billing via Stripe.</p>
+
+        {/* Beta / gift codes: the place testers hit the wall is the place to enter one. */}
+        <div className="mt-8 text-left bg-[#F8F7FA] border border-[#EAE4CA] rounded-2xl p-5">
+          <p className="text-[#1E1A1A] font-semibold text-sm mb-1">Have an access code?</p>
+          <p className="text-[#848181] text-xs mb-3">Beta testers and invited members: enter your code to unlock Premium.</p>
+          <RedeemCodeBox />
+        </div>
       </div>
     </div>
   );

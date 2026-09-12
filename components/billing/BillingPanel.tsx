@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { SubscriptionView } from "@/lib/billing/subscription-view";
 import { priceLabelFor } from "@/lib/billing/plans";
+import RedeemCodeBox from "./RedeemCodeBox";
 
 function fmtDate(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "—";
@@ -66,6 +67,11 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
         <Link href="/pricing" className="inline-flex min-h-[44px] items-center px-6 rounded-2xl bg-primary text-white font-bold text-sm">
           See plans →
         </Link>
+        <div className="mt-6 pt-5 border-t border-[#F5F1DD]">
+          <p className="text-[#1E1A1A] font-semibold text-sm mb-1">Have an access code?</p>
+          <p className="text-xs mb-3" style={{ color: "#848181" }}>Beta testers and invited members: enter it here to unlock Premium.</p>
+          <RedeemCodeBox />
+        </div>
       </div>
     );
   }

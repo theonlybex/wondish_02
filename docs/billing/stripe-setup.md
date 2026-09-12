@@ -38,6 +38,44 @@ resume. Stripe is the source of truth for money; the app names prices by
    `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` (webhook idempotency),
    and `PREMIUM_GATES=on` when ready to charge (anything else = free mode).
 
+## Going live — what has to happen before anyone can pay real money
+
+State on 2026-09-12 (checked against the Stripe account with the test key): test-mode prices,
+promo code and webhook exist and the flow was exercised end to end on 2026-09-10; the **account
+itself is not activated** (`charges_enabled: false`, `details_submitted: false`), so live mode
+cannot charge anyone yet. Coupons for the beta do not depend on any of this.
+
+In order:
+
+1. **Activate the Stripe account** (dashboard → "Activate payments" / Settings → Business):
+   legal entity or sole-proprietor details, address, tax ID, the representative's identity,
+   bank account for payouts, statement descriptor (what appears on card statements, e.g.
+   `WONDISH`), support email and phone. Stripe reviews; `charges_enabled` flips to true when done.
+2. **Public business details** (Settings → Public details): business name, support email,
+   website. These print on receipts and the Customer Portal.
+3. **Branding** (Settings → Branding): logo, icon, brand colour — used by Checkout, the portal
+   and emails.
+4. **Live prices**: switch the dashboard to live mode, then run step 1 above with the **live**
+   secret key (`sk_live_…`) so `premium_monthly_20` and `premium_6mo_100` exist in live mode.
+5. **Live webhook**: create the live-mode endpoint at `https://<production host>/api/stripe/webhook`,
+   pinned to API version **2024-04-10**, with the event list from step 2 above. Copy its signing
+   secret. (The existing test endpoint at `wondish02.vercel.app` is on a newer version — fix that
+   too while there.)
+6. **Live promo codes**: promo codes are per mode. Recreate `SAVE20` (or whatever you want) at
+   `/admin/coupons` once production runs on live keys.
+7. **Customer Portal, emails, retries, payment methods, tax**: steps 3–7 above, in live mode
+   (settings are per mode as well). Apple Pay needs the production domain verified.
+8. **Vercel production env**: `STRIPE_SECRET_KEY` (live), `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+   (live), `STRIPE_WEBHOOK_SECRET` (the live endpoint's), `NEXT_PUBLIC_APP_URL`,
+   `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`. Redeploy.
+9. **Legal pages**: Terms and Privacy linked from the pricing page and Checkout (Stripe asks for
+   a refund/cancellation policy URL for card-network compliance). The app has a terms record
+   (`TermsAndConditions`); make sure the public URL is set in Settings → Public details.
+10. **Smoke test with a real card** on the smallest plan, then cancel/refund it from the dashboard.
+    Confirm the webhook delivered (Developers → Webhooks → endpoint → recent deliveries all 2xx)
+    and the account's billing page shows the subscription.
+11. Only then `PREMIUM_GATES=on` in production (already decided "on" for the beta environment).
+
 ## Local testing
 
 - Install the Stripe CLI (`brew install stripe/stripe-cli/stripe`), then

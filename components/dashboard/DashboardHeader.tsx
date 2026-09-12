@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
+import RedeemCodeBox from "@/components/billing/RedeemCodeBox";
 
 interface DashboardHeaderProps {
   email?: string | null;
@@ -17,72 +18,10 @@ interface DashboardHeaderProps {
 
 function CouponInput({ onClose }: { onClose: () => void }) {
   const t = useTranslations("dashboardHeader");
-  const [code, setCode] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
-  const router = useRouter();
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!code.trim()) return;
-    setLoading(true);
-    setResult(null);
-    try {
-      const res = await fetch("/api/coupon/redeem", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setResult({ success: false, message: data.error });
-      } else {
-        const until = data.accessUntil ? new Date(data.accessUntil).toLocaleDateString() : null;
-        const message =
-          data.type === "ADMIN"
-            ? t("adminActivated")
-            : until
-              ? t("premiumActivatedUntil", { date: until })
-              : t("premiumActivated");
-        setResult({ success: true, message });
-        setCode("");
-        // Layout is server-rendered; refresh re-reads the Subscription rows so
-        // PremiumGuard (when gates are on) lets the user through immediately.
-        setTimeout(() => { router.refresh(); onClose(); }, 1500);
-      }
-    } catch {
-      setResult({ success: false, message: t("error") });
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <div className="px-4 pb-4 pt-1">
       <p className="text-[#848181] text-xs mb-3">{t("enterCoupon")}</p>
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <input
-          autoFocus
-          type="text"
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          placeholder={t("enterCode")}
-          disabled={loading}
-          className="flex-1 min-w-0 bg-[#F8F7FA] border border-[#EAE4CA] rounded-lg px-3 py-2 text-xs font-mono text-[#1E1A1A] placeholder:text-[#C0C0C4] uppercase tracking-widest focus:outline-none focus:border-primary/50"
-        />
-        <button
-          type="submit"
-          disabled={loading || !code.trim()}
-          className="bg-primary hover:bg-primary-dark text-white px-3 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
-        >
-          {loading ? "…" : t("apply")}
-        </button>
-      </form>
-      {result && (
-        <p className={`mt-2 text-xs font-medium ${result.success ? "text-emerald-600" : "text-red-500"}`}>
-          {result.success ? "✓" : "✗"} {result.message}
-        </p>
-      )}
+      <RedeemCodeBox onDone={onClose} autoFocus compact />
     </div>
   );
 }
