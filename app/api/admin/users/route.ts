@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin";
+import { hasPaidPremium } from "@/lib/coupon";
+import { manualGrantUpsertArgs, summarizeEntitlement, userRank } from "@/lib/admin-users";
+
+const SUB_SELECT = {
+  source: true,
+  plan: true,
+  status: true,
+  stripeCurrentPeriodEnd: true,
+  cancelAtPeriodEnd: true,
+  stripeSubscriptionId: true,
+} as const;
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,20 +32,16 @@ export async function GET(req: NextRequest) {
         }
       : {};
 
-    // Prisma can't order a to-many relation by a nested scalar field (only by
-    // _count), so "plan desc" ordering — premium accounts first — has to move
-    // to app code. To preserve the exact prior order (and total/pagination),
-    // fetch every matching account pre-sorted by createdAt desc, then do a
-    // stable sort by the STRIPE-row plan (desc) before slicing the page. The
-    // STRIPE row is the pre-migration single subscription row, so this
-    // reproduces the old `orderBy subscription.plan desc, createdAt desc`
-    // exactly for every account today (all rows are still source=STRIPE).
+    // Premium can come from any source row (Stripe, Apple, coupon, ADMIN), so
+    // the list carries a derived entitlement summary instead of one raw row.
+    // Ordering by a derived value has to happen in app code: fetch every
+    // match (createdAt desc), rank admins → premium → free, then page.
     const [allMatching, total] = await Promise.all([
       prisma.account.findMany({
         where,
         orderBy: [{ createdAt: "desc" }],
         include: {
-          subscriptions: { where: { source: "STRIPE" }, select: { plan: true, status: true } },
+          subscriptions: { select: SUB_SELECT },
           roles: { include: { role: true } },
           company: { select: { name: true } },
           // Phase 6a §4D — which restaurants each account manages, so the
@@ -47,15 +54,13 @@ export async function GET(req: NextRequest) {
       prisma.account.count({ where }),
     ]);
 
-    const sorted = [...allMatching].sort((a, b) => {
-      const planA = a.subscriptions[0]?.plan ?? "FREE";
-      const planB = b.subscriptions[0]?.plan ?? "FREE";
-      if (planA === planB) return 0;
-      return planA > planB ? -1 : 1; // desc: "PREMIUM" > "FREE"
-    });
-    const items = sorted
-      .slice((page - 1) * limit, (page - 1) * limit + limit)
-      .map(({ subscriptions, ...rest }) => ({ ...rest, subscription: subscriptions[0] ?? null }));
+    const shaped = allMatching.map(({ subscriptions, ...rest }) => ({
+      ...rest,
+      isAdmin: rest.roles.some((r) => r.role.name === "SUPER"),
+      subscription: summarizeEntitlement(subscriptions),
+    }));
+    const sorted = [...shaped].sort((a, b) => userRank(a) - userRank(b));
+    const items = sorted.slice((page - 1) * limit, (page - 1) * limit + limit);
 
     return NextResponse.json({ items, total, page, limit, currentAccountId: admin.id });
   } catch (err) {
@@ -74,31 +79,42 @@ export async function PATCH(req: NextRequest) {
 
     const target = await prisma.account.findUnique({
       where: { id: targetId },
-      include: { roles: { include: { role: true } } },
+      include: { roles: { include: { role: true } }, subscriptions: { select: SUB_SELECT } },
     });
     const targetIsAdmin = target?.roles?.some((r) => r.role.name === "SUPER") ?? false;
     if (targetIsAdmin) throw new Error("FORBIDDEN");
 
     if ("plan" in body) {
       const { id, plan } = body as { id: string; plan: "FREE" | "PREMIUM" };
+      const subs = target?.subscriptions ?? [];
 
-      // Targets the STRIPE-source row — see the GET handler above for why
-      // (pre-migration this was the account's sole subscription row).
-      await prisma.subscription.upsert({
-        where: { accountId_source: { accountId: id, source: "STRIPE" } },
-        update: {
-          plan,
-          status: plan === "PREMIUM" ? "ACTIVE" : "CANCELED",
-        },
-        create: {
-          accountId: id,
-          source: "STRIPE",
-          plan,
-          status: plan === "PREMIUM" ? "ACTIVE" : "CANCELED",
-        },
-      });
+      // Manual grants never touch a live paid subscription: flipping the
+      // Stripe row to FREE would not stop billing, and flipping it to PREMIUM
+      // used to fake a subscription with no Stripe id behind it.
+      if (hasPaidPremium(subs)) {
+        return NextResponse.json(
+          { error: "This account has a live Stripe/Apple subscription. Manage it there." },
+          { status: 409 }
+        );
+      }
 
-      return NextResponse.json({ id, plan });
+      if (plan === "PREMIUM") {
+        await prisma.subscription.upsert(manualGrantUpsertArgs(id));
+      } else {
+        await prisma.$transaction([
+          // Drop the manual/coupon grant.
+          prisma.subscription.deleteMany({ where: { accountId: id, source: "COUPON" } }),
+          // Legacy manual grants lived on the Stripe row with no Stripe id
+          // behind them; put that row back to FREE so it stops counting.
+          prisma.subscription.updateMany({
+            where: { accountId: id, source: "STRIPE", plan: "PREMIUM", stripeSubscriptionId: null },
+            data: { plan: "FREE", status: "ACTIVE", stripeCurrentPeriodEnd: null },
+          }),
+        ]);
+      }
+
+      const fresh = await prisma.subscription.findMany({ where: { accountId: id }, select: SUB_SELECT });
+      return NextResponse.json({ id, subscription: summarizeEntitlement(fresh) });
     }
 
     const { id, isEnabled } = body as { id: string; isEnabled: boolean };

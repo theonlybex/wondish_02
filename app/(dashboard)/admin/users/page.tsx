@@ -118,18 +118,18 @@ export default function AdminUsersPage() {
   const handlePlanToggle = async (id: string, currentPlan: string) => {
     const newPlan = currentPlan === "PREMIUM" ? "FREE" : "PREMIUM";
     setPlanTogglingId(id);
-    await fetch("/api/admin/users", {
+    const res = await fetch("/api/admin/users", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, plan: newPlan }),
     });
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === id
-          ? { ...u, subscription: { ...(u.subscription as Record<string, unknown>), plan: newPlan } }
-          : u
-      )
-    );
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      setNotice(data?.error ?? "Could not change the plan.");
+    } else if (data?.subscription) {
+      // The server returns the derived entitlement (plan, source, end).
+      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, subscription: data.subscription } : u)));
+    }
     setPlanTogglingId(null);
   };
 
@@ -202,7 +202,7 @@ export default function AdminUsersPage() {
           <h1 className="text-3xl font-bold text-[#1E1A1A]">Users</h1>
           <div className="flex items-center gap-3 mt-4">
             <div className="h-px w-12 bg-primary/40" />
-            <p className="text-xs" style={{ color: "#848181" }}>All registered accounts</p>
+            <p className="text-xs" style={{ color: "#848181" }}>All registered accounts · admins first, then Premium. Premium shows where it comes from (admin, coupon, stripe, apple).</p>
           </div>
         </div>
 
@@ -266,12 +266,20 @@ export default function AdminUsersPage() {
             <div className="divide-y divide-[#F5F1DD]">
               {users.map((user) => {
                 const u = user as Record<string, unknown>;
-                const sub = u.subscription as Record<string, unknown> | null;
+                const sub = u.subscription as
+                  | { plan: string; source: string | null; periodEnd: string | null; paid: boolean }
+                  | null;
                 const roles = u.roles as { role: { name: string } }[] | undefined;
-                const userIsAdmin = roles?.some((r) => r.role.name === "SUPER") ?? false;
+                const userIsAdmin = (u.isAdmin as boolean | undefined) ?? roles?.some((r) => r.role.name === "SUPER") ?? false;
                 const isSelf = u.id === currentAccountId;
                 const isProtected = isSelf || userIsAdmin;
                 const fullName = `${u.firstName} ${u.lastName}`;
+                const isPremium = sub?.plan === "PREMIUM";
+                const sourceLabel = sub?.source ? sub.source.toLowerCase() : null;
+                const untilLabel =
+                  isPremium && sub?.periodEnd
+                    ? `until ${new Date(sub.periodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                    : null;
                 return (
                   <div
                     key={u.id as string}
@@ -280,7 +288,11 @@ export default function AdminUsersPage() {
                     <Initials name={fullName} />
 
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-[#1E1A1A] leading-snug">{fullName}</p>
+                      <p className="font-semibold text-sm text-[#1E1A1A] leading-snug flex items-center gap-2 flex-wrap">
+                        {fullName}
+                        {userIsAdmin && <Badge variant="warning">Admin ✦</Badge>}
+                        {isSelf && <Badge variant="neutral">You</Badge>}
+                      </p>
                       <p className="text-[10px] font-medium mt-0.5 leading-snug" style={{ color: "#ABA6A6" }}>
                         {u.email as string}
                       </p>
@@ -316,10 +328,13 @@ export default function AdminUsersPage() {
                       )}
                     </div>
 
-                    <div className="hidden md:block">
-                      <Badge variant={sub?.plan === "PREMIUM" ? "primary" : "neutral"}>
-                        {(sub?.plan as string) ?? "FREE"}
+                    <div className="hidden md:flex flex-col items-start gap-0.5">
+                      <Badge variant={isPremium ? "primary" : "neutral"}>
+                        {isPremium ? `PREMIUM${sourceLabel ? ` · ${sourceLabel}` : ""}` : "FREE"}
                       </Badge>
+                      {untilLabel && (
+                        <span className="text-[10px] pl-1" style={{ color: "#ABA6A6" }}>{untilLabel}</span>
+                      )}
                     </div>
 
                     <div>
@@ -342,20 +357,30 @@ export default function AdminUsersPage() {
                         <span
                           className="text-[10px] font-medium px-2 py-1 rounded-lg"
                           style={{ background: "#F5F1DD", color: "#ABA6A6" }}
-                          title={isSelf ? "Cannot modify your own account" : "Only managers can modify admins"}
+                          title={isSelf ? "Cannot modify your own account" : "Admins have Premium by default and can't be modified here"}
                         >
-                          {isSelf ? "You" : "Admin"}
+                          Protected
                         </span>
                       ) : (
                         <>
-                          <Button
-                            variant={sub?.plan === "PREMIUM" ? "danger" : "primary"}
-                            size="sm"
-                            loading={planTogglingId === u.id}
-                            onClick={() => handlePlanToggle(u.id as string, (sub?.plan as string) ?? "FREE")}
-                          >
-                            {sub?.plan === "PREMIUM" ? "→ Free" : "→ Premium"}
-                          </Button>
+                          {sub?.paid ? (
+                            <span
+                              className="text-[10px] font-medium px-2 py-1 rounded-lg"
+                              style={{ background: "#F5F1DD", color: "#ABA6A6" }}
+                              title="Live Stripe/Apple subscription — manage it there"
+                            >
+                              Paid
+                            </span>
+                          ) : (
+                            <Button
+                              variant={isPremium ? "danger" : "primary"}
+                              size="sm"
+                              loading={planTogglingId === u.id}
+                              onClick={() => handlePlanToggle(u.id as string, sub?.plan ?? "FREE")}
+                            >
+                              {isPremium ? "→ Free" : "→ Premium"}
+                            </Button>
+                          )}
                           <Button
                             variant={u.isEnabled ? "danger" : "secondary"}
                             size="sm"
