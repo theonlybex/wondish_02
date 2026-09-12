@@ -37,8 +37,17 @@ function CouponInput({ onClose }: { onClose: () => void }) {
       if (!res.ok) {
         setResult({ success: false, message: data.error });
       } else {
-        setResult({ success: true, message: data.message });
+        const until = data.accessUntil ? new Date(data.accessUntil).toLocaleDateString() : null;
+        const message =
+          data.type === "ADMIN"
+            ? t("adminActivated")
+            : until
+              ? t("premiumActivatedUntil", { date: until })
+              : t("premiumActivated");
+        setResult({ success: true, message });
         setCode("");
+        // Layout is server-rendered; refresh re-reads the Subscription rows so
+        // PremiumGuard (when gates are on) lets the user through immediately.
         setTimeout(() => { router.refresh(); onClose(); }, 1500);
       }
     } catch {
