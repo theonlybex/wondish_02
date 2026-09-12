@@ -1188,7 +1188,12 @@ model Coupon {
   type        CouponType         @default(PREMIUM)
   maxUses     Int                @default(1)
   usedCount   Int                @default(0)
+  // Redeem-by deadline: after this instant the code is "unavailable".
   expiresAt   DateTime?
+  // Access-end instant for PREMIUM codes: written to the COUPON-source
+  // Subscription.stripeCurrentPeriodEnd on redemption, which hasActivePremium
+  // already enforces. null only for ADMIN codes (SUPER role has no end).
+  accessUntil DateTime?
   isActive    Boolean            @default(true)
   note        String?
   createdAt   DateTime           @default(now())
