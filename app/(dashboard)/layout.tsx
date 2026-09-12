@@ -11,7 +11,9 @@ import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import MobileNav from "@/components/dashboard/MobileNav";
 import PremiumGuard from "@/components/PremiumGuard";
 import PastDueBanner from "@/components/billing/PastDueBanner";
+import CouponEndingBanner from "@/components/billing/CouponEndingBanner";
 import { premiumGatesEnabled } from "@/lib/billing/gates";
+import { couponEndingSoon } from "@/lib/coupon";
 
 export default async function DashboardLayout({
   children,
@@ -40,6 +42,8 @@ export default async function DashboardLayout({
   const isRestaurantStaff =
     account?.roles?.some((r) => r.role.name === RESTAURANT_ADMIN_ROLE) ?? false;
   const isPremium = accountHasActivePremium(account?.subscriptions ?? []);
+  // "Premium ends soon" banner: last 7 days of a coupon grant with no paid row.
+  const couponEndsAt = couponEndingSoon(account?.subscriptions ?? [], new Date());
 
   // "Trials" nav item only for users with a condition that has trigger rules
   // or a trial on record — a user without a condition never sees it.
@@ -137,6 +141,7 @@ export default async function DashboardLayout({
           isNew={Boolean(account && Date.now() - new Date(account.createdAt).getTime() < 24 * 60 * 60 * 1000)}
         />
         {account?.subscriptions?.some((s) => s.source === "STRIPE" && s.status === "PAST_DUE") && <PastDueBanner />}
+        {premiumGatesEnabled() && couponEndsAt && <CouponEndingBanner endsAt={couponEndsAt} />}
         <main className="flex-1 overflow-y-auto p-5 sm:p-8">
           {premiumGatesEnabled() ? (
             <PremiumGuard isPremium={isPremium} isAdmin={isAdmin}>{children}</PremiumGuard>
