@@ -70,6 +70,13 @@ export async function POST(req: NextRequest) {
   if (!coupon || classifyCoupon(coupon, new Date()) === "unavailable") {
     return genericUnavailable();
   }
+  // PREMIUM codes minted before `accessUntil` existed carry no end date and
+  // would grant lifetime premium. The admin validator forbids that for new
+  // codes; this closes the gap for legacy rows (2026-09-12 scenario run found
+  // three such codes with uses left). ADMIN codes never carry an end.
+  if (coupon.type === "PREMIUM" && !coupon.accessUntil) {
+    return genericUnavailable();
+  }
 
   if (coupon.redemptions.length > 0) {
     // The caller already knows this code is valid (they redeemed it), so a

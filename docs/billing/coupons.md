@@ -19,7 +19,7 @@ Two kinds of code exist. Both are created at `/admin/coupons` by a SUPER user.
 
 - Deactivating a code stops **new** redemptions only. Access already granted runs to its Access-until date.
 - A tester who redeems a second code keeps the **later** end date; access is never shortened. The same code cannot be redeemed twice by one account, even after its access ended: hand out a new code.
-- A code whose Access-until date has passed is refused like an invalid code, even if still active.
+- A code whose Access-until date has passed is refused like an invalid code, even if still active. So is any premium code with **no** Access-until (codes minted before 2026-09-12): lifetime grants are not possible.
 - A renewing Stripe/Apple subscriber is refused ("You already have Premium — no code needed") and the code's use count is untouched. A subscriber who already cancelled at period end may redeem.
 - A tester who holds a coupon can still subscribe: the billing page shows "Subscribe to keep Premium after <date>", and the pricing page stays reachable. After they pay, the **paid** subscription is what the billing page and the app show; the coupon grant sits behind it until its end date.
 - **Extending the beta:** use "Extend access" on the code. It moves the code's date and lifts every redeemer's grant that ends earlier (including grants that already ended). It never shortens anyone.
