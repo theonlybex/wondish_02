@@ -15,8 +15,11 @@ import {
   SUGGEST_RECIPES_SCHEMA,
 } from "@/lib/fridge";
 import Anthropic from "@anthropic-ai/sdk";
+import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anthropic";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+export const maxDuration = 60;
+
+const anthropic = createAnthropic();
 const MAX_RECIPES = 3; // F-D4
 
 // ─── POST /api/fridge — Anthropic tool-use recipe generation ────────────────
@@ -114,14 +117,8 @@ export async function POST(req: NextRequest) {
       messages: [{ role: "user", content: buildFridgePrompt(ingredients, mealType) }],
     });
   } catch (err) {
-    if (err instanceof Anthropic.APIError) {
-      if (err.status === 429) {
-        return NextResponse.json({ error: "Clara is busy, try again in a moment" }, { status: 429 });
-      }
-      if (err.status === 529) {
-        return NextResponse.json({ error: "Clara is busy, try again in a moment" }, { status: 503 });
-      }
-    }
+    const busy = claraBusyStatus(err);
+    if (busy) return NextResponse.json({ error: CLARA_BUSY_MESSAGE }, { status: busy });
     return NextResponse.json({ error: "Clara is unavailable right now" }, { status: 500 });
   }
 

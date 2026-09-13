@@ -5,7 +5,6 @@ import { rateLimit } from "@/lib/rate-limit";
 import { sanitizeChatHistory } from "@/lib/chat-history";
 import { accountHasActivePremium, getAccountWithSubscription } from "@/lib/auth";
 import { guardAiSpend } from "@/lib/ai-budget";
-import Anthropic from "@anthropic-ai/sdk";
 import { PATIENT_FOOD_MAP_INCLUDE, buildFoodMapText } from "@/lib/food-map";
 import { startClaraLoop } from "@/lib/clara/loop";
 import { createAnthropicClient } from "@/lib/clara/anthropic-client";
@@ -21,8 +20,14 @@ import {
   findTool,
 } from "@/lib/clara/registry";
 import type { ClaraContext, ToolResult } from "@/lib/clara/types";
+import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anthropic";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Streaming chat: up to 6 tool rounds for premium, each a separate request,
+// so the per-request timeout can be generous while maxDuration bounds the
+// whole turn.
+export const maxDuration = 60;
+
+const anthropic = createAnthropic({ timeout: 55_000 });
 
 // Last-resort boundary: an uncaught throw here used to surface as an empty
 // 500 with no log line, which is indistinguishable from a network failure
@@ -147,20 +152,8 @@ async function handleChat(req: NextRequest) {
       onError: (err) => console.error("clara loop error", err),
     });
   } catch (err) {
-    if (err instanceof Anthropic.APIError) {
-      if (err.status === 429) {
-        return NextResponse.json(
-          { error: "Clara is busy, try again in a moment" },
-          { status: 429 }
-        );
-      }
-      if (err.status === 529) {
-        return NextResponse.json(
-          { error: "Clara is busy, try again in a moment" },
-          { status: 503 }
-        );
-      }
-    }
+    const busy = claraBusyStatus(err);
+    if (busy) return NextResponse.json({ error: CLARA_BUSY_MESSAGE }, { status: busy });
     return NextResponse.json({ error: "Clara is unavailable right now" }, { status: 500 });
   }
 

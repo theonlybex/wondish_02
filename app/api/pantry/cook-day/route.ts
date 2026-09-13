@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anthropic";
 import { prisma } from "@/lib/db";
 import {
   derivePatientBans,
@@ -159,7 +160,7 @@ export async function POST(req: Request) {
 
   let recipes: FridgeRecipe[];
   try {
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const anthropic = createAnthropic();
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 4096,
@@ -185,9 +186,8 @@ export async function POST(req: Request) {
           .filter((r): r is FridgeRecipe => r !== null)
       : [];
   } catch (err) {
-    if (err instanceof Anthropic.APIError && err.status === 429) {
-      return NextResponse.json({ error: "Clara is busy — try again in a moment." }, { status: 429 });
-    }
+    const busy = claraBusyStatus(err);
+    if (busy) return NextResponse.json({ error: CLARA_BUSY_MESSAGE }, { status: busy });
     return NextResponse.json(
       { error: "Clara couldn't cook right now. Nothing was used up — try again." },
       { status: 502 }

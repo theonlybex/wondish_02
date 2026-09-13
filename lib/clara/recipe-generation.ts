@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { createAnthropic } from "@/lib/anthropic";
 import { prisma } from "@/lib/db";
 import {
   validateFridgeRecipeSnapshot,
@@ -190,7 +191,7 @@ export function chunkTopUpRequests(
 async function generateChunk(args: TopUpArgs, chunk: TopUpRequest[]): Promise<FridgeRecipe[]> {
   const total = chunk.reduce((s, r) => s + r.count, 0);
   try {
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const anthropic = createAnthropic();
     const msg = await anthropic.messages.create({
       model: MODEL,
       max_tokens: MAX_OUTPUT_TOKENS,
