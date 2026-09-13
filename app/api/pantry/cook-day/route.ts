@@ -21,6 +21,7 @@ import {
   CLARA_RECIPE_TAG,
 } from "@/lib/clara/recipe-generation";
 import { guardAiSpend } from "@/lib/ai-budget";
+import { rateLimit } from "@/lib/rate-limit";
 import {
   computeAllMetrics,
   computeMealCalories,
@@ -84,6 +85,17 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: "Add at least 3 ingredients so Clara has something to cook with." },
       { status: 422 }
+    );
+  }
+
+  // One cook-day per user at a time (S13): every accepted dish is persisted
+  // as a PUBLIC recipe, so a double-tap used to leave a duplicate day in the
+  // shared catalog. maxDuration is 60s; the window covers the slowest run.
+  const inflight = await rateLimit("cookday-inflight", userId, 1, 90);
+  if (!inflight.success) {
+    return NextResponse.json(
+      { error: "Clara is already cooking your day — give her a moment." },
+      { status: 409 }
     );
   }
 
