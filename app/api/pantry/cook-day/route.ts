@@ -91,7 +91,12 @@ export async function POST(req: Request) {
   // One cook-day per user at a time (S13): every accepted dish is persisted
   // as a PUBLIC recipe, so a double-tap used to leave a duplicate day in the
   // shared catalog. maxDuration is 60s; the window covers the slowest run.
-  const inflight = await rateLimit("cookday-inflight", userId, 1, 90);
+  //
+  // Spend-adjacent lock: it is the only guard against a double-tap persisting
+  // duplicate PUBLIC recipes (and paying Anthropic twice), so it carries the
+  // "ai-" prefix that makes lib/rate-limit.ts degrade it to the per-instance
+  // counter on a backend error rather than failing open like a burst bucket.
+  const inflight = await rateLimit("ai-cookday-inflight", userId, 1, 90);
   if (!inflight.success) {
     return NextResponse.json(
       { error: "Clara is already cooking your day — give her a moment." },

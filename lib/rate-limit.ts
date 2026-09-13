@@ -94,10 +94,11 @@ export async function rateLimit(
     return memoryLimit(JSON.stringify([name, identifier]), limit, windowSec);
   } catch (err) {
     // Spend buckets (lib/ai-budget.ts, all named "ai-*") are the Anthropic
-    // bill cap. An Upstash blip correlates with load — exactly when 50 users
-    // are hammering — so they degrade to the per-instance counter rather
-    // than opening completely. Burst buckets keep failing open: availability
-    // over enforcement (2026-07-24 audit Task 12).
+    // bill cap. On a backend error they degrade to the per-instance counter:
+    // each warm instance then enforces the limit independently from zero, so
+    // the effective cap is roughly `limit × instances`, not `limit`. That is
+    // far from a hard cap but strictly better than the fully-open path burst
+    // buckets take (availability over enforcement, 2026-07-24 audit Task 12).
     if (name.startsWith("ai-")) {
       console.error(`[rate-limit] backend error for spend bucket "${name}" — using per-instance fallback`, err);
       return memoryLimit(JSON.stringify([name, identifier]), limit, windowSec);

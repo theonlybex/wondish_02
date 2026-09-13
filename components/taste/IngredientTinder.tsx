@@ -38,7 +38,12 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
       const res = await apiFetch("/api/taste/ingredients");
       const data = await res.json().catch(() => null);
       if (!res.ok || !data) {
-        setLoadError(typeof data?.error === "string" ? data.error : LOAD_ERROR);
+        // Only a sentence-shaped server message is fit to be the page
+        // headline; raw fragments ("Unauthorized") read as a crash, so they
+        // fall back to the full LOAD_ERROR sentence (same test DishCheckerClient uses).
+        const serverMessage =
+          typeof data?.error === "string" && /[.!?…]$/.test(data.error.trim()) ? data.error : LOAD_ERROR;
+        setLoadError(serverMessage);
         return null;
       }
       const lv: Level[] = data.levels ?? [];

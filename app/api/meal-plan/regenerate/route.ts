@@ -6,6 +6,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, MealPlanBusyError, EmptyPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
 import { accountHasActivePremium } from "@/lib/auth";
 import { guardAiSpend } from "@/lib/ai-budget";
+import { internalError } from "@/lib/api-error";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -82,7 +83,6 @@ export async function POST() {
         { status: 422 }
       );
     }
-    console.error("[regenerate]", err);
-    return NextResponse.json({ error: "Generation failed." }, { status: 500 });
+    return internalError("meal-plan/regenerate", err, "Couldn't regenerate your plan — please try again.");
   }
 }

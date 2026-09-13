@@ -56,7 +56,7 @@ export function clampPlanStartToToday(start: Date, now: Date = new Date()): Date
 export interface PrismaLike {
   patient: {
     updateMany(args: any): Promise<{ count: number }>;
-    findUnique(args: any): Promise<{ activePlanVersion?: number; mealPlanStatus?: string; mealPlanGenStartedAt?: Date | null } | null>;
+    findUnique(args: any): Promise<{ activePlanVersion?: number; mealPlanStatus?: string; mealPlanGenStartedAt?: Date | null; mealPlanError?: string | null } | null>;
     update(args: any): Promise<unknown>;
   };
   menu: {
@@ -74,12 +74,12 @@ export interface RunnerDeps {
 
 const defaultDeps: RunnerDeps = { prisma, buildMealPlanMenus };
 
-type PreviousStatus = { mealPlanStatus?: string; mealPlanGenStartedAt?: Date | null } | null;
+type PreviousStatus = { mealPlanStatus?: string; mealPlanGenStartedAt?: Date | null; mealPlanError?: string | null } | null;
 
 async function readPlanStatus(patientId: string, deps: RunnerDeps): Promise<PreviousStatus> {
   return deps.prisma.patient.findUnique({
     where: { id: patientId },
-    select: { activePlanVersion: true, mealPlanStatus: true, mealPlanGenStartedAt: true },
+    select: { activePlanVersion: true, mealPlanStatus: true, mealPlanGenStartedAt: true, mealPlanError: true },
   });
 }
 
@@ -89,7 +89,14 @@ async function restorePlanStatus(patientId: string, before: PreviousStatus, deps
   await deps.prisma.patient
     .update({
       where: { id: patientId },
-      data: { mealPlanStatus: status, mealPlanGenStartedAt: before?.mealPlanGenStartedAt ?? null },
+      data: {
+        mealPlanStatus: status,
+        mealPlanGenStartedAt: before?.mealPlanGenStartedAt ?? null,
+        // claimPlanSlot nulls mealPlanError; without carrying it back a
+        // preflight rejection after a prior failed run left {FAILED, error:
+        // null} and the UI showed a failure with no reason.
+        mealPlanError: before?.mealPlanError ?? null,
+      },
     })
     .catch(() => {});
 }

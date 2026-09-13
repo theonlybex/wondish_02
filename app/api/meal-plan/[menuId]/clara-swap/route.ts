@@ -81,7 +81,12 @@ export async function POST(
   // maxDuration (30s), so it covers the slowest legitimate run without
   // outliving it by much; a double-tap's second request is refused before it
   // can generate a second public recipe for this slot.
-  const inflight = await rateLimit("clara-swap-inflight", `${userId}:${params.menuId}`, 1, 30);
+  //
+  // Spend-adjacent lock: it is the only guard against a double-tap persisting
+  // a duplicate PUBLIC recipe (and paying Anthropic twice), so it carries the
+  // "ai-" prefix that makes lib/rate-limit.ts degrade it to the per-instance
+  // counter on a backend error rather than failing open like a burst bucket.
+  const inflight = await rateLimit("ai-clara-swap-inflight", `${userId}:${params.menuId}`, 1, 30);
   if (!inflight.success) {
     return NextResponse.json(
       { error: "Clara is still working on this dish, or just changed it — give her a moment before asking again." },
@@ -138,7 +143,8 @@ export async function POST(
 
   let candidate: FridgeRecipe | null = null;
   try {
-    const anthropic = createAnthropic();
+    // 20s x 1 attempt fits under this route's maxDuration = 30 with room for the DB work.
+    const anthropic = createAnthropic({ timeout: 20_000, maxRetries: 0 });
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 1536,

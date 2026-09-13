@@ -75,8 +75,12 @@ export default function PlanPicker({ defaultPlan = "sixmonth", labels }: { defau
       if (res.status === 401) { router.push(`/register?plan=${plan}`); return; }
       const data = await res.json().catch(() => null);
       if (!res.ok) { setError(data?.message ?? data?.error ?? "Something went wrong. Please try again."); return; }
-      if (!data?.url && !data?.portalUrl) { setError("Something went wrong. Please try again."); return; }
-      window.location.href = data.alreadySubscribed ? data.portalUrl : data.url;
+      // Guard the branch we actually navigate to: an already-subscribed
+      // response carrying only `url` used to pass the old either/or check and
+      // then send the browser to `undefined`.
+      const target = data?.alreadySubscribed ? data?.portalUrl : data?.url;
+      if (!target) { setError("Something went wrong. Please try again."); return; }
+      window.location.href = target;
     } catch {
       setError("Network error. Please check your connection and try again.");
     } finally {

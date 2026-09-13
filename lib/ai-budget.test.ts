@@ -29,6 +29,13 @@ test("tiers: free 1 new week/week + 5 Clara messages/day; premium (beta trial) 5
   for (const k of Object.keys(AI_LIMITS)) assert.ok(AI_LIMITS[k].premium >= AI_LIMITS[k].free, k);
 });
 
+test("every spend bucket carries the ai- prefix the rate limiter keys its fallback on", () => {
+  // lib/rate-limit.ts only degrades "ai-*" buckets to the per-instance counter
+  // on a backend error; anything else fails fully open. Renaming a bucket out
+  // of the prefix would silently uncap the Anthropic bill during a Redis blip.
+  for (const k of Object.keys(AI_LIMITS)) assert.ok(AI_LIMITS[k].bucket.startsWith("ai-"), k);
+});
+
 test("tierFor: active premium from any source, or admin, is premium; else free", () => {
   assert.equal(tierFor([{ plan: "PREMIUM", status: "ACTIVE" }]), "premium");
   assert.equal(tierFor([{ plan: "FREE", status: "ACTIVE" }]), "free");

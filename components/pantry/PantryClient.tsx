@@ -218,6 +218,10 @@ export default function PantryClient({
               // Roll the chips back to the last basket the server confirmed, so
               // a tick never stays on screen when it didn't actually save.
               setSelected(new Map(lastSaved.current));
+              // The cookable panel was recomputed from the optimistic basket;
+              // recompute it from the reverted one or it keeps advertising
+              // dishes the saved basket can't actually cook.
+              void refreshCookable();
               setSyncError("Couldn't save that change, so we put the list back the way it was. Check your connection and try again.");
             } else {
               // A newer list is already queued. Rolling back here would fight the

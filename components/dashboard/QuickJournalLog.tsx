@@ -58,7 +58,7 @@ export default function QuickJournalLog() {
   const [symptoms, setSymptoms] = useState<Record<string, Severity>>({});
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/journal?date=${format(new Date(), "yyyy-MM-dd")}`)
+    apiFetch(`/api/journal?date=${format(new Date(), "yyyy-MM-dd")}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data) return;

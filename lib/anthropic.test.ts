@@ -35,6 +35,9 @@ test("claraBusyStatus maps rate limit, overload and timeout to a retryable statu
   assert.equal(claraBusyStatus(rateLimited), 429);
   assert.equal(claraBusyStatus(overloaded), 503);
   assert.equal(claraBusyStatus(timeout), 503);
+  // A dropped connection is as retryable as a timeout; before this it fell
+  // through to null and the route answered 502 for a transient blip.
+  assert.equal(claraBusyStatus(new Anthropic.APIConnectionError({ message: "ECONNRESET" })), 503);
   assert.equal(claraBusyStatus(new Error("other")), null);
   assert.equal(claraBusyStatus(new Anthropic.APIError(400, undefined, "bad", undefined)), null);
 });

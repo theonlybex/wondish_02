@@ -224,19 +224,24 @@ test("preflight runs only after the claim; a rejection restores the previous sta
     new Date("2026-07-19T10:00:00").getTime(),
     "the previous run's start timestamp is restored too, not cleared"
   );
-  assert.equal(restore.args.data.mealPlanError, undefined, "no error text written for a quota rejection");
+  // The restore always writes the field now (the claim nulls it, so it has to
+  // be put back); with no previous failure that value is null, never text.
+  assert.equal(restore.args.data.mealPlanError, null, "no error text written for a quota rejection");
 });
 
 test("preflight rejection restores a previous FAILED status and its timestamp verbatim", async () => {
-  // Both fields must come back: regenerate/route.ts reads mealPlanGenStartedAt
-  // for its 2-minute anti-spam window, so clearing it on a quota rejection
-  // would hand the user a free retry, and hardcoding READY would erase the
-  // failure the UI is still showing.
+  // All three fields must come back: regenerate/route.ts reads
+  // mealPlanGenStartedAt for its 2-minute anti-spam window, so clearing it on
+  // a quota rejection would hand the user a free retry, and hardcoding READY
+  // would erase the failure the UI is still showing. claimPlanSlot nulls
+  // mealPlanError, so the restore has to put the message back too or the UI
+  // shows FAILED with no reason.
   const previousStart = new Date("2026-03-04T08:15:00");
+  const previousError = "No meals matched your current profile, so your existing plan was kept.";
   const { deps, calls } = makeDeps({ activePlanVersion: 5 });
   deps.prisma.patient.findUnique = async (args: any) => {
     calls.push({ op: "patient.findUnique", args });
-    return { activePlanVersion: 5, mealPlanStatus: "FAILED", mealPlanGenStartedAt: previousStart };
+    return { activePlanVersion: 5, mealPlanStatus: "FAILED", mealPlanGenStartedAt: previousStart, mealPlanError: previousError };
   };
 
   await assert.rejects(
@@ -247,6 +252,7 @@ test("preflight rejection restores a previous FAILED status and its timestamp ve
   const restore = calls.filter((c) => c.op === "patient.update").at(-1)!;
   assert.equal(restore.args.data.mealPlanStatus, "FAILED", "the previous status is restored, not forced to READY");
   assert.equal(restore.args.data.mealPlanGenStartedAt?.getTime(), previousStart.getTime());
+  assert.equal(restore.args.data.mealPlanError, previousError, "the failure message survives the claim's null-out");
 });
 
 test("preflight rejection on a reclaimed stuck run restores READY, never GENERATING", async () => {

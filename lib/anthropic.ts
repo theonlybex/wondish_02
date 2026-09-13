@@ -28,6 +28,10 @@ export function createAnthropic(overrides: { timeout?: number; maxRetries?: numb
  */
 export function claraBusyStatus(err: unknown): 429 | 503 | null {
   if (err instanceof Anthropic.APIConnectionTimeoutError) return 503;
+  // Generic connection failures (ECONNRESET, DNS, TLS) are just as retryable
+  // as a timeout. The timeout check stays first: APIConnectionTimeoutError
+  // extends APIConnectionError, so the order is what keeps them distinct.
+  if (err instanceof Anthropic.APIConnectionError) return 503;
   if (err instanceof Anthropic.APIError) {
     if (err.status === 429) return 429;
     if (err.status === 529) return 503;
