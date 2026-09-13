@@ -77,12 +77,16 @@ export async function POST(
     return NextResponse.json({ error: "Menu not found" }, { status: 404 });
   }
 
-  // One Clara swap per slot at a time (S12). maxDuration is 30s, so a 45s
-  // window covers the slowest legitimate run; a double-tap's second request
-  // is refused before it can generate a second public recipe for this slot.
-  const inflight = await rateLimit("clara-swap-inflight", `${userId}:${params.menuId}`, 1, 45);
+  // One Clara swap per slot at a time (S12). The window equals this route's
+  // maxDuration (30s), so it covers the slowest legitimate run without
+  // outliving it by much; a double-tap's second request is refused before it
+  // can generate a second public recipe for this slot.
+  const inflight = await rateLimit("clara-swap-inflight", `${userId}:${params.menuId}`, 1, 30);
   if (!inflight.success) {
-    return NextResponse.json({ error: "Clara is already working on this dish — give her a moment." }, { status: 409 });
+    return NextResponse.json(
+      { error: "Clara is still working on this dish, or just changed it — give her a moment before asking again." },
+      { status: 409 }
+    );
   }
 
   // AI spend guard (charge-before-model): per-user daily swap quota + global
@@ -192,12 +196,18 @@ export async function POST(
   // (or stale) and `update` would throw P2025 uncaught. Take the dish out of
   // the public catalog so a lost race doesn't leave junk for every other
   // user's plan builder.
+  // Fresh read: the version captured before the model call may be stale if a
+  // regenerate flipped it meanwhile; filtering on the live value shrinks the
+  // lost-race window to a single query.
+  const live = await prisma.patient.findUnique({ where: { id: patient.id }, select: { activePlanVersion: true } });
   const claimed = await prisma.menu.updateMany({
-    where: { id: params.menuId, patientId: patient.id, planVersion: patient.activePlanVersion },
+    where: { id: params.menuId, patientId: patient.id, planVersion: live?.activePlanVersion ?? patient.activePlanVersion },
     data: { recipeId: createdId },
   });
   if (claimed.count === 0) {
-    await prisma.recipe.update({ where: { id: createdId }, data: { isPublic: false } }).catch(() => {});
+    await prisma.recipe
+      .update({ where: { id: createdId }, data: { isPublic: false } })
+      .catch((err) => console.error("[clara-swap] could not un-publish orphaned recipe", createdId, err));
     return NextResponse.json(
       { error: "Your plan changed while Clara was cooking — refresh the page and try again." },
       { status: 409 }
