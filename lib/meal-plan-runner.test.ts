@@ -219,7 +219,53 @@ test("preflight runs only after the claim; a rejection restores the previous sta
   assert.ok(!ops.includes("menu.createMany"), "a rejected preflight must not write menus");
   const restore = calls.filter((c) => c.op === "patient.update").at(-1)!;
   assert.equal(restore.args.data.mealPlanStatus, "READY", "status restored, not FAILED");
+  assert.equal(
+    restore.args.data.mealPlanGenStartedAt?.getTime(),
+    new Date("2026-07-19T10:00:00").getTime(),
+    "the previous run's start timestamp is restored too, not cleared"
+  );
   assert.equal(restore.args.data.mealPlanError, undefined, "no error text written for a quota rejection");
+});
+
+test("preflight rejection restores a previous FAILED status and its timestamp verbatim", async () => {
+  // Both fields must come back: regenerate/route.ts reads mealPlanGenStartedAt
+  // for its 2-minute anti-spam window, so clearing it on a quota rejection
+  // would hand the user a free retry, and hardcoding READY would erase the
+  // failure the UI is still showing.
+  const previousStart = new Date("2026-03-04T08:15:00");
+  const { deps, calls } = makeDeps({ activePlanVersion: 5 });
+  deps.prisma.patient.findUnique = async (args: any) => {
+    calls.push({ op: "patient.findUnique", args });
+    return { activePlanVersion: 5, mealPlanStatus: "FAILED", mealPlanGenStartedAt: previousStart };
+  };
+
+  await assert.rejects(
+    regeneratePlan("p1", START, deps, { preflight: async () => ({ status: 429, body: { error: "quota" } }) }),
+    PlanPreflightError
+  );
+
+  const restore = calls.filter((c) => c.op === "patient.update").at(-1)!;
+  assert.equal(restore.args.data.mealPlanStatus, "FAILED", "the previous status is restored, not forced to READY");
+  assert.equal(restore.args.data.mealPlanGenStartedAt?.getTime(), previousStart.getTime());
+});
+
+test("preflight rejection on a reclaimed stuck run restores READY, never GENERATING", async () => {
+  // The claim can win against a dead GENERATING run. Restoring that status
+  // literally would re-wedge the row: the next request would see GENERATING
+  // and 409 until the stuck window elapsed all over again.
+  const { deps, calls } = makeDeps({ activePlanVersion: 9 });
+  deps.prisma.patient.findUnique = async (args: any) => {
+    calls.push({ op: "patient.findUnique", args });
+    return { activePlanVersion: 9, mealPlanStatus: "GENERATING", mealPlanGenStartedAt: new Date("2026-01-01T00:00:00") };
+  };
+
+  await assert.rejects(
+    regeneratePlan("p1", START, deps, { preflight: async () => ({ status: 429, body: { error: "quota" } }) }),
+    PlanPreflightError
+  );
+
+  const restore = calls.filter((c) => c.op === "patient.update").at(-1)!;
+  assert.equal(restore.args.data.mealPlanStatus, "READY", "a stuck GENERATING is never written back");
 });
 
 test("preflight is skipped entirely when the claim fails (the loser of a double-click is never charged)", async () => {
@@ -239,23 +285,33 @@ test("preflight that passes lets the build proceed exactly as before", async () 
 
 test("withPlanClaim: runs fn with the live activePlanVersion, restores the previous status afterwards", async () => {
   const { deps, calls } = makeDeps({ activePlanVersion: 7 });
+  // Two different versions on the two reads: the pre-claim status read sees 7,
+  // the post-claim live read sees 8 (a regenerate flipped the version in
+  // between). fn must get the POST-claim value — reusing the pre-read here
+  // would hand an in-place writer a version that is already stale.
+  let reads = 0;
   deps.prisma.patient.findUnique = async (args: any) => {
     calls.push({ op: "patient.findUnique", args });
-    return { activePlanVersion: 7, mealPlanStatus: "READY", mealPlanGenStartedAt: null };
+    reads++;
+    return reads === 1
+      ? { activePlanVersion: 7, mealPlanStatus: "READY", mealPlanGenStartedAt: null }
+      : { activePlanVersion: 8, mealPlanStatus: "GENERATING", mealPlanGenStartedAt: new Date() };
   };
   const result = await withPlanClaim("p1", async (v) => `built-v${v}`, deps);
-  assert.equal(result, "built-v7");
+  assert.equal(result, "built-v8", "fn receives the version read AFTER the claim");
   assert.equal(calls[0].op, "patient.findUnique", "reads previous status first");
   assert.equal(calls[1].op, "patient.updateMany", "then claims");
+  assert.equal(calls[2].op, "patient.findUnique", "the live version read happens under the claim");
   const restore = calls.filter((c) => c.op === "patient.update").at(-1)!;
   assert.equal(restore.args.data.mealPlanStatus, "READY");
 });
 
 test("withPlanClaim: a busy claim rejects with MealPlanBusyError and never runs fn", async () => {
-  const { deps } = makeDeps({ claimCount: 0 });
+  const { deps, calls } = makeDeps({ claimCount: 0 });
   let ran = false;
   await assert.rejects(withPlanClaim("p1", async () => { ran = true; }, deps), MealPlanBusyError);
   assert.equal(ran, false);
+  assert.ok(!calls.some((c) => c.op === "patient.update"), "a losing claimant must never restore the winner's row");
 });
 
 test("withPlanClaim: fn throwing still restores status and rethrows", async () => {
