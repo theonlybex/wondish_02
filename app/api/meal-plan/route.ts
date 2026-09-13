@@ -3,7 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
+import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
+import { internalError } from "@/lib/api-error";
 import { getPlanDayCalories, deriveLoggedRecipeIds } from "@/lib/meal-plan";
 import { accountHasActivePremium } from "@/lib/auth";
 import { normalizeCuisine } from "@/lib/clara/recipe-generation";
@@ -176,19 +177,25 @@ export async function POST(req: NextRequest) {
   // Cuisine now only scopes the current-day route (/api/meal-plan/day).
   const wantClara = claraFirst === true;
 
-  // Every plan (re)generation can trigger a Clara top-up call — spend guard.
-  const guard = await guardAiSpend(userId, "planInit", isPremium ? "premium" : "free");
-  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
-
   try {
     const count = await regeneratePlan(patient.id, start, undefined, {
       claraFirst: wantClara,
       cuisine: wantClara ? normalizeCuisine(cuisine) : null,
+      // Every plan (re)generation can trigger a Clara top-up call — spend
+      // guard. Charged under the claim, so only the request that actually
+      // builds pays for it.
+      preflight: async () => {
+        const guard = await guardAiSpend(userId, "planInit", isPremium ? "premium" : "free");
+        return guard.ok ? null : { status: guard.status, body: { ...guard.body } };
+      },
     });
     return NextResponse.json({ ok: true, count });
   } catch (err) {
     if (err instanceof MealPlanBusyError) {
       return NextResponse.json({ error: "A plan is already being generated." }, { status: 409 });
+    }
+    if (err instanceof PlanPreflightError) {
+      return NextResponse.json(err.body, { status: err.status });
     }
     if (err instanceof EmptyPlanError) {
       return NextResponse.json(
@@ -196,6 +203,6 @@ export async function POST(req: NextRequest) {
         { status: 422 }
       );
     }
-    throw err;
+    return internalError("meal-plan/create", err, "Couldn't generate your plan — please try again.");
   }
 }

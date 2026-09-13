@@ -19,6 +19,21 @@ export class EmptyPlanError extends Error {
   }
 }
 
+// Thrown by regeneratePlan / withPlanClaim when the caller's preflight (the
+// AI spend guard) rejects AFTER the claim was taken. Carries the exact JSON
+// the route should answer with. Status is restored, nothing is built.
+export class PlanPreflightError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly body: Record<string, unknown>
+  ) {
+    super("PLAN_PREFLIGHT");
+    this.name = "PlanPreflightError";
+  }
+}
+
+export type PlanPreflight = () => Promise<{ status: number; body: Record<string, unknown> } | null>;
+
 // A GENERATING run older than this is considered dead and may be re-claimed.
 const STUCK_AFTER_MS = 3 * 60 * 1000;
 
@@ -41,7 +56,7 @@ export function clampPlanStartToToday(start: Date, now: Date = new Date()): Date
 export interface PrismaLike {
   patient: {
     updateMany(args: any): Promise<{ count: number }>;
-    findUnique(args: any): Promise<{ activePlanVersion: number } | null>;
+    findUnique(args: any): Promise<{ activePlanVersion?: number; mealPlanStatus?: string; mealPlanGenStartedAt?: Date | null } | null>;
     update(args: any): Promise<unknown>;
   };
   menu: {
@@ -59,6 +74,71 @@ export interface RunnerDeps {
 
 const defaultDeps: RunnerDeps = { prisma, buildMealPlanMenus };
 
+type PreviousStatus = { mealPlanStatus?: string; mealPlanGenStartedAt?: Date | null } | null;
+
+async function readPlanStatus(patientId: string, deps: RunnerDeps): Promise<PreviousStatus> {
+  return deps.prisma.patient.findUnique({
+    where: { id: patientId },
+    select: { activePlanVersion: true, mealPlanStatus: true, mealPlanGenStartedAt: true },
+  });
+}
+
+/** Put the row back the way it was before the claim (never leaves GENERATING behind). */
+async function restorePlanStatus(patientId: string, before: PreviousStatus, deps: RunnerDeps): Promise<void> {
+  const status = before?.mealPlanStatus && before.mealPlanStatus !== "GENERATING" ? before.mealPlanStatus : "READY";
+  await deps.prisma.patient
+    .update({
+      where: { id: patientId },
+      data: { mealPlanStatus: status, mealPlanGenStartedAt: before?.mealPlanGenStartedAt ?? null },
+    })
+    .catch(() => {});
+}
+
+/**
+ * Atomically claim the patient's generation slot (status -> GENERATING).
+ * Succeeds only if not GENERATING, OR the previous run is stuck. Throws
+ * MealPlanBusyError otherwise. Every writer of Menu rows must hold this.
+ */
+export async function claimPlanSlot(patientId: string, deps: RunnerDeps = defaultDeps): Promise<void> {
+  const stuckCutoff = new Date(Date.now() - STUCK_AFTER_MS);
+  const claim = await deps.prisma.patient.updateMany({
+    where: {
+      id: patientId,
+      OR: [
+        { mealPlanStatus: { not: "GENERATING" } },
+        { mealPlanGenStartedAt: { lt: stuckCutoff } },
+      ],
+    },
+    data: { mealPlanStatus: "GENERATING", mealPlanGenStartedAt: new Date(), mealPlanError: null },
+  });
+  if (claim.count === 0) throw new MealPlanBusyError();
+}
+
+/**
+ * Run `fn` while holding the plan claim, then restore the previous status.
+ * For writers that edit the ACTIVE version in place (cuisine-for-today)
+ * rather than doing the blue/green swap: holding the claim means no
+ * regenerate can flip activePlanVersion underneath them, and no second
+ * copy of themselves can double-insert. `fn` receives the live version.
+ */
+export async function withPlanClaim<T>(
+  patientId: string,
+  fn: (activePlanVersion: number) => Promise<T>,
+  deps: RunnerDeps = defaultDeps,
+): Promise<T> {
+  const before = await readPlanStatus(patientId, deps);
+  await claimPlanSlot(patientId, deps);
+  try {
+    const live = await deps.prisma.patient.findUnique({ where: { id: patientId }, select: { activePlanVersion: true } });
+    const result = await fn(live?.activePlanVersion ?? 0);
+    await restorePlanStatus(patientId, before, deps);
+    return result;
+  } catch (err) {
+    await restorePlanStatus(patientId, before, deps);
+    throw err;
+  }
+}
+
 /**
  * Regenerate a patient's meal plan as a blue/green swap:
  *  1. Atomically claim the slot (status -> GENERATING). Reject if already running.
@@ -72,22 +152,25 @@ export async function regeneratePlan(
   patientId: string,
   startDate: Date,
   deps: RunnerDeps = defaultDeps,
-  opts: { claraFirst?: boolean; cuisine?: string | null; windowDays?: number; anchorDate?: Date; basket?: Set<string>; excludeRecipeIds?: Set<string> } = {},
+  opts: { claraFirst?: boolean; cuisine?: string | null; windowDays?: number; anchorDate?: Date; basket?: Set<string>; excludeRecipeIds?: Set<string>; preflight?: PlanPreflight } = {},
 ): Promise<number> {
-  const stuckCutoff = new Date(Date.now() - STUCK_AFTER_MS);
+  // Only read the previous status when a preflight can need to restore it,
+  // so callers without one keep the exact call sequence the tests pin.
+  const before = opts.preflight ? await readPlanStatus(patientId, deps) : null;
 
   // 1. Claim. Succeeds only if not GENERATING, OR the previous run is stuck.
-  const claim = await deps.prisma.patient.updateMany({
-    where: {
-      id: patientId,
-      OR: [
-        { mealPlanStatus: { not: "GENERATING" } },
-        { mealPlanGenStartedAt: { lt: stuckCutoff } },
-      ],
-    },
-    data: { mealPlanStatus: "GENERATING", mealPlanGenStartedAt: new Date(), mealPlanError: null },
-  });
-  if (claim.count === 0) throw new MealPlanBusyError();
+  await claimPlanSlot(patientId, deps);
+
+  // 1b. Preflight UNDER the claim (the AI spend guard). Only the request
+  // that will actually build is charged: a double-click's loser fails the
+  // claim above and never reaches here, so it costs the user nothing.
+  if (opts.preflight) {
+    const rejected = await opts.preflight();
+    if (rejected) {
+      await restorePlanStatus(patientId, before, deps);
+      throw new PlanPreflightError(rejected.status, rejected.body);
+    }
+  }
 
   try {
     const patient = await deps.prisma.patient.findUnique({

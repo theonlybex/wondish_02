@@ -3,7 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
+import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
+import { internalError } from "@/lib/api-error";
 import { accountHasActivePremium } from "@/lib/auth";
 import { guardAiSpend } from "@/lib/ai-budget";
 
@@ -60,17 +61,23 @@ export async function POST(req: NextRequest) {
   // an empty "today" as generation having failed.
   const start = clampPlanStartToToday(parsed);
 
-  // Generation can trigger a Clara top-up call — spend guard.
-  const guard = await guardAiSpend(userId, "planInit", isPremium ? "premium" : "free");
-  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
-
   // Atomic blue/green regenerate — no unguarded wipe.
   try {
-    const count = await regeneratePlan(patient.id, start);
+    const count = await regeneratePlan(patient.id, start, undefined, {
+      // Generation can trigger a Clara top-up call — spend guard. Charged
+      // under the claim so a losing double-click costs nothing.
+      preflight: async () => {
+        const guard = await guardAiSpend(userId, "planInit", isPremium ? "premium" : "free");
+        return guard.ok ? null : { status: guard.status, body: { ...guard.body } };
+      },
+    });
     return NextResponse.json({ ok: true, count, startDate: start.toISOString() });
   } catch (err) {
     if (err instanceof MealPlanBusyError) {
       return NextResponse.json({ error: "A plan is already being generated." }, { status: 409 });
+    }
+    if (err instanceof PlanPreflightError) {
+      return NextResponse.json(err.body, { status: err.status });
     }
     if (err instanceof EmptyPlanError) {
       return NextResponse.json(
@@ -78,6 +85,6 @@ export async function POST(req: NextRequest) {
         { status: 422 }
       );
     }
-    throw err;
+    return internalError("meal-plan/start-date", err, "Couldn't change your start date — please try again.");
   }
 }

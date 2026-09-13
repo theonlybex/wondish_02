@@ -2,7 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
+import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
+import { internalError } from "@/lib/api-error";
 import { guardAiSpend } from "@/lib/ai-budget";
 import { computeBasketReadiness } from "@/lib/basket-readiness";
 import { parseRecentDishes, recentDishIds, mergeRecentDishes } from "@/lib/recent-dishes";
@@ -40,9 +41,6 @@ export async function POST() {
     );
   }
 
-  const guard = await guardAiSpend(userId, "planGen");
-  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
-
   const today = clampPlanStartToToday(new Date());
   const anchor = patient.mealPlanStartDate ? new Date(patient.mealPlanStartDate) : today;
   const basket = new Set(names.map((n) => n.trim().toLowerCase()));
@@ -61,6 +59,11 @@ export async function POST() {
       anchorDate: anchor,
       basket,
       excludeRecipeIds,
+      // Charged only by the request that holds the claim (S8).
+      preflight: async () => {
+        const guard = await guardAiSpend(userId, "planGen");
+        return guard.ok ? null : { status: guard.status, body: { ...guard.body } };
+      },
     });
 
     // Record this week's dishes in the rolling window (prunes expired entries).
@@ -83,12 +86,15 @@ export async function POST() {
     if (err instanceof MealPlanBusyError) {
       return NextResponse.json({ error: "A plan is already being generated." }, { status: 409 });
     }
+    if (err instanceof PlanPreflightError) {
+      return NextResponse.json(err.body, { status: err.status });
+    }
     if (err instanceof EmptyPlanError) {
       return NextResponse.json(
         { error: "Couldn't build a week from these ingredients — add a few more and try again." },
         { status: 422 }
       );
     }
-    throw err;
+    return internalError("meal-plan/new-week", err, "Couldn't generate your week — please try again.");
   }
 }

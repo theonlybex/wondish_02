@@ -5,6 +5,8 @@ import {
   clampPlanStartToToday,
   MealPlanBusyError,
   EmptyPlanError,
+  PlanPreflightError,
+  withPlanClaim,
   type RunnerDeps,
 } from "./meal-plan-runner";
 import type { BuildResult, MenuRow } from "./meal-plan";
@@ -186,6 +188,81 @@ test("happy path: purge precedes insert, and the version flip lands only after i
 test("returns the number of menu rows created", async () => {
   const { deps } = makeDeps();
   assert.equal(await regeneratePlan("p1", START, deps), ROWS.length);
+});
+
+// ─── preflight under the claim + withPlanClaim ───────────────────────────────
+//
+// The AI weekly quota used to be charged by the route BEFORE the runner was
+// called, so a double-click burned two tokens and the loser got a 409 with
+// nothing to show for it. The charge now runs as a `preflight` INSIDE the
+// claim: only the request that will actually build ever pays.
+
+test("preflight runs only after the claim; a rejection restores the previous status and never builds", async () => {
+  const { deps, calls } = makeDeps({ activePlanVersion: 2 });
+  // Simulate the pre-claim read returning the previous status.
+  deps.prisma.patient.findUnique = async (args: any) => {
+    calls.push({ op: "patient.findUnique", args });
+    return { activePlanVersion: 2, mealPlanStatus: "READY", mealPlanGenStartedAt: new Date("2026-07-19T10:00:00") };
+  };
+  let preflightCalls = 0;
+  const preflight = async () => { preflightCalls++; return { status: 429, body: { error: "quota", code: "quota" } }; };
+
+  await assert.rejects(
+    regeneratePlan("p1", START, deps, { preflight }),
+    (err: unknown) => err instanceof PlanPreflightError && err.status === 429 && (err.body as any).code === "quota"
+  );
+  assert.equal(preflightCalls, 1);
+  const ops = calls.map((c) => c.op);
+  assert.equal(ops[0], "patient.findUnique", "previous status is read before the claim");
+  assert.equal(ops[1], "patient.updateMany", "then the claim is taken");
+  assert.ok(!ops.includes("buildMealPlanMenus"), "a rejected preflight must not build");
+  assert.ok(!ops.includes("menu.createMany"), "a rejected preflight must not write menus");
+  const restore = calls.filter((c) => c.op === "patient.update").at(-1)!;
+  assert.equal(restore.args.data.mealPlanStatus, "READY", "status restored, not FAILED");
+  assert.equal(restore.args.data.mealPlanError, undefined, "no error text written for a quota rejection");
+});
+
+test("preflight is skipped entirely when the claim fails (the loser of a double-click is never charged)", async () => {
+  const { deps } = makeDeps({ claimCount: 0 });
+  let preflightCalls = 0;
+  const preflight = async () => { preflightCalls++; return null; };
+  await assert.rejects(regeneratePlan("p1", START, deps, { preflight }), MealPlanBusyError);
+  assert.equal(preflightCalls, 0);
+});
+
+test("preflight that passes lets the build proceed exactly as before", async () => {
+  const { deps, calls } = makeDeps({ activePlanVersion: 1 });
+  const count = await regeneratePlan("p1", START, deps, { preflight: async () => null });
+  assert.equal(count, ROWS.length);
+  assert.ok(calls.some((c) => c.op === "menu.createMany"));
+});
+
+test("withPlanClaim: runs fn with the live activePlanVersion, restores the previous status afterwards", async () => {
+  const { deps, calls } = makeDeps({ activePlanVersion: 7 });
+  deps.prisma.patient.findUnique = async (args: any) => {
+    calls.push({ op: "patient.findUnique", args });
+    return { activePlanVersion: 7, mealPlanStatus: "READY", mealPlanGenStartedAt: null };
+  };
+  const result = await withPlanClaim("p1", async (v) => `built-v${v}`, deps);
+  assert.equal(result, "built-v7");
+  assert.equal(calls[0].op, "patient.findUnique", "reads previous status first");
+  assert.equal(calls[1].op, "patient.updateMany", "then claims");
+  const restore = calls.filter((c) => c.op === "patient.update").at(-1)!;
+  assert.equal(restore.args.data.mealPlanStatus, "READY");
+});
+
+test("withPlanClaim: a busy claim rejects with MealPlanBusyError and never runs fn", async () => {
+  const { deps } = makeDeps({ claimCount: 0 });
+  let ran = false;
+  await assert.rejects(withPlanClaim("p1", async () => { ran = true; }, deps), MealPlanBusyError);
+  assert.equal(ran, false);
+});
+
+test("withPlanClaim: fn throwing still restores status and rethrows", async () => {
+  const { deps, calls } = makeDeps({ activePlanVersion: 3 });
+  await assert.rejects(withPlanClaim("p1", async () => { throw new Error("boom"); }, deps), /boom/);
+  const restore = calls.filter((c) => c.op === "patient.update").at(-1)!;
+  assert.equal(restore.args.data.mealPlanStatus, "READY", "a stub with no previous status restores to READY");
 });
 
 // ─── clampPlanStartToToday ───────────────────────────────────────────────────

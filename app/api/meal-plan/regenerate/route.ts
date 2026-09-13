@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { regeneratePlan, MealPlanBusyError, EmptyPlanError } from "@/lib/meal-plan-runner";
+import { regeneratePlan, MealPlanBusyError, EmptyPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
 import { accountHasActivePremium } from "@/lib/auth";
 import { guardAiSpend } from "@/lib/ai-budget";
 
@@ -55,19 +55,26 @@ export async function POST() {
     );
   }
 
-  // Generation can trigger a Clara top-up call — spend guard.
-  const guard = await guardAiSpend(userId, "planGen", isPremium ? "premium" : "free");
-  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
-
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   try {
-    const count = await regeneratePlan(patient.id, today);
+    const count = await regeneratePlan(patient.id, today, undefined, {
+      // Generation can trigger a Clara top-up call — spend guard. Charged
+      // only by the request that holds the claim, so a double-click's loser
+      // (409 busy) is never billed a week it didn't get.
+      preflight: async () => {
+        const guard = await guardAiSpend(userId, "planGen", isPremium ? "premium" : "free");
+        return guard.ok ? null : { status: guard.status, body: { ...guard.body } };
+      },
+    });
     return NextResponse.json({ ok: true, count });
   } catch (err) {
     if (err instanceof MealPlanBusyError) {
       return NextResponse.json({ error: "A plan is already being generated." }, { status: 409 });
+    }
+    if (err instanceof PlanPreflightError) {
+      return NextResponse.json(err.body, { status: err.status });
     }
     if (err instanceof EmptyPlanError) {
       return NextResponse.json(
