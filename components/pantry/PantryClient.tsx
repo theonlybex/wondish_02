@@ -214,12 +214,17 @@ export default function PantryClient({
           }
         } catch {
           if (seq === saveSeq.current) {
-            setSyncError("Couldn't save that change, so we put the list back the way it was. Check your connection and try again.");
-            // Roll the chips back to the last basket the server confirmed, so a
-            // tick never stays on screen when it didn't actually save. If a newer
-            // list is already queued, let that one settle instead — rolling back
-            // here would fight the save that is about to replace it.
-            if (!pendingSave.current) setSelected(new Map(lastSaved.current));
+            if (!pendingSave.current) {
+              // Roll the chips back to the last basket the server confirmed, so
+              // a tick never stays on screen when it didn't actually save.
+              setSelected(new Map(lastSaved.current));
+              setSyncError("Couldn't save that change, so we put the list back the way it was. Check your connection and try again.");
+            } else {
+              // A newer list is already queued. Rolling back here would fight the
+              // save that is about to replace it, so say only what is true: the
+              // list on screen stands and the queued save will try again.
+              setSyncError("Couldn't save that change — check your connection. Your next change will retry.");
+            }
           }
         }
       }
