@@ -2,9 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/client-fetch";
 
 interface Item { id: string; name: string; liked: boolean }
 interface Level { key: string; title: string; items: Item[] }
+
+const LOAD_ERROR = "Couldn't load your ingredients — check your connection and try again.";
+const SAVE_ERROR = "Couldn't save that pick — check your connection and try again.";
 
 export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit" }) {
   const router = useRouter();
@@ -12,23 +16,39 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
   const [levelIdx, setLevelIdx] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  // True only after a SUCCESSFUL deck load. The "mark taste complete" effect
+  // below must never fire on a failed load: it used to treat any error body
+  // as an empty deck and permanently skip this onboarding step (C1).
+  const [deckLoaded, setDeckLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [done, setDone] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
 
-  const loadDeck = () => {
+  const loadDeck = async (): Promise<Level[] | null> => {
     setLoading(true);
-    return fetch("/api/taste/ingredients")
-      .then((r) => r.json())
-      .then((data) => {
-        const lv: Level[] = data.levels ?? [];
-        setLevels(lv);
-        const pre = new Set<string>();
-        for (const l of lv) for (const it of l.items) if (it.liked) pre.add(it.id);
-        setSelected(pre);
-        return lv;
-      })
-      .finally(() => setLoading(false));
+    setLoadError("");
+    try {
+      const res = await apiFetch("/api/taste/ingredients");
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) {
+        setLoadError(data?.error ?? LOAD_ERROR);
+        return null;
+      }
+      const lv: Level[] = data.levels ?? [];
+      setLevels(lv);
+      const pre = new Set<string>();
+      for (const l of lv) for (const it of l.items) if (it.liked) pre.add(it.id);
+      setSelected(pre);
+      setDeckLoaded(true);
+      return lv;
+    } catch {
+      setLoadError(LOAD_ERROR);
+      return null;
+    } finally {
+      setLoading(false);
+    }
   };
 
   // A refresh used to drop the user back to level 1 (selections survived on
@@ -55,38 +75,53 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
     try { window.sessionStorage.setItem(POS_KEY, JSON.stringify({ levelIdx, done })); } catch { /* not kept */ }
   }, [posRestored, levelIdx, done, POS_KEY]);
 
-  // Mark taste complete so the layout gate stops redirecting here.
+  // Mark taste complete so the layout gate stops redirecting here — only
+  // when the deck really is empty (loaded fine, zero levels), never on error.
   useEffect(() => {
-    if (mode === "edit" || done || (!loading && levels.length === 0)) {
-      fetch("/api/taste/seen", { method: "POST" }).catch(() => {});
+    if (mode === "edit" || done || (deckLoaded && !loading && levels.length === 0)) {
+      apiFetch("/api/taste/seen", { method: "POST" }).catch(() => {});
     }
-  }, [mode, done, loading, levels.length]);
+  }, [mode, done, deckLoaded, loading, levels.length]);
 
   const finish = () => router.push(mode === "edit" ? "/pantry?tab=buy" : "/pantry?onboarding=1");
 
   const toggle = (id: string) => {
+    const nowSelected = !selected.has(id);
     setSelected((prev) => {
       const next = new Set(prev);
-      const nowSelected = !next.has(id);
       if (nowSelected) next.add(id);
       else next.delete(id);
-      if (nowSelected) {
-        fetch("/api/taste/ingredient-swipe", {
+      return next;
+    });
+    setSaveError("");
+    // The request lives OUTSIDE the updater: React may run updaters twice.
+    const req = nowSelected
+      ? apiFetch("/api/taste/ingredient-swipe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ingredientId: id, liked: true }),
-        }).catch(() => {});
-      } else {
-        fetch(`/api/taste/ingredient-swipe?ingredientId=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
-      }
-      return next;
-    });
+        })
+      : apiFetch(`/api/taste/ingredient-swipe?ingredientId=${encodeURIComponent(id)}`, { method: "DELETE" });
+    req
+      .then((res) => {
+        if (!res.ok) throw new Error("save failed");
+      })
+      .catch(() => {
+        // Roll the chip back so the screen never shows a pick the server lost.
+        setSelected((prev) => {
+          const next = new Set(prev);
+          if (nowSelected) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+        setSaveError(SAVE_ERROR);
+      });
   };
 
   const startOver = async () => {
     setResetting(true);
     try {
-      await fetch("/api/taste/ingredients/reset", { method: "POST" });
+      await apiFetch("/api/taste/ingredients/reset", { method: "POST" });
     } catch {
       /* proceed — the reload reflects server state */
     }
@@ -103,6 +138,20 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
       <div className="flex flex-col items-center py-20">
         <div className="text-4xl animate-pulse mb-4" aria-hidden="true">🥘</div>
         <p className="text-[#848181] text-sm">Loading ingredients…</p>
+      </div>
+    );
+  }
+
+  if (loadError && levels.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <p role="alert" className="text-navy font-semibold text-lg mb-2">{loadError}</p>
+        <button
+          onClick={() => void loadDeck()}
+          className="mt-4 px-6 py-3 rounded-2xl bg-primary text-white font-semibold text-sm"
+        >
+          Try again
+        </button>
       </div>
     );
   }
@@ -203,6 +252,10 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
           );
         })}
       </div>
+
+      {saveError && (
+        <p role="alert" className="text-xs mt-3 text-error text-center">{saveError}</p>
+      )}
 
       {/* Sticky Back / Next */}
       <div className="fixed bottom-0 left-0 right-0 px-5 py-3 flex items-center justify-between gap-3 max-w-md mx-auto" style={{ background: "linear-gradient(to top, #F9F7ED 70%, rgba(249,247,237,0))" }}>
