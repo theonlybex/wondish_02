@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { internalError } from "@/lib/api-error";
 import {
   findExchangeById,
   resolveGuard,
@@ -130,7 +131,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       if (err instanceof ResolveError) {
         return NextResponse.json({ error: err.message }, { status: 409 });
       }
-      throw err;
+      return internalError("exchanges/eat", err, "Couldn't log that exchange — please try again.");
     }
   }
 
@@ -216,6 +217,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       // guard: the contract's 409, not a 500.
       return NextResponse.json({ error: "That planned dish was already exchanged" }, { status: 409 });
     }
-    throw err;
+    return internalError("exchanges/resolve", err, "Couldn't resolve that exchange — please try again.");
   }
 }

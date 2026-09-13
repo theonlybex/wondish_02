@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { internalError } from "@/lib/api-error";
 import { convertWeight, convertHeight, calcCBMI } from "@/lib/caloric-engine";
 import { AccountClaimConflictError, getOrCreateAccount } from "@/lib/auth";
 import { CM_PER_IN, checkBodyMetrics, firstBodyMetricsError } from "@/lib/body-bounds";
@@ -58,7 +59,7 @@ export async function PATCH(req: NextRequest) {
         { status: 409 }
       );
     }
-    throw err;
+    return internalError("patient/profile:account", err, "Couldn't save your profile — please try again.");
   }
   if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
 
@@ -249,7 +250,7 @@ export async function PATCH(req: NextRequest) {
         { status: 409 }
       );
     }
-    throw err;
+    return internalError("patient/profile", err, "Couldn't save your profile — please try again.");
   }
 
   // Detect whether any meal-plan-affecting fields changed. Fields whose

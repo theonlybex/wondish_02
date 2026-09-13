@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { internalError } from "@/lib/api-error";
 import { rateLimit } from "@/lib/rate-limit";
 import { grantSuper } from "@/lib/admin-grant";
 import {
@@ -136,7 +137,7 @@ export async function POST(req: NextRequest) {
       // Concurrent double-redeem by the same account lost the unique race.
       return NextResponse.json({ error: "You have already redeemed this coupon" }, { status: 409 });
     }
-    throw err;
+    return internalError("coupon/redeem", err, "Couldn't redeem that code right now — please try again.");
   }
 
   const accessUntil = grantEnd ? grantEnd.toISOString() : null;

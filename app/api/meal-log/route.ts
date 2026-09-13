@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { MealLogSource, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { internalError } from "@/lib/api-error";
 import { rateLimit } from "@/lib/rate-limit";
 import { accountHasActivePremium, getAccountWithSubscription } from "@/lib/auth";
 import { sumMealLogs } from "@/lib/macros";
@@ -126,7 +127,7 @@ export async function POST(req: NextRequest) {
         row = await prisma.mealLog.findUniqueOrThrow({ where });
         created = false;
       } else {
-        throw err;
+        return internalError("meal-log/create", err, "Couldn't save that log — please try again.");
       }
     }
   } else {
