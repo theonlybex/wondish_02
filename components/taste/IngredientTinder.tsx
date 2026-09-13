@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/client-fetch";
 
@@ -29,11 +29,16 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
   const loadDeck = async (): Promise<Level[] | null> => {
     setLoading(true);
     setLoadError("");
+    // Drop the previous deck up front. A failed RELOAD used to leave stale
+    // chips on screen with no retry, because the error screen only showed
+    // when `levels` was empty; now a failure is always distinguishable.
+    setLevels([]);
+    setDeckLoaded(false);
     try {
       const res = await apiFetch("/api/taste/ingredients");
       const data = await res.json().catch(() => null);
       if (!res.ok || !data) {
-        setLoadError(data?.error ?? LOAD_ERROR);
+        setLoadError(typeof data?.error === "string" ? data.error : LOAD_ERROR);
         return null;
       }
       const lv: Level[] = data.levels ?? [];
@@ -85,8 +90,15 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
 
   const finish = () => router.push(mode === "edit" ? "/pantry?tab=buy" : "/pantry?onboarding=1");
 
+  // Per-ingredient request counter: a slow failing request must not roll back
+  // a newer one that already succeeded (tap X off, tap it on again, the first
+  // DELETE then fails — without this the chip would flip back off).
+  const toggleSeq = useRef(new Map<string, number>());
+
   const toggle = (id: string) => {
     const nowSelected = !selected.has(id);
+    const seq = (toggleSeq.current.get(id) ?? 0) + 1;
+    toggleSeq.current.set(id, seq);
     setSelected((prev) => {
       const next = new Set(prev);
       if (nowSelected) next.add(id);
@@ -107,6 +119,8 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
         if (!res.ok) throw new Error("save failed");
       })
       .catch(() => {
+        // A newer tap on this chip has already started: it owns the state now.
+        if (toggleSeq.current.get(id) !== seq) return;
         // Roll the chip back so the screen never shows a pick the server lost.
         setSelected((prev) => {
           const next = new Set(prev);
@@ -142,7 +156,7 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
     );
   }
 
-  if (loadError && levels.length === 0) {
+  if (loadError) {
     return (
       <div className="text-center py-16">
         <p role="alert" className="text-navy font-semibold text-lg mb-2">{loadError}</p>
