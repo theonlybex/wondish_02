@@ -74,12 +74,16 @@ function InlineDishExpand({
   onSwap,
   rating,
   onRate,
+  ratingBusy,
+  rateError,
 }: {
   menu: MenuEntry;
   onSwap: (menuId: string, mealTypeId: string, recipeId: string, calories: number) => void;
   isCompleted: boolean;
   rating: number | null;
   onRate: (recipeId: string, mealTypeName: string, rating: number) => void;
+  ratingBusy: boolean;
+  rateError: string;
 }) {
   const r = menu.recipe;
   // Prefer the recipe's real cooking steps (Clara + curated); fall back to
@@ -209,7 +213,8 @@ function InlineDishExpand({
         <div className="flex gap-2 pb-1">
           <button
             onClick={(e) => { e.stopPropagation(); onRate(r.id, menu.mealType?.name ?? "Meal", -1); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl font-semibold text-xs transition-all ${
+            disabled={ratingBusy}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl font-semibold text-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
               rating === -1 ? "bg-red-500 text-white" : "bg-red-50 border border-red-200 text-red-600 hover:bg-red-100"
             }`}
           >
@@ -217,13 +222,17 @@ function InlineDishExpand({
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onRate(r.id, menu.mealType?.name ?? "Meal", 1); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl font-semibold text-xs transition-all ${
+            disabled={ratingBusy}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl font-semibold text-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
               rating === 1 ? "bg-emerald-500 text-white" : "bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100"
             }`}
           >
             <span>👍</span> {rating === 1 ? "Loved it!" : "Loved it"}
           </button>
         </div>
+        {rateError && (
+          <p role="alert" className="text-xs mt-2 text-error">{rateError}</p>
+        )}
       </div>
     </motion.div>
   );
@@ -285,8 +294,11 @@ export default function DailyMealPlanView({
     const serverDay = format(date, "yyyy-MM-dd");
     const dateStr = clientToday !== serverDay ? clientToday : serverDay;
     apiFetch(`/api/meal-plan?date=${dateStr}&exchanges=1`)
-      .then((r) => r.json())
-      .then((data) => {
+      .then(async (r) => {
+        const data = await r.json().catch(() => null);
+        // Any error body (401 after idle, 404, 403) used to wipe the
+        // server-rendered plan to [] and invite a wasted regeneration (C2).
+        if (!r.ok || !data) return;
         if (clientToday !== serverDay) {
           setDate(parseLocalDate(clientToday));
           setMenus(data.menus ?? []);
@@ -325,7 +337,13 @@ export default function DailyMealPlanView({
       }
       const dateStr = format(new Date(), "yyyy-MM-dd");
       const mRes = await apiFetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
-      const mData = await mRes.json();
+      const mData = await mRes.json().catch(() => null);
+      if (!mRes.ok || !mData) {
+        // The week WAS generated; only the re-read failed. Never blank the
+        // screen or the user will burn a second weekly token rebuilding.
+        setNewWeekError("Your new week is ready — reload the page to see it.");
+        return;
+      }
       setMenus(mData.menus ?? []);
       setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
       setMealRatings(mData.mealRatings ?? {});
@@ -344,6 +362,9 @@ export default function DailyMealPlanView({
   // (basket-constrained; cuisine is a soft lens). The rest of the week stays.
   const [cuisineDayLoading, setCuisineDayLoading] = useState(false);
   const [cuisineDayError, setCuisineDayError] = useState("");
+  const [navError, setNavError] = useState("");
+  const [ratingBusy, setRatingBusy] = useState(false);
+  const [rateError, setRateError] = useState("");
   const [showCuisines, setShowCuisines] = useState(false);
   const setCuisineForDay = async (cuisine: string) => {
     if (cuisineDayLoading) return;
@@ -362,7 +383,11 @@ export default function DailyMealPlanView({
         return;
       }
       const mRes = await apiFetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
-      const mData = await mRes.json();
+      const mData = await mRes.json().catch(() => null);
+      if (!mRes.ok || !mData) {
+        setCuisineDayError("Today was updated — reload the page to see it.");
+        return;
+      }
       setMenus(mData.menus ?? []);
       setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
       setMealRatings(mData.mealRatings ?? {});
@@ -389,36 +414,64 @@ export default function DailyMealPlanView({
   const navigate = async (dir: "prev" | "next") => {
     if (dir === "next" && atForwardLimit) return;
     if (dir === "prev" && atBackLimit) return;
+    if (loading) return;
     setSelectedId(null);
+    setNavError("");
+    const prevDate = date;
     const newDate = dir === "next" ? addDays(date, 1) : subDays(date, 1);
     const dateStr = format(newDate, "yyyy-MM-dd");
     setDate(newDate);
     setLoading(true);
     try {
       const res  = await apiFetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) {
+        // Keep the dishes that match the header: revert the date instead of
+        // showing yesterday's food under today's date (C2).
+        setDate(prevDate);
+        setNavError(data?.error ?? "Couldn't load that day — try again.");
+        return;
+      }
       setMenus(data.menus ?? []);
       setLoggedRecipeIds(data.loggedRecipeIds ?? []);
       setMealRatings(data.mealRatings ?? {});
       if (data.mealPlanStartDate) setStartDate(new Date(data.mealPlanStartDate));
       setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
       setExchanges(data.exchanges ?? null);
+    } catch {
+      setDate(prevDate);
+      setNavError("Network error — try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleRate = async (recipeId: string, mealTypeName: string, rating: number) => {
-    setSelectedId(null);
+    // /api/journal/log-meal is a TOGGLE: two fast taps logged then un-logged
+    // the meal with no feedback (C2). One in flight at a time.
+    if (ratingBusy) return;
+    setRatingBusy(true);
+    setRateError("");
     const dateStr = format(date, "yyyy-MM-dd");
-    const res = await apiFetch("/api/journal/log-meal", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recipeId, mealTypeName, date: dateStr, rating }),
-    });
-    const data = await res.json();
-    if (data.loggedRecipeIds) setLoggedRecipeIds(data.loggedRecipeIds);
-    if (data.mealRatings)     setMealRatings(data.mealRatings);
+    try {
+      const res = await apiFetch("/api/journal/log-meal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipeId, mealTypeName, date: dateStr, rating }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) {
+        setRateError(data?.error ?? "Couldn't save your rating — try again.");
+        return;
+      }
+      if (data.loggedRecipeIds) setLoggedRecipeIds(data.loggedRecipeIds);
+      if (data.mealRatings)     setMealRatings(data.mealRatings);
+      setSelectedId(null);
+    } catch {
+      setRateError("Network error — try again.");
+    } finally {
+      setRatingBusy(false);
+    }
   };
 
   const handleSwapped = (menuId: string, newRecipe: RecipeDTO) => {
@@ -510,6 +563,10 @@ export default function DailyMealPlanView({
             </p>
           )}
         </div>
+      )}
+
+      {navError && (
+        <p role="alert" className="text-xs mb-3 text-error">{navError}</p>
       )}
 
       {/* Cuisine-for-today + full-week entry — only when a day exists. */}
@@ -847,6 +904,8 @@ export default function DailyMealPlanView({
                                     isCompleted={isCompleted}
                                     rating={mealRatings[menu.recipe.id] ?? null}
                                     onRate={handleRate}
+                                    ratingBusy={ratingBusy}
+                                    rateError={rateError}
                                   />
                                 )}
                               </AnimatePresence>
