@@ -25,6 +25,7 @@ import {
   getMacroPercentages,
 } from "@/lib/caloric-engine";
 import { guardAiSpend } from "@/lib/ai-budget";
+import { rateLimit } from "@/lib/rate-limit";
 import { buildFoodMapText } from "@/lib/food-map";
 import { fitBasket, freeStaplesFor } from "@/lib/clara/recipe-generation";
 
@@ -74,6 +75,14 @@ export async function POST(
   });
   if (!menu || !menu.mealTypeId || !menu.mealType) {
     return NextResponse.json({ error: "Menu not found" }, { status: 404 });
+  }
+
+  // One Clara swap per slot at a time (S12). maxDuration is 30s, so a 45s
+  // window covers the slowest legitimate run; a double-tap's second request
+  // is refused before it can generate a second public recipe for this slot.
+  const inflight = await rateLimit("clara-swap-inflight", `${userId}:${params.menuId}`, 1, 45);
+  if (!inflight.success) {
+    return NextResponse.json({ error: "Clara is already working on this dish — give her a moment." }, { status: 409 });
   }
 
   // AI spend guard (charge-before-model): per-user daily swap quota + global
@@ -178,7 +187,22 @@ export async function POST(
     return NextResponse.json({ error: "Clara couldn't save that dish — try again." }, { status: 502 });
   }
 
-  await prisma.menu.update({ where: { id: params.menuId }, data: { recipeId: createdId } });
+  // Guarded write: the slot must still belong to this patient's ACTIVE plan
+  // version. If a regenerate ran during the model call, the old row is gone
+  // (or stale) and `update` would throw P2025 uncaught. Take the dish out of
+  // the public catalog so a lost race doesn't leave junk for every other
+  // user's plan builder.
+  const claimed = await prisma.menu.updateMany({
+    where: { id: params.menuId, patientId: patient.id, planVersion: patient.activePlanVersion },
+    data: { recipeId: createdId },
+  });
+  if (claimed.count === 0) {
+    await prisma.recipe.update({ where: { id: createdId }, data: { isPublic: false } }).catch(() => {});
+    return NextResponse.json(
+      { error: "Your plan changed while Clara was cooking — refresh the page and try again." },
+      { status: 409 }
+    );
+  }
 
   // Return the new recipe in the shape the client's onSwapped expects.
   const recipe = await prisma.recipe.findUnique({
