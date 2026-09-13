@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { convertWeight, convertHeight, calcCBMI } from "@/lib/caloric-engine";
@@ -204,40 +205,52 @@ export async function PATCH(req: NextRequest) {
     },
   });
 
-  await prisma.$transaction([
-    ...(motivationList
-      ? [
-          prisma.patientMotivation.deleteMany({ where: { patientId: patient.id } }),
-          ...(motivationList.length ? [prisma.patientMotivation.createMany({ data: motivationList.map((id) => ({ patientId: patient.id, motivationId: id })) })] : []),
-        ]
-      : []),
-    // The built-in list is replaced; the user's own conditions (owner = this
-    // patient, managed under /api/patient/conditions) keep their links.
-    ...(conditionList
-      ? [
-          prisma.patientHealthCondition.deleteMany({ where: { patientId: patient.id, condition: { ownerPatientId: null } } }),
-          ...(conditionList.length ? [prisma.patientHealthCondition.createMany({ data: conditionList.map((id) => ({ patientId: patient.id, conditionId: id })), skipDuplicates: true })] : []),
-        ]
-      : []),
-    ...(preferenceList
-      ? [
-          prisma.patientFoodPreference.deleteMany({ where: { patientId: patient.id } }),
-          ...(preferenceList.length ? [prisma.patientFoodPreference.createMany({ data: preferenceList.map((id) => ({ patientId: patient.id, foodId: id })) })] : []),
-        ]
-      : []),
-    ...(avoidList
-      ? [
-          prisma.patientFoodToAvoid.deleteMany({ where: { patientId: patient.id } }),
-          ...(avoidList.length ? [prisma.patientFoodToAvoid.createMany({ data: avoidList.map((id) => ({ patientId: patient.id, foodId: id })) })] : []),
-        ]
-      : []),
-    ...(allergyList
-      ? [
-          prisma.patientFoodAllergy.deleteMany({ where: { patientId: patient.id } }),
-          ...(allergyList.length ? [prisma.patientFoodAllergy.createMany({ data: allergyList.map((id) => ({ patientId: patient.id, foodId: id })) })] : []),
-        ]
-      : []),
-  ]);
+  try {
+    await prisma.$transaction([
+      ...(motivationList
+        ? [
+            prisma.patientMotivation.deleteMany({ where: { patientId: patient.id } }),
+            ...(motivationList.length ? [prisma.patientMotivation.createMany({ data: motivationList.map((id) => ({ patientId: patient.id, motivationId: id })), skipDuplicates: true })] : []),
+          ]
+        : []),
+      // The built-in list is replaced; the user's own conditions (owner = this
+      // patient, managed under /api/patient/conditions) keep their links.
+      ...(conditionList
+        ? [
+            prisma.patientHealthCondition.deleteMany({ where: { patientId: patient.id, condition: { ownerPatientId: null } } }),
+            ...(conditionList.length ? [prisma.patientHealthCondition.createMany({ data: conditionList.map((id) => ({ patientId: patient.id, conditionId: id })), skipDuplicates: true })] : []),
+          ]
+        : []),
+      ...(preferenceList
+        ? [
+            prisma.patientFoodPreference.deleteMany({ where: { patientId: patient.id } }),
+            ...(preferenceList.length ? [prisma.patientFoodPreference.createMany({ data: preferenceList.map((id) => ({ patientId: patient.id, foodId: id })), skipDuplicates: true })] : []),
+          ]
+        : []),
+      ...(avoidList
+        ? [
+            prisma.patientFoodToAvoid.deleteMany({ where: { patientId: patient.id } }),
+            ...(avoidList.length ? [prisma.patientFoodToAvoid.createMany({ data: avoidList.map((id) => ({ patientId: patient.id, foodId: id })), skipDuplicates: true })] : []),
+          ]
+        : []),
+      ...(allergyList
+        ? [
+            prisma.patientFoodAllergy.deleteMany({ where: { patientId: patient.id } }),
+            ...(allergyList.length ? [prisma.patientFoodAllergy.createMany({ data: allergyList.map((id) => ({ patientId: patient.id, foodId: id })), skipDuplicates: true })] : []),
+          ]
+        : []),
+    ]);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      // Two saves raced (double-submit): the winner's write is correct and
+      // complete, so tell the loser to reload rather than 500 (S14).
+      return NextResponse.json(
+        { error: "Your profile was just saved — refresh the page to see it." },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
 
   // Detect whether any meal-plan-affecting fields changed. Fields whose
   // update-path preserves on omission (weight/height/birthday/goalWeight →
