@@ -1,7 +1,7 @@
 import { premiumGatesEnabled } from "@/lib/billing/gates";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { MealLogSource } from "@prisma/client";
+import { MealLogSource, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { accountHasActivePremium, getAccountWithSubscription } from "@/lib/auth";
@@ -119,13 +119,27 @@ export async function POST(req: NextRequest) {
 
   // One transaction: per-item idempotent upsert (or plain create when the item
   // carries no clientRequestId).
-  const rows = await prisma.$transaction(
-    rowsData.map((data) =>
-      data.clientRequestId
-        ? prisma.mealLog.upsert(buildMealLogUpsertArgs(data))
-        : prisma.mealLog.create({ data })
-    )
-  );
+  let rows;
+  try {
+    rows = await prisma.$transaction(
+      rowsData.map((data) =>
+        data.clientRequestId
+          ? prisma.mealLog.upsert(buildMealLogUpsertArgs(data))
+          : prisma.mealLog.create({ data })
+      )
+    );
+  } catch (err) {
+    // Two concurrent replays of the same batch raced through the upserts'
+    // non-atomic path (pinned `update: {}`); the transaction loser throws
+    // P2002. The rows exist — say so plainly instead of P2002 → 500 (S15).
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return NextResponse.json(
+        { error: "Some of these items were already logged — refresh and check your log." },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
 
   const envelope = await getDayEnvelope(patient.id, localDate);
   const unitMap = await buildCustomUnitMap(patient.id, rows);

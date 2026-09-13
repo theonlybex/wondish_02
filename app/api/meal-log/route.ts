@@ -1,7 +1,7 @@
 import { premiumGatesEnabled } from "@/lib/billing/gates";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { MealLogSource } from "@prisma/client";
+import { MealLogSource, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { accountHasActivePremium, getAccountWithSubscription } from "@/lib/auth";
@@ -113,11 +113,22 @@ export async function POST(req: NextRequest) {
   let created = true;
   let row;
   if (input.clientRequestId) {
-    const existing = await prisma.mealLog.findUnique({
-      where: { patientId_clientRequestId: { patientId: patient.id, clientRequestId: input.clientRequestId } },
-    });
+    const where = { patientId_clientRequestId: { patientId: patient.id, clientRequestId: input.clientRequestId } };
+    const existing = await prisma.mealLog.findUnique({ where });
     created = !existing;
-    row = await prisma.mealLog.upsert(buildMealLogUpsertArgs(data));
+    try {
+      row = await prisma.mealLog.upsert(buildMealLogUpsertArgs(data));
+    } catch (err) {
+      // Two replays of the same clientRequestId raced through the upsert's
+      // non-atomic path (pinned `update: {}`). The row exists now: return it
+      // as the replay contract promises, instead of P2002 → 500 (S15).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        row = await prisma.mealLog.findUniqueOrThrow({ where });
+        created = false;
+      } else {
+        throw err;
+      }
+    }
   } else {
     row = await prisma.mealLog.create({ data });
   }
