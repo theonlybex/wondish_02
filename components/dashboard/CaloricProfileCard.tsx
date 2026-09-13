@@ -5,6 +5,7 @@ import { CaloricProfileDTO } from "@/types";
 import type { WeeklyTargetDTO } from "@/types";
 import { kgToLbs } from "@/lib/prediction-data";
 import { resolveDailyCalorieTarget } from "@/lib/caloric-engine";
+import { apiFetch } from "@/lib/client-fetch";
 import {
   MEAL_LOG_UPDATED_EVENT,
   formatLocalDate,
@@ -38,13 +39,12 @@ export default function CaloricProfileCard() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch("/api/patient/caloric-profile");
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || "Could not load caloric profile");
+      const res = await apiFetch("/api/patient/caloric-profile");
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) {
+        setError(data?.error || "Could not load caloric profile");
         return;
       }
-      const data = await res.json();
       setProfile(data.profile);
       setError("");
     } catch {
@@ -70,7 +70,7 @@ export default function CaloricProfileCard() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/meal-log?date=${today}`);
+        const res = await apiFetch(`/api/meal-log?date=${today}`);
         if (!res.ok) return;
         const json = await res.json();
         if (!cancelled) {

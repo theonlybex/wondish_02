@@ -67,6 +67,9 @@ export default function PantryClient({
   const [syncError, setSyncError] = useState("");
   const [common, setCommon] = useState<Ing[]>([]);
   const [selected, setSelected] = useState<Map<string, string>>(new Map()); // id → name
+  // The basket as the SERVER last confirmed it. A failed save rolls the
+  // chips back to this so a tick never stays on screen when it didn't stick (C4).
+  const lastSaved = useRef<Map<string, string>>(new Map());
   const [cookable, setCookable] = useState<Cookable | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Ing[]>([]);
@@ -133,7 +136,9 @@ export default function PantryClient({
       if (!res.ok) throw new Error();
       const data = await res.json();
       setCommon(data.common ?? []);
-      setSelected(new Map((data.items ?? []).map((i: Ing) => [i.id, i.name])));
+      const items = new Map<string, string>((data.items ?? []).map((i: Ing) => [i.id, i.name]));
+      setSelected(new Map(items));
+      lastSaved.current = new Map(items);
       void refreshCookable();
     } catch {
       setLoadError("Couldn't load your ingredients. Check your connection and try again.");
@@ -204,11 +209,17 @@ export default function PantryClient({
           if (!res.ok) throw new Error();
           if (seq === saveSeq.current) {
             setSyncError("");
+            lastSaved.current = new Map(next);
             void refreshCookable();
           }
         } catch {
           if (seq === saveSeq.current) {
-            setSyncError("Couldn't save that change — it may not stick. Check your connection.");
+            setSyncError("Couldn't save that change, so we put the list back the way it was. Check your connection and try again.");
+            // Roll the chips back to the last basket the server confirmed, so a
+            // tick never stays on screen when it didn't actually save. If a newer
+            // list is already queued, let that one settle instead — rolling back
+            // here would fight the save that is about to replace it.
+            if (!pendingSave.current) setSelected(new Map(lastSaved.current));
           }
         }
       }
@@ -221,15 +232,25 @@ export default function PantryClient({
     await flushSaves();
   };
 
+  // Queue the save from an effect, never from inside the updater: React may
+  // run updaters twice and used to fire duplicate PUTs (C4).
+  const pendingToggle = useRef<Map<string, string> | null>(null);
   const toggle = (ing: Ing) => {
     setSelected((prev) => {
       const next = new Map(prev);
       if (next.has(ing.id)) next.delete(ing.id);
       else next.set(ing.id, ing.name);
-      void persist(next);
+      pendingToggle.current = next;
       return next;
     });
   };
+  useEffect(() => {
+    const next = pendingToggle.current;
+    if (!next) return;
+    pendingToggle.current = null;
+    void persist(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
 
   const onQueryChange = (q: string) => {
     setQuery(q);
@@ -355,6 +376,11 @@ export default function PantryClient({
     return (
       <div>
         {tabs}
+        {syncError && (
+          <div role="alert" className="bg-error/10 border border-error/20 text-error rounded-xl px-4 py-2.5 text-xs mb-4">
+            {syncError}
+          </div>
+        )}
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="inline-flex p-0.5 rounded-full border" style={{ borderColor: "#EAE4CA", background: "#F5F1DD" }}>
             {(["category", "value", "cuisine"] as const).map((m) => (

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { SubscriptionView } from "@/lib/billing/subscription-view";
 import { priceLabelFor } from "@/lib/billing/plans";
+import { apiFetch } from "@/lib/client-fetch";
 import RedeemCodeBox from "./RedeemCodeBox";
 
 function fmtDate(iso: string | null) {
@@ -26,13 +27,13 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
     setBusy(action);
     setError(null);
     try {
-      const res = await fetch("/api/billing/subscription", {
+      const res = await apiFetch("/api/billing/subscription", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, plan }),
       });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Something went wrong."); return; }
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) { setError(data?.error ?? "Something went wrong."); return; }
       setView(data);
       setConfirmCancel(false);
     } catch {
@@ -46,10 +47,10 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
     setBusy("portal");
     setError(null);
     try {
-      const res = await fetch("/api/billing/portal");
-      const data = await res.json();
-      if (res.ok) { window.location.href = data.url; return; }
-      setError(data.error ?? "Couldn't open the billing portal.");
+      const res = await apiFetch("/api/billing/portal");
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.url) { window.location.href = data.url; return; }
+      setError(data?.error ?? "Couldn't open the billing portal.");
     } catch {
       setError("Network error. Please try again.");
     }

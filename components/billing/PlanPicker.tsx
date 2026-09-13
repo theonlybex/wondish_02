@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PLANS, formatCents, perMonthCents, savingsPct, type PlanKey } from "@/lib/billing/plans";
+import { apiFetch } from "@/lib/client-fetch";
 
 export interface PlanPickerLabels {
   monthly: string;
@@ -44,7 +45,7 @@ export default function PlanPicker({ defaultPlan = "sixmonth", labels }: { defau
     if (!code.trim()) { setPreview(null); return; }
     setChecking(true);
     try {
-      const res = await fetch("/api/billing/promo", {
+      const res = await apiFetch("/api/billing/promo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, plan: nextPlan }),
@@ -66,14 +67,15 @@ export default function PlanPicker({ defaultPlan = "sixmonth", labels }: { defau
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/billing/checkout", {
+      const res = await apiFetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan, promoCode: preview?.valid ? code.trim() : undefined }),
       });
       if (res.status === 401) { router.push(`/register?plan=${plan}`); return; }
-      const data = await res.json();
-      if (!res.ok) { setError(data.message ?? data.error ?? "Something went wrong. Please try again."); return; }
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { setError(data?.message ?? data?.error ?? "Something went wrong. Please try again."); return; }
+      if (!data?.url && !data?.portalUrl) { setError("Something went wrong. Please try again."); return; }
       window.location.href = data.alreadySubscribed ? data.portalUrl : data.url;
     } catch {
       setError("Network error. Please check your connection and try again.");
