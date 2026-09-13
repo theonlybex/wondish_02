@@ -27,7 +27,12 @@ import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anth
 // whole turn.
 export const maxDuration = 60;
 
-const anthropic = createAnthropic({ timeout: 55_000 });
+// 55s x 1 attempt stays under the 60s function budget. maxRetries is 0 on
+// purpose: the SDK retries timeouts, so 55s x (1 + 1 retry) would run to 110s
+// and the platform would kill the function mid-retry — a bare 504 with no JSON
+// body, which is the exact failure this factory exists to prevent. A 529
+// instead surfaces immediately as "Clara is busy" and the user retries.
+const anthropic = createAnthropic({ timeout: 55_000, maxRetries: 0 });
 
 // Last-resort boundary: an uncaught throw here used to surface as an empty
 // 500 with no log line, which is indistinguishable from a network failure

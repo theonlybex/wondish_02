@@ -20,6 +20,14 @@ test("factory accepts per-route overrides (streaming chat needs a longer window)
   assert.equal(client.maxRetries, ANTHROPIC_MAX_RETRIES);
 });
 
+test("an override of 0 retries survives: the default must be applied with ?? and not ||", () => {
+  // Streaming chat pins maxRetries to 0 so a 55s timeout can't be retried past
+  // the 60s maxDuration. `overrides.maxRetries || ANTHROPIC_MAX_RETRIES` would
+  // silently turn that 0 back into 1 and re-open the bug.
+  const client = createAnthropic({ maxRetries: 0 });
+  assert.equal(client.maxRetries, 0);
+});
+
 test("claraBusyStatus maps rate limit, overload and timeout to a retryable status", () => {
   const rateLimited = new Anthropic.APIError(429, undefined, "rate", undefined);
   const overloaded = new Anthropic.APIError(529, undefined, "overloaded", undefined);
