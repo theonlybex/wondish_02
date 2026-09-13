@@ -16,12 +16,16 @@ function fakeLimiter() {
   return { limiter, calls };
 }
 
-test("tiers: free 1 new week/week + 5 Clara messages/day; premium 3/week + 20/day", () => {
+test("tiers: free 1 new week/week + 5 Clara messages/day; premium (beta trial) 5/week + 25/day", () => {
   assert.deepEqual(limitFor("planGen", "free"), { max: 1, windowSec: 7 * 86_400, window: "week" });
-  assert.deepEqual(limitFor("planGen", "premium"), { max: 3, windowSec: 7 * 86_400, window: "week" });
+  assert.deepEqual(limitFor("planGen", "premium"), { max: 5, windowSec: 7 * 86_400, window: "week" });
   assert.equal(limitFor("claraChat", "free").max, 5);
-  assert.equal(limitFor("claraChat", "premium").max, 20);
+  assert.equal(limitFor("claraChat", "premium").max, 25);
   assert.equal(limitFor("claraChat", "free").window, "day");
+  assert.equal(limitFor("swap", "premium").max, 15);
+  assert.equal(limitFor("fridge", "premium").max, 15);
+  assert.equal(limitFor("cookDay", "premium").max, 5);
+  assert.equal(limitFor("planInit", "premium").max, 10);
   for (const k of Object.keys(AI_LIMITS)) assert.ok(AI_LIMITS[k].premium >= AI_LIMITS[k].free, k);
 });
 
@@ -41,26 +45,26 @@ test("free user: 6th Clara message today is refused with an upgrade hint; the gl
   if (!r.ok) {
     assert.equal(r.status, 429);
     assert.match(r.error, /5 free Clara messages for today/);
-    assert.match(r.error, /Premium gives you 20 a day/);
+    assert.match(r.error, /Premium gives you 25 a day/);
     assert.equal((r.body as { upgrade?: boolean }).upgrade, true);
   }
   assert.equal(calls.filter((c) => c.startsWith("ai-global-day")).length, 5);
 });
 
-test("free user: second new week in the same week is refused; premium gets three", async () => {
+test("free user: second new week in the same week is refused; premium gets five", async () => {
   const { limiter } = fakeLimiter();
   assert.equal((await guardAiSpend("u1", "planGen", "free", limiter)).ok, true);
   const r = await guardAiSpend("u1", "planGen", "free", limiter);
   assert.equal(r.ok, false);
   if (!r.ok) assert.match(r.error, /1 free new week for this week/);
-  for (let i = 0; i < 3; i++) assert.equal((await guardAiSpend("u2", "planGen", "premium", limiter)).ok, true);
+  for (let i = 0; i < 5; i++) assert.equal((await guardAiSpend("u2", "planGen", "premium", limiter)).ok, true);
   assert.equal((await guardAiSpend("u2", "planGen", "premium", limiter)).ok, false);
 });
 
 test("premium at its cap gets a plain reset message, no upgrade hint", () => {
   const b = quotaExceededBody("claraChat", "premium");
   assert.equal(b.upgrade, false);
-  assert.match(b.error, /today's limit for Clara messages \(20\)/);
+  assert.match(b.error, /today's limit for Clara messages \(25\)/);
 });
 
 test("global ceiling stops everyone once the org-wide daily count is spent", async () => {
@@ -70,4 +74,10 @@ test("global ceiling stops everyone once the org-wide daily count is spent", asy
   const r = await guardAiSpend("fresh", "swap", "premium", limiter);
   assert.equal(r.ok, false);
   if (!r.ok) assert.match(r.error, /at capacity/);
+});
+
+test("global ceiling is sized for a 50-tester beta", () => {
+  // 50 testers x ~40 requests/day worst case = 2000. Below that the 51st
+  // request of a busy evening read as an outage ("Clara is at capacity").
+  assert.equal(GLOBAL_AI_DAILY_MAX, 2000);
 });

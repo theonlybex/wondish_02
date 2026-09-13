@@ -41,23 +41,26 @@ export interface AiLimit {
   label: string;
 }
 
-// Measured Haiku cost per request (this session): chat ≈ $0.012, swap /
+// Measured Haiku cost per request (2026-09-12): chat ≈ $0.012, swap /
 // fridge ≈ $0.02, cook-day ≈ $0.05, a full new week ≈ $0.08.
-// Free worst case ≈ $0.55/week; premium worst case ≈ $3.70/week (realistic
-// ≈ $1) against $4.60/week of revenue on the monthly plan.
+// The "premium" column is the BETA TRIAL for coupon holders (2026-09-13):
+// generous enough to feel like the real product, capped so one tester's
+// worst day is ≈ $2. Free worst case ≈ $0.55/week. When Stripe goes live
+// this column splits into a beta tier at these numbers and a near-unlimited
+// paid tier.
 export const AI_LIMITS: Record<string, AiLimit> = {
   // Conversations with Clara (dish-checker).
-  claraChat: { bucket: "ai-chat", window: "day", free: 5, premium: 20, label: "Clara messages" },
+  claraChat: { bucket: "ai-chat", window: "day", free: 5, premium: 25, label: "Clara messages" },
   // Fridge recipe generation.
   fridge: { bucket: "ai-fridge", window: "day", free: 3, premium: 15, label: "fridge suggestions" },
   // Pantry "cook my day" full-day generation.
-  cookDay: { bucket: "ai-cookday", window: "day", free: 1, premium: 3, label: "cook-my-day plans" },
+  cookDay: { bucket: "ai-cookday", window: "day", free: 1, premium: 5, label: "cook-my-day plans" },
   // First plan / start-date changes (onboarding) — not the weekly allowance.
-  planInit: { bucket: "ai-planinit", window: "day", free: 3, premium: 5, label: "plan setups" },
+  planInit: { bucket: "ai-planinit", window: "day", free: 3, premium: 10, label: "plan setups" },
   // Rolling-week generation (New week, regenerate): the headline free limit.
-  planGen: { bucket: "ai-plangen", window: "week", free: 1, premium: 3, label: "new weeks" },
+  planGen: { bucket: "ai-plangen", window: "week", free: 1, premium: 5, label: "new weeks" },
   // Clara single-dish swaps and "cuisine for today".
-  swap: { bucket: "ai-swap", window: "day", free: 2, premium: 10, label: "dish swaps" },
+  swap: { bucket: "ai-swap", window: "day", free: 2, premium: 15, label: "dish swaps" },
 } as const;
 
 export type AiGuardKind = keyof typeof AI_LIMITS;
@@ -65,11 +68,11 @@ export type AiGuardKind = keyof typeof AI_LIMITS;
 // Org-wide hard ceiling on total Anthropic-billed REQUESTS per rolling day.
 // THIS is the number that caps a runaway bill.
 //
-// Budget target: ~$100/week ≈ $14/day. With everything on Haiku the average
-// request is ≈ $0.02 (chat $0.012 … week $0.08), so $14 ÷ $0.02 ≈ 700. A
-// pure new-week spam day at the ceiling would cost ~$56 — the per-user weekly
-// planGen cap makes that unreachable in practice.
-export const GLOBAL_AI_DAILY_MAX = 700;
+// Sized for the closed beta (2026-09-13): 50 testers x ~40 requests/day at
+// the trial limits = 2000. Worst case at the ceiling on Haiku ≈ $40 for the
+// day; realistic usage (~12 requests/tester) is a small fraction of that.
+// Raise proportionally as the cohort grows.
+export const GLOBAL_AI_DAILY_MAX = 2000;
 
 export function limitFor(kind: AiGuardKind, tier: AiTier): { max: number; windowSec: number; window: AiWindow } {
   const cfg = AI_LIMITS[kind];
