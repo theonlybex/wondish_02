@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import SymptomChips from "@/components/journal/SymptomChips";
+import { apiFetch } from "@/lib/client-fetch";
 import type { Severity, TrackingItemView } from "@/lib/journal-symptoms";
 
 const MOOD_OPTIONS = [
@@ -99,7 +100,7 @@ export default function QuickJournalLog() {
         const w = parseFloat(weight);
         if (!isNaN(w)) weightLbs = String(w);
       }
-      const res = await fetch("/api/journal", {
+      const res = await apiFetch("/api/journal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -114,15 +115,20 @@ export default function QuickJournalLog() {
           symptoms: trackingItems.map((it) => ({ trackingItemId: it.id, severity: symptoms[it.id] ?? null })),
         }),
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        // Surface the API's own message (validation texts, weigh-in bounds)
+        // instead of a generic failure; a non-JSON body keeps the fallback.
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? "Could not save.");
+      }
       setSaved(true);
       // Notify sibling cards (e.g. Caloric Profile) that the weigh-in changed
       // so they can refetch live instead of waiting for a page reload.
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("journal:saved"));
       }
-    } catch {
-      setError("Could not save.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save.");
     } finally {
       setSaving(false);
     }
@@ -421,7 +427,7 @@ export default function QuickJournalLog() {
       </div>
 
       {error && (
-        <p className="mt-2 text-xs font-medium text-red-500">{error}</p>
+        <p role="alert" className="mt-2 text-xs font-medium text-red-500">{error}</p>
       )}
     </div>
   );

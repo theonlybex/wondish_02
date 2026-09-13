@@ -6,6 +6,7 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import MultiSelectChips from "@/components/profile/MultiSelectChips";
+import { apiFetch } from "@/lib/client-fetch";
 import {
   computeAllMetrics,
   feetInchesToCm,
@@ -191,7 +192,7 @@ export default function ProfileForm({
     setError("");
 
     try {
-      const res = await fetch("/api/patient/profile", {
+      const res = await apiFetch("/api/patient/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -217,7 +218,16 @@ export default function ProfileForm({
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to save profile");
+      if (!res.ok) {
+        // Same parsing as the onboarding wizard: surface the API's own text
+        // (422 field messages, 409 email conflict, which sends a human
+        // `message` alongside the `email_conflict` code) instead of a
+        // generic failure. A non-JSON body keeps the fallback sentence.
+        const data = await res.json().catch(() => null);
+        throw new Error(
+          data?.message ?? data?.error ?? "Something went wrong saving your profile. Please try again."
+        );
+      }
 
       if (isOnboarding) {
         // The profile save above already set onboardingComplete in the DB — the
@@ -229,7 +239,11 @@ export default function ProfileForm({
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong saving your profile. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -246,7 +260,7 @@ export default function ProfileForm({
       )}
 
       {error && (
-        <div className="bg-error/10 border border-error/20 text-error rounded-xl px-4 py-3 text-sm">
+        <div role="alert" className="bg-error/10 border border-error/20 text-error rounded-xl px-4 py-3 text-sm">
           {error}
         </div>
       )}

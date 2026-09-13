@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { apiFetch } from "@/lib/client-fetch";
 
 // One redeem box for every surface that shows it: the Settings menu, the
 // Premium gate, and the Free card on the billing page. Posts to
@@ -31,14 +32,16 @@ export default function RedeemCodeBox({
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch("/api/coupon/redeem", {
+      const res = await apiFetch("/api/coupon/redeem", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setResult({ success: false, message: data.error });
+      // A non-JSON body (proxy/HTML error page) must not throw past the
+      // success branch — fall back to the generic message instead.
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) {
+        setResult({ success: false, message: data?.error ?? t("error") });
       } else {
         const until = data.accessUntil ? new Date(data.accessUntil).toLocaleDateString() : null;
         const message =

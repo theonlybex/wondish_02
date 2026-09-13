@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import DatePicker from "@/components/ui/DatePicker";
 import Button from "@/components/ui/Button";
+import { apiFetch } from "@/lib/client-fetch";
 import { GroceryItem } from "@/types";
 
 interface GroceryListViewProps {
@@ -22,6 +23,7 @@ export default function GroceryListView({
   const [to, setTo] = useState(initialTo);
   const [loading, setLoading] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [error, setError] = useState("");
 
   // Load the current window on mount when embedded with no seeded items
   // (the "What to buy" tab in the Ingredients screen passes initialItems=[]).
@@ -32,13 +34,20 @@ export default function GroceryListView({
 
   const load = async (f: Date, t: Date) => {
     setLoading(true);
+    setError("");
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/grocery-list?from=${format(f, "yyyy-MM-dd")}&to=${format(t, "yyyy-MM-dd")}`
       );
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) {
+        setError(data?.error ?? "Couldn't load your shopping list — try again.");
+        return;
+      }
       setItems(data.items ?? []);
       setChecked(new Set());
+    } catch {
+      setError("Network error — try again.");
     } finally {
       setLoading(false);
     }
@@ -76,6 +85,8 @@ export default function GroceryListView({
           Print
         </Button>
       </div>
+
+      {error && <p role="alert" className="text-xs text-error mb-3">{error}</p>}
 
       {loading ? (
         <div className="text-center py-12 text-[#848181]">Loading…</div>
