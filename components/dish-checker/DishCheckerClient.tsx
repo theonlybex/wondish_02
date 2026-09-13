@@ -14,6 +14,9 @@ interface Props {
   firstName: string;
 }
 
+/** The one fallback Clara says when we have nothing specific and true to tell. */
+const GENERIC_ERROR = "Sorry — something went wrong. Please try again.";
+
 export default function DishCheckerClient({ firstName }: Props) {
   const opening = `Hi ${firstName}! I'm Clara, your personal food advisor. I know your allergies, diet, and goals — so ask me anything about food: check a dish against your profile, ask about ingredients or swaps, or tell me your goal and I'll suggest what to eat.`;
 
@@ -84,32 +87,52 @@ export default function DishCheckerClient({ firstName }: Props) {
       });
 
       if (!res.ok) {
-        let errMsg = "Sorry, something went wrong. Please try again.";
-        try {
-          const errData = await res.json();
-          if (errData?.error) errMsg = errData.error;
-        } catch { /* ignore parse errors */ }
+        // The API answers with sentences ("Clara is busy — try again in a
+        // moment.") and with bare fragments ("Unauthorized", "Invalid body")
+        // alike. Only a sentence belongs in a Clara bubble; anything else
+        // falls back to the generic line.
+        let errMsg = GENERIC_ERROR;
+        if (res.status === 401) {
+          errMsg = "Your session expired — reload the page and try again.";
+        } else {
+          try {
+            const errData = await res.json();
+            if (typeof errData?.error === "string" && /[.!?…]$/.test(errData.error.trim())) {
+              errMsg = errData.error;
+            }
+          } catch { /* ignore parse errors */ }
+        }
         throw new Error(errMsg);
       }
-      if (!res.body) throw new Error("No response body");
+      if (!res.body) throw new Error(GENERIC_ERROR);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
 
+      const appendChunk = (chunk: string) =>
+        setMessages((prev) => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          return [
+            ...updated.slice(0, -1),
+            { ...last, content: last.content + chunk },
+          ];
+        });
+
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            // A multi-byte character split across the final chunk boundary
+            // stays inside the decoder until a non-streaming decode flushes
+            // it, so the last letter of an answer is not silently dropped.
+            const tail = decoder.decode();
+            if (tail) appendChunk(tail);
+            break;
+          }
           const chunk = decoder.decode(value, { stream: true });
           kick();
-          setMessages((prev) => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            return [
-              ...updated.slice(0, -1),
-              { ...last, content: last.content + chunk },
-            ];
-          });
+          appendChunk(chunk);
         }
       } catch {
         setMessages((prev) => {
@@ -120,7 +143,7 @@ export default function DishCheckerClient({ firstName }: Props) {
             ...updated.slice(0, -1),
             partial
               ? { ...last, content: `${last.content}\n\n(Clara got cut off — send your message again for the rest.)`, error: true }
-              : { ...last, content: "Sorry — something went wrong. Please try again.", error: true },
+              : { ...last, content: GENERIC_ERROR, error: true },
           ];
         });
       }
@@ -133,10 +156,7 @@ export default function DishCheckerClient({ firstName }: Props) {
         ...prev.slice(0, -1),
         {
           role: "assistant",
-          content:
-            !aborted && err instanceof Error
-              ? err.message
-              : "Sorry, something went wrong. Please try again.",
+          content: !aborted && err instanceof Error ? err.message : GENERIC_ERROR,
           error: true,
         },
       ]);
