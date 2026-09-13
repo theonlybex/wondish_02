@@ -1,7 +1,7 @@
 "use client";
 
 import { apiFetch } from "@/lib/client-fetch";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { displayDishName } from "@/lib/dish-name";
 import { CUISINES } from "@/lib/cuisines";
 import { format, addDays, subDays } from "date-fns";
@@ -255,6 +255,18 @@ export default function DailyMealPlanView({
   const [loading, setLoading]           = useState(false);
   const [startDate, setStartDate]       = useState(mealPlanStartDate ? new Date(mealPlanStartDate) : null);
   const [selectedId, setSelectedId]     = useState<string | null>(null);
+  const [ratingBusy, setRatingBusy]     = useState(false);
+  const [rateError, setRateError]       = useState("");
+  // State updates are async, so two clicks inside one render both saw
+  // ratingBusy === false. The ref flips synchronously and is the real guard;
+  // ratingBusy only drives the disabled styling.
+  const ratingInFlight = useRef(false);
+  // rateError belongs to the open card, so clear it whenever the selection
+  // changes — otherwise a failure on one dish greets you on the next one.
+  const selectCard = (id: string | null) => {
+    setRateError("");
+    setSelectedId(id);
+  };
   const [profileIncomplete, setProfileIncomplete] = useState(false);
   const [dailyCalorieTarget, setDailyCalorieTarget] = useState<number | null>(initialDailyCalorieTarget);
   // Basket readiness for the New-week gate (min ingredients + category
@@ -325,7 +337,7 @@ export default function DailyMealPlanView({
     setNewWeekLoading(true);
     setNewWeekError("");
     setNewWeekUpgrade(false);
-    setSelectedId(null);
+    selectCard(null);
     try {
       const res = await apiFetch("/api/meal-plan/new-week", { method: "POST" });
       const data = await res.json().catch(() => null);
@@ -363,8 +375,6 @@ export default function DailyMealPlanView({
   const [cuisineDayLoading, setCuisineDayLoading] = useState(false);
   const [cuisineDayError, setCuisineDayError] = useState("");
   const [navError, setNavError] = useState("");
-  const [ratingBusy, setRatingBusy] = useState(false);
-  const [rateError, setRateError] = useState("");
   const [showCuisines, setShowCuisines] = useState(false);
   const setCuisineForDay = async (cuisine: string) => {
     if (cuisineDayLoading) return;
@@ -415,7 +425,7 @@ export default function DailyMealPlanView({
     if (dir === "next" && atForwardLimit) return;
     if (dir === "prev" && atBackLimit) return;
     if (loading) return;
-    setSelectedId(null);
+    selectCard(null);
     setNavError("");
     const prevDate = date;
     const newDate = dir === "next" ? addDays(date, 1) : subDays(date, 1);
@@ -449,7 +459,8 @@ export default function DailyMealPlanView({
   const handleRate = async (recipeId: string, mealTypeName: string, rating: number) => {
     // /api/journal/log-meal is a TOGGLE: two fast taps logged then un-logged
     // the meal with no feedback (C2). One in flight at a time.
-    if (ratingBusy) return;
+    if (ratingInFlight.current) return;
+    ratingInFlight.current = true;
     setRatingBusy(true);
     setRateError("");
     const dateStr = format(date, "yyyy-MM-dd");
@@ -466,17 +477,18 @@ export default function DailyMealPlanView({
       }
       if (data.loggedRecipeIds) setLoggedRecipeIds(data.loggedRecipeIds);
       if (data.mealRatings)     setMealRatings(data.mealRatings);
-      setSelectedId(null);
+      selectCard(null);
     } catch {
       setRateError("Network error — try again.");
     } finally {
+      ratingInFlight.current = false;
       setRatingBusy(false);
     }
   };
 
   const handleSwapped = (menuId: string, newRecipe: RecipeDTO) => {
     setMenus((prev) => prev.map((m) => m.id === menuId ? { ...m, recipe: newRecipe } : m));
-    setSelectedId(null);
+    selectCard(null);
   };
 
 
@@ -863,7 +875,7 @@ export default function DailyMealPlanView({
                                 className={`flex items-center justify-between gap-2 cursor-pointer rounded-lg transition-colors ${
                                   isSelected ? "-mx-1.5 px-1.5 py-0.5 bg-[#ffffff]" : ""
                                 }`}
-                                onClick={() => setSelectedId(isSelected ? null : menu.id)}
+                                onClick={() => selectCard(isSelected ? null : menu.id)}
                               >
                                 <div className="flex-1 min-w-0">
                                   <p className={`text-forest truncate ${isMainDish ? "text-[11px] font-semibold" : "text-[10px] font-medium"}`}>
