@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { apiFetch } from "@/lib/client-fetch";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
+  /** Rendered as Clara, but never sent back to the model as history. */
+  error?: boolean;
 }
 
 interface Props {
@@ -39,15 +42,30 @@ export default function DishCheckerClient({ firstName }: Props) {
     if (!text || isStreaming) return;
 
     const userMsg: Message = { role: "user", content: text };
-    const history = [...messages, userMsg];
-    setMessages(history);
+    // Error bubbles ("Too many requests…") used to be replayed to the model
+    // as real assistant turns (C3). Only genuine turns go back.
+    const history = [...messages.filter((m) => !m.error), userMsg];
+    setMessages([...messages, userMsg]);
     setInput("");
     setIsStreaming(true);
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
+    // A silent mobile drop used to leave reader.read() pending forever,
+    // with the textarea and Send disabled until reload (C3). Abort if no
+    // byte arrives for STALL_MS; the abort surfaces as a stream error below.
+    const STALL_MS = 30_000;
+    const controller = new AbortController();
+    let stall: ReturnType<typeof setTimeout> | undefined;
+    const kick = () => {
+      if (stall) clearTimeout(stall);
+      stall = setTimeout(() => controller.abort(), STALL_MS);
+    };
+    kick();
+
     try {
-      const res = await fetch("/api/dish-checker", {
+      const res = await apiFetch("/api/dish-checker", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: history.filter((m, i) => !(i === 0 && m.role === "assistant")),
@@ -83,6 +101,7 @@ export default function DishCheckerClient({ firstName }: Props) {
           const { done, value } = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
+          kick();
           setMessages((prev) => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
@@ -96,21 +115,33 @@ export default function DishCheckerClient({ firstName }: Props) {
         setMessages((prev) => {
           const updated = [...prev];
           const last = updated[updated.length - 1];
+          const partial = last.content.trim();
           return [
             ...updated.slice(0, -1),
-            { ...last, content: "Sorry — something went wrong. Please try again." },
+            partial
+              ? { ...last, content: `${last.content}\n\n(Clara got cut off — send your message again for the rest.)`, error: true }
+              : { ...last, content: "Sorry — something went wrong. Please try again.", error: true },
           ];
         });
       }
     } catch (err) {
+      // A watchdog abort before the first byte lands here, and its message is
+      // written by the browser ("signal is aborted without reason") — never
+      // something to put in a chat bubble. Only our own errors are shown.
+      const aborted = (err as { name?: string } | null)?.name === "AbortError";
       setMessages((prev) => [
         ...prev.slice(0, -1),
         {
           role: "assistant",
-          content: err instanceof Error ? err.message : "Sorry, something went wrong. Please try again.",
+          content:
+            !aborted && err instanceof Error
+              ? err.message
+              : "Sorry, something went wrong. Please try again.",
+          error: true,
         },
       ]);
     } finally {
+      if (stall) clearTimeout(stall);
       setIsStreaming(false);
     }
   }
