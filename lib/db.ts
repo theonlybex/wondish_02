@@ -5,7 +5,11 @@ import { PrismaNeon } from "@prisma/adapter-neon";
 neonConfig.webSocketConstructor = WebSocket;
 
 function createPrismaClient() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
+  // max: the Neon serverless Pool default is 10 WebSocket connections per
+  // instance with nothing ever calling pool.end(). Five is plenty for one
+  // request at a time on Fluid Compute and keeps a busy evening from
+  // holding hundreds of sockets open across warm instances.
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL!, max: 5 });
   const adapter = new PrismaNeon(pool);
   return new PrismaClient({
     adapter,
@@ -19,4 +23,7 @@ const globalForPrisma = globalThis as unknown as {
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// Pinned in EVERY environment. The old `NODE_ENV !== "production"` guard
+// meant a production process that evaluated this module twice (route
+// bundle + RSC bundle) got two independent pools.
+globalForPrisma.prisma = prisma;

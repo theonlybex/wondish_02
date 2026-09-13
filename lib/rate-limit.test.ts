@@ -100,3 +100,18 @@ test("audit-T12: a healthy backend result passes through untouched", async () =>
   const allowed = await rateLimit("audit-t12", "user1", 5, 60, async () => ({ success: true }));
   assert.deepEqual(allowed, { success: true });
 });
+
+test("spend buckets (ai-*) fall back to the per-instance counter on a backend error instead of opening", async () => {
+  const boom = async () => { throw new Error("upstash down"); };
+  const id = `spend-${Date.now()}`;
+  // limit 2: third call must be rejected even though the backend is throwing.
+  assert.equal((await rateLimit("ai-chat", id, 2, 60, boom)).success, true);
+  assert.equal((await rateLimit("ai-chat", id, 2, 60, boom)).success, true);
+  assert.equal((await rateLimit("ai-chat", id, 2, 60, boom)).success, false);
+});
+
+test("non-spend buckets still fail open on a backend error", async () => {
+  const boom = async () => { throw new Error("upstash down"); };
+  const id = `burst-${Date.now()}`;
+  for (let i = 0; i < 5; i++) assert.equal((await rateLimit("dish-checker", id, 2, 60, boom)).success, true);
+});
