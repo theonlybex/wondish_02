@@ -1,7 +1,7 @@
 # BACKLOG — everything left to build
 
 **This is the canonical list of outstanding work for wondish_02.** Start here.
-Last consolidated: 2026-08-17.
+Last consolidated: 2026-08-17. Beta-ready checklist (§0) added 2026-09-14 — **start there.**
 
 It supersedes, and pulls the live items out of:
 
@@ -15,6 +15,66 @@ It supersedes, and pulls the live items out of:
 
 Confidence is marked per item: **[verified]** checked against code this session ·
 **[reported]** taken from an existing doc, not re-checked.
+
+---
+
+## 0. Beta-ready checklist (2026-09-14)
+
+The shortest path from where the code is to a running beta. Ordered; tick as
+you go. Everything else in this file waits.
+
+State on 2026-09-14: `feat/beta-hardening` (the 2026-09-13 concurrency pass,
+16 tasks + review wave) is done — 1215/1215 tests, `tsc` clean — stacked on
+`feat/beta-premium-coupons` → `feat/workbooks-tier2`, 73 commits ahead of
+`main`, **none of the three pushed**. Every migration and data script is
+already applied to the shared Neon DB, so landing is code-only. **[verified]**
+
+### A. Land the code
+- [ ] `npx next lint` on the whole project — the one gate in the hardening
+      plan's final checklist not yet run.
+- [ ] Manual check from the plan: `PREMIUM_GATES=on npm run dev`, as a coupon
+      user send 3 Clara messages, generate a week, double-click "New week" —
+      second click says "already being generated", weekly counter drops by one.
+- [ ] Merge / PR the stack (`workbooks-tier2` → `beta-premium-coupons` →
+      `beta-hardening`) into `main` and push.
+
+### B. Beta environment (Vercel)
+- [ ] **Promote Clerk to a `pk_live` instance** (§4, `docs/productionStage.md`
+      §1). Dev instance = "login every time" churn and the sign-in-ticket
+      redirect loop. Re-add the `io.wondish.clara` azp allowlist; update
+      Vercel env and the Clara iOS configs.
+- [ ] `PREMIUM_GATES=on` in the beta env (decided yes 2026-09-12).
+- [ ] Upstash variables in Vercel — without them the AI spend and in-flight
+      locks degrade to per-instance memory and the double-tap guards weaken.
+- [ ] Create the cohort coupon codes at `/admin/coupons`
+      (runbook `docs/billing/coupons.md`).
+- [ ] Stripe, **only if beta users can buy**: `npx tsx
+      scripts/stripe-sync-prices.ts` with the live key; webhook pinned to API
+      2024-04-10 with the event list in `docs/billing/stripe-setup.md`;
+      Customer Portal cancel/switch OFF. A coupon-only beta skips this.
+- [ ] Anthropic live-key check at the release gate.
+
+### C. Legal
+- [ ] **`/terms`** — onboarding requires consent to a placeholder. Draft is
+      in `scripts/seed-terms-2026-09-11.ts`; counsel reviews, then `--apply`.
+
+### D. Verify live
+- [ ] Per-release checklist (§6): `prisma migrate deploy` verified against
+      prod · env vars present · unauthenticated probes of new routes return
+      JSON 401 · one simulator sign-in.
+- [ ] **Live prod smoke**: sign-up through `/r/claim` (cannot be exercised
+      locally), then Meal Plan / Supplements / Journal grid / Account stats /
+      Clara chat streaming on www.wondish.io.
+
+### E. Know before inviting people (not blocking)
+- Clinician review of the authored condition rules — 4,477 `REVIEW_REQUIRED`
+  workbook-03 rows plus the `WB-*` backfills (§4 "Workbook follow-ups"). Beta
+  users on those conditions get rules nobody has signed off on.
+- `/restaurants` verdicts: `Verdict.caution` hard-coded false, Stockton
+  ingredients AI-inferred (§2). Only matters if the beta promotes restaurants.
+- iOS: SubscriptionCard reads "Renews <date>" for COUPON holders, should be
+  "Access until" (§1). Clara repo has 7 unpushed commits and a Debug
+  xcconfig pointing at prod (§4).
 
 ---
 
