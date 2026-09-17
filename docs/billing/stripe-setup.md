@@ -40,10 +40,11 @@ resume. Stripe is the source of truth for money; the app names prices by
 
 ## Going live — what has to happen before anyone can pay real money
 
-State on 2026-09-12 (checked against the Stripe account with the test key): test-mode prices,
-promo code and webhook exist and the flow was exercised end to end on 2026-09-10; the **account
-itself is not activated** (`charges_enabled: false`, `details_submitted: false`), so live mode
-cannot charge anyone yet. Coupons for the beta do not depend on any of this.
+State on 2026-09-16 (checked against `acct_1UG2h0KfYpTpjBNo` with its test key): both prices
+exist with their lookup keys attached, and the app runs against the new keys. **No webhook
+endpoints, no promotion codes, no Customer Portal config and no branding yet.** The account is
+a **sandbox**, so live mode cannot charge anyone regardless of `charges_enabled` — see
+"Sandbox vs live" below. Coupons for the beta do not depend on any of this.
 
 In order:
 
@@ -75,6 +76,78 @@ In order:
     Confirm the webhook delivered (Developers → Webhooks → endpoint → recent deliveries all 2xx)
     and the account's billing page shows the subscription.
 11. Only then `PREMIUM_GATES=on` in production (already decided "on" for the beta environment).
+
+## Moving to a new Stripe account
+
+Done once on 2026-09-16 (old account → `acct_1UG2h0KfYpTpjBNo`, "Painless Food
+Corporation sandbox"). Nothing in the code holds a Stripe object id — prices
+resolve by `lookup_key` at runtime — so this is a config + data job, not a code
+change. What does NOT carry over between accounts: products and prices, webhook
+endpoints and their signing secrets, promotion codes, Customer Portal config,
+branding, public details, email settings, retry rules, Apple Pay domain
+verification. All of it is per account AND per mode.
+
+In order:
+
+1. **Keys** — `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` in
+   `.env.local` and in each Vercel environment. Keep them in ONE file: as of
+   2026-09-16 `.env` carries no Stripe keys, so `.env.local` is the only local
+   source and a stale duplicate can't silently win. `NEXT_PUBLIC_*` is inlined
+   at build time — redeploy, don't just restart.
+2. **Catalog** — `set -a; source .env.local; set +a; npx tsx scripts/stripe-sync-prices.ts`.
+   Both prices must print `OK` or `CREATED`.
+3. **Webhook secret** — for local dev the CLI issues one:
+   `stripe listen --print-secret --api-key "$STRIPE_SECRET_KEY"`. Use
+   `--api-key`, not `stripe login`: a browser login binds the CLI to whichever
+   account the session picks, and you will not notice you are forwarding from
+   the old one. Deployed hosts each need their own dashboard endpoint (step 2 of
+   the setup list above) with its own secret.
+4. **Detach the DB** — `Subscription.stripeCustomerId` /
+   `stripeSubscriptionId` / `stripePriceId` point at objects the new key cannot
+   see. Stale customer ids are the ones that bite: `app/api/billing/checkout`
+   reuses the stored id and Stripe rejects it as `resource_missing`, so those
+   users cannot pay. Account deletion also breaks, because
+   `cancelStripeAtPeriodEnd` is deliberately not best-effort and 502s the route.
+
+   ```sql
+   -- scope to STRIPE: COUPON rows use stripeCurrentPeriodEnd as the access-end
+   -- date with no Stripe object behind them, and ADMIN/APPLE rows are unrelated.
+   UPDATE "Subscription"
+   SET "stripeCustomerId" = NULL, "stripeSubscriptionId" = NULL,
+       "stripePriceId" = NULL, "stripeCurrentPeriodEnd" = NULL,
+       "cancelAtPeriodEnd" = false, plan = 'FREE', status = 'ACTIVE'
+   WHERE source = 'STRIPE';
+   ```
+
+   Check `SELECT COUNT("stripeSubscriptionId") FROM "Subscription"` first. If it
+   is 0 there are no live subscriptions and the old account can simply be
+   abandoned — that was the case on 2026-09-16 (16 rows reset, 0 subscriptions).
+   If it is not 0, real cards are involved: ask Stripe support for a PAN data
+   migration rather than doing anything yourself.
+5. **Dashboard settings** — steps 3–7 of the setup list, in the new account.
+6. **Old account** — do not delete it (tax, refunds). Disable its webhook
+   endpoints so they stop retrying against your hosts, and deactivate its prices.
+
+### Sandbox vs live
+
+`acct_1UG2h0KfYpTpjBNo` is a Stripe **Sandbox**. Its key is `sk_test_…` and it
+can never charge real money no matter what `charges_enabled` reports. The
+`sk_live_…` comes from the parent account, and every step above has to be
+repeated there before anyone can pay.
+
+### Product naming
+
+Two products, deliberately, because they are sold under different names — but
+they are the SAME entitlement at two billing durations, not two tiers:
+
+| Product | Price | lookup_key |
+|---|---|---|
+| Wondish Plus | $20 / 1 month | `premium_monthly_20` |
+| Wondish Chef | $100 / 6 months | `premium_6mo_100` |
+
+The `premium_*` lookup keys are internal identifiers; customers never see them.
+The app resolves prices by lookup key alone and ignores products entirely, so
+the product names are free to change.
 
 ## Local testing
 
