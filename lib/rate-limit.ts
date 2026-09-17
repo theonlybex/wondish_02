@@ -5,6 +5,8 @@ import { redis } from "@/lib/redis";
 // are enforced across all serverless instances via Redis. Otherwise we fall
 // back to a per-instance in-memory limiter — fine for local dev, but it resets
 // on every cold start, so it is NOT effective in serverless production.
+// Which backend is live, the production boot assertion and /api/health's probe
+// are in lib/rate-limit-backend.ts; a local Redis setup is docs/rate-limiting.md.
 
 type RateLimitResult = { success: boolean };
 
