@@ -61,11 +61,17 @@ export interface AiLimit {
 // request and the product's headline. New weeks keep 5/week for the same
 // reason. The big cut is plan setups, 10/day → 3: at $0.08 each that line was
 // quietly the most expensive in the table, and nobody re-runs onboarding ten
-// times a day. Free is unchanged.
+// times a day.
 //
-// Worst case per day: free ≈ $0.45, beta ≈ $0.65, premium ≈ $0.97 ($29.4/month
-// at 30.44 days). lib/ai-budget.test.ts asserts the $30 ceiling directly, so a
-// future limit bump that breaks the budget fails the suite rather than the bill.
+// The FREE column is a taste, not a usable tier (2026-09-17, user-directed):
+// one week's plan and five Clara messages is enough to see whether the product
+// works for you, and anything more is what Plus is for. Ratios against premium:
+// chat 1:5, new weeks 1:5, swaps 2:5, fridge 1:3, cook-my-day 1:3.
+//
+// Worst case per day: free ≈ $0.36 ($11/month), beta ≈ $0.57 ($17/month),
+// premium ≈ $0.97 ($29.4/month at 30.44 days). lib/ai-budget.test.ts asserts
+// the $30 premium ceiling directly, so a future limit bump that breaks the
+// budget fails the suite rather than the bill.
 // (A previous note here claimed free worst case ≈ $0.55/week; that cannot be
 // right — Clara and fridge alone reach $0.84/week at the free limits — so it
 // has been re-derived rather than carried forward.)
@@ -73,13 +79,16 @@ export const AI_LIMITS: Record<string, AiLimit> = {
   // Conversations with Clara (dish-checker).
   claraChat: { bucket: "ai-chat", window: "day", free: 5, premium: 25, label: "Clara messages" },
   // Fridge recipe generation.
-  fridge: { bucket: "ai-fridge", window: "day", free: 3, premium: 6, label: "fridge suggestions" },
+  fridge: { bucket: "ai-fridge", window: "day", free: 2, premium: 6, label: "fridge suggestions" },
   // Pantry "cook my day" full-day generation.
   cookDay: { bucket: "ai-cookday", window: "day", free: 1, premium: 3, label: "cook-my-day plans" },
   // First plan / start-date changes (onboarding) — not the weekly allowance.
-  // Free and premium match here: 3/day covers any real onboarding, and raising
-  // it for premium buys exposure rather than value.
-  planInit: { bucket: "ai-planinit", window: "day", free: 3, premium: 3, label: "plan setups" },
+  // Free stays at 2 rather than 1 on purpose: this is the path to BECOMING a
+  // user, and at 1/day a single failed attempt would lock a brand-new account
+  // out of onboarding for the rest of the day. It is still the most expensive
+  // line in the free column ($0.16/day of $0.36) — drop it to 1 if cost beats
+  // first-run safety.
+  planInit: { bucket: "ai-planinit", window: "day", free: 2, premium: 3, label: "plan setups" },
   // Rolling-week generation (New week, regenerate): the headline free limit.
   planGen: { bucket: "ai-plangen", window: "week", free: 1, premium: 5, label: "new weeks" },
   // Clara single-dish swaps and "cuisine for today".

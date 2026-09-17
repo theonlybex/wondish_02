@@ -70,8 +70,16 @@ test("beta is half of premium, floored at free, and never exceeds premium", () =
     assert.equal(beta, Math.max(free, Math.ceil(premium / 2)), k);
   }
   assert.equal(limitFor("claraChat", "beta").max, 13);
-  // Halving 6 gives 3, which equals free — the floor is what keeps it there.
   assert.equal(limitFor("fridge", "beta").max, 3);
+  // Beta beats free on every ongoing feature, and ties on exactly one:
+  // plan setups, where ceil(3/2) lands back on free's 2. That is fine — plan
+  // setups are onboarding, not something a tester needs more of — but it is
+  // the bucket to re-check if either number moves, since it is one step from
+  // the floor actually biting.
+  const ties = (Object.keys(AI_LIMITS) as Array<keyof typeof AI_LIMITS>).filter(
+    (k) => limitFor(k, "beta").max === limitFor(k, "free").max
+  );
+  assert.deepEqual(ties, ["planInit"], `beta/free ties changed: ${ties.join(", ")}`);
 });
 
 test("every spend bucket carries the ai- prefix the rate limiter keys its fallback on", () => {
@@ -115,9 +123,12 @@ test("a beta tester who runs out is still offered the upgrade; their allowance i
   assert.match(b.error, /13 Clara messages for today/);
   assert.doesNotMatch(b.error, /free/);
   assert.match(b.error, /Premium gives you 25 a day/);
-  // plan setups match across tiers, so there is nothing to upsell there.
-  assert.equal(quotaExceededBody("planInit", "beta").upgrade, false);
-  assert.equal(quotaExceededBody("planInit", "free").upgrade, false);
+  // Since the free column was tightened (2026-09-17) EVERY bucket has headroom
+  // above free and beta, so every non-premium refusal can offer the upgrade.
+  // Premium is the only tier with nothing left to sell.
+  assert.equal(quotaExceededBody("planInit", "beta").upgrade, true);
+  assert.equal(quotaExceededBody("planInit", "free").upgrade, true);
+  assert.equal(quotaExceededBody("planInit", "premium").upgrade, false);
 });
 
 test("free user: 6th Clara message today is refused with an upgrade hint; the global bucket is untouched", async () => {
