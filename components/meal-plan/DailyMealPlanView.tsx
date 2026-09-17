@@ -68,6 +68,40 @@ function CaloriePill({ total, completed }: { total: number; completed: number })
   );
 }
 
+// One error paragraph for every "new week" failure surface. The quota 429 also
+// carries an upgrade hint (`upgrade: true` from quotaExceededBody), and that
+// hint has to appear wherever the message does. It previously rendered on only
+// one of the three surfaces, so the bottom "Generate a new week" button — the
+// one users actually press — showed "Premium gives you 5 a week" with nothing
+// to click (2026-09-17).
+//
+// The link points at /pricing, not /membership: a free account needs to pick a
+// plan, which is what /pricing does and where the header's own upgrade link
+// goes. /membership renders the billing panel, which for an account carrying a
+// FREE Stripe row shows the lapsed-subscriber view rather than a plan picker.
+function NewWeekError({
+  message,
+  upgrade,
+  className = "",
+}: {
+  message: string;
+  upgrade: boolean;
+  className?: string;
+}) {
+  if (!message) return null;
+  return (
+    <p role="alert" className={`text-xs text-error ${className}`}>
+      {message}
+      {upgrade && (
+        <>
+          {" "}
+          <a href="/pricing" className="underline font-semibold whitespace-nowrap">Upgrade for more →</a>
+        </>
+      )}
+    </p>
+  );
+}
+
 // ── Inline expanded dish ──────────────────────────────────────────────────────
 function InlineDishExpand({
   menu,
@@ -563,17 +597,7 @@ export default function DailyMealPlanView({
           {/* The error used to render only next to the bottom "Generate a new
               week" button — off-screen from this banner on a phone, so a
               weekly-limit 429 looked like a dead tap (mobile QA 2026-09-11). */}
-          {newWeekError && (
-            <p role="alert" className="text-xs mt-2 text-error">
-              {newWeekError}
-              {newWeekUpgrade && (
-                <>
-                  {" "}
-                  <a href="/membership" className="underline font-semibold">Upgrade for more →</a>
-                </>
-              )}
-            </p>
-          )}
+          <NewWeekError message={newWeekError} upgrade={newWeekUpgrade} className="mt-2" />
         </div>
       )}
 
@@ -695,7 +719,7 @@ export default function DailyMealPlanView({
                 <a href="/pantry" className="font-semibold underline" style={{ color: "#812549" }}>edit the list</a> — then
                 generate your whole week.
               </p>
-              {newWeekError && <p role="alert" className="text-xs mb-2 text-error">{newWeekError}</p>}
+              <NewWeekError message={newWeekError} upgrade={newWeekUpgrade} className="mb-2" />
               <button
                 type="button"
                 onClick={() => void generateNewWeek()}
@@ -1037,7 +1061,7 @@ export default function DailyMealPlanView({
               <Button variant="secondary" size="sm" loading={newWeekLoading} onClick={() => void generateNewWeek()} className="w-full">
                 Generate a new week
               </Button>
-              {newWeekError && <p role="alert" className="text-xs mt-1.5 text-error">{newWeekError}</p>}
+              <NewWeekError message={newWeekError} upgrade={newWeekUpgrade} className="mt-1.5" />
             </div>
           )}
         </div>
