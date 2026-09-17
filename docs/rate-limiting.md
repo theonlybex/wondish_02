@@ -59,11 +59,56 @@ Things to know:
   when you stop the shim.
 - **Counters persist.** Redis snapshots to `~/.wondish/redis/data` every minute and on
   shutdown, so a spent weekly allowance is still spent after restarting the shim or
-  the dev server — that is the point. Reset everything with
-  `~/.wondish/redis/bin/redis-cli FLUSHALL`, or one user's bucket with
-  `~/.wondish/redis/bin/redis-cli --scan --pattern 'rl:ai-plangen-free:<clerkUserId>:*' | xargs ~/.wondish/redis/bin/redis-cli DEL`.
+  the dev server — that is the point. Reset one user with
+  `npm run rate-limit:reset-user -- <email | user_…>` (below). Do **not** reach for
+  `FLUSHALL`: the same Redis holds other live test state (checkout idempotency,
+  coupon-redeem throttles, other fixtures' counters).
   Keys are `rl:<bucket>-<tier>:<userId>:<window>`; the shim logs one line per
   command with the keys touched, so you can watch a quota being spent.
+
+### Counters outlive subscription changes (by design)
+
+A bucket is keyed by **tier and window**, never by subscription row:
+`rl:ai-plangen-premium:<userId>:<weekWindow>`. It is created on first use with a TTL
+of roughly two windows and nothing in the app ever deletes it. Three consequences,
+all intended:
+
+1. **Upgrading mid-window starts a fresh, larger counter** (the tier is in the key),
+   so a free user who buys Plus after their one week gets Plus's five immediately.
+2. **Downgrading, cancelling, or re-subscribing does not reset anything.** The
+   premium bucket keeps its count for the rest of the window. This is the
+   anti-farming guarantee: subscribe → spend 5 new weeks → cancel → resubscribe must
+   not yield 5 more in the same week. Clearing counters on a subscription change,
+   or exposing any user-reachable reset, would open exactly that hole, and every
+   AI request is real Anthropic spend.
+3. **QA fixtures degrade across runs.** A test account whose rows are reset between
+   runs (coupon row deleted, Stripe row re-created) still carries last run's
+   counters — observed 2026-09-17 as `rl:ai-plangen-premium:<user>:<window> = 2`
+   after a single generation. That is the correct behaviour above meeting a
+   fixture that lies about its history; the fix is on the QA side:
+
+   ```sh
+   npm run rate-limit:reset-user -- qa.desktop.20260911@wondish.io            # by email
+   npm run rate-limit:reset-user -- user_3JAbi4zBNkxyOW8O9zNE5XTPVSV --dry-run # by Clerk id, list only
+   ```
+
+   `scripts/reset-user-rate-limits.ts` deletes the `rl:<bucket>:<thatClerkId>:<window>`
+   keys of **one** user and nothing else. It is deliberately unable to do more:
+   - it refuses in `NODE_ENV=production`;
+   - it resolves credentials exactly as `lib/redis.ts` does (`UPSTASH_*` first, then
+     the `KV_*` pair) and refuses unless that URL's host is loopback — `127.0.0.0/8`,
+     `localhost`, `::1`. An `*.upstash.io` host is refused by name; a LAN address or a
+     tunnel hostname too. Pointed at production it would hand someone unlimited AI
+     spend, so the guard is on the URL the client will actually use, not on a flag;
+   - one user per run, by email or `user_…` id — no `--all`, no pattern argument,
+     never `FLUSHALL`/`FLUSHDB`; the key filter requires the identifier segment to
+     *equal* the Clerk id, so the org-wide `rl:ai-global-day:ALL:*` bucket and any
+     neighbouring user can never match;
+   - `--dry-run` lists what would go. The account lookup is read-only.
+
+   The guard is pure and unit-tested (`scripts/upstash-local/reset-user.test.ts`).
+   The one thing it cannot see through is an SSH tunnel that forwards a production
+   Redis to `127.0.0.1` — do not set one up on a machine that runs this script.
 - Overrides: `UPSTASH_LOCAL_PORT`, `UPSTASH_LOCAL_TOKEN`, `UPSTASH_LOCAL_REDIS_PORT`,
   `REDIS_SERVER_BIN` (use an existing binary), `WONDISH_REDIS_HOME`,
   `UPSTASH_LOCAL_QUIET=1`. A `redis-server` already listening on the port is reused.
@@ -125,5 +170,6 @@ same Upstash database, or set `RATE_LIMIT_ALLOW_MEMORY_FALLBACK=1` on Preview on
 - `lib/rate-limit.ts` — the limiter (unchanged behaviour); `lib/ai-budget.ts` — the spend caps.
 - `lib/rate-limit-backend.ts` (+ `.test.ts`) — backend selection, the production rule, the probe.
 - `instrumentation.ts`, `app/api/health/route.ts` — where the rule and the probe are wired.
-- `scripts/upstash-local/` — `install-redis.sh`, `server.ts` (CLI), `shim.ts`, `protocol.ts`, tests.
+- `scripts/upstash-local/` — `install-redis.sh`, `server.ts` (CLI), `shim.ts`, `protocol.ts`, `reset-user.ts` (the reset guard), tests.
 - `scripts/check-rate-limit-backend.ts` — the terminal check.
+- `scripts/reset-user-rate-limits.ts` — QA-only, one user's counters, loopback Redis only.

@@ -19,7 +19,8 @@
     "db:fetch-nutrition": "node --import tsx scripts/fetch-nutrition.mjs",
     "redis:install": "bash scripts/upstash-local/install-redis.sh",
     "redis:local": "node --import tsx scripts/upstash-local/server.ts",
-    "rate-limit:check": "node --import tsx scripts/check-rate-limit-backend.ts"
+    "rate-limit:check": "node --import tsx scripts/check-rate-limit-backend.ts",
+    "rate-limit:reset-user": "node --import tsx scripts/reset-user-rate-limits.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
