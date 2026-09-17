@@ -35,7 +35,8 @@ async function main() {
 
   if (rateLimitBackend() === "memory") {
     console.log("rate-limit backend: MEMORY fallback");
-    console.log("  UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not set. Limits live in a per-process Map:");
+    console.log("  No Redis credentials set — neither UPSTASH_REDIS_REST_URL/TOKEN nor the");
+    console.log("  KV_REST_API_URL/TOKEN pair the Vercel Upstash integration writes. Limits live in a per-process Map:");
     console.log("  they reset when the dev server restarts, and every serverless instance counts from zero.");
     const [first, second] = await limitTwice();
     console.log(`  rateLimit("${bucket}", limit 1): ${first ? "allowed" : "refused"}, then ${second ? "allowed" : "refused"} — in this process only`);

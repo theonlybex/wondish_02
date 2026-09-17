@@ -1,4 +1,4 @@
-import { redis } from "@/lib/redis";
+import { redis, redisCredentials } from "@/lib/redis";
 
 // Which backend lib/rate-limit.ts is running on, and the production rule
 // about it. Kept apart from rate-limit.ts so the limiter's failure policy
@@ -18,9 +18,13 @@ import { redis } from "@/lib/redis";
 export type RateLimitBackend = "upstash" | "memory";
 type Env = Record<string, string | undefined>;
 
-/** Same test lib/redis.ts makes at import time: both Upstash vars present and non-empty. */
+/**
+ * Same test lib/redis.ts makes at import time. It accepts either naming —
+ * UPSTASH_REDIS_REST_* or the KV_REST_API_* pair the Vercel Marketplace
+ * integration actually writes — so this must not re-implement the check.
+ */
 export function rateLimitBackend(env: Env = process.env): RateLimitBackend {
-  return env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN ? "upstash" : "memory";
+  return redisCredentials(env) ? "upstash" : "memory";
 }
 
 /**
@@ -39,7 +43,9 @@ export function memoryFallbackViolation(env: Env = process.env): string | null {
   if (rateLimitBackend(env) === "upstash") return null;
   if (env[MEMORY_FALLBACK_OPT_OUT] === "1") return null;
   return (
-    "[rate-limit] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not set in a production process. " +
+    "[rate-limit] No Redis credentials in a production process (UPSTASH_REDIS_REST_URL / " +
+    "UPSTASH_REDIS_REST_TOKEN, or the KV_REST_API_URL / KV_REST_API_TOKEN pair the Vercel " +
+    "Upstash integration writes). " +
     "Every rate limit — including the ai-* spend caps that bound the Anthropic bill — would run on a " +
     "per-instance memory counter that resets on every cold start (effective cap ≈ limit × instances). " +
     `Set the Upstash vars, or set ${MEMORY_FALLBACK_OPT_OUT}=1 to run anyway (/api/health then reports "degraded").`
@@ -107,11 +113,12 @@ export async function probeRateLimitBackend(timeoutMs = 3000): Promise<RateLimit
   const backend = rateLimitBackend();
   if (backend === "memory" || !redis) return { backend: "memory", reachable: true, shared: false, latencyMs: 0 };
 
+  const configuredUrl = redisCredentials()?.url;
   let host: string | undefined;
   try {
-    host = new URL(process.env.UPSTASH_REDIS_REST_URL!).host;
+    host = new URL(configuredUrl!).host;
   } catch {
-    host = process.env.UPSTASH_REDIS_REST_URL;
+    host = configuredUrl;
   }
   const started = Date.now();
   // "pong", not "1": the client JSON-parses replies, and "1" would come back as a number.

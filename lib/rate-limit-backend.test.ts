@@ -9,8 +9,11 @@ import {
   rateLimitBackend,
   shouldFailBoot,
 } from "./rate-limit-backend";
+import { redisCredentials } from "./redis";
 
 const upstash = { UPSTASH_REDIS_REST_URL: "https://example.upstash.io", UPSTASH_REDIS_REST_TOKEN: "tok" };
+
+const kv = { KV_REST_API_URL: "https://kv.upstash.io", KV_REST_API_TOKEN: "kvtok" };
 
 test("backend is upstash only when both vars are set and non-empty", () => {
   assert.equal(rateLimitBackend(upstash), "upstash");
@@ -18,6 +21,31 @@ test("backend is upstash only when both vars are set and non-empty", () => {
   assert.equal(rateLimitBackend({ UPSTASH_REDIS_REST_URL: upstash.UPSTASH_REDIS_REST_URL }), "memory");
   assert.equal(rateLimitBackend({ UPSTASH_REDIS_REST_TOKEN: "tok" }), "memory");
   assert.equal(rateLimitBackend({ ...upstash, UPSTASH_REDIS_REST_TOKEN: "" }), "memory");
+});
+
+// The Vercel Upstash integration writes KV_REST_API_* — the retired Vercel KV
+// names — NOT UPSTASH_REDIS_REST_*. Verified on this project 2026-09-17:
+// connecting the resource wrote only the KV_* pair, so a check that looked at
+// the UPSTASH_* names alone would have reported "memory" on a correctly
+// configured production deployment, and every limit would have silently run
+// per-instance. lib/redis.ts accepts both; this is the regression guard.
+test("the Vercel integration's KV_REST_API_* naming counts as configured", () => {
+  assert.equal(rateLimitBackend(kv), "upstash");
+  assert.equal(rateLimitBackend({ KV_REST_API_URL: kv.KV_REST_API_URL }), "memory");
+  assert.equal(rateLimitBackend({ KV_REST_API_TOKEN: "kvtok" }), "memory");
+  assert.equal(rateLimitBackend({ ...kv, KV_REST_API_TOKEN: "" }), "memory");
+  // A production deployment configured only by the integration must not be
+  // reported as a violation.
+  assert.equal(memoryFallbackViolation({ NODE_ENV: "production", ...kv }), null);
+  assert.equal(shouldFailBoot({ NODE_ENV: "production", ...kv, [HARD_FAIL_OPT_IN]: "1" }), false);
+});
+
+test("UPSTASH_* wins over KV_* so .env.local can point at the local shim", () => {
+  const both = { ...kv, ...upstash };
+  assert.equal(redisCredentials(both)?.url, upstash.UPSTASH_REDIS_REST_URL);
+  assert.equal(redisCredentials(both)?.token, upstash.UPSTASH_REDIS_REST_TOKEN);
+  assert.equal(redisCredentials(kv)?.url, kv.KV_REST_API_URL);
+  assert.equal(redisCredentials({}), null);
 });
 
 test("dev and test processes may run on the memory fallback", () => {
@@ -32,9 +60,12 @@ test("a production process without Upstash is flagged, naming both vars and the 
   assert.ok(violation);
   assert.match(violation, /UPSTASH_REDIS_REST_URL/);
   assert.match(violation, /UPSTASH_REDIS_REST_TOKEN/);
+  // Both namings, so whoever reads the log knows the integration's pair counts.
+  assert.match(violation, /KV_REST_API_URL/);
+  assert.match(violation, /KV_REST_API_TOKEN/);
   assert.match(violation, /ai-\*/);
   assert.match(violation, new RegExp(MEMORY_FALLBACK_OPT_OUT));
-  assert.throws(() => assertRateLimitBackend({ NODE_ENV: "production" }), /not set in a production process/);
+  assert.throws(() => assertRateLimitBackend({ NODE_ENV: "production" }), /No Redis credentials in a production process/);
 });
 
 test("production boots with Upstash configured, or with the explicit opt-out", () => {
@@ -75,7 +106,9 @@ test("no violation means no boot failure, even when enforcement is armed", () =>
   );
 });
 
-const envSet = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+// Either naming counts — a machine configured only by the Vercel integration
+// has a real backend too, and this test asserts the memory path.
+const envSet = redisCredentials(process.env) !== null;
 
 test("probe on the memory fallback: reachable (nothing to reach) but not shared", { skip: envSet ? "Upstash env vars set" : false }, async () => {
   const probe = await probeRateLimitBackend();
