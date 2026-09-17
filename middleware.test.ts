@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { config, wantsJson401 } from "./middleware";
+import { config, loginRedirectUrl, wantsJson401 } from "./middleware";
 
 // The default export (the middleware handler) is intentionally NOT tested:
 // it is created by clerkMiddleware() and requires a live Clerk auth context
@@ -144,4 +144,76 @@ test("path segments that merely start with 'api' are not /api routes", () => {
   // Anchored to a real path segment — "/apiary" is a page, not API surface.
   assert.equal(wantsJson401("/apiary"), false);
   assert.equal(wantsJson401("/api-docs"), false);
+});
+
+// ── loginRedirectUrl ────────────────────────────────────────────────────────
+// The unauthenticated-page redirect must carry the request's own path + query
+// as `redirect_url` so Clerk's <SignIn> returns the user there — the Stripe
+// Checkout return (/billing/success?session_id=…) previously bounced to a
+// bare /login and the user landed on /overview with no confirmation.
+
+const ORIGIN = "http://localhost:3000";
+
+function loginFor(path: string): URL {
+  const u = new URL(path, ORIGIN);
+  return loginRedirectUrl(u.href, { pathname: u.pathname, search: u.search });
+}
+
+test("preserves the destination path and query string as redirect_url", () => {
+  const out = loginFor("/billing/success?session_id=cs_test_123&x=1");
+  assert.equal(out.origin, ORIGIN);
+  assert.equal(out.pathname, "/login");
+  assert.equal(out.searchParams.get("redirect_url"), "/billing/success?session_id=cs_test_123&x=1");
+  // Exactly the shape the Stripe success_url produces (lib/stripe.ts).
+  assert.equal(out.href, `${ORIGIN}/login?redirect_url=%2Fbilling%2Fsuccess%3Fsession_id%3Dcs_test_123%26x%3D1`);
+});
+
+test("a destination without a query string gets a bare path", () => {
+  assert.equal(loginFor("/meal-plan").searchParams.get("redirect_url"), "/meal-plan");
+});
+
+test("redirect_url is relative and always resolves to the request's own origin", () => {
+  for (const path of [
+    "/overview",
+    "/billing/success?session_id=cs_test_123",
+    // A crafted INBOUND redirect_url is just part of the preserved query —
+    // nested inside a same-origin path, never reflected out on its own.
+    "/overview?redirect_url=https://evil.example/",
+    "/overview?redirect_url=%2F%2Fevil.example%2F",
+    "/journal/2026-06-30?next=//evil.example",
+  ]) {
+    const value = loginFor(path).searchParams.get("redirect_url");
+    assert.ok(value && value.startsWith("/"), `expected a path-relative value for ${path}, got ${value}`);
+    assert.equal(new URL(value, ORIGIN).origin, ORIGIN, `resolved off-origin for ${path}`);
+    // The foreign host only ever appears encoded inside the query, never as
+    // the host of the resolved target.
+    assert.equal(new URL(value, ORIGIN).hostname, "localhost");
+  }
+});
+
+test("a pathname that would resolve to a foreign host is dropped, not reflected", () => {
+  // Next normalises "//host" and "/\host" with a 308 before middleware runs,
+  // but the guard must not depend on that: a protocol-relative or
+  // backslash pathname resolves to a foreign origin under WHATWG URL rules.
+  for (const pathname of ["//evil.example/x", "/\\evil.example/x", "//evil.example"]) {
+    const out = loginRedirectUrl(`${ORIGIN}/`, { pathname, search: "?session_id=1" });
+    assert.equal(out.origin, ORIGIN);
+    assert.equal(out.pathname, "/login");
+    assert.equal(out.searchParams.get("redirect_url"), null, `must not emit redirect_url for ${pathname}`);
+  }
+});
+
+test("the login URL itself is built on the request origin only", () => {
+  const out = loginRedirectUrl("https://app.wondish.io/overview?a=1", { pathname: "/overview", search: "?a=1" });
+  assert.equal(out.origin, "https://app.wondish.io");
+  assert.equal(out.pathname, "/login");
+  assert.equal(out.searchParams.get("redirect_url"), "/overview?a=1");
+});
+
+test("API/XHR callers stay on the JSON 401 branch: no login redirect is built for them", () => {
+  // The handler checks wantsJson401 BEFORE building the login redirect; pin
+  // that ordering by asserting the classification for the routes iOS uses.
+  for (const p of ["/api/meal-log", "/api/billing/checkout", "/api/journal"]) {
+    assert.equal(wantsJson401(p), true, `${p} must get a JSON 401, never a 307`);
+  }
 });

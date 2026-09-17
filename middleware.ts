@@ -33,6 +33,35 @@ export function wantsJson401(pathname: string): boolean {
   return pathname === "/api" || pathname.startsWith("/api/");
 }
 
+// The /login URL for an unauthenticated page request, carrying the request's
+// own path + query as `redirect_url` so Clerk's <SignIn> (which prefers that
+// query param over its fallbackRedirectUrl) returns the user to where they
+// were going once the session exists. Without it, a Stripe Checkout return
+// to /billing/success?session_id=… (a cross-site navigation that drops the
+// SameSite=Strict __client_uat cookie, so Clerk's handshake fails) bounced to
+// a bare /login and the user landed on /overview with no confirmation.
+//
+// Open-redirect guard: the value is built ONLY from the request's pathname +
+// search — never from a caller-supplied parameter — and is dropped unless it
+// resolves to the request's own origin (a "//evil.example" or "/\evil.example"
+// pathname would otherwise resolve to a foreign host). Any inbound
+// `redirect_url` on the protected page is just part of that query string,
+// nested inside a same-origin path.
+export function loginRedirectUrl(
+  reqUrl: string,
+  nextUrl: { pathname: string; search: string },
+): URL {
+  const loginUrl = new URL("/login", reqUrl);
+  const returnTo = nextUrl.pathname + nextUrl.search;
+  if (
+    returnTo.startsWith("/") &&
+    new URL(returnTo, loginUrl.origin).origin === loginUrl.origin
+  ) {
+    loginUrl.searchParams.set("redirect_url", returnTo);
+  }
+  return loginUrl;
+}
+
 export default clerkMiddleware(async (auth, req) => {
   const { userId } = await auth();
   const { pathname } = req.nextUrl;
@@ -50,8 +79,7 @@ export default clerkMiddleware(async (auth, req) => {
     if (wantsJson401(pathname)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const loginUrl = new URL("/login", req.url);
-    return NextResponse.redirect(loginUrl);
+    return NextResponse.redirect(loginRedirectUrl(req.url, req.nextUrl));
   }
 
   // Onboarding is gated in the dashboard layout (Node runtime), which can derive
