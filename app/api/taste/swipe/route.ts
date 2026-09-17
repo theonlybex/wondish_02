@@ -1,8 +1,8 @@
-import { premiumGatesEnabled } from "@/lib/billing/gates";
+// PREMIUM GATE (parked 2026-09-17 — uncomment with the block below to restore):
+// import { premiumGatesEnabled } from "@/lib/billing/gates";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { accountHasActivePremium } from "@/lib/auth";
 
 // DISHES-RETIRED (2026-09-07): the app now swipes INGREDIENTS
 // (/api/taste/ingredients + /api/taste/ingredient-swipe). This dish-swipe
@@ -16,11 +16,13 @@ export async function POST(req: NextRequest) {
     where: { clerkId: userId },
     include: { subscriptions: true, roles: { include: { role: true } }, patient: true },
   });
+  // PREMIUM GATE (parked 2026-09-17): taste swiping is a plain DB write with
+  // no Anthropic cost, so it carries no allowance. Uncomment to restore.
+  // const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
+  // const isPremium = isAdmin || accountHasActivePremium(account.subscriptions);
+  // if (premiumGatesEnabled() && !isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
   if (!account) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
-  const isPremium = isAdmin || accountHasActivePremium(account.subscriptions);
-  if (premiumGatesEnabled() && !isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
   const patient = account.patient;
   if (!patient) return NextResponse.json({ error: "No profile" }, { status: 404 });
@@ -57,11 +59,13 @@ export async function DELETE(req: NextRequest) {
     where: { clerkId: userId },
     include: { subscriptions: true, roles: { include: { role: true } }, patient: true },
   });
+  // PREMIUM GATE (parked 2026-09-17): taste swiping is a plain DB write with
+  // no Anthropic cost, so it carries no allowance. Uncomment to restore.
+  // const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
+  // const isPremium = isAdmin || accountHasActivePremium(account.subscriptions);
+  // if (premiumGatesEnabled() && !isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
   if (!account) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
-  const isPremium = isAdmin || accountHasActivePremium(account.subscriptions);
-  if (premiumGatesEnabled() && !isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
   const patient = account.patient;
   if (!patient) return NextResponse.json({ error: "No profile" }, { status: 404 });

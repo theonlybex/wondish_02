@@ -9,10 +9,8 @@ import { accountHasActivePremium, getOrCreateAccount, AccountClaimConflictError 
 import { RESTAURANT_ADMIN_ROLE } from "@/lib/restaurant-auth";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import MobileNav from "@/components/dashboard/MobileNav";
-import PremiumGuard from "@/components/PremiumGuard";
 import PastDueBanner from "@/components/billing/PastDueBanner";
 import CouponEndingBanner from "@/components/billing/CouponEndingBanner";
-import { premiumGatesEnabled } from "@/lib/billing/gates";
 import { couponEndingSoon } from "@/lib/coupon";
 
 export default async function DashboardLayout({
@@ -141,14 +139,20 @@ export default async function DashboardLayout({
           isNew={Boolean(account && Date.now() - new Date(account.createdAt).getTime() < 24 * 60 * 60 * 1000)}
         />
         {account?.subscriptions?.some((s) => s.source === "STRIPE" && s.status === "PAST_DUE") && <PastDueBanner />}
-        {premiumGatesEnabled() && couponEndsAt && <CouponEndingBanner endsAt={couponEndsAt} />}
-        <main className="flex-1 overflow-y-auto p-5 sm:p-8">
-          {premiumGatesEnabled() ? (
-            <PremiumGuard isPremium={isPremium} isAdmin={isAdmin}>{children}</PremiumGuard>
-          ) : (
-            children
-          )}
-        </main>
+        {couponEndsAt && <CouponEndingBanner endsAt={couponEndsAt} />}
+        {/* PREMIUM GATE (parked 2026-09-17). Signing in now gets you the whole
+            app; what free users run into is a per-feature allowance enforced
+            server-side by guardAiSpend (lib/ai-budget.ts). To restore, re-add
+            the two imports at the top and swap the <main> body back to:
+              {premiumGatesEnabled() ? (
+                <PremiumGuard isPremium={isPremium} isAdmin={isAdmin}>{children}</PremiumGuard>
+              ) : (
+                children
+              )}
+            The CouponEndingBanner above was also gated on premiumGatesEnabled();
+            it now shows whenever a coupon is ending, since losing the coupon
+            drops a tester from beta limits to free ones either way. */}
+        <main className="flex-1 overflow-y-auto p-5 sm:p-8">{children}</main>
       </div>
     </div>
   );

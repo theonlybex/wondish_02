@@ -1,4 +1,5 @@
-import { premiumGatesEnabled } from "@/lib/billing/gates";
+// PREMIUM GATE (parked 2026-09-17 — uncomment with the block below to restore):
+// import { premiumGatesEnabled } from "@/lib/billing/gates";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -6,9 +7,8 @@ import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
 import { internalError } from "@/lib/api-error";
 import { getPlanDayCalories, deriveLoggedRecipeIds } from "@/lib/meal-plan";
-import { accountHasActivePremium } from "@/lib/auth";
 import { normalizeCuisine } from "@/lib/clara/recipe-generation";
-import { guardAiSpend } from "@/lib/ai-budget";
+import { guardAiSpend, tierFor } from "@/lib/ai-budget";
 import { getExchangesForRange, splitByStatus } from "@/lib/plan-exchanges";
 import { addDays } from "date-fns";
 
@@ -145,8 +145,10 @@ export async function POST(req: NextRequest) {
   if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
 
   const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
-  const isPremium = isAdmin || accountHasActivePremium(account.subscriptions);
-  if (premiumGatesEnabled() && !isPremium) return NextResponse.json({ error: "Premium required" }, { status: 403 });
+  const aiTier = tierFor(account.subscriptions, isAdmin);
+  // PREMIUM GATE (parked): blocked the whole endpoint before the allowance
+  // model replaced it. isPremium is gone, so this is the aiTier equivalent.
+  // if (premiumGatesEnabled() && aiTier === "free") return NextResponse.json({ error: "Premium required" }, { status: 403 });
 
   const patient = account.patient;
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
@@ -185,7 +187,7 @@ export async function POST(req: NextRequest) {
       // guard. Charged under the claim, so only the request that actually
       // builds pays for it.
       preflight: async () => {
-        const guard = await guardAiSpend(userId, "planInit", isPremium ? "premium" : "free");
+        const guard = await guardAiSpend(userId, "planInit", aiTier);
         return guard.ok ? null : { status: guard.status, body: { ...guard.body } };
       },
     });

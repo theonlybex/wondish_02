@@ -1,4 +1,5 @@
-import { premiumGatesEnabled } from "@/lib/billing/gates";
+// PREMIUM GATE (parked 2026-09-17 — uncomment with the block below to restore):
+// import { premiumGatesEnabled } from "@/lib/billing/gates";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { MealLogSource, Prisma } from "@prisma/client";
@@ -48,13 +49,14 @@ export async function POST(req: NextRequest) {
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
   const { localDate, items } = parsed.value;
 
-  // Premium gate once if any item is CUSTOM.
-  if (premiumGatesEnabled() && items.some((it) => it.source === MealLogSource.CUSTOM)) {
-    const account = await getAccountWithSubscription(userId);
-    if (!accountHasActivePremium(account?.subscriptions ?? [])) {
-      return NextResponse.json({ error: "Premium required" }, { status: 402 });
-    }
-  }
+  // PREMIUM GATE (parked 2026-09-17): batch logging is a database write with
+  // no Anthropic cost, so it carries no allowance. Uncomment to restore.
+  // if (premiumGatesEnabled() && items.some((it) => it.source === MealLogSource.CUSTOM)) {
+  //   const account = await getAccountWithSubscription(userId);
+  //   if (!accountHasActivePremium(account?.subscriptions ?? [])) {
+  //     return NextResponse.json({ error: "Premium required" }, { status: 402 });
+  //   }
+  // }
 
   // Opaque provenance recipeId (MANUAL/PICTURE/FRIDGE/CLARA — see validateItem
   // in lib/meal-log.ts): the column is still a real FK, so one nonexistent id

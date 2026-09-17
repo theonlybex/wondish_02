@@ -1,6 +1,6 @@
 import { rateLimit } from "@/lib/rate-limit";
 import { prisma } from "@/lib/db";
-import { accountHasActivePremium } from "@/lib/auth";
+import { hasActivePremium } from "@/lib/auth";
 
 // ── Anthropic spend guard (tiered) ───────────────────────────────────────────
 //
@@ -8,9 +8,11 @@ import { accountHasActivePremium } from "@/lib/auth";
 // call (charge-before-model), so a rejected request costs zero tokens. Three
 // layers:
 //
-//   1. Per-user quota by TIER — free vs premium (Stripe, Apple, coupon, admin).
-//      This is the product's free tier: generous enough to try Wondish for
-//      real, small enough that upgrading is the obvious next step.
+//   1. Per-user quota by TIER — free / beta / premium. This IS the paywall:
+//      signing in gets you the whole app, and the free column is generous
+//      enough to try Wondish for real but small enough that buying Plus or
+//      Chef is the obvious next step. Nothing is hidden behind a wall
+//      (2026-09-17: the dashboard-wide PremiumGuard was removed).
 //
 //   2. Global daily ceiling — ONE shared counter across ALL users. This is the
 //      backstop against the account-multiplication attack (scripting Clerk
@@ -29,7 +31,11 @@ import { accountHasActivePremium } from "@/lib/auth";
 const DAY = 86_400;
 const WEEK = 7 * DAY;
 
-export type AiTier = "free" | "premium";
+// "beta" is TEMPORARY (2026-09-17): coupon holders simulating the paid product
+// for a couple of runs. It has no column of its own — see maxFor(). Retiring it
+// is three deletions: this union member, the branch in maxFor(), and the
+// COUPON check in tierFor().
+export type AiTier = "free" | "beta" | "premium";
 export type AiWindow = "day" | "week";
 
 export interface AiLimit {
@@ -42,25 +48,42 @@ export interface AiLimit {
 }
 
 // Measured Haiku cost per request (2026-09-12): chat ≈ $0.012, swap /
-// fridge ≈ $0.02, cook-day ≈ $0.05, a full new week ≈ $0.08.
-// The "premium" column is the BETA TRIAL for coupon holders (2026-09-13):
-// generous enough to feel like the real product, capped so one tester's
-// worst day is ≈ $2. Free worst case ≈ $0.55/week. When Stripe goes live
-// this column splits into a beta tier at these numbers and a near-unlimited
-// paid tier.
+// fridge ≈ $0.02, cook-day ≈ $0.05, a full new week ≈ $0.08 (plan setups
+// build a plan, so they cost about the same as a new week).
+//
+// The "premium" column is sized to a HARD BUDGET (2026-09-17, user-directed):
+// a paying user who maxes every bucket every day costs at most ≈ $0.99/day,
+// ≈ $30/month, against $20/month of revenue. Flat-rate pricing always loses on
+// the worst case; what matters is that the worst case is bounded and that real
+// usage (~12 requests/day ≈ $0.30/day) is comfortably profitable.
+//
+// Per-bucket reasoning: Clara chat keeps its 25/day because it is the cheapest
+// request and the product's headline. New weeks keep 5/week for the same
+// reason. The big cut is plan setups, 10/day → 3: at $0.08 each that line was
+// quietly the most expensive in the table, and nobody re-runs onboarding ten
+// times a day. Free is unchanged.
+//
+// Worst case per day: free ≈ $0.45, beta ≈ $0.65, premium ≈ $0.97 ($29.4/month
+// at 30.44 days). lib/ai-budget.test.ts asserts the $30 ceiling directly, so a
+// future limit bump that breaks the budget fails the suite rather than the bill.
+// (A previous note here claimed free worst case ≈ $0.55/week; that cannot be
+// right — Clara and fridge alone reach $0.84/week at the free limits — so it
+// has been re-derived rather than carried forward.)
 export const AI_LIMITS: Record<string, AiLimit> = {
   // Conversations with Clara (dish-checker).
   claraChat: { bucket: "ai-chat", window: "day", free: 5, premium: 25, label: "Clara messages" },
   // Fridge recipe generation.
-  fridge: { bucket: "ai-fridge", window: "day", free: 3, premium: 15, label: "fridge suggestions" },
+  fridge: { bucket: "ai-fridge", window: "day", free: 3, premium: 6, label: "fridge suggestions" },
   // Pantry "cook my day" full-day generation.
-  cookDay: { bucket: "ai-cookday", window: "day", free: 1, premium: 5, label: "cook-my-day plans" },
+  cookDay: { bucket: "ai-cookday", window: "day", free: 1, premium: 3, label: "cook-my-day plans" },
   // First plan / start-date changes (onboarding) — not the weekly allowance.
-  planInit: { bucket: "ai-planinit", window: "day", free: 3, premium: 10, label: "plan setups" },
+  // Free and premium match here: 3/day covers any real onboarding, and raising
+  // it for premium buys exposure rather than value.
+  planInit: { bucket: "ai-planinit", window: "day", free: 3, premium: 3, label: "plan setups" },
   // Rolling-week generation (New week, regenerate): the headline free limit.
   planGen: { bucket: "ai-plangen", window: "week", free: 1, premium: 5, label: "new weeks" },
   // Clara single-dish swaps and "cuisine for today".
-  swap: { bucket: "ai-swap", window: "day", free: 2, premium: 15, label: "dish swaps" },
+  swap: { bucket: "ai-swap", window: "day", free: 2, premium: 5, label: "dish swaps" },
 } as const;
 
 export type AiGuardKind = keyof typeof AI_LIMITS;
@@ -74,17 +97,39 @@ export type AiGuardKind = keyof typeof AI_LIMITS;
 // Raise proportionally as the cohort grows.
 export const GLOBAL_AI_DAILY_MAX = 2000;
 
-export function limitFor(kind: AiGuardKind, tier: AiTier): { max: number; windowSec: number; window: AiWindow } {
-  const cfg = AI_LIMITS[kind];
-  return { max: cfg[tier], windowSec: cfg.window === "week" ? WEEK : DAY, window: cfg.window };
+/**
+ * The allowance for one bucket at one tier.
+ *
+ * Beta is half of premium rather than a column of its own, so the table stays
+ * the single set of numbers to maintain. The Math.max floor matters: half of a
+ * small premium limit can land BELOW free (fridge 6 → 3, plan setups 3 → 2),
+ * and a coupon tester must never get less than a signed-out-of-pocket user.
+ */
+function maxFor(cfg: AiLimit, tier: AiTier): number {
+  if (tier === "premium") return cfg.premium;
+  if (tier === "beta") return Math.max(cfg.free, Math.ceil(cfg.premium / 2));
+  return cfg.free;
 }
 
-/** Premium for any active source (Stripe/Apple/coupon) or a SUPER admin. */
+export function limitFor(kind: AiGuardKind, tier: AiTier): { max: number; windowSec: number; window: AiWindow } {
+  const cfg = AI_LIMITS[kind];
+  return { max: maxFor(cfg, tier), windowSec: cfg.window === "week" ? WEEK : DAY, window: cfg.window };
+}
+
+/**
+ * Premium for a SUPER admin or any active PAID row (Stripe/Apple/admin grant);
+ * beta when the only thing keeping the account premium is a coupon. Paid
+ * outranks a coupon deliberately — a tester who subscribes gets the full
+ * limits immediately, without waiting for the coupon to lapse.
+ */
 export function tierFor(
-  subs: Array<{ plan: string; status: string; stripeCurrentPeriodEnd?: Date | null } | null | undefined>,
+  subs: Array<{ source?: string; plan: string; status: string; stripeCurrentPeriodEnd?: Date | null } | null | undefined>,
   isAdmin = false
 ): AiTier {
-  return isAdmin || accountHasActivePremium(subs) ? "premium" : "free";
+  if (isAdmin) return "premium";
+  const live = subs.filter((s) => hasActivePremium(s));
+  if (live.length === 0) return "free";
+  return live.every((s) => s!.source === "COUPON") ? "beta" : "premium";
 }
 
 export interface QuotaExceededBody {
@@ -100,15 +145,21 @@ export interface QuotaExceededBody {
 
 export function quotaExceededBody(kind: AiGuardKind, tier: AiTier): QuotaExceededBody {
   const cfg = AI_LIMITS[kind];
-  const limit = cfg[tier];
+  const limit = maxFor(cfg, tier);
   const per = cfg.window === "week" ? "this week" : "today";
   const resets = cfg.window === "week" ? "next week" : "tomorrow";
-  const upgrade = tier === "free" && cfg.premium > cfg.free;
+  // Anyone below premium who would actually gain something is offered the
+  // upgrade — beta testers included. Buckets where premium matches the tier's
+  // own limit (plan setups) get the plain "resets tomorrow" message instead of
+  // an upgrade that would buy nothing.
+  const upgrade = tier !== "premium" && cfg.premium > limit;
   // Every label is a regular plural ("new weeks", "Clara messages"): "1 free
   // new weeks" read as a typo on the meal-plan banner (mobile QA 2026-09-11).
   const noun = limit === 1 ? cfg.label.replace(/s$/, "") : cfg.label;
+  // Only the free tier's allowance is "free" — a coupon holder's isn't.
+  const allowance = tier === "free" ? `${limit} free ${noun}` : `${limit} ${noun}`;
   const error = upgrade
-    ? `You've used your ${limit} free ${noun} for ${per}. Premium gives you ${cfg.premium} ${cfg.window === "week" ? "a week" : "a day"}.`
+    ? `You've used your ${allowance} for ${per}. Premium gives you ${cfg.premium} ${cfg.window === "week" ? "a week" : "a day"}.`
     : `You've reached ${per}'s limit for ${cfg.label} (${limit}) — it resets ${resets}.`;
   return { error, code: "quota", kind, tier, limit, window: cfg.window, upgrade };
 }

@@ -1,4 +1,5 @@
-import { premiumGatesEnabled } from "@/lib/billing/gates";
+// PREMIUM GATE (parked 2026-09-17 — uncomment with the block below to restore):
+// import { premiumGatesEnabled } from "@/lib/billing/gates";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { MealLogSource, Prisma } from "@prisma/client";
@@ -72,12 +73,15 @@ export async function POST(req: NextRequest) {
     if (!r) return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
     recipe = r;
   } else if (input.source === MealLogSource.CUSTOM) {
-    if (premiumGatesEnabled()) {
-      const account = await getAccountWithSubscription(userId);
-      if (!accountHasActivePremium(account?.subscriptions ?? [])) {
-        return NextResponse.json({ error: "Premium required" }, { status: 402 });
-      }
-    }
+    // PREMIUM GATE (parked 2026-09-17): logging a custom ingredient is a
+    // database write with no Anthropic cost, so it carries no allowance.
+    // Uncomment to restore.
+    // if (premiumGatesEnabled()) {
+    //   const account = await getAccountWithSubscription(userId);
+    //   if (!accountHasActivePremium(account?.subscriptions ?? [])) {
+    //     return NextResponse.json({ error: "Premium required" }, { status: 402 });
+    //   }
+    // }
     const ci = await prisma.patientCustomIngredient.findFirst({
       where: { id: input.customIngredientId!, patientId: patient.id },
       select: { name: true, calories: true, protein: true, carbs: true, fat: true, unit: true },
