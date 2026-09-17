@@ -14,7 +14,7 @@ Without this every limit runs on a per-instance memory counter: the effective
 cap is `limit × instances` and `GLOBAL_AI_DAILY_MAX` (the org-wide backstop that
 bounds the Anthropic bill) degrades the same way. See `docs/rate-limiting.md`.
 
-- [ ] **Delete the stale Vercel KV variables.** The old Upstash database was
+- [x] **Delete the stale Vercel KV variables.** The old Upstash database was
       *archived due to inactivity*, so `KV_REST_API_URL`, `KV_REST_API_TOKEN`,
       `KV_REST_API_READ_ONLY_TOKEN`, `KV_URL` and `REDIS_URL` all point at
       `glad-tuna-141166.upstash.io`, which no longer resolves (NXDOMAIN).
@@ -27,14 +27,21 @@ bounds the Anthropic bill) degrades the same way. See `docs/rate-limiting.md`.
         for e in production preview development; do vercel env rm $n $e --yes; done
       done
       ```
-- [ ] **Connect the new resource** (`upstash-kv-teal-paddle`, provisioned
-      2026-09-17) to `wondish_02` on **Production, Preview AND Development**:
-      `vercel integration resource connect upstash-kv-teal-paddle wondish_02`.
-      Preview matters — it runs `NODE_ENV=production`, so without the vars
-      preview deploys silently fall back to per-instance counters.
-- [ ] **Confirm it injected `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`.**
-      `lib/redis.ts` uses `Redis.fromEnv()`, which reads only those two names.
-      If the integration writes `KV_*` instead, add the two as aliases.
+- [x] **Connect the new resource** — `upstash-kv-teal-paddle` (database
+      `worthy-thrush-283191.upstash.io`) is connected to `wondish_02` on
+      Production, Preview **and** Development. Preview matters: it runs
+      `NODE_ENV=production`, so without the vars preview deploys silently fall
+      back to per-instance counters.
+- [x] **Naming resolved in code, not by aliasing.** The integration writes
+      `KV_REST_API_URL` / `KV_REST_API_TOKEN` (plus `KV_REST_API_READ_ONLY_TOKEN`,
+      `KV_URL`, `REDIS_URL`) — **not** `UPSTASH_REDIS_REST_*`. `Redis.fromEnv()`
+      reads only the latter, so the deployment would have found no credentials
+      and run every limit on memory. `lib/redis.ts` now accepts either naming,
+      preferring `UPSTASH_*` so `.env.local` can point at the local shim.
+      Do **not** hand-copy the values into `UPSTASH_*` variables: the
+      integration rotates its credentials, copies would go stale, and
+      stale-but-present is the worst state — `rateLimit()` would believe Redis
+      is available and stop falling back.
 - [ ] **Verify on the deployed site**, after this branch ships:
       `curl https://www.wondish.io/api/health` → `rateLimit.shared: true`.
       That field is the only proof the caps are real; a config check cannot see
