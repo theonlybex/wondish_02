@@ -123,7 +123,7 @@ export default function PredictionView({
               </div>
               <div className="flex-1 text-center sm:text-left">
                 <p className="text-white font-bold text-base mb-1">
-                  Upgrade to <span className="text-primary">Premium</span>
+                  Upgrade to <span className="text-primary">Plus</span>
                 </p>
                 <p className="text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.38)" }}>
                   Unlock your full meal plan, grocery list, weekly schedule, and more.
@@ -134,7 +134,7 @@ export default function PredictionView({
                 className="flex-shrink-0 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-sm font-bold transition-colors whitespace-nowrap"
                 style={{ boxShadow: "0 4px 20px rgba(129,37,73,0.25)" }}
               >
-                Get Premium
+                Get Plus
               </Link>
             </div>
           </div>
@@ -279,7 +279,7 @@ export default function PredictionView({
             </div>
             <div className="flex-1 text-center sm:text-left">
               <p className="text-white font-bold text-base mb-1">
-                Upgrade to <span className="text-primary">Premium</span>
+                Upgrade to <span className="text-primary">Plus</span>
               </p>
               <p className="text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.38)" }}>
                 Unlock your full meal plan, grocery list, and weekly schedule — everything you need to hit that {days}-day goal.
@@ -290,7 +290,7 @@ export default function PredictionView({
               className="flex-shrink-0 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-sm font-bold transition-colors whitespace-nowrap"
               style={{ boxShadow: "0 4px 20px rgba(129,37,73,0.25)" }}
             >
-              Get Premium
+              Get Plus
             </Link>
           </div>
         </div>

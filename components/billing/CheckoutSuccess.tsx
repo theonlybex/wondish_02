@@ -48,7 +48,7 @@ export default function CheckoutSuccess({ sessionId }: { sessionId: string | nul
       )}
       {state === "premium" && (
         <>
-          <h1 className="text-2xl font-bold text-navy mb-2">You&apos;re Premium</h1>
+          <h1 className="text-2xl font-bold text-navy mb-2">You&apos;re on Plus</h1>
           <p className="text-sm mb-8" style={{ color: "#848181" }}>Everything is unlocked. A receipt is on its way to your email.</p>
           <Link href="/meal-plan" className={cta}>Go to my meal plan →</Link>
           <p className="mt-4 text-xs"><Link href="/membership" className="underline" style={{ color: "#848181" }}>Manage billing</Link></p>
@@ -57,7 +57,7 @@ export default function CheckoutSuccess({ sessionId }: { sessionId: string | nul
       {state === "pending" && (
         <>
           <h1 className="text-2xl font-bold text-navy mb-2">Payment received</h1>
-          <p className="text-sm mb-8" style={{ color: "#848181" }}>Your Premium access will switch on within a minute. You can keep using Wondish meanwhile.</p>
+          <p className="text-sm mb-8" style={{ color: "#848181" }}>Your Plus access will switch on within a minute. You can keep using Wondish meanwhile.</p>
           <Link href="/overview" className={cta}>Continue →</Link>
         </>
       )}

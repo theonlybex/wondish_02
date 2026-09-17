@@ -27,7 +27,7 @@ export default async function DishCheckerPage() {
           className="text-[9px] tracking-[0.28em] uppercase font-mono mb-2"
           style={{ color: "#B75E78" }}
         >
-          Premium · AI Advisor
+          AI Advisor
         </p>
         <h1 className="text-3xl font-bold text-[#1E1A1A]">Clara</h1>
         <p className="text-xs mt-1.5" style={{ color: "#848181" }}>

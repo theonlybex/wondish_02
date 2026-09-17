@@ -73,6 +73,13 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle, isNew
           <Link href="/membership" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-[#ffffff] border border-primary/20 text-primary hover:bg-primary/10 transition-colors">
             <span className="text-[10px]">✦</span>{t("premiumBadge")}
           </Link>
+        ) : plan === "BETA" ? (
+          // A coupon tester: its own pill — neither the muted Free outline nor
+          // the Plus star — and it points at /pricing because the useful next
+          // step for a tester is subscribing, not managing billing.
+          <Link href="/pricing" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-[#F9F7ED] border border-[#5F1C35]/25 text-[#5F1C35] hover:bg-[#F5F1DD] hover:border-[#5F1C35]/45 transition-colors">
+            {t("betaBadge")}
+          </Link>
         ) : (
           <Link href="/pricing" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full border border-[#EAE4CA] text-[#848181] hover:border-primary/30 hover:text-primary hover:bg-primary/5 transition-colors">
             {t("upgrade")}

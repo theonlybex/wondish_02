@@ -20,7 +20,9 @@ export default function MobileNav({
 }: {
   email: string;
   name: string;
-  plan: "ADMIN" | "PREMIUM" | "FREE";
+  // PREMIUM renders as "Plus" (the product name); the code keeps the legacy
+  // name — see lib/plan-badge.ts.
+  plan: "ADMIN" | "PREMIUM" | "BETA" | "FREE";
   isAdmin: boolean;
   isRestaurantStaff: boolean;
   isNew?: boolean;

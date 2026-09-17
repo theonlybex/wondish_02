@@ -9,7 +9,7 @@ import ts from "typescript";
 //
 // The bug (2026-09-17): the new-week 429 body says `upgrade: true`, the
 // component stored it in `newWeekUpgrade`, and two of the three places that
-// rendered `newWeekError` dropped it — the user saw "Premium gives you 5 a
+// rendered `newWeekError` dropped it — the user saw "Plus gives you 5 a
 // week" with nothing to click. The fix routes every surface through one
 // `NewWeekError` component that owns the link.
 //

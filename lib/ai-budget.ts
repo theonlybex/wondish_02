@@ -167,8 +167,12 @@ export function quotaExceededBody(kind: AiGuardKind, tier: AiTier): QuotaExceede
   const noun = limit === 1 ? cfg.label.replace(/s$/, "") : cfg.label;
   // Only the free tier's allowance is "free" — a coupon holder's isn't.
   const allowance = tier === "free" ? `${limit} free ${noun}` : `${limit} ${noun}`;
+  // "Plus" is the product name a user sees (Wondish Plus / Wondish Chef); the
+  // tier is still called "premium" in code, the enum and the bucket keys.
+  // This sentence is the upgrade prompt on every quota refusal — the single
+  // most-read line in the app — so it must use the name on the pricing page.
   const error = upgrade
-    ? `You've used your ${allowance} for ${per}. Premium gives you ${cfg.premium} ${cfg.window === "week" ? "a week" : "a day"}.`
+    ? `You've used your ${allowance} for ${per}. Plus gives you ${cfg.premium} ${cfg.window === "week" ? "a week" : "a day"}.`
     : `You've reached ${per}'s limit for ${cfg.label} (${limit}) — it resets ${resets}.`;
   return { error, code: "quota", kind, tier, limit, window: cfg.window, upgrade };
 }

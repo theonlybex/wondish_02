@@ -9,21 +9,21 @@ import PricingSection from "@/components/PricingSection";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Simple, transparent pricing. Start free, upgrade to Premium for $20/month or $100 for 6 months.",
+    "Simple, transparent pricing. Start free, upgrade to Wondish Plus for $20/month or Wondish Chef for $100 per 6 months.",
 };
 
 const faqs = [
   {
     q: "Do I need a credit card to start?",
-    a: "No. The Free plan requires no payment information. You only need a card when upgrading to Premium.",
+    a: "No. The Free plan requires no payment information. You only need a card when upgrading to Plus.",
   },
   {
-    q: "Can I cancel my Premium subscription?",
-    a: "Yes, anytime. You'll retain Premium access until the end of your billing period, then automatically switch to the Free plan.",
+    q: "Can I cancel my Plus subscription?",
+    a: "Yes, anytime. You'll retain Plus access until the end of your billing period, then automatically switch to the Free plan.",
   },
   {
     q: "What happens to my data if I downgrade?",
-    a: "All your meal history, journal entries, and profile data are preserved. Premium-only features (like the full planner) will be locked but your data stays safe.",
+    a: "All your meal history, journal entries, and profile data are preserved. Plus-only features (like the full planner) will be locked but your data stays safe.",
   },
   {
     q: "Is there a family or team plan?",
@@ -60,7 +60,7 @@ export default async function PricingPage({
     <div className="min-h-screen pt-16">
       {showUpgradeBanner && (
         <div className="bg-primary text-white text-center py-3 px-5 text-sm font-medium">
-          A Premium subscription is required to access the dashboard. Upgrade below to get full access.
+          A Plus subscription is required to access the dashboard. Upgrade below to get full access.
         </div>
       )}
       <PricingSection isLoggedIn={isLoggedIn} />

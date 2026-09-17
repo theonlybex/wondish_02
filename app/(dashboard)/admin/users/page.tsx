@@ -202,7 +202,7 @@ export default function AdminUsersPage() {
           <h1 className="text-3xl font-bold text-[#1E1A1A]">Users</h1>
           <div className="flex items-center gap-3 mt-4">
             <div className="h-px w-12 bg-primary/40" />
-            <p className="text-xs" style={{ color: "#848181" }}>All registered accounts · admins first, then Premium. Premium shows where it comes from (admin, coupon, stripe, apple).</p>
+            <p className="text-xs" style={{ color: "#848181" }}>All registered accounts · admins first, then Plus. Plus shows where it comes from (admin, stripe, apple); a coupon-only grant is beta access, not Plus.</p>
           </div>
         </div>
 
@@ -330,7 +330,7 @@ export default function AdminUsersPage() {
 
                     <div className="hidden md:flex flex-col items-start gap-0.5">
                       <Badge variant={isPremium ? "primary" : "neutral"}>
-                        {isPremium ? `PREMIUM${sourceLabel ? ` · ${sourceLabel}` : ""}` : "FREE"}
+                        {isPremium ? `${sourceLabel === "coupon" ? "BETA" : "PLUS"}${sourceLabel ? ` · ${sourceLabel}` : ""}` : "FREE"}
                       </Badge>
                       {untilLabel && (
                         <span className="text-[10px] pl-1" style={{ color: "#ABA6A6" }}>{untilLabel}</span>
@@ -357,7 +357,7 @@ export default function AdminUsersPage() {
                         <span
                           className="text-[10px] font-medium px-2 py-1 rounded-lg"
                           style={{ background: "#F5F1DD", color: "#ABA6A6" }}
-                          title={isSelf ? "Cannot modify your own account" : "Admins have Premium by default and can't be modified here"}
+                          title={isSelf ? "Cannot modify your own account" : "Admins have Plus by default and can't be modified here"}
                         >
                           Protected
                         </span>
@@ -378,7 +378,7 @@ export default function AdminUsersPage() {
                               loading={planTogglingId === u.id}
                               onClick={() => handlePlanToggle(u.id as string, sub?.plan ?? "FREE")}
                             >
-                              {isPremium ? "→ Free" : "→ Premium"}
+                              {isPremium ? "→ Free" : "→ Plus"}
                             </Button>
                           )}
                           <Button

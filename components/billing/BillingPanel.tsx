@@ -17,6 +17,11 @@ const CARD_SHADOW = { boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(
 // The in-app billing page: plan + renewal, switch plan, cancel/resume, card,
 // invoices. Every change goes through PATCH /api/billing/subscription, which
 // re-syncs the row from Stripe and returns the fresh view.
+//
+// Naming: the paid tier is "Plus" on screen (Wondish Plus / Wondish Chef);
+// `isPremium` and the PREMIUM enum are the code's legacy name for the same
+// thing. A COUPON-only grant is NOT Plus — it is beta access at roughly half
+// of Plus's allowances (lib/ai-budget.ts tierFor/maxFor), and the card says so.
 export default function BillingPanel({ initial }: { initial: SubscriptionView }) {
   const [view, setView] = useState(initial);
   const [busy, setBusy] = useState<string | null>(null);
@@ -70,7 +75,7 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
         </Link>
         <div className="mt-6 pt-5 border-t border-[#F5F1DD]">
           <p className="text-[#1E1A1A] font-semibold text-sm mb-1">Have an access code?</p>
-          <p className="text-xs mb-3" style={{ color: "#848181" }}>Beta testers and invited members: enter it here to unlock Premium.</p>
+          <p className="text-xs mb-3" style={{ color: "#848181" }}>Beta testers and invited members: enter it here to unlock beta access.</p>
           <RedeemCodeBox />
         </div>
       </div>
@@ -78,6 +83,7 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
   }
 
   const isStripe = view.source === "STRIPE";
+  const isCoupon = view.source === "COUPON";
   const ending = view.cancelAtPeriodEnd;
   const lapsed = isStripe && !view.isPremium;
 
@@ -85,7 +91,7 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
     <div className="flex flex-col gap-4">
       {view.status === "PAST_DUE" && (
         <div role="alert" className="rounded-2xl px-5 py-4 text-sm flex flex-wrap items-center gap-3" style={{ background: "#FFF3E0", color: "#b45309" }}>
-          <span>Your last payment failed. Update your card to keep Premium.</span>
+          <span>Your last payment failed. Update your card to keep Plus.</span>
           <button type="button" onClick={() => void openPortal()} disabled={busy !== null} className="underline font-semibold min-h-[44px] disabled:opacity-60">
             Update payment method
           </button>
@@ -95,9 +101,9 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
       {/* Plan card */}
       <div className="rounded-2xl px-6 py-6 text-white" style={{ background: "linear-gradient(140deg, #5F1C35 0%, #812549 60%, #5F1C35 100%)" }}>
         <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-2" style={{ color: "rgba(255,255,255,0.55)" }}>
-          {lapsed ? "Premium · ended" : view.source === "STRIPE" ? "Premium" : `Premium · ${view.source?.toLowerCase()}`}
+          {lapsed ? "Plus · ended" : isStripe ? "Plus" : isCoupon ? "Beta · coupon" : `Plus · ${view.source?.toLowerCase()}`}
         </p>
-        <p className="font-bold text-lg">{view.priceLabel ?? "Full access"}</p>
+        <p className="font-bold text-lg">{view.priceLabel ?? (isCoupon ? "Beta access" : "Full access")}</p>
         {isStripe && (
           <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.75)" }}>
             {lapsed
@@ -115,13 +121,19 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
             Access until {fmtDate(view.periodEnd)}
           </p>
         )}
-        {view.source === "COUPON" && view.isPremium && (
+        {isCoupon && view.isPremium && (
           <div className="mt-5">
+            {/* Honest about what a coupon grants: a preview, not the paid
+                product. Invited testers, not lapsed customers — keep it light. */}
+            <p className="text-sm mb-4 max-w-md" style={{ color: "rgba(255,255,255,0.75)" }}>
+              Beta is a preview of Plus, not the full thing — about half of Plus&apos;s weekly and daily allowances.
+              Upgrade whenever you like for the full limits.
+            </p>
             <Link
               href="/pricing"
               className="min-h-[44px] px-5 rounded-xl bg-white text-[#5F1C35] font-semibold text-sm inline-flex items-center"
             >
-              Subscribe to keep Premium{view.periodEnd ? ` after ${fmtDate(view.periodEnd)}` : ""} →
+              Get Plus{view.periodEnd ? ` — keep access after ${fmtDate(view.periodEnd)}` : ""} →
             </Link>
           </div>
         )}
@@ -184,14 +196,14 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
           {confirmCancel ? (
             <div role="dialog" aria-label="Cancel subscription" className="rounded-2xl p-5 bg-white inline-flex flex-col gap-3 max-w-md" style={{ boxShadow: "0 0 0 1px rgba(30,26,26,0.06)" }}>
               <p className="text-sm text-navy">
-                Cancel Premium? You keep access until {fmtDate(view.periodEnd)}, and you can resume any time before then.
+                Cancel Plus? You keep access until {fmtDate(view.periodEnd)}, and you can resume any time before then.
               </p>
               <div className="flex flex-wrap gap-2 justify-center">
                 <button type="button" onClick={() => void change("cancel")} disabled={busy !== null} className="min-h-[44px] px-5 rounded-xl text-white text-sm font-semibold bg-error disabled:opacity-60">
                   {busy === "cancel" ? "…" : "Yes, cancel at period end"}
                 </button>
                 <button type="button" onClick={() => setConfirmCancel(false)} className="min-h-[44px] px-5 rounded-xl text-sm font-semibold border border-[#EAE4CA] text-navy">
-                  Keep Premium
+                  Keep Plus
                 </button>
               </div>
             </div>

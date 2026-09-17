@@ -122,7 +122,10 @@ test("a beta tester who runs out is still offered the upgrade; their allowance i
   assert.equal(b.upgrade, true);
   assert.match(b.error, /13 Clara messages for today/);
   assert.doesNotMatch(b.error, /free/);
-  assert.match(b.error, /Premium gives you 25 a day/);
+  // "Plus" is the on-screen name of the paid tier (Wondish Plus / Chef); the
+  // code keeps "premium". The sentence must never say "Premium".
+  assert.match(b.error, /Plus gives you 25 a day\.$/);
+  assert.doesNotMatch(b.error, /premium/i);
   // Since the free column was tightened (2026-09-17) EVERY bucket has headroom
   // above free and beta, so every non-premium refusal can offer the upgrade.
   // Premium is the only tier with nothing left to sell.
@@ -139,7 +142,8 @@ test("free user: 6th Clara message today is refused with an upgrade hint; the gl
   if (!r.ok) {
     assert.equal(r.status, 429);
     assert.match(r.error, /5 free Clara messages for today/);
-    assert.match(r.error, /Premium gives you 25 a day/);
+    assert.match(r.error, /Plus gives you 25 a day\.$/);
+    assert.doesNotMatch(r.error, /premium/i);
     assert.equal((r.body as { upgrade?: boolean }).upgrade, true);
   }
   assert.equal(calls.filter((c) => c.startsWith("ai-global-day")).length, 5);
@@ -187,12 +191,14 @@ test("upgrade is true exactly when premium would grant more than the caller's ti
       // The sentence must agree with the flag: an upgrade hint names the
       // premium number; a non-upgrade body promises the reset instead.
       if (body.upgrade) {
-        assert.match(body.error, new RegExp(`Premium gives you ${premium} a (day|week)\\.$`), `${kind}/${tier}`);
+        assert.match(body.error, new RegExp(`Plus gives you ${premium} a (day|week)\\.$`), `${kind}/${tier}`);
         assert.doesNotMatch(body.error, /resets/, `${kind}/${tier}`);
       } else {
         assert.match(body.error, /it resets (tomorrow|next week)\.$/, `${kind}/${tier}`);
-        assert.doesNotMatch(body.error, /Premium gives you/, `${kind}/${tier}`);
+        assert.doesNotMatch(body.error, /Plus gives you/, `${kind}/${tier}`);
       }
+      // The code's internal name must not leak into user-facing copy on any cell.
+      assert.doesNotMatch(body.error, /premium/i, `${kind}/${tier}: "${body.error}"`);
     }
     // Premium can never be offered an upgrade, whatever the numbers say.
     assert.equal(quotaExceededBody(kind, "premium").upgrade, false, kind);
@@ -238,7 +244,7 @@ test("the documented free-tier new-week 429 body, byte for byte", () => {
   // missing upgrade link was found (2026-09-17). If the wording or a field
   // changes, this fails on purpose: update the fixture AND re-check the UI.
   assert.deepEqual(quotaExceededBody("planGen", "free"), {
-    error: "You've used your 1 free new week for this week. Premium gives you 5 a week.",
+    error: "You've used your 1 free new week for this week. Plus gives you 5 a week.",
     code: "quota",
     kind: "planGen",
     tier: "free",

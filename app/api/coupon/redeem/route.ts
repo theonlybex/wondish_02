@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
   // subscriber who already cancelled at period end passes — see
   // hasPaidPremium.)
   if (coupon.type === "PREMIUM" && hasPaidPremium(account.subscriptions)) {
-    return NextResponse.json({ error: "You already have Premium — no code needed." }, { status: 409 });
+    return NextResponse.json({ error: "You already have Plus — no code needed." }, { status: 409 });
   }
 
   // The access end actually written (may be later than the coupon's own
@@ -141,12 +141,16 @@ export async function POST(req: NextRequest) {
   }
 
   const accessUntil = grantEnd ? grantEnd.toISOString() : null;
+  // A PREMIUM-type code grants the COUPON row, which tierFor() rates as
+  // "beta" — half of Plus's allowances, never the paid product itself. Say
+  // "beta", not "Plus"/"Premium": a tester who reads the paid name here
+  // expects the paid limits and then hits a 429 early (QA 2026-09-17).
   const message =
     coupon.type === "ADMIN"
       ? "Admin access granted — you now have unlimited access."
       : accessUntil
-        ? `Premium activated until ${new Date(accessUntil).toLocaleDateString("en-US")}.`
-        : "Premium access activated — enjoy all features!";
+        ? `Beta access activated until ${new Date(accessUntil).toLocaleDateString("en-US")}.`
+        : "Beta access activated — enjoy!";
 
   return NextResponse.json({ success: true, type: coupon.type, accessUntil, message });
 }

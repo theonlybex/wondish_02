@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import { isProfileComplete } from "@/lib/onboarding";
 import { resolveOnboardingRedirect } from "@/lib/onboarding-gate";
-import { accountHasActivePremium, getOrCreateAccount, AccountClaimConflictError } from "@/lib/auth";
+import { getOrCreateAccount, AccountClaimConflictError } from "@/lib/auth";
+import { planBadgeFor } from "@/lib/plan-badge";
 import { RESTAURANT_ADMIN_ROLE } from "@/lib/restaurant-auth";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import MobileNav from "@/components/dashboard/MobileNav";
@@ -39,8 +40,12 @@ export default async function DashboardLayout({
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const isRestaurantStaff =
     account?.roles?.some((r) => r.role.name === RESTAURANT_ADMIN_ROLE) ?? false;
-  const isPremium = accountHasActivePremium(account?.subscriptions ?? []);
-  // "Premium ends soon" banner: last 7 days of a coupon grant with no paid row.
+  // Header pill: ADMIN / PREMIUM (shown as "Plus") / BETA / FREE. Derived from
+  // tierFor (lib/ai-budget) so a coupon-only tester sees "Beta", not the paid
+  // badge — their allowances are half of Plus's (2026-09-17 QA: a tester read
+  // "Premium" in the header and then hit a 429 at 3 new weeks instead of 5).
+  const plan = planBadgeFor(account?.subscriptions ?? [], isAdmin);
+  // "Beta access ends soon" banner: last 7 days of a coupon grant with no paid row.
   const couponEndsAt = couponEndingSoon(account?.subscriptions ?? [], new Date());
 
   // "Trials" nav item only for users with a condition that has trigger rules
@@ -132,7 +137,7 @@ export default async function DashboardLayout({
         <MobileNav
           email={account?.email ?? ""}
           name={account ? `${account.firstName} ${account.lastName}` : ""}
-          plan={isAdmin ? "ADMIN" : isPremium ? "PREMIUM" : "FREE"}
+          plan={plan}
           isAdmin={isAdmin}
           isRestaurantStaff={isRestaurantStaff}
           showTrials={showTrials}
@@ -145,7 +150,7 @@ export default async function DashboardLayout({
             server-side by guardAiSpend (lib/ai-budget.ts). To restore, re-add
             the two imports at the top and swap the <main> body back to:
               {premiumGatesEnabled() ? (
-                <PremiumGuard isPremium={isPremium} isAdmin={isAdmin}>{children}</PremiumGuard>
+                <PremiumGuard isPremium={plan === "PREMIUM" || plan === "BETA"} isAdmin={isAdmin}>{children}</PremiumGuard>
               ) : (
                 children
               )}

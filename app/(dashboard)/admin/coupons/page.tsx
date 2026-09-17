@@ -149,7 +149,7 @@ export default function AdminCouponsPage() {
           <div className="flex items-center gap-3 mt-4">
             <div className="h-px w-12 bg-primary/40" />
             <p className="text-xs" style={{ color: "#848181" }}>
-              Premium codes unlock Premium until a date you set. Admin codes grant the SUPER role. Stripe promo codes (above) discount paid checkout.
+              Premium-type codes grant beta access (about half of Plus&apos;s allowances) until a date you set. Admin codes grant the SUPER role. Stripe promo codes (above) discount paid checkout.
             </p>
           </div>
         </div>
@@ -205,7 +205,7 @@ export default function AdminCouponsPage() {
                 onChange={(e) => setForm({ ...form, type: e.target.value as "ADMIN" | "PREMIUM" })}
                 className={fieldClass}
               >
-                <option value="PREMIUM">Premium — beta / gift access until a date</option>
+                <option value="PREMIUM">Beta access — half of Plus&apos;s limits until a date</option>
                 <option value="ADMIN">Admin — full unlimited access (SUPER role)</option>
               </select>
             </div>
@@ -256,7 +256,7 @@ export default function AdminCouponsPage() {
                   required
                 />
                 <p className="mt-1.5 text-[11px]" style={{ color: "#ABA6A6" }}>
-                  Premium switches off at the end of this day for everyone who used the code.
+                  Beta access switches off at the end of this day for everyone who used the code.
                 </p>
               </div>
             )}

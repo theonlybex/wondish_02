@@ -15,9 +15,9 @@ export default function PremiumGate() {
         </div>
 
         {/* Heading */}
-        <h2 className="text-2xl font-bold text-navy mb-3">Premium Feature</h2>
+        <h2 className="text-2xl font-bold text-navy mb-3">Plus Feature</h2>
         <p className="text-[#848181] text-sm leading-relaxed mb-8">
-          This feature is available on the Premium plan. Upgrade to unlock the full Wondish experience.
+          This feature is available on the Plus plan. Upgrade to unlock the full Wondish experience.
         </p>
 
         {/* Features list */}
@@ -45,14 +45,14 @@ export default function PremiumGate() {
           href="/pricing"
           className="inline-flex items-center justify-center w-full px-6 py-3 rounded-xl bg-primary text-white font-semibold text-sm hover:bg-primary/90 transition-colors"
         >
-          Upgrade to Premium — from {fromPerMonth}/mo
+          Upgrade to Plus — from {fromPerMonth}/mo
         </Link>
         <p className="text-xs text-[#848181] mt-3">Cancel anytime. Secure billing via Stripe.</p>
 
         {/* Beta / gift codes: the place testers hit the wall is the place to enter one. */}
         <div className="mt-8 text-left bg-[#F8F7FA] border border-[#EAE4CA] rounded-2xl p-5">
           <p className="text-[#1E1A1A] font-semibold text-sm mb-1">Have an access code?</p>
-          <p className="text-[#848181] text-xs mb-3">Beta testers and invited members: enter your code to unlock Premium.</p>
+          <p className="text-[#848181] text-xs mb-3">Beta testers and invited members: enter your code to unlock beta access.</p>
           <RedeemCodeBox />
         </div>
       </div>

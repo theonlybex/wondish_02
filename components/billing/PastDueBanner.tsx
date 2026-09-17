@@ -6,7 +6,7 @@ export default function PastDueBanner() {
   return (
     <div role="alert" className="px-5 py-2.5 text-sm text-center" style={{ background: "#FFF3E0", color: "#b45309" }}>
       Your last payment failed —{" "}
-      <Link href="/membership" className="underline font-semibold">update your payment method</Link> to keep Premium.
+      <Link href="/membership" className="underline font-semibold">update your payment method</Link> to keep Plus.
     </div>
   );
 }

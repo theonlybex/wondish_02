@@ -103,7 +103,7 @@ export function extendGrantsWhere(accountIds: string[], newEnd: Date) {
   };
 }
 
-// Drives the dashboard "Premium ends soon" banner: the coupon grant's end
+// Drives the dashboard "beta access ends soon" banner: the coupon grant's end
 // when it is the account's only live premium and ends within `withinDays`.
 // A live paid row means the banner would be noise; an already-ended grant
 // shows the gate instead, not a warning.
