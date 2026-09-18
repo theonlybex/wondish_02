@@ -88,6 +88,25 @@ export interface RateLimitBackendProbe {
   error?: string;
 }
 
+/**
+ * Verdict on a probe, for the scheduled watcher (/api/cron/rate-limit-watch).
+ * Pure so the alerting decision is testable without Sentry or a live Redis:
+ * "healthy" means limits actually hold across instances, which is the only
+ * state in which the ai-* spend caps bound the Anthropic bill.
+ */
+export function rateLimitWatchOutcome(probe: RateLimitBackendProbe): { healthy: boolean; detail: string } {
+  if (probe.backend === "upstash" && probe.reachable && probe.shared) {
+    return { healthy: true, detail: `${probe.backend} ${probe.host ?? ""} ${probe.latencyMs}ms`.trim() };
+  }
+  return {
+    healthy: false,
+    detail:
+      probe.backend === "memory"
+        ? "no Redis credentials — limits are per-instance and reset on cold start"
+        : `Redis unreachable: ${probe.error ?? "unknown"}`,
+  };
+}
+
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`no answer within ${ms} ms`)), ms);

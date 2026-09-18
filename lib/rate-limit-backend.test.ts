@@ -7,6 +7,7 @@ import {
   memoryFallbackViolation,
   probeRateLimitBackend,
   rateLimitBackend,
+  rateLimitWatchOutcome,
   shouldFailBoot,
 } from "./rate-limit-backend";
 import { redisCredentials } from "./redis";
@@ -116,4 +117,31 @@ test("probe on the memory fallback: reachable (nothing to reach) but not shared"
   assert.equal(probe.reachable, true);
   assert.equal(probe.shared, false);
   assert.equal(probe.error, undefined);
+});
+
+// ── The scheduled watcher's verdict (/api/cron/rate-limit-watch) ─────────────
+// Pure, so the alerting decision is covered without Sentry or a live Redis.
+// "healthy" must mean limits hold ACROSS instances — anything less and the
+// ai-* spend caps stop bounding the Anthropic bill, which is the whole point
+// of the watcher.
+
+test("watcher is healthy only when Upstash is reachable AND shared", () => {
+  assert.equal(
+    rateLimitWatchOutcome({ backend: "upstash", reachable: true, shared: true, latencyMs: 12, host: "x.upstash.io" }).healthy,
+    true
+  );
+  // The memory fallback reports reachable:true (there is nothing to reach) —
+  // so reachability alone must never be enough to call it healthy.
+  const mem = rateLimitWatchOutcome({ backend: "memory", reachable: true, shared: false, latencyMs: 0 });
+  assert.equal(mem.healthy, false);
+  assert.match(mem.detail, /per-instance/);
+  // Configured but the host is gone — exactly how the archived database failed.
+  const dead = rateLimitWatchOutcome({ backend: "upstash", reachable: false, shared: false, latencyMs: 3000, error: "fetch failed" });
+  assert.equal(dead.healthy, false);
+  assert.match(dead.detail, /unreachable: fetch failed/);
+  // Defensive: upstash + reachable but not shared is still a failure.
+  assert.equal(
+    rateLimitWatchOutcome({ backend: "upstash", reachable: true, shared: false, latencyMs: 5 }).healthy,
+    false
+  );
 });
