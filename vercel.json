@@ -7,7 +7,7 @@
     },
     {
       "path": "/api/cron/rate-limit-watch",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 5 * * *"
     }
   ]
 }

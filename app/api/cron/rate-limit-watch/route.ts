@@ -23,10 +23,16 @@ import { probeRateLimitBackend, rateLimitWatchOutcome } from "@/lib/rate-limit-b
 //      does a real SET/GET/DEL, so each run is both the check AND the activity
 //      that prevents the archival.
 //
-// This is NOT a substitute for an external uptime monitor: a cron that runs
-// inside the deployment cannot tell you the deployment is down. It covers the
-// Redis-specific failure mode, which an external HTTP check of /api/health
-// also covers — run both.
+// Runs DAILY, not hourly, because this project is on a Vercel Hobby plan and
+// Hobby rejects any cron that fires more than once a day (the deploy fails
+// outright: "Hobby accounts are limited to daily cron jobs"). Daily is ample
+// for purpose 2 — Upstash archives after a long idle stretch, not a day — but
+// it means up to 24 h before purpose 1 notices a dead Redis.
+//
+// So this is NOT a substitute for an external uptime monitor, for two separate
+// reasons: a cron inside the deployment cannot tell you the deployment is
+// down, and once a day is too slow to be an alert. Point an external HTTP
+// check at /api/health every few minutes and treat this as the backstop.
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req.headers.get("authorization"), process.env.CRON_SECRET)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
