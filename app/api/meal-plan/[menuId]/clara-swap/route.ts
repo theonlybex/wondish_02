@@ -24,7 +24,7 @@ import {
   cooksWithUnlistedFat,
 } from "@/lib/clara/recipe-generation";
 import { dishProblem, catalogFoodVocabulary, BREAKFAST_MAX_MINUTES } from "@/lib/dish-plausibility";
-import { dishProtein } from "@/lib/meal-plan";
+import { dishProtein, dishProteinOfNames, MAX_SAME_PROTEIN_PER_DAY } from "@/lib/meal-plan";
 import {
   resolveMacroProfile,
   getMacroPercentages,
@@ -127,12 +127,20 @@ export async function POST(
     },
     select: { recipe: { select: { ingredients: { select: { ingredient: { select: { name: true } } } } } } },
   });
-  const otherProteins = Array.from(
-    new Set(
-      sameDay
-        .map((m) => dishProtein(m.recipe?.ingredients ?? []))
-        .filter((p): p is string => p !== null)
-    )
+  // Counted, not just listed: the prompt asks Clara for a different protein
+  // and she is free to ignore it, which she did — a swap put chicken in 3 of
+  // 4 slots on a day that already had two (QA 2026-09-24). Asking is the
+  // optimisation; the count below is the rule.
+  const proteinCounts = new Map<string, number>();
+  for (const m of sameDay) {
+    const p = dishProtein(m.recipe?.ingredients ?? []);
+    if (p) proteinCounts.set(p, (proteinCounts.get(p) ?? 0) + 1);
+  }
+  const otherProteins = Array.from(proteinCounts.keys());
+  const overusedProteins = new Set(
+    Array.from(proteinCounts.entries())
+      .filter(([, n]) => n >= MAX_SAME_PROTEIN_PER_DAY)
+      .map(([p]) => p)
   );
 
   // Same macro target + bans the plan builder uses.
@@ -219,6 +227,8 @@ export async function POST(
         (r) =>
           (basket.length === 0 || fitBasket(r, basket)) &&
           passesSanity(r) &&
+          // Not a third helping of something the day already has twice.
+          !overusedProteins.has(dishProteinOfNames(r.usesIngredients) ?? "") &&
           dishProblem(toPlausibleDish(r, mealTypeName), catalogFoodTokens) === null &&
           descriptionPromisesMissingFood(r, catalogFoodTokens) === null &&
           !cooksWithUnlistedFat(r)

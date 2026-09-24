@@ -9,6 +9,7 @@ import {
 } from "@/lib/fridge";
 import { evaluateDishAgainstProfile, type DietMatchers } from "@/lib/diet-match";
 import { findBasketMatch, ingredientTokens } from "@/lib/basket-match";
+import { priceDish, PRICING_COVERAGE_MIN, type PricedDish } from "@/lib/staple-density";
 import {
   dishProblem,
   phrasePromisesMissingFood,
@@ -175,6 +176,8 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     // macros had been written on different readings. Grams, dry, always.
     `- State grains, pasta and pulses in GRAMS of DRY weight (never cups), and count their full dry carbohydrate — about 75 g per 100 g of rice, pasta or flour. One person's portion of dry rice is 45-80 g; 150 g is two servings.`,
     `- No single step may take longer than prepMinutes + cookMinutes. If the rice needs 45 minutes, the dish takes at least 45 minutes.`,
+    `- Name the dish by the method you actually use. Do not call it "Grilled" if the steps sear it in a skillet, or "Roasted" if nothing goes in an oven — and never let the description contradict the title.`,
+    `- A dish named after a preparation must contain what that preparation needs: a bolognese has tomato, a curry has spices, a scramble has egg, a pesto has basil.`,
     `- A Snack is a small, quick thing eaten between meals: fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip. Under 15 minutes in total and no plated rice-and-protein dinners.`,
     `- Every dish needs a DISTINCT name — no two dishes in this batch may share a name.`,
     `- mealType must be exactly one of: ${args.requests.map((r) => r.mealTypeName).join(", ")}.`,
@@ -256,6 +259,23 @@ export const CALORIE_MACRO_TOLERANCE = 0.05;
  * Fibre makes 4/4/9 approximate (it sits inside carbs at ~2 kcal/g), which is
  * why a 5% band is kept rather than rewriting every value.
  */
+/**
+ * The dish's nutrition, computed from its own amounts when they can be priced.
+ *
+ * Returns null when the ingredients are not fully known, in which case the
+ * model's own figures stand (and dishProblem's floor still checks them).
+ */
+export function pricedMacros(r: FridgeRecipe, mealTypeName = ""): PricedDish | null {
+  const dish = toPlausibleDish(r, mealTypeName);
+  const priced = priceDish(dish.ingredients, r.steps ?? null);
+  if (!priced || priced.coverage < PRICING_COVERAGE_MIN) return null;
+  // A priced dish still has to be a plausible plate; if the arithmetic lands
+  // outside the calorie window the amounts are wrong, not the maths, and the
+  // sanity gate should see the model's own number instead.
+  if (priced.calories < CAL_MIN || priced.calories > CAL_MAX) return null;
+  return priced;
+}
+
 export function reconcileCalories(r: FridgeRecipe): number | null {
   const p = r.perServing;
   if (!p) return null;
@@ -480,8 +500,19 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     if (!slot) { reject("meal-type", r); continue; }
 
     // The same predicate the builder applies at selection — salt, seasoning
-    // quantities, breakfast timing, and the title's promise.
-    const problem = dishProblem(toPlausibleDish(r, slot.mealTypeName), args.catalogFoodTokens ?? new Set());
+    // quantities, slot timing, and the title's promise.
+    //
+    // Judged against the macros that will actually be STORED. Without this the
+    // gate rejected a dish for a macro/amount contradiction it was about to
+    // fix by pricing: acceptance fell to 1 of 29 generated dishes, which
+    // starved the pool far worse than the defect being caught.
+    const candidate = toPlausibleDish(r, slot.mealTypeName);
+    const priced = pricedMacros(r);
+    if (priced) {
+      candidate.macros = { carbs: priced.carbs, fat: priced.fat };
+      candidate.calories = priced.calories;
+    }
+    const problem = dishProblem(candidate, args.catalogFoodTokens ?? new Set());
     if (problem) { reject(problem, r); continue; }
 
     // Generation-only, because Clara is in the loop and can be asked again.
@@ -592,12 +623,23 @@ export async function persistValidatedRecipes(
           description: recipe.description ?? null,
           steps: Array.isArray(recipe.steps) ? recipe.steps.filter((s) => typeof s === "string" && s.trim()) : [],
           emoji: recipe.emoji ?? null,
-          // Derived from the macro rows when the model's own total disagrees
-          // with them — see reconcileCalories.
-          calories: reconcileCalories(recipe) ?? recipe.perServing.calories,
-          protein: recipe.perServing.protein,
-          carbs: recipe.perServing.carbs,
-          fat: recipe.perServing.fat,
+          // Priced from the dish's own amounts where possible (pricedMacros),
+          // else the model's macros with calories reconciled to them
+          // (reconcileCalories). The write point is the only place either
+          // needs to happen, so a dish cannot be stored disagreeing with
+          // itself or with its ingredients.
+          ...(() => {
+            const priced = pricedMacros(recipe); // slot-independent arithmetic
+            if (priced) {
+              return { calories: priced.calories, protein: priced.protein, carbs: priced.carbs, fat: priced.fat };
+            }
+            return {
+              calories: reconcileCalories(recipe) ?? recipe.perServing.calories,
+              protein: recipe.perServing.protein,
+              carbs: recipe.perServing.carbs,
+              fat: recipe.perServing.fat,
+            };
+          })(),
           fiber: recipe.perServing.fiber ?? null,
           servings: recipe.servings && recipe.servings > 0 ? Math.round(recipe.servings) : 1,
           prepTime: recipe.prepMinutes ?? null,

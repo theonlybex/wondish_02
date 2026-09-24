@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
-import { displayDishName } from "@/lib/dish-name";
 import { getPlanDayCalories } from "@/lib/meal-plan";
 import { rateLimit } from "@/lib/rate-limit";
 import {
@@ -83,17 +82,19 @@ export async function GET() {
   for (const r of recipes) {
     const names = r.ingredients.map((ri) => ri.ingredient.name);
     if (hasBans && !evaluateDishAgainstProfile(names, matchers, ingredientGroupsOf(r.ingredients)).passed) continue;
-    // A row that is one ingredient under its own name is a portion entry, not
-    // a dish. The library holds several ("Wild Rice", "Bulgur", "Peanuts",
-    // "Canned in oil sardines") and this panel listed five different ones all
-    // called "Wild Rice" as "dishes we can suggest right now" (QA 2026-09-24).
-    // They are real Recipe rows the planner can legitimately use as a side;
-    // they just should not be offered to a person as something to cook.
-    if (r.ingredients.length === 1) {
-      const dishName = displayDishName(r.name).trim().toLowerCase();
-      const only = names[0].trim().toLowerCase();
-      if (dishName === only || dishName.includes(only) || only.includes(dishName)) continue;
-    }
+    // A one-ingredient row is a portion entry, not a dish — whatever it is
+    // called. The first attempt at this only skipped rows whose NAME matched
+    // their ingredient, which missed the real population: the library's
+    // "Whole-wheat English Muffin", "Gluten-free English Muffin" and
+    // "Multigrain gluten-free, rice bread" rows all hold the single ingredient
+    // "Sliced bread", so a tester who owns sliced bread was shown 13 muffin
+    // and bread "dishes we can suggest right now" — three of them identical
+    // but for a hidden portion code — while the salmon and chicken dinners
+    // they could actually cook sat in "almost there" (QA 2026-09-24).
+    //
+    // These rows stay in the planner's pool, where a portion of bread is a
+    // legitimate side. They are just not an answer to "what can I cook?".
+    if (r.ingredients.length === 1) continue;
 
     const missing = r.ingredients
       .filter((ri) => !onHand.has(ri.ingredientId))

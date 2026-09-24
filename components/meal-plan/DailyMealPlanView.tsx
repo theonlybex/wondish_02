@@ -709,7 +709,9 @@ export default function DailyMealPlanView({
         </div>
       )}
 
-      {stale && startDate && (
+      {/* Not while a build is running: the banner said "generate a new week to
+          apply it" over a generation already in flight. */}
+      {stale && !newWeekLoading && startDate && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-4 text-sm">
           <div className="flex items-center gap-3">
             <span className="flex-1 text-amber-800">Your profile changed — generate a new week to apply it to your meal plan.</span>
@@ -805,6 +807,28 @@ export default function DailyMealPlanView({
           >›</button>
         )}
       </div>
+
+      {/* A build in progress, for someone who ALREADY has a plan. The
+          "Generating your week…" copy below lives inside the
+          `menus.length === 0` card, so a returning tester saw a greyed-out
+          button and no explanation — twice reported, once as "the screen still
+          tells me to generate a week while one is building" (QA 2026-09-24).
+          role="status" so it is announced rather than merely visible. */}
+      {newWeekLoading && menus.length > 0 && (
+        <div
+          role="status"
+          className="rounded-2xl px-4 py-3 mb-4 flex items-center gap-2.5 border border-dashed"
+          style={{ borderColor: "#812549", background: "rgba(129,37,73,0.04)" }}
+        >
+          <svg className="animate-spin h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          <p className="text-sm font-semibold" style={{ color: "#5F1C35" }}>
+            Building your new week… you can leave this page, it keeps going.
+          </p>
+        </div>
+      )}
 
       {/* New-week generation (2026-09-08): manual + basket-gated. Shown whenever
           the current day has no dishes (fresh user or the week ran out). */}

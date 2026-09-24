@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
+import Link from "next/link";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import { RecipeDTO } from "@/types";
@@ -29,6 +30,7 @@ export default function SwapMealModal({
   const [cuisine, setCuisine] = useState<string>("Surprise me");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [upgrade, setUpgrade] = useState(false);
 
   // Reset the form each time the modal opens for a fresh dish.
   useEffect(() => {
@@ -36,6 +38,7 @@ export default function SwapMealModal({
       setRequest("");
       setCuisine("Surprise me");
       setError("");
+      setUpgrade(false);
       setLoading(false);
     }
   }, [open]);
@@ -60,6 +63,9 @@ export default function SwapMealModal({
       if (!res.ok) {
         // Daily swap limit, unsafe/no result, or Clara unavailable.
         setError(data?.error ?? "Clara couldn't swap that — try rewording your request.");
+        // The new-week refusal has always offered the upgrade; this one named
+        // the limit and stopped there (QA 2026-09-24).
+        setUpgrade(data?.code === "quota" && data?.upgrade === true);
         return;
       }
       if (data?.recipe) {
@@ -122,6 +128,11 @@ export default function SwapMealModal({
       {error && (
         <div role="alert" className="mt-4 bg-error/10 border border-error/20 text-error rounded-xl px-4 py-2.5 text-sm">
           {error}
+          {upgrade && (
+            <Link href="/pricing" className="block mt-1.5 font-bold underline">
+              Upgrade for more →
+            </Link>
+          )}
         </div>
       )}
 

@@ -103,6 +103,16 @@ function buildTieBreakers(active: Skill[]): string {
  * is NOT theirs — asserting it would tell a UTC-7 user it is already tomorrow,
  * so we assert nothing, exactly as Clara behaved before the runtime existed.
  */
+// The weekday for an ISO date, so the prompt states it rather than leaving
+// Clara to compute it. Asked "how much salt is in my Thursday dinner?" on
+// Thursday 24 September she answered "Thursday is September 25th — that's
+// tomorrow", and then described a different day's food (QA 2026-09-24).
+function weekdayOf(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return "unknown weekday";
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "long" });
+}
+
 export function buildSystemPrompt(
   firstName: string,
   foodMapText: string,
@@ -112,7 +122,7 @@ export function buildSystemPrompt(
   const dateLine =
     today === null
       ? ""
-      : `\nToday's date for ${firstName} is ${today}. Resolve every relative date ("yesterday", "two weeks ago") against it.\n`;
+      : `\nToday's date for ${firstName} is ${today} (${weekdayOf(today)}). Resolve every relative date ("yesterday", "two weeks ago", "Thursday") against it, and never state a weekday you have not derived from it.\n`;
 
   const base = `You are Clara, the personal food advisor inside the Wondish app — a nutrition companion where ${firstName} plans meals, logs what they eat, tracks progress toward their goals, and manages their dietary profile.
 
@@ -135,7 +145,8 @@ Your behavior:
 9. If the dietary profile is empty or incomplete, still give your best nutritional advice based on general healthy eating principles.
 10. Never use markdown formatting — no bold (**), no headers (#), no bullet dashes or asterisks. Write in plain, conversational prose like a knowledgeable friend texting you.
 11. Answer in the language ${firstName} writes to you in. A question in Spanish gets a Spanish answer; the plan's dish names stay as they are stored.
-12. Never state a nutrition claim about a specific food you are not sure of — and never dress up a refined food as a wholegrain one. Jasmine and basmati rice are white rice; if the plan uses them, say so plainly rather than calling them whole grain.`;
+12. Never state a nutrition claim about a specific food you are not sure of — and never dress up a refined food as a wholegrain one. Jasmine and basmati rice are white rice; if the plan uses them, say so plainly rather than calling them whole grain. State the fact and stop there: do NOT invent a rule in their profile. Only the profile above lists what ${firstName} avoids, and if it lists nothing then nothing is restricted — saying "your profile avoids white rice" when it does not is worse than saying nothing, and disparages a plan they chose their own ingredients for.
+13. Never guess a weekday or a date. ${firstName} may ask about "Thursday" or "tomorrow": resolve it only against the date given above, and if you cannot, ask which day they mean. Do not claim the plan repeats the same dishes across days — each day is built separately, and you can only see the day in your context.`;
 
   // No toolbox ⇒ no tool rules. An account with no Patient row gets an empty
   // tools array, and telling that caller to "use a tool" or "call gap_report"

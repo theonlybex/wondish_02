@@ -95,6 +95,15 @@ function proteinType(name: string): string | null {
   for (const [type, kws] of PROTEIN_TYPES) if (kws.some((k) => n.includes(k))) return type;
   return null;
 }
+/** The same detection over bare ingredient NAMES (a generated dish's list). */
+export function dishProteinOfNames(names: readonly string[]): string | null {
+  for (const n of names) {
+    const t = proteinType(n);
+    if (t) return t;
+  }
+  return null;
+}
+
 export function dishProtein(ings: { ingredient: { name: string } }[]): string | null {
   for (const i of ings) {
     const t = proteinType(i.ingredient.name);
@@ -670,9 +679,16 @@ export async function buildMealPlanMenus(
           { protein: true,  crossWeek: true,  weekReuse: true,  dayProtein: true,  sameDay: false },
           { protein: true,  crossWeek: true,  weekReuse: true,  dayProtein: true,  sameDay: true },
         ];
+        // The per-day protein cap is relaxed for SNACK only. Snack is padding:
+        // a third helping of the day's protein in a 300 kcal top-up is a minor
+        // sameness, and the alternative is a day that misses its calories. In a
+        // real slot it is the thing a tester notices first — QA found turkey in
+        // breakfast, lunch and dinner on one day precisely because the ladder
+        // was allowed to relax its way there (2026-09-24).
+        const canRelaxDayProtein = mealType.name.toLowerCase() === "snack";
         const matches = (r: PoolRecipe, relax: (typeof tiers)[number]): boolean =>
           base(r) &&
-          (relax.dayProtein || (() => {
+          ((relax.dayProtein && canRelaxDayProtein) || (() => {
             const dp = dishProtein(r.ingredients);
             return dp === null || (todayProteinCounts.get(dp) ?? 0) < MAX_SAME_PROTEIN_PER_DAY;
           })()) &&

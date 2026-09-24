@@ -23,6 +23,20 @@ import { macrosContradictAmounts } from "@/lib/staple-density";
 export const BREAKFAST_MAX_MINUTES = 30;
 
 /**
+ * A snack is grab-and-eat. Two QA weeks running, 7 of 7 snacks were 23-40
+ * minute cook-from-raw rice-and-protein plates served at 3pm — the slot is a
+ * ~300 kcal top-up, and nobody simmers rice for it. The breakfast ceiling
+ * works; this is the same idea for the other slot with a shape.
+ *
+ * 20 minutes, not the 15 the prompt asks for: the ceiling has to leave the
+ * library's honest quick snacks in (35 rows at 20, 23 at 15) while refusing
+ * the 40-minute plates. Most of the library's 263 "snack" rows are full meals
+ * mislabelled by meal type, so this slot rebuilds from generation, where the
+ * prompt now says what a snack is.
+ */
+export const SNACK_MAX_MINUTES = 20;
+
+/**
  * Max salt per serving: 1 teaspoon, and half that for a small dish.
  *
  * 1 tsp is ~2,325 mg of sodium — essentially a whole day's guideline. The flat
@@ -76,6 +90,8 @@ export interface PlausibleDish {
 
 export type DishProblem =
   | "breakfast-too-slow"
+  | "snack-too-slow"
+  | "method-not-used"
   | "oversalted"
   | "seasoning-quantity-on-food"
   | "title-promises-missing-food"
@@ -190,6 +206,13 @@ export function breakfastIsQuickEnough(d: PlausibleDish): boolean {
   const total = (d.prepMinutes ?? 0) + (d.cookMinutes ?? 0);
   if (total === 0) return true;
   return total <= BREAKFAST_MAX_MINUTES;
+}
+
+export function snackIsQuickEnough(d: PlausibleDish): boolean {
+  if (d.mealTypeName.toLowerCase() !== "snack") return true;
+  const total = (d.prepMinutes ?? 0) + (d.cookMinutes ?? 0);
+  if (total === 0) return true;
+  return total <= SNACK_MAX_MINUTES;
 }
 
 /**
@@ -316,6 +339,65 @@ export function healthClaimNotListed(phrase: string, ingredientNames: readonly s
   return null;
 }
 
+/**
+ * Dishes named after a preparation that REQUIRES something.
+ *
+ * The title rule checks that every food word in a name is present, which says
+ * nothing about a name that is a technique: "Ground Beef Bolognese" served over
+ * jasmine rice with no tomato, onion, carrot or celery passed cleanly, as did
+ * "Cauliflower and Carrot Curry" with no spice of any kind. A person ordering
+ * a bolognese is promised a tomato ragù, and the word is the promise.
+ *
+ * Each entry lists alternatives — any one satisfies the name.
+ */
+const DISH_REQUIRES: { dish: RegExp; needs: RegExp; label: string }[] = [
+  { dish: /\b(bolognese|ragu|ragù|marinara|arrabbiata)\b/i, needs: /\b(tomato|passata|marinara|tomato sauce|tomato paste)\b/i, label: "tomato" },
+  { dish: /\b(curry|curried|masala|tikka|korma|vindaloo)\b/i, needs: /\b(curry|masala|turmeric|cumin|coriander|garam|paprika|chili powder|cayenne|ginger)\b/i, label: "curry spice" },
+  { dish: /\b(pesto)\b/i, needs: /\b(basil|pesto)\b/i, label: "basil" },
+  { dish: /\b(scramble|scrambled|omelette|omelet|frittata|shakshuka)\b/i, needs: /\b(egg)\b/i, label: "egg" },
+  { dish: /\b(hummus)\b/i, needs: /\b(chickpea|garbanzo|tahini|hummus)\b/i, label: "chickpeas" },
+  { dish: /\b(guacamole)\b/i, needs: /\b(avocado)\b/i, label: "avocado" },
+  { dish: /\b(carbonara)\b/i, needs: /\b(egg)\b/i, label: "egg" },
+  { dish: /\b(chili|chilli)\s*(con carne)?\b/i, needs: /\b(bean|chili|chilli|cayenne|paprika|cumin)\b/i, label: "chilli or beans" },
+  { dish: /\b(caesar)\b/i, needs: /\b(parmesan|anchovy|caesar)\b/i, label: "parmesan" },
+  { dish: /\b(teriyaki)\b/i, needs: /\b(soy|teriyaki|mirin)\b/i, label: "soy" },
+  { dish: /\b(stroganoff)\b/i, needs: /\b(sour cream|cream|yogurt|mushroom)\b/i, label: "cream or mushroom" },
+];
+
+/**
+ * A cooking METHOD in the name that the steps do not use.
+ *
+ * Five dishes in one week were titled "Grilled …" and pan-seared in a skillet,
+ * three of them with a description that said "pan-seared" directly under the
+ * title. Nothing in the week was grilled. The name is how a person decides
+ * whether they have the pan, the pit or the patience for it.
+ */
+const METHOD_REQUIRES: { method: RegExp; needs: RegExp; label: string }[] = [
+  { method: /\bgrilled\b/i, needs: /\b(grill|griddle|barbecue|bbq|broil)\b/i, label: "grilled" },
+  { method: /\b(baked|roasted)\b/i, needs: /\b(oven|bake|baking|roast|broil|air fryer)\b/i, label: "baked or roasted" },
+  { method: /\bpoached\b/i, needs: /\b(poach|simmer|barely bubbling|water)\b/i, label: "poached" },
+  { method: /\bsteamed\b/i, needs: /\b(steam|steamer|basket)\b/i, label: "steamed" },
+  { method: /\bair-?fried\b/i, needs: /\bair fryer\b/i, label: "air-fried" },
+];
+
+export function methodNotUsed(name: string, steps: readonly string[] | null | undefined): string | null {
+  if (!steps || steps.length === 0) return null;
+  const text = steps.join(" ");
+  for (const rule of METHOD_REQUIRES) {
+    if (rule.method.test(name) && !rule.needs.test(text)) return rule.label;
+  }
+  return null;
+}
+
+/** The dish-defining ingredient a name promises but the dish lacks, or null. */
+export function dishStyleMissingIngredient(name: string, ingredientNames: readonly string[]): string | null {
+  const listed = ingredientNames.join(" | ");
+  for (const rule of DISH_REQUIRES) {
+    if (rule.dish.test(name) && !rule.needs.test(listed)) return rule.label;
+  }
+  return null;
+}
+
 // Enough to tell "seasoned with herbs" from "salt and pepper only".
 const HERB_NAMES = [
   "basil", "oregano", "thyme", "rosemary", "parsley", "cilantro", "coriander",
@@ -333,6 +415,7 @@ const HERB_NAMES = [
  */
 export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): DishProblem | null {
   if (!breakfastIsQuickEnough(d)) return "breakfast-too-slow";
+  if (!snackIsQuickEnough(d)) return "snack-too-slow";
 
   for (const ing of d.ingredients) {
     if (/\bsalt\b/i.test(ing.name)) {
@@ -357,7 +440,13 @@ export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): D
   // 28 dishes in one week told the reader to stir-fry with four ingredients,
   // one of them salt, and no fat at all (QA 2026-09-24). A reader can add oil
   // from the cupboard, but the amount is costed into the calories on the card.
-  if (d.steps?.some((step) => FAT_METHOD.test(step)) && !d.ingredients.some((i) => FAT_NAME.test(i.name))) {
+  if (
+    d.steps?.some((step) => FAT_METHOD.test(step) || FAT_NAME.test(step)) &&
+    !d.ingredients.some((i) => FAT_NAME.test(i.name))
+  ) {
+    // FAT_NAME against the STEP text too: "Heat a non-stick oven-safe skillet
+    // over medium heat with a light spray of cooking oil" names the fat
+    // outright while the method regex alone saw nothing to catch.
     return "cooks-without-listing-fat";
   }
 
@@ -375,7 +464,7 @@ export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): D
   // lib/staple-density.ts — generated dishes only, because the rule leans on
   // the amounts being written to a dry basis and the curated library's macro
   // columns are measured data we should not argue with.
-  if (d.generated && d.macros && macrosContradictAmounts(d.macros, d.ingredients)) {
+  if (d.generated && d.macros && macrosContradictAmounts(d.macros, d.ingredients, d.steps)) {
     return "macros-contradict-amounts";
   }
 
@@ -387,6 +476,10 @@ export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): D
     if (phrasePromisesMissingFood(displayDishName(d.name), names, catalogFoodTokens)) {
       return "title-promises-missing-food";
     }
+    if (dishStyleMissingIngredient(displayDishName(d.name), names)) {
+      return "title-promises-missing-food";
+    }
+    if (methodNotUsed(displayDishName(d.name), d.steps)) return "method-not-used";
     // The description is held to the same promise at SELECTION too, not only
     // at generation. Keeping it generation-only was a deliberate call that a
     // QA run then disproved: "…on whole grain toast" over plain sliced bread

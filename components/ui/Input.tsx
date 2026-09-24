@@ -6,18 +6,35 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string;
 }
 
+// The label was never actually attached to the field. This component has
+// rendered `htmlFor={id}` since it was written, and no caller passes `id`, so
+// every input in the app — the whole profile form, onboarding, the admin
+// screens — shipped with a floating label, no id and no name: a QA pass found
+// all 10 controls on /profile reachable only by position, which defeats a
+// screen reader and autofill alike (2026-09-24). Deriving the id from the
+// label keeps it a pure component (no useId, so server rendering is unchanged)
+// and fixes every caller at once.
+const slugify = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
 const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, className, id, ...props }, ref) => {
+  ({ label, error, className, id, name, ...props }, ref) => {
+    const fieldId = id ?? (label ? `field-${slugify(label)}` : undefined);
+    const errorId = error && fieldId ? `${fieldId}-error` : undefined;
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
-          <label htmlFor={id} className="text-sm font-medium text-[#1E1A1A]">
+          <label htmlFor={fieldId} className="text-sm font-medium text-[#1E1A1A]">
             {label}
           </label>
         )}
         <input
           ref={ref}
-          id={id}
+          id={fieldId}
+          name={name ?? fieldId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={errorId}
+          aria-label={!label && typeof props.placeholder === "string" ? props.placeholder : undefined}
           className={twMerge(
             "w-full px-3.5 py-2.5 rounded-xl border bg-white text-[#1E1A1A] text-sm placeholder:text-[#A8A4B5] outline-none transition-all",
             error
@@ -27,7 +44,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           )}
           {...props}
         />
-        {error && <p className="text-error text-xs">{error}</p>}
+        {error && <p id={errorId} className="text-error text-xs">{error}</p>}
       </div>
     );
   }
