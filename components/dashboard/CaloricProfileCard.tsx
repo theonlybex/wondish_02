@@ -264,7 +264,10 @@ export default function CaloricProfileCard() {
           )}
           {rampTargetCalories != null && (
             <span className="mt-1 inline-flex items-center text-[9px] font-bold text-[#B75E78] bg-[#B75E78]/10 rounded-full px-2 py-0.5">
-              goal · {dailyTarget} kcal/day
+              {/* "goal · N" read as a second, competing daily target. It is
+                  where the ramp ENDS: today's headline is higher on purpose
+                  while the plan eases the user toward it. */}
+              easing toward {dailyTarget} kcal/day
             </span>
           )}
         </div>

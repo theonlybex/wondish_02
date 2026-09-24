@@ -45,9 +45,26 @@ function mealTypeSlug(name?: string | null): MealType {
   return MEAL_TYPE_SLUG[name ?? ""] ?? "snack";
 }
 
+/**
+ * The user-facing name for a dishType, or null when it says nothing. Every
+ * generated dish is a "complete meal" for selection reasons, so that value is
+ * noise on a card — and a lie on a snack.
+ */
+function dishTypeLabel(dishTypeName?: string | null): string | null {
+  const n = (dishTypeName ?? "").trim();
+  if (!n || n.toLowerCase() === "complete meal") return null;
+  return n.charAt(0).toUpperCase() + n.slice(1);
+}
+
 function roleBadge(dishTypeName?: string | null): { label: string; bg: string; text: string } | null {
   const n = (dishTypeName ?? "").toLowerCase();
-  if (n === "complete meal")     return { label: "Complete meal", bg: "bg-[#F5F1DD]", text: "text-[#006658]" };
+  // "Complete meal" is not shown. Every Clara-generated dish carries that
+  // dishType because the builder's primary-dish step selects on it
+  // (lib/clara/recipe-generation.ts), so it appeared on 25 of 25 cards in one
+  // QA week — including a 240 kcal snack of broccoli, oil and thyme, where it
+  // was simply wrong. A chip that is always present carries no information;
+  // the side/dessert/beverage labels below do, so they stay.
+  if (n === "complete meal")     return null;
   if (n === "veggie side dish")  return { label: "Veggie side",   bg: "bg-[#d1fae5]", text: "text-[#059669]" };
   if (n === "starchy side dish") return { label: "Starchy side",  bg: "bg-[#fef3c7]", text: "text-[#b45309]" };
   if (n === "fruity side dish")  return { label: "Fruity side",   bg: "bg-[#fef9c3]", text: "text-[#a16207]" };
@@ -139,16 +156,20 @@ function InlineDishExpand({
     >
       <div className="pt-3 mt-2 border-t border-[#F5F1DD]">
         {/* Tags */}
-        {(r.ethnic?.name || r.dishType?.name) && (
+        {/* dishType is shown here ONCE, as a label, and not at all when it is
+            "complete meal" — see roleBadge. This block used to print the raw
+            lowercase DB value alongside the styled chip, so a card carried
+            "Complete meal" and "complete meal" one above the other. */}
+        {(r.ethnic?.name || dishTypeLabel(r.dishType?.name)) && (
           <div className="flex flex-wrap gap-1 mb-3">
             {r.ethnic?.name && (
               <span className="text-[9px] font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                 {r.ethnic.name}
               </span>
             )}
-            {r.dishType?.name && (
+            {dishTypeLabel(r.dishType?.name) && (
               <span className="text-[9px] font-semibold bg-[#F0EFF4] text-[#848181] px-2 py-0.5 rounded-full">
-                {r.dishType.name}
+                {dishTypeLabel(r.dishType?.name)}
               </span>
             )}
           </div>
@@ -303,6 +324,10 @@ export default function DailyMealPlanView({
   };
   const [profileIncomplete, setProfileIncomplete] = useState(false);
   const [dailyCalorieTarget, setDailyCalorieTarget] = useState<number | null>(initialDailyCalorieTarget);
+  // Target grams for the day, from /api/meal-plan. The macro rows used to be
+  // divided by the PLAN's own totals while the calorie ring above them used
+  // the target — one widget, two denominators, neither labelled.
+  const [dailyMacroTarget, setDailyMacroTarget] = useState<{ protein: number; carbs: number; fat: number } | null>(null);
   // Basket readiness for the New-week gate (min ingredients + category
   // coverage). Generation is manual now — no auto-start; when the week runs
   // out the New-week panel below drives it.
@@ -351,8 +376,11 @@ export default function DailyMealPlanView({
           setLoggedRecipeIds(data.loggedRecipeIds ?? []);
           setMealRatings(data.mealRatings ?? {});
           setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
+      setDailyMacroTarget(data.dailyMacroTarget ?? null);
+          setDailyMacroTarget(data.dailyMacroTarget ?? null);
         } else if (dailyCalorieTarget === null && data.dailyCalorieTarget != null) {
           setDailyCalorieTarget(data.dailyCalorieTarget);
+          setDailyMacroTarget(data.dailyMacroTarget ?? null);
         }
         setExchanges(data.exchanges ?? null);
       })
@@ -395,6 +423,7 @@ export default function DailyMealPlanView({
       setMealRatings(mData.mealRatings ?? {});
       if (mData.mealPlanStartDate) setStartDate(new Date(mData.mealPlanStartDate));
       setDailyCalorieTarget(mData.dailyCalorieTarget ?? null);
+      setDailyMacroTarget(mData.dailyMacroTarget ?? null);
       setExchanges(mData.exchanges ?? null);
       setStale(false);
     } catch {
@@ -436,6 +465,7 @@ export default function DailyMealPlanView({
       setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
       setMealRatings(mData.mealRatings ?? {});
       setDailyCalorieTarget(mData.dailyCalorieTarget ?? null);
+      setDailyMacroTarget(mData.dailyMacroTarget ?? null);
       setExchanges(mData.exchanges ?? null);
       setShowCuisines(false);
     } catch {
@@ -481,6 +511,7 @@ export default function DailyMealPlanView({
       setMealRatings(data.mealRatings ?? {});
       if (data.mealPlanStartDate) setStartDate(new Date(data.mealPlanStartDate));
       setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
+      setDailyMacroTarget(data.dailyMacroTarget ?? null);
       setExchanges(data.exchanges ?? null);
     } catch {
       setDate(prevDate);
@@ -559,11 +590,24 @@ export default function DailyMealPlanView({
   const consumedCarbs    = menus.filter(menuDone).reduce((sum, m) => sum + menuMacro(m, "carbs"), 0);
   const consumedFat      = menus.filter(menuDone).reduce((sum, m) => sum + menuMacro(m, "fat"), 0);
   const budgetCalories = dailyCalorieTarget ?? totalCalories;
-  const freeCalories   = dailyCalorieTarget ? Math.max(0, dailyCalorieTarget - totalCalories) : 0;
+  // All four rings measure intake against the SAME thing: the day's target
+  // when we know it, the plan's own totals when we don't. Mixing the two made
+  // protein read 166 g here and 169 g on /overview for the same day.
+  const budgetProtein = dailyMacroTarget?.protein ?? totalProtein;
+  const budgetCarbs   = dailyMacroTarget?.carbs   ?? totalCarbs;
+  const budgetFat     = dailyMacroTarget?.fat     ?? totalFat;
+  const budgetIsTarget = dailyCalorieTarget != null && dailyMacroTarget != null;
+
+  // Signed, so an overshoot is as visible as an undershoot. Math.max(0, …)
+  // clamped it, so a day planned 100 kcal OVER target rendered as nothing at
+  // all — the one direction a person on a deficit needs to be told about.
+  const calorieVariance = dailyCalorieTarget ? dailyCalorieTarget - totalCalories : 0;
+  const freeCalories   = Math.max(0, calorieVariance);
+  const overCalories   = Math.max(0, -calorieVariance);
   const calPct  = budgetCalories > 0 ? Math.min(100, (completedCalories / budgetCalories) * 100) : 0;
-  const protPct = totalProtein  > 0 ? Math.min(100, (consumedProtein   / totalProtein)  * 100) : 0;
-  const carbPct = totalCarbs    > 0 ? Math.min(100, (consumedCarbs     / totalCarbs)    * 100) : 0;
-  const fatPct  = totalFat      > 0 ? Math.min(100, (consumedFat       / totalFat)      * 100) : 0;
+  const protPct = budgetProtein > 0 ? Math.min(100, (consumedProtein / budgetProtein) * 100) : 0;
+  const carbPct = budgetCarbs   > 0 ? Math.min(100, (consumedCarbs   / budgetCarbs)   * 100) : 0;
+  const fatPct  = budgetFat     > 0 ? Math.min(100, (consumedFat     / budgetFat)     * 100) : 0;
 
   const mealGroups = MEAL_ORDER
     .map((name) => ({
@@ -956,7 +1000,12 @@ export default function DailyMealPlanView({
             })}
           </div>
 
-          {/* Free calories card */}
+          {/* How the day's plan sits against the target — in BOTH directions.
+              Only the under case existed, so a day planned over target showed
+              nothing at all: a QA week was +89 and +76 kcal on two days with
+              no indication anywhere (2026-09-24). Over-target is stated
+              plainly and without alarm — a small overshoot is normal, and the
+              point is that the user is told rather than warned. */}
           {freeCalories > 0 && (
             <div className="mt-3 border-2 border-dashed border-[#EAE4CA] rounded-xl px-4 py-3 flex items-center gap-3 bg-[#F9F7ED]">
               <div className="w-8 h-8 rounded-full bg-white border border-[#EAE4CA] flex items-center justify-center text-sm font-bold text-primary shrink-0">
@@ -973,6 +1022,30 @@ export default function DailyMealPlanView({
               <span className="text-[10px] font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full shrink-0">
                 Flex
               </span>
+            </div>
+          )}
+          {overCalories > 0 && (
+            <div
+              className="mt-3 rounded-xl px-4 py-3 flex items-center gap-3"
+              style={{ background: "rgba(183,94,120,0.08)", border: "1px solid rgba(183,94,120,0.22)" }}
+            >
+              <div
+                className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-sm font-bold shrink-0"
+                style={{ border: "1px solid rgba(183,94,120,0.3)", color: "#B75E78" }}
+                aria-hidden="true"
+              >
+                +
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: "#8C4258" }}>
+                  {Math.round(overCalories)} kcal over today&apos;s target
+                </p>
+                <p className="text-[10px] mt-0.5" style={{ color: "#848181" }}>
+                  This day&apos;s dishes add up to {Math.round(totalCalories)} kcal against a{" "}
+                  {Math.round(dailyCalorieTarget ?? 0)} kcal target. Swap a dish for a lighter one, or let it
+                  even out across the week.
+                </p>
+              </div>
             </div>
           )}
 
@@ -1005,6 +1078,13 @@ export default function DailyMealPlanView({
             <p className="text-[9px] tracking-[0.22em] uppercase font-bold text-center mb-2" style={{ color: "#ABA6A6" }}>
               Today&apos;s calories
             </p>
+            {/* Say what the number after the slash IS. Four figures on this
+                card share one grammar, so leaving the denominator unnamed
+                left the user to guess whether it was their target or the
+                plan's own total — and until today it was silently both. */}
+            <p className="text-[10px] text-center mb-2" style={{ color: "#ABA6A6" }}>
+              eaten of {budgetIsTarget ? "your daily target" : "this day's plan"}
+            </p>
             <div className="text-center mb-5">
               <span className="text-5xl font-black tracking-tight tabular-nums leading-none" style={{ color: "#812549" }}>
                 {Math.round(completedCalories)}
@@ -1018,9 +1098,9 @@ export default function DailyMealPlanView({
 
             <div className="space-y-3 mb-5">
               {[
-                { label: "Protein", consumed: Math.round(consumedProtein), total: Math.round(totalProtein), color: "#60a5fa" },
-                { label: "Carbs",   consumed: Math.round(consumedCarbs),   total: Math.round(totalCarbs),   color: "#fb923c" },
-                { label: "Fat",     consumed: Math.round(consumedFat),     total: Math.round(totalFat),     color: "#a78bfa" },
+                { label: "Protein", consumed: Math.round(consumedProtein), total: Math.round(budgetProtein), color: "#60a5fa" },
+                { label: "Carbs",   consumed: Math.round(consumedCarbs),   total: Math.round(budgetCarbs),   color: "#fb923c" },
+                { label: "Fat",     consumed: Math.round(consumedFat),     total: Math.round(budgetFat),     color: "#a78bfa" },
               ].map(({ label, consumed, total, color }) => (
                 <div key={label} className="flex items-center justify-between">
                   <p className="text-[9px] tracking-[0.18em] uppercase font-bold" style={{ color: "#ABA6A6" }}>{label}</p>

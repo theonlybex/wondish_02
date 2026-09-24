@@ -435,9 +435,18 @@ export default function ProfileForm({
                 </p>
               </div>
               <div>
-                <span className="text-[#848181] text-xs">Daily Calories</span>
+                {/* This is TDEE floored to the minimum — what the body burns
+                    at the current weight, NOT the plan's target. Labelling it
+                    "Daily Calories" made it the third different daily number a
+                    tester could see (2298 here, 2255 as today's plan target,
+                    2127 as the eventual goal), with nothing to distinguish
+                    them (QA 2026-09-24). */}
+                <span className="text-[#848181] text-xs">Maintenance</span>
                 <p className="font-bold text-primary">
                   {Math.round(liveProfile.dailyCalories)} kcal
+                </p>
+                <p className="text-[10px] text-[#ABA6A6] mt-0.5 leading-snug">
+                  what you burn now — your plan targets less
                 </p>
               </div>
               <div>

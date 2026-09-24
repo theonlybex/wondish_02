@@ -9,20 +9,34 @@ import DailyMealPlanView from "@/components/meal-plan/DailyMealPlanView";
 
 export const metadata = { title: "Meal Plan" };
 
-export default async function MealPlanPage() {
+export default async function MealPlanPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
   const { userId } = await auth();
   if (!userId) redirect("/login");
   const account = await getAccount(userId);
   if (!account) redirect("/login");
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayEnd = new Date(today);
-  todayEnd.setHours(23, 59, 59, 999);
+  // ?date=YYYY-MM-DD opens that day. The parameter was accepted by the URL and
+  // ignored by the page, so every deep link — a notification, a shared link,
+  // the browser history of a day someone was looking at — silently rendered
+  // today instead (QA 2026-09-24). Anything unparseable falls back to today
+  // rather than erroring: a mangled link should still show a meal plan.
+  const { date: dateParam } = await searchParams;
+  const parsed =
+    typeof dateParam === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
+      ? new Date(`${dateParam}T00:00:00`)
+      : null;
+  const dayStart = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setHours(23, 59, 59, 999);
 
-  const [menus, todayJournal, patient] = await Promise.all([
+  const [menus, dayJournal, patient] = await Promise.all([
     prisma.menu.findMany({
-      where: { patient: { account: { clerkId: userId } }, date: { gte: today, lte: todayEnd } },
+      where: { patient: { account: { clerkId: userId } }, date: { gte: dayStart, lte: dayEnd } },
       include: {
         recipe: {
           include: {
@@ -36,7 +50,7 @@ export default async function MealPlanPage() {
       orderBy: { mealType: { name: "asc" } },
     }),
     prisma.journalEntry.findFirst({
-      where: { patient: { account: { clerkId: userId } }, date: { gte: today, lte: todayEnd } },
+      where: { patient: { account: { clerkId: userId } }, date: { gte: dayStart, lte: dayEnd } },
       include: { meals: { select: { recipeId: true, skipped: true, rating: true } } },
     }),
     prisma.patient.findFirst({
@@ -59,7 +73,7 @@ export default async function MealPlanPage() {
   const activeVersion = patient?.activePlanVersion ?? 0;
   const finalMenus = menus.filter((m) => m.planVersion === activeVersion);
 
-  const activeMeals = (todayJournal?.meals ?? []).filter((m) => !m.skipped && m.recipeId);
+  const activeMeals = (dayJournal?.meals ?? []).filter((m) => !m.skipped && m.recipeId);
   const loggedRecipeIds = activeMeals.map((m) => m.recipeId as string);
   const initialMealRatings: Record<string, number> = {};
   for (const m of activeMeals) {
@@ -90,7 +104,7 @@ export default async function MealPlanPage() {
       const profile = computeAllMetrics(pi);
       const planStart = new Date(patient.mealPlanStartDate);
       planStart.setHours(0, 0, 0, 0);
-      const dayNumber = Math.round((today.getTime() - planStart.getTime()) / 86400000) + 1;
+      const dayNumber = Math.round((dayStart.getTime() - planStart.getTime()) / 86400000) + 1;
       if (dayNumber >= 1) {
         initialDailyCalorieTarget = Math.round(gradualDailyCals(
           Math.round(profile.tdeeCBW),
@@ -121,7 +135,7 @@ export default async function MealPlanPage() {
       <div className="mp" style={{ animationDelay: "160ms" }}>
         <DailyMealPlanView
           initialMenus={finalMenus as never}
-          initialDate={format(today, "yyyy-MM-dd")}
+          initialDate={format(dayStart, "yyyy-MM-dd")}
           mealPlanStartDate={patient?.mealPlanStartDate?.toISOString() ?? null}
           initialLoggedRecipeIds={loggedRecipeIds}
           initialMealRatings={initialMealRatings}

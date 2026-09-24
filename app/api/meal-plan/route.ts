@@ -7,6 +7,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError, ThinPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
 import { internalError } from "@/lib/api-error";
 import { getPlanDayCalories, deriveLoggedRecipeIds } from "@/lib/meal-plan";
+import { computeDailyMacros, resolveMacroProfile } from "@/lib/caloric-engine";
 import { normalizeCuisine } from "@/lib/clara/recipe-generation";
 import { guardAiSpend, tierFor } from "@/lib/ai-budget";
 import { getExchangesForRange, splitByStatus } from "@/lib/plan-exchanges";
@@ -42,6 +43,10 @@ export async function GET(req: NextRequest) {
       height: true, heightUnit: true,
       sexAtBirth: true, birthday: true,
       physicalActivity: { select: { level: true } },
+      // Needed for dailyMacroTarget below: the macro split depends on the
+      // patient's conditions (diabetic) and motivations (muscle gain).
+      healthConditions: { select: { condition: { select: { name: true } } } },
+      motivations: { select: { motivation: { select: { name: true } } } },
     },
   });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
@@ -110,6 +115,28 @@ export async function GET(req: NextRequest) {
     ? await getPlanDayCalories(patient.id, toLocalDateString(startDate))
     : null;
 
+  // Target grams for the day, from the same macro profile the builder uses.
+  //
+  // The daily view showed "0 / 2255 kcal" (the TARGET) directly above
+  // "PROTEIN 0/166g · CARBS 0/259g · FAT 0/43g" (the sum of the day's PLANNED
+  // dishes) — the same widget, the same visual grammar, two different
+  // denominators and no label on either. /overview meanwhile showed
+  // target-derived grams for the same day, so protein read 166 g on one screen
+  // and 169 g on the other (QA 2026-09-24). One denominator, stated.
+  const dailyMacroTarget =
+    dailyCalorieTarget != null
+      ? (() => {
+          const conditionNames = patient.healthConditions?.map((hc) => hc.condition.name) ?? [];
+          const motivationNames = patient.motivations?.map((pm) => pm.motivation.name) ?? [];
+          const macros = computeDailyMacros(dailyCalorieTarget, resolveMacroProfile(conditionNames, motivationNames));
+          return {
+            protein: Math.round(macros.totalProteinG),
+            carbs: Math.round(macros.totalCarbsG),
+            fat: Math.round(macros.totalFatG),
+          };
+        })()
+      : null;
+
   // Opt-in plan-exchange overlay (pinned wire contract: without the param the
   // response stays byte-identical). Single-day requests only — the week view
   // is unchanged this cycle (spec 2026-07-30-plan-exchanges-design.md).
@@ -125,6 +152,7 @@ export async function GET(req: NextRequest) {
     loggedRecipeIds,
     mealRatings,
     dailyCalorieTarget,
+    dailyMacroTarget,
     ...(exchanges ? { exchanges } : {}),
   });
 }

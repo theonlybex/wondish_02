@@ -6,6 +6,7 @@ import Link from "next/link";
 import { CUISINES } from "@/lib/cuisines";
 import { computeBasketReadiness } from "@/lib/basket-readiness";
 import { buildCuisineChecklists } from "@/lib/cuisine-ingredients";
+import { displayDishName } from "@/lib/dish-name";
 // Old "What to buy" design (reused the standalone GroceryListView). Replaced
 // (2026-09-07) by the inline shopping list below, which ticks bought items
 // straight into "What I have". Kept for reference.
@@ -340,7 +341,13 @@ export default function PantryClient({
         {d.emoji ?? "🍽"}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-[#1E1A1A] text-sm truncate">{d.name}</p>
+        {/* The library's portion-variant suffix is a storage id, not a name:
+            this card read "Whole-wheat English Muffin , V1M- 2 units" and
+            "gluten-free, nuts-free multigrain bread, V1S-1 slice" until
+            2026-09-24. Plan cards have always stripped it; this one did not. */}
+        <p className="font-semibold text-[#1E1A1A] text-sm truncate" title={displayDishName(d.name)}>
+          {displayDishName(d.name)}
+        </p>
         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
           {d.mealType && <span className="text-[10px]" style={{ color: "#ABA6A6" }}>{d.mealType}</span>}
           {d.calories != null && (
@@ -379,8 +386,9 @@ export default function PantryClient({
   // pantry's `toggle` → PatientPantryItem write). Items already on hand show
   // as done.
   if (view === "buy") {
-    const ownedLower = new Set(Array.from(selected.values()).map((n) => n.toLowerCase()));
-    const checklists = buildCuisineChecklists(ownedLower);
+    // Names, not lowercased keys: the checklist tokenises them itself now, and
+    // the exact-string compare it replaces is why every cuisine read 0/8.
+    const checklists = buildCuisineChecklists(Array.from(selected.values()));
     const neededById = new Map((groceryItems ?? []).flatMap((i) => (i.needed ? [[i.ingredientId, i.needed] as const] : [])));
     return (
       <div>

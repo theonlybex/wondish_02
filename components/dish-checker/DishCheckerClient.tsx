@@ -243,6 +243,7 @@ export default function DishCheckerClient({ firstName }: Props) {
               className="flex-1 resize-none rounded-xl px-4 py-3 text-sm text-[#1E1A1A] bg-[#F9F7ED] border border-transparent focus:outline-none focus:border-primary/30 transition-colors disabled:opacity-50"
             />
             <button
+              type="button"
               onClick={send}
               disabled={isStreaming || !input.trim()}
               className="px-5 py-3 rounded-xl bg-primary text-white font-bold text-sm transition-colors hover:bg-primary-dark disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
@@ -302,6 +303,7 @@ export default function DishCheckerClient({ firstName }: Props) {
               "A lower-carb swap for pasta?",
             ].map((ex) => (
               <button
+                type="button"
                 key={ex}
                 onClick={() => setInput(ex)}
                 className="w-full text-left text-xs px-3 py-2 rounded-lg transition-colors"
