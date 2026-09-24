@@ -53,6 +53,7 @@ type RecipeCandidate = {
   dishType:  { name: string } | null;
   name?:      string;
   tags?:      string[];
+  steps?:     string[];
   prepTime?:  number | null;
   cookTime?:  number | null;
   ingredients: {
@@ -156,7 +157,7 @@ function pickByMotivation(
 
 // Pool entries carry mealTypeId + description so the in-memory filters can
 // reproduce the per-pick Prisma queries (meal-type scoping, content filter).
-type PoolRecipe = RecipeCandidate & { mealTypeId: string | null; description: string | null };
+type PoolRecipe = RecipeCandidate & { mealTypeId: string | null; description: string | null; steps?: string[] };
 
 // Beverages not tagged fruity/veggie are exempt from the daily family constraint (per spec).
 function isBeverageExempt(recipe: RecipeCandidate): boolean {
@@ -325,7 +326,7 @@ export async function buildMealPlanMenus(
     family: true, subFamily: true,
     // name/tags/times and the per-link quantity feed the plausibility pass
     // below. They cost one wider read of a pool that is loaded exactly once.
-    name: true, tags: true, prepTime: true, cookTime: true,
+    name: true, tags: true, prepTime: true, cookTime: true, steps: true,
     dishType:    { select: { name: true } },
     ingredients: {
       select: {
@@ -402,6 +403,9 @@ export async function buildMealPlanMenus(
       {
         name: r.name ?? "",
         description: r.description,
+        steps: r.steps,
+        macros: { carbs: r.carbs, fat: r.fat },
+        calories: r.calories,
         mealTypeName: (r.mealTypeId && mealTypeNameById.get(r.mealTypeId)) || "",
         prepMinutes: r.prepTime ?? null,
         cookMinutes: r.cookTime ?? null,

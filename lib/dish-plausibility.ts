@@ -18,11 +18,22 @@
 import { ingredientTokens } from "@/lib/basket-match";
 import { BASKET_STAPLES } from "@/lib/basket-coverage";
 import { displayDishName } from "@/lib/dish-name";
+import { macrosContradictAmounts } from "@/lib/staple-density";
 
 export const BREAKFAST_MAX_MINUTES = 30;
 
-/** Max salt per serving. ~1 tsp is ~2.3 g sodium — a whole day's allowance. */
+/**
+ * Max salt per serving: 1 teaspoon, and half that for a small dish.
+ *
+ * 1 tsp is ~2,325 mg of sodium — essentially a whole day's guideline. The flat
+ * cap let a 396 kcal breakfast of four ingredients carry exactly 1 tsp and
+ * pass, which is a day's sodium before 9am for someone who may be managing
+ * blood pressure. Scaling by the size of the dish keeps a large shared-style
+ * plate workable while refusing that.
+ */
 export const MAX_SALT_TSP = 1;
+export const MAX_SALT_TSP_SMALL_DISH = 0.5;
+export const SMALL_DISH_KCAL = 450;
 
 export interface PlausibleIngredient {
   name: string;
@@ -40,6 +51,12 @@ export interface PlausibleDish {
   ingredients: PlausibleIngredient[];
   /** The dish's own description sentence, when the caller has it. */
   description?: string | null;
+  /** The cooking steps, when the caller has them. */
+  steps?: readonly string[] | null;
+  /** Declared per-serving macros, for the arithmetic in lib/staple-density.ts. */
+  macros?: { carbs?: number | null; fat?: number | null } | null;
+  /** Declared per-serving calories, which scale the salt cap. */
+  calories?: number | null;
   /**
    * True for a dish Clara wrote. Gates the title check ONLY — the physical
    * rules (salt, seasoning quantities, breakfast timing) apply to every dish
@@ -63,7 +80,10 @@ export type DishProblem =
   | "seasoning-quantity-on-food"
   | "title-promises-missing-food"
   | "description-promises-missing-food"
-  | "no-quantities";
+  | "no-quantities"
+  | "macros-contradict-amounts"
+  | "cooks-without-listing-fat"
+  | "step-outlasts-stated-time";
 
 const SEASONING_UNIT = /\b(tsp|teaspoons?|pinch|pinches|dash(es)?)\b/i;
 const TABLESPOON = /\b(tbsp|tablespoons?)\b/i;
@@ -134,6 +154,29 @@ function seasoningQuantityOnFood(ing: PlausibleIngredient): boolean {
     if ([...stt].every((t) => tokens.has(t))) return true; // proper superset
   }
   return false;
+}
+
+// Cooking that needs a fat in the pan, and the fats that satisfy it.
+const FAT_METHOD =
+  /\b(sear|seared|searing|saut[ée]|saut[ée]ed|saut[ée]ing|fry|fried|frying|pan-?fry|brown the|stir-?fry|stir-?fried|grease|coat the pan)\b/i;
+const FAT_NAME = /\b(oil|butter|ghee|margarine|cooking spray|lard|tallow|bacon fat|drippings?)\b/i;
+
+/**
+ * The longest single duration any step claims, in minutes. Ranges take the top
+ * of the range ("simmer for 35-40 minutes" → 40) because that is the number a
+ * cook has to allow for; hours are converted.
+ */
+export function longestStepMinutes(steps: readonly string[]): number {
+  let longest = 0;
+  for (const step of steps) {
+    for (const m of step.matchAll(/(\d+(?:\.\d+)?)\s*(?:-|–|to)?\s*(\d+(?:\.\d+)?)?\s*(hours?|hrs?|h|minutes?|mins?|m)\b/gi)) {
+      const top = Number(m[2] ?? m[1]);
+      if (!Number.isFinite(top)) continue;
+      const isHours = /^h/i.test(m[3]);
+      longest = Math.max(longest, isHours ? top * 60 : top);
+    }
+  }
+  return longest;
 }
 
 /**
@@ -294,7 +337,8 @@ export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): D
   for (const ing of d.ingredients) {
     if (/\bsalt\b/i.test(ing.name)) {
       const q = ing.quantity ?? 0;
-      if (SEASONING_UNIT.test(ing.unit ?? "") && q > MAX_SALT_TSP) return "oversalted";
+      const cap = d.calories != null && d.calories < SMALL_DISH_KCAL ? MAX_SALT_TSP_SMALL_DISH : MAX_SALT_TSP;
+      if (SEASONING_UNIT.test(ing.unit ?? "") && q > cap) return "oversalted";
       if (TABLESPOON.test(ing.unit ?? "") && q >= 1) return "oversalted";
     }
     if (seasoningQuantityOnFood(ing)) return "seasoning-quantity-on-food";
@@ -307,6 +351,33 @@ export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): D
   // the dish is unusable rather than merely untidy. A single missing row (an
   // unmeasured splash of water) is fine; none at all is not a recipe.
   if (d.ingredients.length > 0 && d.ingredients.every((i) => i.quantity == null)) return "no-quantities";
+
+  // Steps that cook in a fat the dish never lists. This ran at generation
+  // only, so the rows written before it existed kept flowing into plans: 4 of
+  // 28 dishes in one week told the reader to stir-fry with four ingredients,
+  // one of them salt, and no fat at all (QA 2026-09-24). A reader can add oil
+  // from the cupboard, but the amount is costed into the calories on the card.
+  if (d.steps?.some((step) => FAT_METHOD.test(step)) && !d.ingredients.some((i) => FAT_NAME.test(i.name))) {
+    return "cooks-without-listing-fat";
+  }
+
+  // A step that takes longer than the whole dish claims to. "Cook brown rice
+  // according to package directions (about 45 minutes total)" under tiles
+  // reading "Prep 10m / Cook 25m" — four dishes in one week, including one
+  // Clara swapped in. The tiles are what a person plans their evening around.
+  const stated = (d.prepMinutes ?? 0) + (d.cookMinutes ?? 0);
+  if (stated > 0 && d.steps) {
+    const longest = longestStepMinutes(d.steps);
+    if (longest > stated) return "step-outlasts-stated-time";
+  }
+
+  // Can the stated amounts even contain the stated macros? See
+  // lib/staple-density.ts — generated dishes only, because the rule leans on
+  // the amounts being written to a dry basis and the curated library's macro
+  // columns are measured data we should not argue with.
+  if (d.generated && d.macros && macrosContradictAmounts(d.macros, d.ingredients)) {
+    return "macros-contradict-amounts";
+  }
 
   if (d.generated && catalogFoodTokens.size > 0) {
     const names = d.ingredients.map((i) => i.name);

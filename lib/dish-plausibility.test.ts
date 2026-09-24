@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough } from "./dish-plausibility";
+import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes } from "./dish-plausibility";
 
 // The catalog vocabulary, as lib/meal-plan.ts builds it from Ingredient.name.
 const CATALOG = new Set([
@@ -212,4 +212,105 @@ test("a portion-variant suffix is not part of the title's promise", () => {
     ingredients: [{ name: "Russet potatoes", quantity: 2, unit: "unit" }, { name: "Fresh rosemary", quantity: 1, unit: "tsp" }],
   };
   assert.equal(dishProblem(d, new Set([...CATALOG, "potato", "rosemary", "medium"])), null);
+});
+
+// ── Steps that need a fat, and steps that outlast the dish ──────────────────
+// Both ran at generation only, so rows written earlier kept flowing into
+// plans: 4 of 28 dishes in one week said "stir-fry" over four ingredients (one
+// of them salt) and no fat, and four claimed a total shorter than a single one
+// of their own steps.
+test("a step that sears or stir-fries requires a listed fat", () => {
+  const dry = dish({
+    name: "Turkey Stir-Fry",
+    steps: ["Heat a wok over high heat.", "Stir-fry cauliflower for 6-7 minutes until lightly charred."],
+    ingredients: [
+      { name: "Turkey breast", quantity: 160, unit: "g" },
+      { name: "cauliflower", quantity: 120, unit: "g" },
+      { name: "Salt", quantity: 0.25, unit: "tsp" },
+    ],
+  });
+  assert.equal(dishProblem(dry, CATALOG), "cooks-without-listing-fat");
+
+  const withOil = { ...dry, ingredients: [...dry.ingredients, { name: "Extra virgin olive oil", quantity: 1, unit: "tbsp" }] };
+  assert.equal(dishProblem(withOil, CATALOG), null);
+
+  // Nothing is fried, so no fat is required.
+  const boiled = { ...dry, steps: ["Bring water to a boil.", "Poach for 12 minutes.", "Steam the rice."] };
+  assert.equal(dishProblem(boiled, CATALOG), null);
+});
+
+test("no step may take longer than the dish's own stated total", () => {
+  const d = dish({
+    name: "Beef and Rice Bowl",
+    prepMinutes: 10,
+    cookMinutes: 25,
+    steps: ["Cook brown rice according to package directions (about 45 minutes total).", "Brown the beef."],
+    ingredients: [
+      { name: "ground beef", quantity: 4, unit: "oz" },
+      { name: "Brown rice", quantity: 60, unit: "g" },
+      { name: "olive oil", quantity: 1, unit: "tsp" },
+    ],
+  });
+  assert.equal(dishProblem(d, CATALOG), "step-outlasts-stated-time");
+  // Honest timings pass, and a range is read at its top.
+  assert.equal(dishProblem({ ...d, prepMinutes: 10, cookMinutes: 40 }, CATALOG), null);
+  assert.equal(longestStepMinutes(["simmer for 35-40 minutes until tender"]), 40);
+  assert.equal(longestStepMinutes(["braise for 1 hour"]), 60);
+  assert.equal(longestStepMinutes(["season and serve"]), 0);
+  // A dish with no timings claimed is not second-guessed.
+  assert.equal(dishProblem({ ...d, prepMinutes: 0, cookMinutes: 0 }, CATALOG), null);
+});
+
+// ── The amounts have to be able to contain the macros ───────────────────────
+test("declared macros may not fall below what the listed staples contain", () => {
+  // Verbatim: 150 g of brown rice is ~117 g of carbohydrate; the dish declared
+  // 48 g for the whole plate, and 535 kcal against ~1,075 kcal of ingredients.
+  const understated = dish({
+    generated: true,
+    name: "Chicken Thighs with Brown Rice and Roasted Broccoli",
+    prepMinutes: 15,
+    cookMinutes: 35,
+    macros: { carbs: 48, fat: 15 },
+    ingredients: [
+      { name: "chicken thighs", quantity: 200, unit: "g" },
+      { name: "Brown rice", quantity: 150, unit: "g" },
+      { name: "broccoli", quantity: 150, unit: "g" },
+      { name: "olive oil", quantity: 1, unit: "tbsp" },
+    ],
+  });
+  assert.equal(dishProblem(understated, CATALOG), "macros-contradict-amounts");
+
+  // The same dish with an honest grain portion passes — this is the case that
+  // proves the rule discriminates rather than just rejecting rice dishes.
+  const honest = { ...understated, name: "Baked Chicken Breast with Carrots and Jasmine Rice", macros: { carbs: 44, fat: 6 }, steps: ["Bake the chicken for 20 minutes."], prepMinutes: 5, cookMinutes: 20, ingredients: [
+    { name: "Boneless chicken breasts", quantity: 120, unit: "g" },
+    { name: "carrots", quantity: 80, unit: "g" },
+    { name: "jasmine rice", quantity: 60, unit: "g" },
+  ] };
+  assert.equal(dishProblem(honest, CATALOG), null);
+
+  // Library rows are not argued with: their macro columns are measured data.
+  assert.equal(dishProblem({ ...understated, generated: false }, CATALOG), null);
+});
+
+test("the salt cap scales with the size of the dish", () => {
+  // A 396 kcal breakfast of four ingredients carried exactly 1 tsp — ~2,325 mg
+  // of sodium, a whole day's guideline before 9am — and passed a flat cap.
+  const small = dish({
+    calories: 396,
+    ingredients: [
+      { name: "Turkey breast", quantity: 160, unit: "g" },
+      { name: "Salt", quantity: 1, unit: "teaspoon" },
+    ],
+  });
+  assert.equal(dishProblem(small, CATALOG), "oversalted");
+  assert.equal(dishProblem({ ...small, ingredients: [small.ingredients[0], { name: "Salt", quantity: 0.5, unit: "teaspoon" }] }, CATALOG), null);
+
+  // A full plate still gets the teaspoon.
+  const large = { ...small, calories: 650 };
+  assert.equal(dishProblem(large, CATALOG), null);
+  assert.equal(dishProblem({ ...large, ingredients: [large.ingredients[0], { name: "Salt", quantity: 1.5, unit: "teaspoon" }] }, CATALOG), "oversalted");
+
+  // Unknown calories keep the old behaviour rather than guessing small.
+  assert.equal(dishProblem({ ...small, calories: null }, CATALOG), null);
 });

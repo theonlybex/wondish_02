@@ -168,7 +168,14 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     // which is how a week ends up serving one dish seven times.
     `- The DESCRIPTION may only mention food that is in usesIngredients. Do not describe bread as "whole grain" unless the listed bread is whole grain, and do not mention a herb, citrus or sauce you did not list.`,
     `- If any step sears, fries, sautés or browns something, the fat used MUST be in usesIngredients with its amount. A dry pan is not a recipe.`,
-    `- Salt must never exceed 1 teaspoon per serving.`,
+    `- Salt must never exceed 1 teaspoon per serving, and under half a teaspoon for anything below 450 kcal.`,
+    // Grains in cups are unreadable: three quarters of a cup of rice is ~139 g
+    // dry and ~145 g COOKED, a threefold difference in carbohydrate, and one
+    // QA week understated itself by ~750 kcal/day because the amounts and the
+    // macros had been written on different readings. Grams, dry, always.
+    `- State grains, pasta and pulses in GRAMS of DRY weight (never cups), and count their full dry carbohydrate — about 75 g per 100 g of rice, pasta or flour. One person's portion of dry rice is 45-80 g; 150 g is two servings.`,
+    `- No single step may take longer than prepMinutes + cookMinutes. If the rice needs 45 minutes, the dish takes at least 45 minutes.`,
+    `- A Snack is a small, quick thing eaten between meals: fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip. Under 15 minutes in total and no plated rice-and-protein dinners.`,
     `- Every dish needs a DISTINCT name — no two dishes in this batch may share a name.`,
     `- mealType must be exactly one of: ${args.requests.map((r) => r.mealTypeName).join(", ")}.`,
     args.cuisine
@@ -295,6 +302,9 @@ export function toPlausibleDish(r: FridgeRecipe, mealTypeName: string): Plausibl
   return {
     name: r.name,
     description: r.description ?? null,
+    steps: r.steps ?? null,
+    macros: r.perServing ? { carbs: r.perServing.carbs, fat: r.perServing.fat } : null,
+    calories: r.perServing?.calories ?? null,
     mealTypeName,
     prepMinutes: r.prepMinutes ?? null,
     cookMinutes: r.cookMinutes ?? null,

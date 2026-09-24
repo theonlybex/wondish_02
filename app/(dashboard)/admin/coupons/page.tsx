@@ -149,7 +149,7 @@ export default function AdminCouponsPage() {
           <div className="flex items-center gap-3 mt-4">
             <div className="h-px w-12 bg-primary/40" />
             <p className="text-xs" style={{ color: "#848181" }}>
-              Premium-type codes grant beta access (about half of Plus&apos;s allowances) until a date you set. Admin codes grant the SUPER role. Stripe promo codes (above) discount paid checkout.
+              Premium-type codes grant beta access (3 new weeks a week, 13 Clara messages a day) until a date you set. Admin codes grant the SUPER role. Stripe promo codes (above) discount paid checkout.
             </p>
           </div>
         </div>

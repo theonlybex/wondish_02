@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
+import { displayDishName } from "@/lib/dish-name";
+import { getPlanDayCalories } from "@/lib/meal-plan";
 import { rateLimit } from "@/lib/rate-limit";
 import {
   derivePatientBans,
@@ -81,6 +83,17 @@ export async function GET() {
   for (const r of recipes) {
     const names = r.ingredients.map((ri) => ri.ingredient.name);
     if (hasBans && !evaluateDishAgainstProfile(names, matchers, ingredientGroupsOf(r.ingredients)).passed) continue;
+    // A row that is one ingredient under its own name is a portion entry, not
+    // a dish. The library holds several ("Wild Rice", "Bulgur", "Peanuts",
+    // "Canned in oil sardines") and this panel listed five different ones all
+    // called "Wild Rice" as "dishes we can suggest right now" (QA 2026-09-24).
+    // They are real Recipe rows the planner can legitimately use as a side;
+    // they just should not be offered to a person as something to cook.
+    if (r.ingredients.length === 1) {
+      const dishName = displayDishName(r.name).trim().toLowerCase();
+      const only = names[0].trim().toLowerCase();
+      if (dishName === only || dishName.includes(only) || only.includes(dishName)) continue;
+    }
 
     const missing = r.ingredients
       .filter((ri) => !onHand.has(ri.ingredientId))
@@ -127,6 +140,16 @@ export async function GET() {
       dailyCalories = Math.round(computeAllMetrics(input).dailyCalories);
     }
   }
+  // Prefer the PLAN's target for today over raw TDEE. computeAllMetrics gives
+  // maintenance calories; every other screen shows the ramped plan target, so
+  // this panel was quoting "your 1981 kcal day" while /overview said 1938 —
+  // a third daily calorie number for the same person (QA 2026-09-24).
+  const localToday = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
+  const planDayCalories = await getPlanDayCalories(patient.id, localToday);
+  if (planDayCalories != null && planDayCalories > 0) dailyCalories = planDayCalories;
   const mealCals = computeMealCalories(dailyCalories);
   const slotNames = ["breakfast", "lunch", "dinner", "snack"];
   const used = new Set<string>();

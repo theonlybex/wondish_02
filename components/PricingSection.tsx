@@ -65,8 +65,9 @@ export default async function PricingSection({
                 You&apos;re on Beta access until {betaEnds}
               </p>
               <p className="text-sm mt-1" style={{ color: "#4F4A4A" }}>
-                Beta sits between the two below — about half of Plus&apos;s allowances, and it ends on that
-                date. Plus keeps your access going afterwards; you don&apos;t need to do anything today.
+                Beta sits between the two below: 3 new weeks a week and 13 Clara messages a day, against
+                Free&apos;s 1 and 5 and Plus&apos;s 5 and 25. It ends on that date — Plus keeps your access
+                going afterwards, and you don&apos;t need to do anything today.
               </p>
             </div>
           )}
