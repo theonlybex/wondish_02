@@ -42,3 +42,33 @@ test("SUPER admins are ADMIN whatever their rows say", () => {
   assert.equal(planBadgeFor([couponLive], true), "ADMIN");
   assert.equal(planBadgeFor([stripeLive], true), "ADMIN");
 });
+
+// A source-level guard, not a unit test. The badge bug was never in this
+// function — it was a SECOND place computing the pill its own way:
+// /restaurants/layout.tsx asked accountHasActivePremium and collapsed the
+// answer to PREMIUM/FREE, so a coupon holder read "✦ Plus ✦" there while
+// every other page said "Beta". Any new layout rendering DashboardHeader
+// must take the string from planBadgeFor.
+test("every DashboardHeader render site derives its plan from planBadgeFor", async () => {
+  const { readdir, readFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+
+  const files: string[] = [];
+  const walk = async (dir: string) => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      if (e.name.startsWith(".") || e.name === "node_modules") continue;
+      const p = join(dir, e.name);
+      if (e.isDirectory()) await walk(p);
+      else if (e.name.endsWith(".tsx")) files.push(p);
+    }
+  };
+  await walk("app");
+
+  const offenders: string[] = [];
+  for (const f of files) {
+    const src = await readFile(f, "utf8");
+    if (!/<DashboardHeader/.test(src)) continue;
+    if (!/planBadgeFor/.test(src)) offenders.push(f);
+  }
+  assert.deepEqual(offenders, [], `these render the plan pill without planBadgeFor: ${offenders.join(", ")}`);
+});

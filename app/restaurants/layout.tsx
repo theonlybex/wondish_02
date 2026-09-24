@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { getAccount } from "@/lib/queries";
-import { accountHasActivePremium } from "@/lib/auth";
+import { planBadgeFor } from "@/lib/plan-badge";
 import { RESTAURANT_ADMIN_ROLE } from "@/lib/restaurant-auth";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
@@ -44,7 +44,12 @@ export default async function RestaurantsLayout({ children }: { children: React.
   const isAdmin = account.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const isRestaurantStaff =
     account.roles?.some((r) => r.role.name === RESTAURANT_ADMIN_ROLE) ?? false;
-  const isPremium = accountHasActivePremium(account.subscriptions ?? []);
+  // The SAME helper the dashboard header uses. This branch used to ask
+  // accountHasActivePremium and collapse the answer to PREMIUM/FREE, which
+  // showed a coupon holder "✦ Plus ✦" on /restaurants while every other page
+  // said "Beta" — the badge has to agree with what guardAiSpend grants,
+  // wherever DashboardHeader is rendered.
+  const plan = planBadgeFor(account.subscriptions ?? [], isAdmin);
 
   return (
     <div className="flex h-screen bg-surface overflow-hidden">
@@ -56,7 +61,7 @@ export default async function RestaurantsLayout({ children }: { children: React.
         <DashboardHeader
           email={account.email ?? ""}
           name={`${account.firstName} ${account.lastName}`}
-          plan={isAdmin ? "ADMIN" : isPremium ? "PREMIUM" : "FREE"}
+          plan={plan}
           isNew={Date.now() - new Date((account as { createdAt?: Date }).createdAt ?? 0).getTime() < 24 * 60 * 60 * 1000}
         />
         <main className="flex-1 overflow-y-auto p-5 sm:p-8" style={{ background: SURFACE }}>
