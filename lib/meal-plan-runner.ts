@@ -19,6 +19,30 @@ export class EmptyPlanError extends Error {
   }
 }
 
+/**
+ * Minimum share of core (breakfast/lunch/dinner) slots a plan must fill before
+ * it may replace the active one. Two thirds: a week missing the odd slot is
+ * still usable, a week that is two-thirds empty is not.
+ */
+export const MIN_CORE_COVERAGE = 2 / 3;
+
+/**
+ * The builder produced rows, but not enough of the week to be worth showing —
+ * e.g. only lunches. Distinct from EmptyPlanError so the route can say
+ * something true ("we could not fill your week from this basket") rather than
+ * the generic empty-plan message, and so the previous plan is kept.
+ */
+export class ThinPlanError extends Error {
+  readonly filledCoreSlots: number;
+  readonly expectedCoreSlots: number;
+  constructor(filledCoreSlots: number, expectedCoreSlots: number) {
+    super("THIN_PLAN");
+    this.name = "ThinPlanError";
+    this.filledCoreSlots = filledCoreSlots;
+    this.expectedCoreSlots = expectedCoreSlots;
+  }
+}
+
 // Thrown by regeneratePlan / withPlanClaim when the caller's preflight (the
 // AI spend guard) rejects AFTER the claim was taken. Carries the exact JSON
 // the route should answer with. Status is restored, nothing is built.
@@ -191,12 +215,29 @@ export async function regeneratePlan(
     // mealPlanStartDate agree instead of the rows carrying request time-of-day.
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
-    const { rows, builtForWeight } = await deps.buildMealPlanMenus(patientId, start, nextVersion, opts);
+    const { rows, builtForWeight, coreCoverage, filledCoreSlots, expectedCoreSlots } =
+      await deps.buildMealPlanMenus(patientId, start, nextVersion, opts);
 
     // Guard: never flip to an empty plan. If the builder produced nothing
     // (e.g. an over-restrictive profile vs the recipe catalog), keep the current
     // plan active by NOT flipping the version — the caller is told it failed.
     if (rows.length === 0) throw new EmptyPlanError();
+
+    // ...and never flip to a plan that only LOOKS finished. rows.length cannot
+    // distinguish a full week from a broken one: seven lunches across seven
+    // days is seven rows, exactly like one complete day. Observed 2026-09-24 —
+    // a basket with no breakfast-shaped ingredients produced a week of seven
+    // identical lunches, no breakfast or dinner, and the route answered
+    // `200 {"ok":true,"count":7}`. The tester spent their whole weekly
+    // allowance regenerating it.
+    //
+    // Two thirds of the core (non-snack) slots is the bar: below that the week
+    // is not usable, and keeping the PREVIOUS plan active is strictly kinder
+    // than replacing it with a broken one. Snacks are excluded because the
+    // builder only adds them as calorie padding.
+    if (coreCoverage < MIN_CORE_COVERAGE) {
+      throw new ThinPlanError(filledCoreSlots, expectedCoreSlots);
+    }
 
     // 3. Insert the new version (still invisible to version-scoped reads).
     // A previous run may have inserted this same version's rows and then failed
@@ -232,6 +273,8 @@ export async function regeneratePlan(
     const message =
       err instanceof EmptyPlanError
         ? "No meals matched your current profile, so your existing plan was kept."
+        : err instanceof ThinPlanError
+        ? `We could only fill ${err.filledCoreSlots} of ${err.expectedCoreSlots} meals from your ingredients, so your existing plan was kept. Add a few more ingredients — especially breakfast staples — and try again.`
         : err instanceof Error
         ? err.message
         : String(err);
@@ -241,8 +284,9 @@ export async function regeneratePlan(
         data: { mealPlanStatus: "FAILED", mealPlanError: message },
       })
       .catch(() => {});
-    // EmptyPlanError is an expected business outcome, not an incident.
-    if (!(err instanceof EmptyPlanError)) {
+    // EmptyPlanError and ThinPlanError are expected business outcomes (a basket
+    // the catalog cannot fill), not incidents.
+    if (!(err instanceof EmptyPlanError) && !(err instanceof ThinPlanError)) {
       Sentry.captureException(err, { tags: { area: "meal-plan-runner" }, extra: { patientId } });
     }
     throw err;

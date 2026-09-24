@@ -4,12 +4,16 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { regeneratePlan, MealPlanBusyError, EmptyPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
+import { regeneratePlan, MealPlanBusyError, EmptyPlanError, ThinPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
 import { guardAiSpend, tierFor } from "@/lib/ai-budget";
 import { internalError } from "@/lib/api-error";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// 300s (Vercel's current default ceiling) not 60: a real week generation was
+// measured at 55-73s, so the old cap killed it mid-build — and it had also
+// forced ANTHROPIC_TIMEOUT_MS down to 25s, which timed out the recipe
+// top-up and left slots filled by one repeated dish (2026-09-24).
+export const maxDuration = 300;
 
 const MIN_INTERVAL_MS = 2 * 60 * 1000; // anti-spam: 1 regenerate / 2 min
 
@@ -78,6 +82,19 @@ export async function POST() {
     }
     if (err instanceof PlanPreflightError) {
       return NextResponse.json(err.body, { status: err.status });
+    }
+    // Rows were built, but not enough of the week to be usable (e.g. only
+    // lunches). The previous plan is still active; say what was missing.
+    if (err instanceof ThinPlanError) {
+      return NextResponse.json(
+        {
+          error: `We could only fill ${err.filledCoreSlots} of ${err.expectedCoreSlots} meals from your ingredients — your previous plan was kept. Add a few more, especially breakfast staples, and try again.`,
+          code: "thin_plan",
+          filledCoreSlots: err.filledCoreSlots,
+          expectedCoreSlots: err.expectedCoreSlots,
+        },
+        { status: 422 }
+      );
     }
     if (err instanceof EmptyPlanError) {
       return NextResponse.json(

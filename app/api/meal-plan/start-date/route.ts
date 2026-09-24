@@ -8,7 +8,11 @@ import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanErro
 import { internalError } from "@/lib/api-error";
 import { guardAiSpend, tierFor } from "@/lib/ai-budget";
 
-export const maxDuration = 60;
+// 300s (Vercel's current default ceiling) not 60: a real week generation was
+// measured at 55-73s, so the old cap killed it mid-build — and it had also
+// forced ANTHROPIC_TIMEOUT_MS down to 25s, which timed out the recipe
+// top-up and left slots filled by one repeated dish (2026-09-24).
+export const maxDuration = 300;
 
 // Full regenerate-route gate set (2026-07-24 audit Task 13): this endpoint
 // triggers the same expensive full-plan rebuild as /regenerate but shipped

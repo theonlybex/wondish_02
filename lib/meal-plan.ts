@@ -167,7 +167,14 @@ export type MenuRow = { patientId: string; recipeId: string; mealTypeId: string;
 
 // rows + the weight (lbs) the calorie targets were computed from, so the
 // runner stamps the drift anchor from the same read the plan was built with.
-export type BuildResult = { rows: MenuRow[]; builtForWeight: number | null };
+export type BuildResult = {
+  rows: MenuRow[];
+  builtForWeight: number | null;
+  /** Fraction of core (non-snack) day+meal slots the builder actually filled. */
+  coreCoverage: number;
+  filledCoreSlots: number;
+  expectedCoreSlots: number;
+};
 
 // Pure builder: computes the menu rows for a plan. Does NOT touch the menu table.
 // Persistence + version flip is handled by the orchestrator (meal-plan-runner).
@@ -361,10 +368,25 @@ export async function buildMealPlanMenus(
     const baseMealCals = computeMealCalories(baseTDEE);
     const thin: TopUpRequest[] = mealTypes
       .map((mt) => {
-        const eligible = recipePool.filter((r) => r.mealTypeId === mt.id).length;
+        // Measure the pool selection ACTUALLY draws from. With a basket that is
+        // selectionPool (library dishes the basket fully covers), not the whole
+        // library — counting recipePool here asked "are there 12 breakfasts in
+        // the catalog?" (474: plenty) while the basket covered 1, so nothing was
+        // requested and the builder had nothing to place. Observed 2026-09-24:
+        // a 15-ingredient basket of meat/veg/rice with no breakfast staples
+        // produced a week of seven identical lunches and no other meal.
+        const pool = opts.basket ? selectionPool : recipePool;
+        const eligible = pool.filter((r) => r.mealTypeId === mt.id).length;
+        // Snack is padding, not a slot: the builder only reaches for one when a
+        // day lands under 90% of target (see the snack top-up below), so an
+        // empty snack pool is normal and must not trigger generation. Breakfast,
+        // lunch and dinner are real slots — a gap there is a broken week.
+        const isSnack = mt.name.toLowerCase() === "snack";
         const count = opts.claraFirst
           ? CLARA_PER_TYPE
-          : Math.max(0, MIN_POOL_PER_TYPE - eligible);
+          : isSnack && opts.basket
+            ? 0
+            : Math.max(0, MIN_POOL_PER_TYPE - eligible);
         return {
           mealTypeId: mt.id,
           mealTypeName: mt.name,
@@ -659,7 +681,22 @@ export async function buildMealPlanMenus(
     current.setDate(current.getDate() + 1);
   }
 
-  return { rows: menus, builtForWeight: patient.weight ?? null };
+  // Coverage of the CORE slots (breakfast/lunch/dinner — snack is padding, see
+  // the top-up above). rows.length alone cannot tell a full week from a broken
+  // one: seven lunches across seven days is seven rows, exactly like one full
+  // day, and the caller's only guard was `rows.length === 0`. Reporting the
+  // filled fraction lets the runner refuse a plan that merely looks finished.
+  const coreMealTypeIds = new Set(
+    mealTypes.filter((mt) => mt.name.toLowerCase() !== "snack").map((mt) => mt.id)
+  );
+  const dayKeys = new Set(menus.map((m) => m.date.toDateString()));
+  const filledCoreSlots = new Set(
+    menus.filter((m) => coreMealTypeIds.has(m.mealTypeId)).map((m) => `${m.date.toDateString()}|${m.mealTypeId}`)
+  ).size;
+  const expectedCoreSlots = dayKeys.size * coreMealTypeIds.size;
+  const coreCoverage = expectedCoreSlots > 0 ? filledCoreSlots / expectedCoreSlots : 0;
+
+  return { rows: menus, builtForWeight: patient.weight ?? null, coreCoverage, filledCoreSlots, expectedCoreSlots };
 }
 
 // ─── Plan-day calorie lookup (shared by /api/meal-plan GET and tracking) ────

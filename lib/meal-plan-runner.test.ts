@@ -4,7 +4,7 @@ import {
   regeneratePlan,
   clampPlanStartToToday,
   MealPlanBusyError,
-  EmptyPlanError,
+  EmptyPlanError, ThinPlanError, MIN_CORE_COVERAGE,
   PlanPreflightError,
   withPlanClaim,
   type RunnerDeps,
@@ -111,7 +111,7 @@ function makeDeps(opts: {
     },
     buildMealPlanMenus: async (patientId, startDate, planVersion) => {
       log("buildMealPlanMenus", { patientId, startDate, planVersion });
-      return opts.build ?? { rows: ROWS, builtForWeight: 82 };
+      return opts.build ?? { rows: ROWS, builtForWeight: 82, coreCoverage: 1, filledCoreSlots: ROWS.length, expectedCoreSlots: ROWS.length };
     },
   };
   return { deps, calls };
@@ -129,7 +129,7 @@ test("claim-lock: a live GENERATING run rejects with MealPlanBusyError and never
 test("empty plan: rejects with EmptyPlanError and marks the patient FAILED without flipping", async () => {
   const { deps, calls } = makeDeps({
     activePlanVersion: 3,
-    build: { rows: [], builtForWeight: 70 },
+    build: { rows: [], builtForWeight: 70, coreCoverage: 0, filledCoreSlots: 0, expectedCoreSlots: 0 },
   });
   await assert.rejects(regeneratePlan("p1", START, deps), EmptyPlanError);
 
@@ -355,4 +355,49 @@ test("clampPlanStartToToday: does not mutate its input and returns a fresh Date"
   const clamped = clampPlanStartToToday(past, now);
   assert.equal(past.getTime(), before);
   assert.notEqual(clamped, past);
+});
+
+// ── A plan that only LOOKS finished must not replace a working one ───────────
+// 2026-09-24: a basket with no breakfast-shaped ingredients produced seven
+// identical lunches — no breakfast, no dinner — and the route answered
+// `200 {"ok":true,"count":7}`, because the only guard was `rows.length === 0`.
+// Seven rows across seven days is indistinguishable from one complete day by
+// row count alone, so coverage of the core slots is what decides.
+
+test("thin plan: rejects with ThinPlanError, keeps the previous plan, and never flips", async () => {
+  const { deps, calls } = makeDeps({
+    activePlanVersion: 3,
+    // 7 rows, but only 7 of 21 core slots filled — the Wild Rice week.
+    build: { rows: ROWS, builtForWeight: 70, coreCoverage: 7 / 21, filledCoreSlots: 7, expectedCoreSlots: 21 },
+  });
+  await assert.rejects(regeneratePlan("p1", START, deps), ThinPlanError);
+  const ops = calls.map((c) => c.op);
+  assert.ok(!ops.includes("menu.createMany"), "a thin plan must not be written");
+  const flips = calls.filter((c) => c.op === "patient.update" && c.args?.data?.activePlanVersion !== undefined);
+  assert.equal(flips.length, 0, "activePlanVersion must not move");
+});
+
+test("thin plan: the failure message names what was missing, so the user can act", async () => {
+  const { deps, calls } = makeDeps({
+    activePlanVersion: 3,
+    build: { rows: ROWS, builtForWeight: 70, coreCoverage: 7 / 21, filledCoreSlots: 7, expectedCoreSlots: 21 },
+  });
+  await assert.rejects(regeneratePlan("p1", START, deps), ThinPlanError);
+  const failed = calls.find((c) => c.op === "patient.update" && c.args?.data?.mealPlanStatus === "FAILED");
+  assert.ok(failed, "status must be FAILED");
+  assert.match(failed.args.data.mealPlanError, /7 of 21 meals/);
+  assert.match(failed.args.data.mealPlanError, /breakfast/i);
+});
+
+test("a week missing only the odd slot still ships — the bar is two thirds", async () => {
+  // 15 of 21 core slots (71%) is a usable week; refusing it would be worse
+  // than shipping it, since the alternative is keeping a staler plan.
+  assert.ok(15 / 21 > MIN_CORE_COVERAGE, "15/21 must clear the bar");
+  assert.ok(7 / 21 < MIN_CORE_COVERAGE, "7/21 must not");
+  const { deps, calls } = makeDeps({
+    activePlanVersion: 3,
+    build: { rows: ROWS, builtForWeight: 70, coreCoverage: 15 / 21, filledCoreSlots: 15, expectedCoreSlots: 21 },
+  });
+  await regeneratePlan("p1", START, deps);
+  assert.ok(calls.map((c) => c.op).includes("menu.createMany"), "a usable week must be written");
 });
