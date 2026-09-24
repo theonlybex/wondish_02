@@ -122,7 +122,7 @@ test("a title may not name food the dish does not list", () => {
     ],
   });
   assert.equal(dishProblem(d, CATALOG), "title-promises-missing-food");
-  assert.equal(phrasePromisesMissingFood(d.name, d.ingredients.map((i) => i.name), CATALOG), "brown");
+  assert.equal(phrasePromisesMissingFood(d.name, d.ingredients.map((i) => i.name), CATALOG), "brown rice");
 });
 
 test("cooking words and formats never have to appear in the ingredients", () => {

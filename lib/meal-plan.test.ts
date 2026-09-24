@@ -989,3 +989,74 @@ test("near-duplicate guard: two dishes with the same ingredients aren't both use
     "two dishes with the same ingredient signature should not both appear in one week"
   );
 });
+
+// ─── Plausibility at selection ───────────────────────────────────────────────
+// The regression these guard is architectural, not arithmetic: gates that run
+// only when a dish is CREATED cannot protect a plan, because the builder picks
+// from rows written long before them. Two QA accounts on 2026-09-24 were each
+// served the same pre-existing dish measuring the user's bell peppers at 0.1
+// teaspoon. The builder is the last place that can refuse, so it refuses.
+
+test("a dish measuring a food as if it were seasoning is not selected", () => {
+  const poisoned = {
+    ...makeRecipe({ id: "poisoned", mealTypeId: MT_L.id, calories: 600, ingredients: ["Boneless chicken breasts"] }),
+    name: "Chicken Rice Bowl",
+    tags: [] as string[],
+    prepTime: 10, cookTime: 20,
+  };
+  // The link the resolver wrote when it read "season with salt and pepper".
+  poisoned.ingredients = [
+    { ingredient: { name: "Boneless chicken breasts" }, quantity: 150, unit: "g" },
+    { ingredient: { name: "Bell peppers" }, quantity: 0.1, unit: "teaspoon" },
+  ] as any;
+  const clean = {
+    ...makeRecipe({ id: "clean", mealTypeId: MT_L.id, calories: 600, ingredients: ["Boneless chicken breasts"] }),
+    name: "Chicken Rice Bowl II",
+    tags: [] as string[],
+    prepTime: 10, cookTime: 20,
+  };
+  clean.ingredients = [
+    { ingredient: { name: "Boneless chicken breasts" }, quantity: 150, unit: "g" },
+    { ingredient: { name: "Bell peppers" }, quantity: 90, unit: "g" },
+  ] as any;
+
+  setDb(makePatient(), [MT_L], [poisoned, clean]);
+  return build("p1", new Date("2026-09-24T00:00:00Z"), 1, { windowDays: 1 }).then((res) => {
+    assert.ok(res.rows.length > 0, "the clean dish still fills the slot");
+    assert.ok(!res.rows.some((r: MenuRow) => r.recipeId === "poisoned"), "the poisoned dish must not be selected");
+  });
+});
+
+test("a 40-minute roast is not selected into the breakfast slot", () => {
+  const slow = {
+    ...makeRecipe({ id: "slow", mealTypeId: MT_B.id, calories: 400, ingredients: ["Boneless chicken breasts"] }),
+    name: "Grilled Chicken with Roasted Vegetables", tags: [] as string[], prepTime: 15, cookTime: 25,
+  };
+  const quick = {
+    ...makeRecipe({ id: "quick", mealTypeId: MT_B.id, calories: 400, ingredients: ["Large eggs"] }),
+    name: "Scrambled Eggs", tags: [] as string[], prepTime: 5, cookTime: 7,
+  };
+  setDb(makePatient(), [MT_B], [slow, quick]);
+  return build("p1", new Date("2026-09-24T00:00:00Z"), 1, { windowDays: 1 }).then((res) => {
+    assert.ok(!res.rows.some((r: MenuRow) => r.recipeId === "slow"), "a 40-minute dish is not breakfast");
+    assert.ok(res.rows.some((r: MenuRow) => r.recipeId === "quick"));
+  });
+});
+
+test("a plan is refused rather than filled with implausible dishes", () => {
+  // Nothing plausible left → no rows. The runner turns this into ThinPlanError
+  // and keeps the previous week, which is the honest outcome: better no new
+  // plan than a week telling someone to eat 1.5 teaspoons of salt at breakfast.
+  const oversalted = {
+    ...makeRecipe({ id: "salty", mealTypeId: MT_B.id, calories: 400, ingredients: ["Ground turkey"] }),
+    name: "Turkey Scramble", tags: [] as string[], prepTime: 12, cookTime: 18,
+  };
+  oversalted.ingredients = [
+    { ingredient: { name: "Ground turkey" }, quantity: 150, unit: "g" },
+    { ingredient: { name: "Salt" }, quantity: 1.5, unit: "teaspoon" },
+  ] as any;
+  setDb(makePatient(), [MT_B], [oversalted]);
+  return build("p1", new Date("2026-09-24T00:00:00Z"), 1, { windowDays: 1 }).then((res) => {
+    assert.equal(res.rows.length, 0);
+  });
+});

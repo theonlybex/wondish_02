@@ -9,6 +9,14 @@ import {
 } from "@/lib/fridge";
 import { evaluateDishAgainstProfile, type DietMatchers } from "@/lib/diet-match";
 import { findBasketMatch, ingredientTokens } from "@/lib/basket-match";
+import {
+  dishProblem,
+  phrasePromisesMissingFood,
+  breakfastIsQuickEnough as quickEnough,
+  BREAKFAST_MAX_MINUTES,
+  TITLE_NON_FOOD,
+  type PlausibleDish,
+} from "@/lib/dish-plausibility";
 
 // ── Clara catalog top-up ─────────────────────────────────────────────────────
 //
@@ -46,7 +54,7 @@ const MAX_OUTPUT_TOKENS = 8192;
 // empty breakfast pool trips the thin-plan gate, which tells the user to add
 // breakfast ingredients, and that is the honest answer to a basket of meat,
 // rice and vegetables.
-export const BREAKFAST_MAX_MINUTES = 30;
+// The value itself lives in lib/dish-plausibility.ts and is re-exported below.
 
 const CAL_MIN = 80;
 const CAL_MAX = 1400;
@@ -199,6 +207,41 @@ export function passesSanity(r: FridgeRecipe): boolean {
   return true;
 }
 
+/** How far a dish's stated calories may sit from its own macro rows. */
+export const CALORIE_MACRO_TOLERANCE = 0.05;
+
+/**
+ * Make a dish's calorie count agree with its own macro rows.
+ *
+ * The ±35% band above exists to catch hallucinated macros; it is far too wide
+ * to be a promise to the user. Measured over two QA weeks on 2026-09-24: 26 of
+ * 48 dishes overstated their calories against protein×4 + carbs×4 + fat×9, by
+ * up to +20.5%, and the error was positive in every single case — never once a
+ * deflation. A dish claiming 805 kcal yields about 668. Someone eating to a
+ * deficit is short ~120 kcal per lunch against the number the app shows them,
+ * which is the opposite of the tool's purpose.
+ *
+ * Tightening the gate would only have thrown those dishes away. The numbers
+ * are not independent facts: calories ARE the macros, so the stated figure is
+ * derived rather than trusted, and the card, the ring and the weekly total
+ * can no longer disagree with the ingredient rows underneath them.
+ *
+ * Fibre makes 4/4/9 approximate (it sits inside carbs at ~2 kcal/g), which is
+ * why a 5% band is kept rather than rewriting every value.
+ */
+export function reconcileCalories(r: FridgeRecipe): number | null {
+  const p = r.perServing;
+  if (!p) return null;
+  const derived = p.protein * 4 + p.carbs * 4 + p.fat * 9;
+  if (derived <= 0) return null;
+  if (Math.abs(derived - p.calories) <= p.calories * CALORIE_MACRO_TOLERANCE) return null;
+  const reconciled = Math.round(derived);
+  // Never reconcile a dish out of the plausible calorie window — if the macros
+  // imply 40 kcal for a dinner, the dish itself is wrong, not just its total.
+  if (reconciled < CAL_MIN || reconciled > CAL_MAX) return null;
+  return reconciled;
+}
+
 /**
  * Does the dish NAME promise food the dish does not contain?
  *
@@ -217,61 +260,76 @@ export function passesSanity(r: FridgeRecipe): boolean {
  * "…and Herbs" passes; that is a deliberate looseness, since the alternative
  * rejects good dishes over a seasoning.
  */
-// Words that describe how a dish is made or served, not what is in it. The
-// catalog vocabulary alone is not enough: multi-word ingredient names like
-// "Roasted red peppers" and "Yogurt with fruit" put "roasted" and "with" into
-// it, so without this every title was rejected on a connector.
-const TITLE_NON_FOOD = new Set([
-  // connectors
-  "with", "and", "on", "in", "over", "of", "a", "an", "the", "plus", "topped", "served", "side",
-  // methods
-  "grilled", "roasted", "baked", "braised", "poached", "seared", "pan", "fried", "fry",
-  "stir", "stirfry", "sauteed", "sautéed", "steamed", "boiled", "toasted", "toast",
-  "scrambled", "scramble", "simmered", "glazed", "marinated", "crusted", "rubbed",
-  "seasoned", "smashed", "mashed", "shredded", "crumbled", "crispy", "crisp",
-  // formats
-  "bowl", "salad", "hash", "skillet", "patty", "patties", "meatball", "meatballs",
-  "stew", "soup", "wrap", "taco", "tacos", "plate", "mix", "medley", "casserole",
-  "bake", "burger", "sandwich", "stirfried", "saute", "omelette", "omelet", "porridge",
-  // generic nouns and flourish
-  "vegetable", "vegetables", "veggie", "veggies", "protein", "herb", "herbs",
-  "seasoning", "seasonings", "spice", "spices", "greens", "style", "homemade",
-  "classic", "simple", "easy", "quick", "hearty", "warm", "tender", "golden",
-  "savory", "savoury", "light", "fresh", "breakfast", "lunch", "dinner", "snack",
-]);
+// The gates live in lib/dish-plausibility.ts now, because running them only
+// here was the bug: dishes admitted before a gate existed stayed in the pool
+// and the builder selected them anyway. That module is the single definition;
+// this file adapts a generated recipe to its shape and adds the two checks
+// that only make sense while the model is still in the loop (see below).
+//
+// Re-exported so existing callers and tests keep one import site.
+export { BREAKFAST_MAX_MINUTES, TITLE_NON_FOOD, phrasePromisesMissingFood };
 
-/**
- * A dish claiming the Breakfast slot has to be a breakfast. The only property
- * we can check deterministically is how long it takes: nobody braises thighs
- * for 50 minutes before work. The prompt asks for morning food; this disposes
- * of what comes back anyway, per the module's "model claims are never trusted"
- * rule. Dishes with no timings are left alone rather than guessed at.
- */
-export function breakfastIsQuickEnough(r: FridgeRecipe, mealTypeName: string): boolean {
-  if (mealTypeName.toLowerCase() !== "breakfast") return true;
-  const total = (r.prepMinutes ?? 0) + (r.cookMinutes ?? 0);
-  if (total === 0) return true; // no timings claimed — not evidence of a slow dish
-  return total <= BREAKFAST_MAX_MINUTES;
+/** A generated recipe in the shape the shared predicate understands. */
+export function toPlausibleDish(r: FridgeRecipe, mealTypeName: string): PlausibleDish {
+  const byName = new Map((r.amounts ?? []).map((a) => [a.name.trim().toLowerCase(), a]));
+  return {
+    name: r.name,
+    mealTypeName,
+    prepMinutes: r.prepMinutes ?? null,
+    cookMinutes: r.cookMinutes ?? null,
+    generated: true,
+    ingredients: r.usesIngredients.map((n) => {
+      const a = byName.get(n.trim().toLowerCase());
+      return { name: n, quantity: a?.quantity ?? null, unit: a?.unit ?? null };
+    }),
+  };
 }
 
-export function titlePromisesMissingFood(
-  r: FridgeRecipe,
-  catalogFoodTokens: Set<string>
-): string | null {
-  // Only what the dish actually LISTS satisfies its own title. Staples are
-  // free to *use* without listing, but a title is a promise about the recipe:
-  // "Oatmeal with Sliced Carrots and Cinnamon" whose steps never add cinnamon
-  // is still misleading, even though the cupboard is assumed to have some.
-  // Generic seasoning words ("herbs", "spices") are handled by TITLE_NON_FOOD,
-  // so this does not reject "Roasted Broccoli with Olive Oil and Herbs".
-  const have = new Set<string>();
-  for (const n of r.usesIngredients) for (const t of ingredientTokens(n)) have.add(t);
-  for (const t of ingredientTokens(r.name)) {
-    if (TITLE_NON_FOOD.has(t)) continue; // how it is cooked or served
-    if (!catalogFoodTokens.has(t)) continue; // the catalog does not know it as food
-    if (!have.has(t)) return t;
-  }
-  return null;
+export function titlePromisesMissingFood(r: FridgeRecipe, catalogFoodTokens: Set<string>): string | null {
+  return phrasePromisesMissingFood(r.name, r.usesIngredients, catalogFoodTokens);
+}
+
+export function breakfastIsQuickEnough(r: FridgeRecipe, mealTypeName: string): boolean {
+  return quickEnough({
+    name: r.name,
+    mealTypeName,
+    prepMinutes: r.prepMinutes ?? null,
+    cookMinutes: r.cookMinutes ?? null,
+    ingredients: [],
+  });
+}
+
+/**
+ * Does the DESCRIPTION promise food the dish does not contain?
+ *
+ * Generation-only, and the reason is asymmetry: a lying sentence can be fixed
+ * by asking the model again, which costs one retry. At selection there is
+ * nothing to ask, and refusing a stored dish over its prose would thin the
+ * pool for a lesser sin than a lying title.
+ *
+ * Observed 2026-09-24, after the title gate shipped: "Poached Salmon with
+ * Zucchini and Toast" — title clean — described as made with "toasted
+ * whole-grain bread" when the ingredient is plain sliced bread. Cleaning the
+ * title alone just moved the claim one line down the card.
+ */
+export function descriptionPromisesMissingFood(r: FridgeRecipe, catalogFoodTokens: Set<string>): string | null {
+  if (!r.description) return null;
+  return phrasePromisesMissingFood(r.description, r.usesIngredients, catalogFoodTokens);
+}
+
+/**
+ * Do the steps cook in a fat the dish never lists?
+ *
+ * 13 of 25 dishes in one QA week said to sear, sauté or brown something and
+ * listed no oil or butter. The kitchen is assumed to have oil (it is a staple),
+ * but the dish still has to SAY so: the amount feeds the macros, and a reader
+ * following the steps has no idea whether a teaspoon or a tablespoon was
+ * costed into the 800 kcal on the card.
+ */
+const FAT_METHOD = /\b(sear|seared|searing|saut[ée]|saut[ée]ed|fry|fried|frying|pan-?fry|brown the|stir-?fry|grease|coat the pan)\b/i;
+export function cooksWithUnlistedFat(r: FridgeRecipe): boolean {
+  if (!r.steps?.some((s) => FAT_METHOD.test(s))) return false;
+  return !r.usesIngredients.some((n) => /\b(oil|butter|ghee|margarine|cooking spray|lard|tallow)\b/i.test(n));
 }
 
 /**
@@ -387,17 +445,25 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     if (accepted.length >= total) break;
     if (!withinBasket(r)) { reject("out-of-basket", r); continue; }
     if (!passesSanity(r)) { reject("sanity", r); continue; }
+    const slot = typeByName.get((r.mealType ?? "").toLowerCase());
+    if (!slot) { reject("meal-type", r); continue; }
+
+    // The same predicate the builder applies at selection — salt, seasoning
+    // quantities, breakfast timing, and the title's promise.
+    const problem = dishProblem(toPlausibleDish(r, slot.mealTypeName), args.catalogFoodTokens ?? new Set());
+    if (problem) { reject(problem, r); continue; }
+
+    // Generation-only, because both are fixable by asking again (see the
+    // comments on each). A stored dish is never refused over these.
     if (args.catalogFoodTokens) {
-      const promised = titlePromisesMissingFood(r, args.catalogFoodTokens);
-      if (promised !== null) {
-        if (process.env.AI_DEBUG) console.warn(`[recipe-generation] rejected (title-promises-${promised}): ${r.name}`);
-        reject("title-mismatch", r);
+      const described = descriptionPromisesMissingFood(r, args.catalogFoodTokens);
+      if (described !== null) {
+        if (process.env.AI_DEBUG) console.warn(`[recipe-generation] rejected (description-promises-${described}): ${r.name}`);
+        reject("description-mismatch", r);
         continue;
       }
     }
-    const slot = typeByName.get((r.mealType ?? "").toLowerCase());
-    if (!slot) { reject("meal-type", r); continue; }
-    if (!breakfastIsQuickEnough(r, slot.mealTypeName)) { reject("breakfast-too-slow", r); continue; }
+    if (cooksWithUnlistedFat(r)) { reject("cooks-without-listing-fat", r); continue; }
     const nameKey = r.name.trim().toLowerCase();
     if (!nameKey || seen.has(nameKey)) { reject("duplicate-name", r); continue; }
     seen.add(nameKey);
@@ -498,7 +564,9 @@ export async function persistValidatedRecipes(
           description: recipe.description ?? null,
           steps: Array.isArray(recipe.steps) ? recipe.steps.filter((s) => typeof s === "string" && s.trim()) : [],
           emoji: recipe.emoji ?? null,
-          calories: recipe.perServing.calories,
+          // Derived from the macro rows when the model's own total disagrees
+          // with them — see reconcileCalories.
+          calories: reconcileCalories(recipe) ?? recipe.perServing.calories,
           protein: recipe.perServing.protein,
           carbs: recipe.perServing.carbs,
           fat: recipe.perServing.fat,

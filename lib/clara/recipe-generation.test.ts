@@ -126,7 +126,7 @@ const titled = (name: string, usesIngredients: string[]) => ({ name, usesIngredi
 test("title gate rejects a name promising food the dish does not list", () => {
   assert.equal(
     titlePromisesMissingFood(titled("Ground Beef with Bell Peppers and Brown Rice", ["ground beef", "Bell peppers", "jasmine rice", "salt"]), FOOD_VOCAB),
-    "brown"
+    "brown rice"
   );
   assert.equal(
     titlePromisesMissingFood(titled("Grilled Salmon with Broccoli and Lemon", ["Salmon fillets", "broccoli", "Extra virgin olive oil", "salt"]), FOOD_VOCAB),
@@ -144,6 +144,28 @@ test("title gate rejects a name promising food the dish does not list", () => {
   );
 });
 
+// A health claim IS the dish, not a flourish. This case sat in the "do not
+// reject" list below until a QA run called it a P1 on its own: "Scrambled Eggs
+// with Whole Grain Bread and Mixed Vegetables" whose ingredient is plain
+// "Sliced bread" tells someone managing fibre or glycaemic load something
+// false. ingredientTokens cannot see it — "whole" and "grain" are descriptor
+// words there, on purpose — so it is matched as a phrase.
+test("a health claim in the name has to be in the ingredients", () => {
+  assert.equal(
+    titlePromisesMissingFood(titled("Egg Salad on Whole Grain Bread with Spinach and Carrots", ["Large eggs", "Sliced bread", "spinach", "carrots"]), FOOD_VOCAB),
+    "whole grain"
+  );
+  assert.equal(
+    titlePromisesMissingFood(titled("Egg Salad on Whole Grain Bread with Spinach", ["Large eggs", "whole grain bread", "spinach"]), FOOD_VOCAB),
+    null
+  );
+  // Hyphenation and spacing must not decide whether a claim counts.
+  assert.equal(
+    titlePromisesMissingFood(titled("Toast with Whole-Grain Bread", ["Whole grain bread"]), FOOD_VOCAB),
+    null
+  );
+});
+
 test("title gate does not reject over cooking methods, formats or generic seasoning", () => {
   // Every one of these is a real accepted dish; a gate that rejects them would
   // thin the pool and bring back the repeated-dish weeks.
@@ -153,7 +175,6 @@ test("title gate does not reject over cooking methods, formats or generic season
     ["Ground Turkey Taco Bowl with Jasmine Rice and Bell Peppers", ["Ground turkey", "jasmine rice", "Bell peppers", "salt"]],
     ["Turkey and Vegetable Hash with Jasmine Rice", ["Turkey breast", "carrots", "zucchini", "jasmine rice"]],
     ["Pan-Seared Ground Beef with Basmati Rice and Carrots", ["ground beef", "Basmati rice", "carrots"]],
-    ["Egg Salad on Whole Grain Bread with Spinach and Carrots", ["Large eggs", "Sliced bread", "spinach", "carrots"]],
     ["Baked Chicken Breast with Spaghetti and Spinach", ["Boneless chicken breasts", "Spaghetti", "spinach", "salt"]],
   ] as [string, string[]][]) {
     assert.equal(titlePromisesMissingFood(titled(name, ings), FOOD_VOCAB), null, name);
@@ -202,4 +223,73 @@ test("a slow dish cannot claim the breakfast slot", () => {
   assert.equal(breakfastIsQuickEnough(timed(15, 35), "Lunch"), true);
   // Missing timings are not treated as evidence of a slow dish.
   assert.equal(breakfastIsQuickEnough({ name: "x", usesIngredients: ["a", "b"] } as never, "Breakfast"), true);
+});
+
+// ── The claim moves down the card if only the title is checked ──────────────
+test("the description is held to the same promise as the title", async () => {
+  const { descriptionPromisesMissingFood } = await import("./recipe-generation");
+  // Verbatim from a run AFTER the title gate shipped: title clean, prose not.
+  const d = {
+    name: "Poached Salmon with Zucchini and Toast",
+    description: "Gently poached salmon served with zucchini and toasted whole-grain bread.",
+    usesIngredients: ["Salmon fillets", "zucchini", "Sliced bread", "salt"],
+  } as never;
+  assert.equal(descriptionPromisesMissingFood(d, FOOD_VOCAB), "whole grain");
+
+  const honest = {
+    name: "Poached Salmon with Zucchini and Toast",
+    description: "Gently poached salmon served with zucchini and toasted bread.",
+    usesIngredients: ["Salmon fillets", "zucchini", "Sliced bread", "salt"],
+  } as never;
+  assert.equal(descriptionPromisesMissingFood(honest, FOOD_VOCAB), null);
+  // No description is not a lie.
+  assert.equal(descriptionPromisesMissingFood({ name: "x", usesIngredients: ["a"] } as never, FOOD_VOCAB), null);
+});
+
+// ── You cannot sear in a pan with nothing in it ─────────────────────────────
+test("steps that sear, sauté or fry must list a fat", async () => {
+  const { cooksWithUnlistedFat } = await import("./recipe-generation");
+  const searsWithNothing = {
+    name: "Chicken Breast with Zucchini Over Rice",
+    usesIngredients: ["Boneless chicken breasts", "zucchini", "jasmine rice", "salt"],
+    steps: ["Pat the chicken dry.", "Pan-sear chicken for 6-7 minutes per side.", "Sauté diced zucchini."],
+  } as never;
+  assert.equal(cooksWithUnlistedFat(searsWithNothing), true);
+
+  const listsTheOil = {
+    ...(searsWithNothing as object),
+    usesIngredients: ["Boneless chicken breasts", "zucchini", "jasmine rice", "Extra virgin olive oil", "salt"],
+  } as never;
+  assert.equal(cooksWithUnlistedFat(listsTheOil), false);
+
+  // Nothing is fried, so no fat is required.
+  const boiled = {
+    name: "Poached Chicken with Rice",
+    usesIngredients: ["Boneless chicken breasts", "jasmine rice", "water"],
+    steps: ["Bring water to a boil.", "Poach the chicken for 15 minutes.", "Steam the rice."],
+  } as never;
+  assert.equal(cooksWithUnlistedFat(boiled), false);
+});
+
+// ── Calories are the macros, not an independent claim ───────────────────────
+test("a dish's calories are reconciled to its own macro rows", async () => {
+  const { reconcileCalories, CALORIE_MACRO_TOLERANCE } = await import("./recipe-generation");
+  // Verbatim: "Grilled Chicken Breast with Jasmine Rice and Roasted Broccoli"
+  // declared 805 kcal on the card, the ring and the weekly grid. 48*4 + 92*4 +
+  // 12*9 = 668. Every one of the 26 mismatches measured was an overstatement.
+  const inflated = { perServing: { calories: 805, protein: 48, carbs: 92, fat: 12 } } as never;
+  assert.equal(reconcileCalories(inflated), 668);
+
+  // Inside the tolerance the model's own rounding is left alone.
+  const close = { perServing: { calories: 670, protein: 48, carbs: 92, fat: 12 } } as never;
+  assert.equal(reconcileCalories(close), null);
+  assert.ok(CALORIE_MACRO_TOLERANCE <= 0.1, "the tolerance has to be tighter than the sanity band");
+
+  // No macros to derive from → nothing to reconcile, not a zero.
+  assert.equal(reconcileCalories({ perServing: { calories: 500, protein: 0, carbs: 0, fat: 0 } } as never), null);
+  assert.equal(reconcileCalories({} as never), null);
+
+  // A dish whose macros imply an impossible total is left for the sanity gate
+  // to reject rather than being quietly rewritten to something plausible.
+  assert.equal(reconcileCalories({ perServing: { calories: 600, protein: 1, carbs: 2, fat: 1 } } as never), null);
 });

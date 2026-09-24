@@ -19,7 +19,13 @@ import {
   persistValidatedRecipes,
   normalizeCuisine,
   CLARA_RECIPE_TAG,
+  toPlausibleDish,
+  descriptionPromisesMissingFood,
+  cooksWithUnlistedFat,
 } from "@/lib/clara/recipe-generation";
+import { dishProblem, BREAKFAST_MAX_MINUTES } from "@/lib/dish-plausibility";
+import { dishProtein } from "@/lib/meal-plan";
+import { ingredientTokens } from "@/lib/basket-match";
 import {
   resolveMacroProfile,
   getMacroPercentages,
@@ -104,6 +110,33 @@ export async function POST(
     : 500;
   const mealTypeName = menu.mealType.name;
 
+  // The catalog's food vocabulary, so a swapped dish's name is held to the
+  // same promise as a generated one ("…with Brown Rice" must contain it).
+  const catalogFoodTokens = new Set<string>();
+  for (const ing of await prisma.ingredient.findMany({ select: { name: true } })) {
+    for (const t of ingredientTokens(ing.name)) catalogFoodTokens.add(t);
+  }
+
+  // What else the user is eating today. The swap used to be blind to it, so
+  // swapping two slots on one day produced ground turkey in all three
+  // (QA 2026-09-24) — each call was individually reasonable and the day was not.
+  const sameDay = await prisma.menu.findMany({
+    where: {
+      patientId: patient.id,
+      planVersion: patient.activePlanVersion,
+      date: menu.date,
+      id: { not: menu.id },
+    },
+    select: { recipe: { select: { ingredients: { select: { ingredient: { select: { name: true } } } } } } },
+  });
+  const otherProteins = Array.from(
+    new Set(
+      sameDay
+        .map((m) => dishProtein(m.recipe?.ingredients ?? []))
+        .filter((p): p is string => p !== null)
+    )
+  );
+
   // Same macro target + bans the plan builder uses.
   const macroProfile = resolveMacroProfile(
     patient.healthConditions.map((hc) => hc.condition.name),
@@ -131,7 +164,15 @@ export async function POST(
     `- Target ≈${targetCalories} kcal per serving (within ±20%).`,
     `- Aim near this macro split by calories: ~${Math.round(macro.protein)}% protein, ~${Math.round(macro.carbs)}% carbs, ~${Math.round(macro.fat)}% fat.`,
     `- Everyday home-cookable dish; usesIngredients lists EVERY ingredient (common, individually named); leave missingIngredients empty.`,
-    `- perServing macros must be realistic and self-consistent.`,
+    `- perServing macros must be realistic and self-consistent (protein*4 + carbs*4 + fat*9 must explain the calories).`,
+    `- If a step sears, fries, sautés or browns anything, the fat used must appear in usesIngredients with its amount.`,
+    `- Salt must not exceed 1 teaspoon per serving.`,
+    mealTypeName.toLowerCase() === "breakfast"
+      ? `- This is BREAKFAST: morning food, under ${BREAKFAST_MAX_MINUTES} minutes prep+cook in total, and nothing that has to be started the night before. Eggs, oats, toast, yoghurt, fruit, a quick scramble or hash. Not a braise, a roast or a rice bowl.`
+      : ``,
+    otherProteins.length > 0
+      ? `- The rest of this day already uses ${otherProteins.join(" and ")}. Use a DIFFERENT main protein so the day isn't the same thing three times.`
+      : ``,
     cuisine ? `- The dish must be authentic ${cuisine} cuisine.` : ``,
     request ? `- Honour the user's request: "${request}".` : `- Pick something appealing and different.`,
     basketLine,
@@ -168,7 +209,22 @@ export async function POST(
     // Deterministic gates: diet-safe + within the basket (names rewritten to
     // the pantry's catalog spelling) + sane numbers. The model's claim is
     // never trusted.
-    candidate = applyAllergenFilter(parsed, matchers).find((r) => (basket.length === 0 || fitBasket(r, basket)) && passesSanity(r)) ?? null;
+    // The swap has to clear the same bar as a generated plan dish. Until
+    // 2026-09-24 it checked only diet, basket and numeric sanity, so a swap
+    // could put back exactly what the plan builder refuses: a QA run swapped a
+    // breakfast and got a 35-minute bowl whose first step was "cook brown rice
+    // (about 45 minutes ahead)". dishProblem covers salt, seasoning quantities,
+    // the breakfast ceiling and the title's promise; the two generation-only
+    // checks apply here too, because Clara is in the loop and can be asked again.
+    candidate =
+      applyAllergenFilter(parsed, matchers).find(
+        (r) =>
+          (basket.length === 0 || fitBasket(r, basket)) &&
+          passesSanity(r) &&
+          dishProblem(toPlausibleDish(r, mealTypeName), catalogFoodTokens) === null &&
+          descriptionPromisesMissingFood(r, catalogFoodTokens) === null &&
+          !cooksWithUnlistedFat(r)
+      ) ?? null;
   } catch (err) {
     const busy = claraBusyStatus(err);
     if (busy) return NextResponse.json({ error: CLARA_BUSY_MESSAGE }, { status: busy });

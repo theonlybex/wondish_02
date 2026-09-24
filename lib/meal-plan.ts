@@ -18,6 +18,7 @@ import {
 } from "@/lib/caloric-engine";
 import { macroDeviation } from "@/lib/macros";
 import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
+import { dishProblem } from "@/lib/dish-plausibility";
 import { isCoveredByBasket, BASKET_STAPLES } from "@/lib/basket-coverage";
 import { ingredientTokens } from "@/lib/basket-match";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
@@ -50,7 +51,15 @@ type RecipeCandidate = {
   family:    string | null;
   subFamily: string | null;
   dishType:  { name: string } | null;
-  ingredients: { ingredient: { name: string; allergenGroups?: string[] } }[];
+  name?:      string;
+  tags?:      string[];
+  prepTime?:  number | null;
+  cookTime?:  number | null;
+  ingredients: {
+    quantity?: number | null;
+    unit?: string | null;
+    ingredient: { name: string; allergenGroups?: string[]; groceryCategory?: string | null };
+  }[];
 };
 
 // A dish's "sameness" signature: its sorted, non-staple ingredient names. Two
@@ -82,7 +91,7 @@ function proteinType(name: string): string | null {
   for (const [type, kws] of PROTEIN_TYPES) if (kws.some((k) => n.includes(k))) return type;
   return null;
 }
-function dishProtein(ings: { ingredient: { name: string } }[]): string | null {
+export function dishProtein(ings: { ingredient: { name: string } }[]): string | null {
   for (const i of ings) {
     const t = proteinType(i.ingredient.name);
     if (t) return t;
@@ -311,8 +320,16 @@ export async function buildMealPlanMenus(
   const recipeSelect = {
     id: true, protein: true, calories: true, carbs: true, fiber: true, fat: true,
     family: true, subFamily: true,
+    // name/tags/times and the per-link quantity feed the plausibility pass
+    // below. They cost one wider read of a pool that is loaded exactly once.
+    name: true, tags: true, prepTime: true, cookTime: true,
     dishType:    { select: { name: true } },
-    ingredients: { select: { ingredient: { select: { name: true, allergenGroups: true } } } },
+    ingredients: {
+      select: {
+        quantity: true, unit: true,
+        ingredient: { select: { name: true, allergenGroups: true, groceryCategory: true } },
+      },
+    },
   };
 
   // Product decision 2026-07-20: no "snack" meal type in the DB means NO calorie
@@ -331,11 +348,66 @@ export async function buildMealPlanMenus(
   });
   // Allergy AND exact bans apply by word boundary against every ingredient name.
   const hasBans = allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
-  const recipePool = !hasBans
+  const recipePoolBanFiltered = !hasBans
     ? recipePoolRaw
     : recipePoolRaw.filter(
         (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers, ingredientGroupsOf(r.ingredients)).passed
       );
+
+  // The catalog's food vocabulary — the words a dish title may only use when
+  // the dish actually contains them. Derived from the pool that was just read
+  // plus the user's basket, rather than a second query over Ingredient: the
+  // rows are already in memory, and the two sources between them cover every
+  // food word a dish or a generated recipe can legitimately name. Erring
+  // small is the safe direction — an unknown word is skipped, not rejected.
+  const catalogFoodTokens = new Set<string>();
+  for (const r of recipePoolRaw) {
+    for (const ri of r.ingredients) for (const t of ingredientTokens(ri.ingredient.name)) catalogFoodTokens.add(t);
+  }
+  for (const b of opts.basket ?? []) for (const t of ingredientTokens(b)) catalogFoodTokens.add(t);
+
+  // ── Plausibility ───────────────────────────────────────────────────────────
+  // A dish is re-checked HERE, not only when it was written. The generation
+  // gates (title, salt, breakfast timing) admit new dishes; they can do nothing
+  // about the rows already in the table, and two QA runs on 2026-09-24 drew the
+  // same poisoned dishes into two different users' weeks: bell peppers measured
+  // at 0.1 teaspoon because a resolver read "season with salt and pepper", 1.5
+  // teaspoons of salt in a single breakfast, and 40-minute roast dinners in the
+  // 8am slot. Every one predates the gate that would have rejected it.
+  //
+  // Selection is the last place we can refuse, so it refuses. See
+  // lib/dish-plausibility.ts for why each rule is shaped the way it is; the
+  // measured cost is ~14% of the pool, leaving every meal type deep.
+  const mealTypeNameById = new Map(rawMealTypes.map((mt) => [mt.id, mt.name]));
+  const implausible = { total: 0 } as Record<string, number>;
+  const recipePool = recipePoolBanFiltered.filter((r) => {
+    const problem = dishProblem(
+      {
+        name: r.name ?? "",
+        mealTypeName: (r.mealTypeId && mealTypeNameById.get(r.mealTypeId)) || "",
+        prepMinutes: r.prepTime ?? null,
+        cookMinutes: r.cookTime ?? null,
+        generated: (r.tags ?? []).some((t) => t.toLowerCase().includes("clara")),
+        ingredients: r.ingredients.map((ri) => ({
+          name: ri.ingredient.name,
+          quantity: ri.quantity ?? null,
+          unit: ri.unit ?? null,
+          category: ri.ingredient.groceryCategory ?? null,
+        })),
+      },
+      catalogFoodTokens
+    );
+    if (problem) {
+      implausible[problem] = (implausible[problem] ?? 0) + 1;
+      implausible.total++;
+    }
+    return problem === null;
+  });
+  if (implausible.total > 0) {
+    console.info(
+      `[meal-plan] plausibility: dropped ${implausible.total} of ${recipePoolBanFiltered.length} dishes ${JSON.stringify(implausible)}`
+    );
+  }
 
   // Basket mode (cache-first): selection is limited to library dishes the
   // basket fully covers — reusing previously-generated/curated dishes for free.
@@ -405,12 +477,6 @@ export async function buildMealPlanMenus(
       );
       // Lazy import breaks the module cycle (see the type-only import note up top).
       const { generateAndPersistRecipes } = await import("@/lib/clara/recipe-generation");
-      // Food-word vocabulary, so the title gate can tell "Lemon" (a real
-      // ingredient the dish must contain) from "Taco Bowl" (a format word).
-      const catalogFoodTokens = new Set<string>();
-      for (const ing of await prisma.ingredient.findMany({ select: { name: true } })) {
-        for (const t of ingredientTokens(ing.name)) catalogFoodTokens.add(t);
-      }
       const createdIds = await generateAndPersistRecipes({
         requests: thin,
         catalogFoodTokens,

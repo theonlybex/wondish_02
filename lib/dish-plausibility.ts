@@ -180,12 +180,39 @@ export function phrasePromisesMissingFood(
   ingredientNames: readonly string[],
   catalogFoodTokens: Set<string>
 ): string | null {
+  const claim = healthClaimNotListed(phrase, ingredientNames);
+  if (claim) return claim;
+
   const have = new Set<string>();
   for (const n of ingredientNames) for (const t of ingredientTokens(n)) have.add(t);
   for (const t of ingredientTokens(phrase)) {
     if (TITLE_NON_FOOD.has(t)) continue;
     if (!catalogFoodTokens.has(t)) continue;
     if (!have.has(t)) return t;
+  }
+  return null;
+}
+
+// Claims a reader acts on that the token rule structurally cannot see.
+// ingredientTokens treats "whole" and "grain" as descriptors — deliberately,
+// so a basket holding "bread" still matches "whole grain bread" — which means
+// "toasted whole-grain bread" made with plain sliced bread passes the token
+// check. These are substance, not description: someone managing fibre, gluten
+// or sodium buys differently because of them, so they are matched as phrases
+// against the raw ingredient names instead.
+const HEALTH_CLAIMS = [
+  "whole grain", "wholegrain", "whole wheat", "wholewheat", "whole-grain", "whole-wheat",
+  "gluten free", "gluten-free", "low fat", "low-fat", "fat free", "fat-free",
+  "sugar free", "sugar-free", "low sodium", "low-sodium", "salt free", "salt-free",
+  "brown rice", "wild rice", "greek yogurt", "dark chocolate",
+];
+const loosen = (s: string) => s.toLowerCase().replace(/-/g, " ").replace(/\s+/g, " ");
+
+export function healthClaimNotListed(phrase: string, ingredientNames: readonly string[]): string | null {
+  const said = loosen(phrase);
+  const listed = ingredientNames.map(loosen).join(" | ");
+  for (const claim of new Set(HEALTH_CLAIMS.map(loosen))) {
+    if (said.includes(claim) && !listed.includes(claim)) return claim;
   }
   return null;
 }
