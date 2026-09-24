@@ -19,6 +19,7 @@ import {
 import { macroDeviation } from "@/lib/macros";
 import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
 import { isCoveredByBasket, BASKET_STAPLES } from "@/lib/basket-coverage";
+import { ingredientTokens } from "@/lib/basket-match";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 import { buildFoodMapText } from "@/lib/food-map";
 // Type-only import (erased at runtime). The implementation is loaded lazily at
@@ -404,8 +405,15 @@ export async function buildMealPlanMenus(
       );
       // Lazy import breaks the module cycle (see the type-only import note up top).
       const { generateAndPersistRecipes } = await import("@/lib/clara/recipe-generation");
+      // Food-word vocabulary, so the title gate can tell "Lemon" (a real
+      // ingredient the dish must contain) from "Taco Bowl" (a format word).
+      const catalogFoodTokens = new Set<string>();
+      for (const ing of await prisma.ingredient.findMany({ select: { name: true } })) {
+        for (const t of ingredientTokens(ing.name)) catalogFoodTokens.add(t);
+      }
       const createdIds = await generateAndPersistRecipes({
         requests: thin,
+        catalogFoodTokens,
         bannedNames: [...allergyNames, ...exactBanned.map((b) => b.name)],
         matchers,
         existingNames,

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { passesSanity, chunkTopUpRequests, freeStaplesFor, proteinOptionsFor } from "./recipe-generation";
+import { passesSanity, chunkTopUpRequests, freeStaplesFor, proteinOptionsFor, titlePromisesMissingFood, breakfastIsQuickEnough } from "./recipe-generation";
 import { buildDietMatchers, derivePatientBans } from "../diet-match";
 import { validateFridgeRecipeSnapshot, type FridgeRecipe } from "../fridge";
 
@@ -102,4 +102,104 @@ test("freeStaplesFor drops a staple the profile bans (Hypertension → no free s
   assert.deepEqual(freeStaplesFor(buildDietMatchers(derivePatientBans(empty))), ["salt", "pepper", "water"]);
   const hypertension = { ...empty, healthConditions: [{ condition: { bannedIngredients: [{ name: "salt" }, { name: "kosher salt" }] } }] };
   assert.deepEqual(freeStaplesFor(buildDietMatchers(derivePatientBans(hypertension))), ["pepper", "water"]);
+});
+
+// ── A dish name must not promise food the dish lacks ────────────────────────
+// Observed in two real weeks (2026-09-24): "…with Brown Rice" built on jasmine
+// rice, "…with Almond Butter" containing none, "Grilled Salmon with Broccoli
+// and Lemon" with no lemon, "Oatmeal with Sliced Carrots and Cinnamon" with no
+// cinnamon. A tester shopping from those names buys what the recipe never uses.
+//
+// The gate is vocabulary-driven, so it must catch real ingredients while
+// ignoring how a dish is cooked or served. These titles are verbatim from the
+// runs, with their actual stored ingredient lists.
+
+const FOOD_VOCAB = new Set([
+  // a stand-in for the ingredient catalog's food words
+  "beef", "bell", "pepper", "brown", "rice", "jasmine", "basmati", "wild", "salmon",
+  "broccoli", "lemon", "oat", "carrot", "cinnamon", "bread", "almond", "butter", "egg",
+  "olive", "oil", "turkey", "breast", "zucchini", "chicken", "spinach", "spaghetti",
+  "ground", "salt", "thyme",
+]);
+const titled = (name: string, usesIngredients: string[]) => ({ name, usesIngredients }) as never;
+
+test("title gate rejects a name promising food the dish does not list", () => {
+  assert.equal(
+    titlePromisesMissingFood(titled("Ground Beef with Bell Peppers and Brown Rice", ["ground beef", "Bell peppers", "jasmine rice", "salt"]), FOOD_VOCAB),
+    "brown"
+  );
+  assert.equal(
+    titlePromisesMissingFood(titled("Grilled Salmon with Broccoli and Lemon", ["Salmon fillets", "broccoli", "Extra virgin olive oil", "salt"]), FOOD_VOCAB),
+    "lemon"
+  );
+  assert.equal(
+    titlePromisesMissingFood(titled("Sliced Bread with Almond Butter and Egg", ["Sliced bread", "Large eggs", "broccoli"]), FOOD_VOCAB),
+    "almond"
+  );
+  // A staple in the cupboard does NOT satisfy a title claim — the steps have
+  // to actually use it, or the name is still a promise the dish breaks.
+  assert.equal(
+    titlePromisesMissingFood(titled("Oatmeal with Sliced Carrots and Cinnamon", ["Rolled oats", "carrots", "water", "salt"]), FOOD_VOCAB),
+    "cinnamon"
+  );
+});
+
+test("title gate does not reject over cooking methods, formats or generic seasoning", () => {
+  // Every one of these is a real accepted dish; a gate that rejects them would
+  // thin the pool and bring back the repeated-dish weeks.
+  for (const [name, ings] of [
+    ["Roasted Broccoli with Olive Oil and Herbs", ["broccoli", "Extra virgin olive oil", "salt", "dried thyme"]],
+    ["Herb-Roasted Turkey Breast with Wild Rice and Zucchini", ["Turkey breast", "Wild rice", "zucchini", "Extra virgin olive oil"]],
+    ["Ground Turkey Taco Bowl with Jasmine Rice and Bell Peppers", ["Ground turkey", "jasmine rice", "Bell peppers", "salt"]],
+    ["Turkey and Vegetable Hash with Jasmine Rice", ["Turkey breast", "carrots", "zucchini", "jasmine rice"]],
+    ["Pan-Seared Ground Beef with Basmati Rice and Carrots", ["ground beef", "Basmati rice", "carrots"]],
+    ["Egg Salad on Whole Grain Bread with Spinach and Carrots", ["Large eggs", "Sliced bread", "spinach", "carrots"]],
+    ["Baked Chicken Breast with Spaghetti and Spinach", ["Boneless chicken breasts", "Spaghetti", "spinach", "salt"]],
+  ] as [string, string[]][]) {
+    assert.equal(titlePromisesMissingFood(titled(name, ings), FOOD_VOCAB), null, name);
+  }
+});
+
+// Salt is a health limit, not a taste preference: a generated breakfast came
+// back with "Salt 1.5 teaspoon" — ~3.5 g sodium, over a whole day's intake in
+// one meal, in a product people use to manage blood pressure (2026-09-24).
+test("sanity gate rejects an implausible amount of salt per serving", () => {
+  const base = {
+    name: "Test dish",
+    usesIngredients: ["Boneless chicken breasts", "Brown rice", "salt"],
+    perServing: { calories: 500, protein: 40, carbs: 50, fat: 12, fiber: 3 },
+    steps: ["cook"],
+    missingIngredients: [],
+  };
+  const withSalt = (quantity: number, unit: string) =>
+    ({ ...base, amounts: [{ name: "salt", quantity, unit }] }) as never;
+
+  assert.equal(passesSanity(withSalt(1.5, "teaspoon")), false, "1.5 tsp is over a day's sodium");
+  assert.equal(passesSanity(withSalt(2, "tsp")), false);
+  assert.equal(passesSanity(withSalt(1, "tablespoon")), false);
+  // Normal seasoning still passes.
+  assert.equal(passesSanity(withSalt(0.5, "teaspoon")), true);
+  assert.equal(passesSanity(withSalt(1, "teaspoon")), true);
+  assert.equal(passesSanity(withSalt(0.25, "teaspoon")), true);
+  // A dish with no salt row is unaffected.
+  assert.equal(passesSanity(base as never), true);
+});
+
+// Nobody braises chicken thighs before work. Observed 2026-09-24: a generated
+// week served braised thighs (15 prep + 35 cook) at 8am on all seven days,
+// because the prompt constrained only calories and the slot name.
+test("a slow dish cannot claim the breakfast slot", () => {
+  const timed = (prepMinutes: number, cookMinutes: number) =>
+    ({ name: "Braised Chicken Thighs with Wild Rice", usesIngredients: ["chicken thighs", "Wild rice"], prepMinutes, cookMinutes }) as never;
+
+  assert.equal(breakfastIsQuickEnough(timed(15, 35), "Breakfast"), false, "50 min is not a breakfast");
+  assert.equal(breakfastIsQuickEnough(timed(10, 25), "Breakfast"), false, "35 min is over the bar");
+  // Real breakfasts pass.
+  assert.equal(breakfastIsQuickEnough(timed(5, 10), "Breakfast"), true);
+  assert.equal(breakfastIsQuickEnough(timed(10, 20), "Breakfast"), true, "30 min exactly is allowed");
+  // Other slots are unconstrained — a 50-minute dinner is fine.
+  assert.equal(breakfastIsQuickEnough(timed(15, 35), "Dinner"), true);
+  assert.equal(breakfastIsQuickEnough(timed(15, 35), "Lunch"), true);
+  // Missing timings are not treated as evidence of a slow dish.
+  assert.equal(breakfastIsQuickEnough({ name: "x", usesIngredients: ["a", "b"] } as never, "Breakfast"), true);
 });

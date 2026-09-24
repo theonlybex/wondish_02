@@ -8,7 +8,7 @@ import {
   type FridgeRecipe,
 } from "@/lib/fridge";
 import { evaluateDishAgainstProfile, type DietMatchers } from "@/lib/diet-match";
-import { findBasketMatch } from "@/lib/basket-match";
+import { findBasketMatch, ingredientTokens } from "@/lib/basket-match";
 
 // ── Clara catalog top-up ─────────────────────────────────────────────────────
 //
@@ -39,6 +39,15 @@ const MAX_DISHES_PER_BUILD = 32; // cost ceiling per generation (covers a full w
 // (A single 21-dish call at 4096 tokens truncated the tool JSON → 0 dishes.)
 const MAX_DISHES_PER_CALL = 8;
 const MAX_OUTPUT_TOKENS = 8192;
+// A breakfast people will actually cook on a weekday. Observed 2026-09-24: a
+// generated week served braised chicken thighs (15 min prep + 35 min cook) at
+// 8am on all seven days, because the prompt only constrained calories and the
+// slot name. Rejecting a slow "breakfast" is better than shipping one — an
+// empty breakfast pool trips the thin-plan gate, which tells the user to add
+// breakfast ingredients, and that is the honest answer to a basket of meat,
+// rice and vegetables.
+export const BREAKFAST_MAX_MINUTES = 30;
+
 const CAL_MIN = 80;
 const CAL_MAX = 1400;
 
@@ -54,6 +63,10 @@ interface TopUpArgs {
   bannedNames: string[]; // prompt-side exclusion (defense: filter re-checks after)
   matchers: DietMatchers; // deterministic post-filter
   existingNames: Set<string>; // lowercased catalog names, for dedupe
+  // Food-word vocabulary from the ingredient catalog, used to catch a dish
+  // whose NAME promises an ingredient it does not contain. Optional: without
+  // it the title gate is skipped (older callers behave exactly as before).
+  catalogFoodTokens?: Set<string>;
   // Target macro split (percentages, e.g. {protein:30,carbs:40,fat:30}) so
   // generated dishes tend to match the patient's macro profile — the builder's
   // pickByMotivation still scores them by macroDeviation on selection.
@@ -124,6 +137,7 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     `- Name each dish by what is IN it, like a menu would ("Apple Slices with Olive Oil Drizzle"). Never name a dish by what it lacks — no "X-Free", "No-X" or "-less" in names.`,
     `- prepMinutes and cookMinutes: realistic whole minutes for a home cook (prep = washing/chopping/mixing, cook = time on heat; 0 for no-cook dishes).`,
     `- Each dish is a COMPLETE MEAL for its slot (protein + carb + veg where sensible), close to the stated per-serving calorie target.`,
+    `- Match the dish to the TIME OF DAY, not just the calorie target. A Breakfast must be something people actually eat in the morning and must be quick — under ${BREAKFAST_MAX_MINUTES} minutes prep+cook in total. Eggs, oats, toast, yoghurt, fruit, a quick scramble or hash are breakfasts. Braised or roasted meat, curries, stews and rice bowls are NOT breakfasts, however well they hit the calorie target. If the available ingredients cannot make a real breakfast, return fewer Breakfast dishes rather than serving a dinner at 8am.`,
     `- usesIngredients lists EVERY ingredient in the dish; leave missingIngredients empty.`,
     `- amounts: one entry per usesIngredients item with the PER-SERVING quantity and unit (g, oz, lb, ml, cup, tablespoon, teaspoon, or "" for whole items like eggs). Same spelling as in usesIngredients.`,
     `- steps: provide 5–10 clear, numbered cooking instructions a home cook can follow (prep, cook, assemble, serve). Every dish MUST have real steps.`,
@@ -171,7 +185,93 @@ export function passesSanity(r: FridgeRecipe): boolean {
   const derived = p.protein * 4 + p.carbs * 4 + p.fat * 9;
   if (derived > 0 && (derived < p.calories * 0.65 || derived > p.calories * 1.35)) return false;
   if (!r.usesIngredients || r.usesIngredients.length < 2 || r.usesIngredients.length > 25) return false;
+
+  // Salt per serving. Observed 2026-09-24: a generated breakfast carried
+  // "Salt 1.5 teaspoon" — about 9 g of salt, ~3.5 g sodium, more than a whole
+  // day's recommended intake in ONE meal, in a product used by people managing
+  // blood pressure. Nothing flagged it. 1 teaspoon (~2.3 g sodium) is already
+  // generous for a single plate, so anything above that is a hallucinated
+  // quantity rather than a recipe.
+  const saltAmount = r.amounts?.find((a) => /\bsalt\b/i.test(a.name));
+  if (saltAmount && /teaspoon|tsp/i.test(saltAmount.unit) && saltAmount.quantity > 1) return false;
+  if (saltAmount && /tablespoon|tbsp/i.test(saltAmount.unit) && saltAmount.quantity >= 1) return false;
+
   return true;
+}
+
+/**
+ * Does the dish NAME promise food the dish does not contain?
+ *
+ * Clara names dishes after what she meant to cook, not what she listed:
+ * observed 2026-09-24 in a real week — "…with Brown Rice" built on jasmine
+ * rice, "…with Almond Butter" containing none, "Grilled Salmon with Broccoli
+ * and Lemon" with no lemon, "Oatmeal with Sliced Carrots and Cinnamon" with no
+ * cinnamon. A tester shopping from those names buys food the recipe never
+ * uses, which is worse than a plain name.
+ *
+ * The check is vocabulary-driven rather than word-listed: a title token only
+ * has to be satisfied when the ingredient CATALOG knows it as food. So
+ * "Oatmeal", "Taco Bowl", "Hash" and "Skillet" are ignored (not ingredients),
+ * while "lemon", "cinnamon" and "brown" (from brown rice) must appear in the
+ * dish. Staples count as satisfied — the kitchen is assumed to have them — so
+ * "…and Herbs" passes; that is a deliberate looseness, since the alternative
+ * rejects good dishes over a seasoning.
+ */
+// Words that describe how a dish is made or served, not what is in it. The
+// catalog vocabulary alone is not enough: multi-word ingredient names like
+// "Roasted red peppers" and "Yogurt with fruit" put "roasted" and "with" into
+// it, so without this every title was rejected on a connector.
+const TITLE_NON_FOOD = new Set([
+  // connectors
+  "with", "and", "on", "in", "over", "of", "a", "an", "the", "plus", "topped", "served", "side",
+  // methods
+  "grilled", "roasted", "baked", "braised", "poached", "seared", "pan", "fried", "fry",
+  "stir", "stirfry", "sauteed", "sautéed", "steamed", "boiled", "toasted", "toast",
+  "scrambled", "scramble", "simmered", "glazed", "marinated", "crusted", "rubbed",
+  "seasoned", "smashed", "mashed", "shredded", "crumbled", "crispy", "crisp",
+  // formats
+  "bowl", "salad", "hash", "skillet", "patty", "patties", "meatball", "meatballs",
+  "stew", "soup", "wrap", "taco", "tacos", "plate", "mix", "medley", "casserole",
+  "bake", "burger", "sandwich", "stirfried", "saute", "omelette", "omelet", "porridge",
+  // generic nouns and flourish
+  "vegetable", "vegetables", "veggie", "veggies", "protein", "herb", "herbs",
+  "seasoning", "seasonings", "spice", "spices", "greens", "style", "homemade",
+  "classic", "simple", "easy", "quick", "hearty", "warm", "tender", "golden",
+  "savory", "savoury", "light", "fresh", "breakfast", "lunch", "dinner", "snack",
+]);
+
+/**
+ * A dish claiming the Breakfast slot has to be a breakfast. The only property
+ * we can check deterministically is how long it takes: nobody braises thighs
+ * for 50 minutes before work. The prompt asks for morning food; this disposes
+ * of what comes back anyway, per the module's "model claims are never trusted"
+ * rule. Dishes with no timings are left alone rather than guessed at.
+ */
+export function breakfastIsQuickEnough(r: FridgeRecipe, mealTypeName: string): boolean {
+  if (mealTypeName.toLowerCase() !== "breakfast") return true;
+  const total = (r.prepMinutes ?? 0) + (r.cookMinutes ?? 0);
+  if (total === 0) return true; // no timings claimed — not evidence of a slow dish
+  return total <= BREAKFAST_MAX_MINUTES;
+}
+
+export function titlePromisesMissingFood(
+  r: FridgeRecipe,
+  catalogFoodTokens: Set<string>
+): string | null {
+  // Only what the dish actually LISTS satisfies its own title. Staples are
+  // free to *use* without listing, but a title is a promise about the recipe:
+  // "Oatmeal with Sliced Carrots and Cinnamon" whose steps never add cinnamon
+  // is still misleading, even though the cupboard is assumed to have some.
+  // Generic seasoning words ("herbs", "spices") are handled by TITLE_NON_FOOD,
+  // so this does not reject "Roasted Broccoli with Olive Oil and Herbs".
+  const have = new Set<string>();
+  for (const n of r.usesIngredients) for (const t of ingredientTokens(n)) have.add(t);
+  for (const t of ingredientTokens(r.name)) {
+    if (TITLE_NON_FOOD.has(t)) continue; // how it is cooked or served
+    if (!catalogFoodTokens.has(t)) continue; // the catalog does not know it as food
+    if (!have.has(t)) return t;
+  }
+  return null;
 }
 
 /**
@@ -287,8 +387,17 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     if (accepted.length >= total) break;
     if (!withinBasket(r)) { reject("out-of-basket", r); continue; }
     if (!passesSanity(r)) { reject("sanity", r); continue; }
+    if (args.catalogFoodTokens) {
+      const promised = titlePromisesMissingFood(r, args.catalogFoodTokens);
+      if (promised !== null) {
+        if (process.env.AI_DEBUG) console.warn(`[recipe-generation] rejected (title-promises-${promised}): ${r.name}`);
+        reject("title-mismatch", r);
+        continue;
+      }
+    }
     const slot = typeByName.get((r.mealType ?? "").toLowerCase());
     if (!slot) { reject("meal-type", r); continue; }
+    if (!breakfastIsQuickEnough(r, slot.mealTypeName)) { reject("breakfast-too-slow", r); continue; }
     const nameKey = r.name.trim().toLowerCase();
     if (!nameKey || seen.has(nameKey)) { reject("duplicate-name", r); continue; }
     seen.add(nameKey);
