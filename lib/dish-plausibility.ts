@@ -1,0 +1,223 @@
+// Is this dish fit to put in front of a person, in this slot?
+//
+// Written 2026-09-24 after a QA run found the gates in lib/clara/
+// recipe-generation.ts were doing nothing for the thing users actually see.
+// Those gates run when a dish is CREATED. The plan builder selects from the
+// whole public Recipe table, so every dish generated before a gate existed
+// flows into a plan with no re-check: 7 of 25 dishes in that week measured the
+// user's bell peppers in teaspoons, and 4 of 7 breakfasts were a 40-minute
+// roast-dinner plate. The fix is to stop treating validation as a one-time
+// admission test and make it a property the builder re-checks at selection.
+//
+// So this module is the single predicate, shared by both ends:
+//   generation — reject before persisting, and ask the model again
+//   selection  — skip the row, whenever it was written
+//
+// It is deliberately storage-shaped rather than model-shaped (names, units,
+// minutes) so a Prisma row and a freshly generated recipe both satisfy it.
+import { ingredientTokens } from "@/lib/basket-match";
+import { BASKET_STAPLES } from "@/lib/basket-coverage";
+import { displayDishName } from "@/lib/dish-name";
+
+export const BREAKFAST_MAX_MINUTES = 30;
+
+/** Max salt per serving. ~1 tsp is ~2.3 g sodium — a whole day's allowance. */
+export const MAX_SALT_TSP = 1;
+
+export interface PlausibleIngredient {
+  name: string;
+  quantity?: number | null;
+  unit?: string | null;
+  /** Ingredient.groceryCategory when the caller has it. Sharpens rule 3. */
+  category?: string | null;
+}
+
+export interface PlausibleDish {
+  name: string;
+  mealTypeName: string;
+  prepMinutes?: number | null;
+  cookMinutes?: number | null;
+  ingredients: PlausibleIngredient[];
+  /**
+   * True for a dish Clara wrote. Gates the title check ONLY — the physical
+   * rules (salt, seasoning quantities, breakfast timing) apply to every dish
+   * whatever wrote it.
+   *
+   * Measured on the live library 2026-09-24: the title rule flags 487 of 1759
+   * public recipes, and 362 of those are curated rows where the name is not a
+   * lie — "Beef & Broccoli" made with sirloin steak, "Scrambled Egg Whites"
+   * whose ingredient is "Large eggs", "Hummus & Veggie Sticks", "Caribbean
+   * Casserole". Human editors name dishes by cut, cuisine and dish format;
+   * Clara names them after what she MEANT to cook and then lists something
+   * else, which is the failure this rule was written for. Applying it to the
+   * whole catalog would delete a fifth of the library to catch her mistakes.
+   */
+  generated?: boolean;
+}
+
+export type DishProblem =
+  | "breakfast-too-slow"
+  | "oversalted"
+  | "seasoning-quantity-on-food"
+  | "title-promises-missing-food";
+
+const SEASONING_UNIT = /\b(tsp|teaspoons?|pinch|pinches|dash(es)?)\b/i;
+const TABLESPOON = /\b(tbsp|tablespoons?)\b/i;
+
+// Words that mark a name as a jar/bottle item, for which a teaspoon IS the
+// natural unit. Measured against the live database on 2026-09-24: the
+// name-collision rule below flagged 129 ingredient links, but 54 of them were
+// real seasonings whose names happen to contain a staple word — "Crushed red
+// pepper flakes", "lemon pepper seasoning blend", "salt free mexican seasoning
+// blend", "salt-free citrus seasoning". Every one carries a marker here; the
+// actual defect ("Bell peppers — 0.1 teaspoon", 71 links) carries none.
+const PANTRY_MARKER =
+  /\b(seasoning|blend|flakes?|powder|ground|dried|spice|mix|rub|extract|essence|sauce|paste|vinegar|syrup|juice|zest|oil|salt)\b/i;
+
+// A name IS a staple only when it means the same thing as one — equal token
+// sets, the same rule lib/basket-match.ts uses to decide whether a basket entry
+// may claim a staple. Subset matching cannot be used here: "pepper" is itself a
+// staple, so {bell, pepper} ⊇ {pepper} would classify the user's bell peppers
+// as seasoning and wave through the exact defect this module exists to catch.
+// "Extra virgin olive oil" still resolves ({olive, oil} both sides) because
+// ingredientTokens drops descriptor words.
+const isStapleName = (lowered: string): boolean => {
+  if (BASKET_STAPLES.has(lowered)) return true;
+  const tokens = ingredientTokens(lowered);
+  if (tokens.size === 0) return false;
+  for (const st of BASKET_STAPLES) {
+    const stt = ingredientTokens(st);
+    if (stt.size !== tokens.size) continue;
+    if ([...stt].every((t) => tokens.has(t))) return true;
+  }
+  return false;
+};
+
+/**
+ * Rule 3a — a FOOD measured as if it were the SEASONING its name contains.
+ *
+ * "Bell peppers 0.5 teaspoon" is the signature of a resolver that read the
+ * word "pepper" in "season with salt and pepper" and attributed it to the
+ * ingredient the user actually owns. The tell is structural: the ingredient's
+ * tokens are a PROPER superset of a staple's ({bell,pepper} ⊃ {pepper}), and
+ * it is measured in a seasoning unit. A real bell pepper is 90 g, never 0.1 tsp.
+ *
+ * lib/basket-match.ts now prevents this at write time; this catches the rows
+ * written before it did, and any future resolver that regresses.
+ */
+function seasoningQuantityOnFood(ing: PlausibleIngredient): boolean {
+  const unit = ing.unit ?? "";
+  const seasoningSized =
+    (SEASONING_UNIT.test(unit) && (ing.quantity ?? 0) <= 1) ||
+    (TABLESPOON.test(unit) && (ing.quantity ?? 0) < 1);
+  if (!seasoningSized) return false;
+
+  const lowered = ing.name.trim().toLowerCase();
+  if (isStapleName(lowered)) return false; // oil, dried herbs, salt: correct at this size
+  if (PANTRY_MARKER.test(lowered)) return false; // a jar the staple list does not happen to name
+
+  // What remains is the name-collision case only. A genuine pantry item the
+  // staple list does not know ("soy sauce 1 tsp", "honey 0.5 tbsp") is left
+  // alone rather than thinning the pool over a guess — and so is the library's
+  // legitimate use of small units for chopped produce ("Fresh cilantro 1 tbsp",
+  // "Garlic 0.5 tsp", "Yellow onions 0.5 tbsp"), which a category-based rule
+  // would have rejected by the hundred.
+  const tokens = ingredientTokens(lowered);
+  if (tokens.size === 0) return false;
+  for (const st of BASKET_STAPLES) {
+    const stt = ingredientTokens(st);
+    if (stt.size === 0 || stt.size >= tokens.size) continue;
+    if ([...stt].every((t) => tokens.has(t))) return true; // proper superset
+  }
+  return false;
+}
+
+/**
+ * A dish claiming the Breakfast slot has to be a breakfast. The only property
+ * checkable deterministically is how long it takes: nobody braises beef for
+ * 33 minutes before work. Dishes with no timings are left alone rather than
+ * guessed at.
+ */
+export function breakfastIsQuickEnough(d: PlausibleDish): boolean {
+  if (d.mealTypeName.toLowerCase() !== "breakfast") return true;
+  const total = (d.prepMinutes ?? 0) + (d.cookMinutes ?? 0);
+  if (total === 0) return true;
+  return total <= BREAKFAST_MAX_MINUTES;
+}
+
+/** Words describing how a dish is made or served, not what is in it. */
+export const TITLE_NON_FOOD = new Set([
+  // connectors
+  "with", "and", "on", "in", "over", "of", "a", "an", "the", "plus", "topped", "served", "side",
+  // methods
+  "grilled", "roasted", "baked", "braised", "poached", "seared", "pan", "fried", "fry",
+  "stir", "stirfry", "sauteed", "sautéed", "steamed", "boiled", "toasted", "toast",
+  "scrambled", "scramble", "simmered", "glazed", "marinated", "crusted", "rubbed",
+  "seasoned", "smashed", "mashed", "shredded", "crumbled", "crispy", "crisp",
+  // formats
+  "bowl", "salad", "hash", "skillet", "patty", "patties", "meatball", "meatballs",
+  "stew", "soup", "wrap", "taco", "tacos", "plate", "mix", "medley", "casserole",
+  "bake", "burger", "sandwich", "stirfried", "saute", "omelette", "omelet", "porridge",
+  // generic nouns and flourish
+  "vegetable", "vegetables", "veggie", "veggies", "protein", "herb", "herbs",
+  "seasoning", "seasonings", "spice", "spices", "greens", "style", "homemade",
+  "classic", "simple", "easy", "quick", "hearty", "warm", "tender", "golden",
+  "savory", "savoury", "light", "fresh", "breakfast", "lunch", "dinner", "snack",
+]);
+
+/**
+ * Does this phrase promise food the dish does not contain? Returns the
+ * offending word, or null.
+ *
+ * Vocabulary-driven rather than word-listed: a token only has to be satisfied
+ * when the ingredient CATALOG knows it as food. "Oatmeal", "Taco Bowl" and
+ * "Skillet" are ignored; "lemon", "cinnamon" and "brown" (from brown rice)
+ * must appear in the dish. Only what the dish LISTS satisfies the promise —
+ * staples are free to use, but a name is a claim about the recipe.
+ */
+export function phrasePromisesMissingFood(
+  phrase: string,
+  ingredientNames: readonly string[],
+  catalogFoodTokens: Set<string>
+): string | null {
+  const have = new Set<string>();
+  for (const n of ingredientNames) for (const t of ingredientTokens(n)) have.add(t);
+  for (const t of ingredientTokens(phrase)) {
+    if (TITLE_NON_FOOD.has(t)) continue;
+    if (!catalogFoodTokens.has(t)) continue;
+    if (!have.has(t)) return t;
+  }
+  return null;
+}
+
+/**
+ * The one predicate. Returns the first problem found, or null when the dish is
+ * fit to serve in this slot.
+ *
+ * `catalogFoodTokens` empty → the title check is skipped rather than passing
+ * everything: without the catalog's vocabulary there is no way to tell a food
+ * word from a cooking word, and guessing rejects good dishes.
+ */
+export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): DishProblem | null {
+  if (!breakfastIsQuickEnough(d)) return "breakfast-too-slow";
+
+  for (const ing of d.ingredients) {
+    if (/\bsalt\b/i.test(ing.name)) {
+      const q = ing.quantity ?? 0;
+      if (SEASONING_UNIT.test(ing.unit ?? "") && q > MAX_SALT_TSP) return "oversalted";
+      if (TABLESPOON.test(ing.unit ?? "") && q >= 1) return "oversalted";
+    }
+    if (seasoningQuantityOnFood(ing)) return "seasoning-quantity-on-food";
+  }
+
+  if (d.generated && catalogFoodTokens.size > 0) {
+    const names = d.ingredients.map((i) => i.name);
+    // displayDishName first: library rows carry portion-variant suffixes
+    // ("…, V1M- 2 medium potatoes") that put "2" and "medium" into the title's
+    // vocabulary and reject the dish over its own id.
+    if (phrasePromisesMissingFood(displayDishName(d.name), names, catalogFoodTokens)) {
+      return "title-promises-missing-food";
+    }
+  }
+  return null;
+}
