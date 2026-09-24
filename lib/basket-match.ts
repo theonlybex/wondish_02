@@ -39,11 +39,16 @@ const subset = (a: Set<string>, b: Set<string>) => [...a].every((t) => b.has(t))
 export function findBasketMatch(name: string, basket: readonly string[]): string | "" | null {
   const lowered = name.trim().toLowerCase();
   if (!lowered) return null;
-  if (BASKET_STAPLES.has(lowered)) return "";
+  // The basket is consulted before the staple list, exact match and tolerant
+  // match alike. An ingredient the user actually owns must be attributed to
+  // THEIR entry, not silently reclassified as free seasoning: the staple path
+  // returns "", which drops it from coverage accounting and from What-to-buy.
+  // Checking staples first turned "olive oil" into "" for a basket holding
+  // "Extra virgin olive oil", and "bell pepper" into the seasoning "pepper".
   const exact = basket.find((b) => b.trim().toLowerCase() === lowered);
   if (exact !== undefined) return exact;
   const tokens = ingredientTokens(lowered);
-  if (tokens.size === 0) return null;
+  if (tokens.size === 0) return BASKET_STAPLES.has(lowered) ? "" : null;
   // Prefer the basket entry sharing the most tokens; ties → shortest name.
   let best: string | null = null;
   let bestScore = 0;
@@ -57,5 +62,27 @@ export function findBasketMatch(name: string, basket: readonly string[]): string
       bestScore = score;
     }
   }
-  return best;
+  if (best !== null) return best;
+
+  // Only once the basket cannot claim it: staples get the same tolerance as
+  // basket entries, because the model writes "extra-virgin olive oil" and
+  // "freshly ground black pepper" where the list says "olive oil" and "black
+  // pepper". An exact-string staple check made the list far narrower in
+  // practice than it reads, and the caller was told a dish was out-of-basket
+  // over a seasoning.
+  //
+  // The basket MUST be tried first. Staple tokens are a subset of many real
+  // foods — "pepper" ⊆ "bell pepper", "salt" ⊆ "salt cod" — so checking
+  // staples earlier silently reclassified a vegetable the user actually owns
+  // as free seasoning, and dropped it from What-to-buy.
+  //
+  // One-directional on purpose (staple ⊆ ingredient): "extra virgin olive oil"
+  // ⊇ {olive, oil} is olive oil, but a bare "oil" must not match the staple
+  // "olive oil" — it is too vague to resolve to a specific fat.
+  if (BASKET_STAPLES.has(lowered)) return "";
+  for (const st of BASKET_STAPLES) {
+    const stt = ingredientTokens(st);
+    if (stt.size > 0 && subset(stt, tokens)) return "";
+  }
+  return null;
 }

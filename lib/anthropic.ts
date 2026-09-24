@@ -6,10 +6,19 @@ import Anthropic from "@anthropic-ai/sdk";
 // killed the function, and the client got a bare 504 with no JSON body —
 // after guardAiSpend had already charged the user's quota.
 //
-// 25s x (1 + 1 retry) fits under maxDuration = 60 with room for the DB work
-// around the call. Streaming chat passes a longer timeout because the
-// timeout covers the whole response, not just time-to-first-byte.
-export const ANTHROPIC_TIMEOUT_MS = 25_000;
+// Raised 2026-09-24 from 25s, together with maxDuration 60 → 300 on the AI
+// routes. The old value was sized to "fit under maxDuration = 60", and that
+// ceiling then reached back into the product: generating 8 complete recipes
+// constrained to a basket does not finish in 25s, so the breakfast top-up
+// timed out, its slot pool stayed empty, and one dish filled all seven
+// breakfasts. The platform cap was the cause and the recipe quality was the
+// symptom.
+//
+// 90s x (1 + 1 retry) = 180s worst case, inside maxDuration = 300 with room
+// for the DB work around the call. Routes with tighter budgets still pass
+// their own override — streaming chat (55s) and clara-swap (20s) — because
+// there the timeout covers the whole response, not time-to-first-byte.
+export const ANTHROPIC_TIMEOUT_MS = 90_000;
 export const ANTHROPIC_MAX_RETRIES = 1;
 
 export function createAnthropic(overrides: { timeout?: number; maxRetries?: number } = {}): Anthropic {

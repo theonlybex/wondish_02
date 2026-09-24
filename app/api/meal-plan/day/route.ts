@@ -8,7 +8,11 @@ import { buildMealPlanMenus } from "@/lib/meal-plan";
 import { withPlanClaim, MealPlanBusyError, EmptyPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
 import { internalError } from "@/lib/api-error";
 
-export const maxDuration = 60;
+// 300s (Vercel's current default ceiling) not 60: a real week generation was
+// measured at 55-73s, so the old cap killed it mid-build — and it had also
+// forced ANTHROPIC_TIMEOUT_MS down to 25s, which timed out the recipe
+// top-up and left slots filled by one repeated dish (2026-09-24).
+export const maxDuration = 300;
 
 // POST /api/meal-plan/day — "cuisine for today": rebuild ONLY the requested day
 // in a chosen cuisine, leaving the rest of the week untouched. Runs the real

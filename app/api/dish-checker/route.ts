@@ -25,7 +25,11 @@ import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anth
 // Streaming chat: up to 6 tool rounds for premium, each a separate request,
 // so the per-request timeout can be generous while maxDuration bounds the
 // whole turn.
-export const maxDuration = 60;
+// 300s (Vercel's current default ceiling) not 60: a real week generation was
+// measured at 55-73s, so the old cap killed it mid-build — and it had also
+// forced ANTHROPIC_TIMEOUT_MS down to 25s, which timed out the recipe
+// top-up and left slots filled by one repeated dish (2026-09-24).
+export const maxDuration = 300;
 
 // 55s x 1 attempt stays under the 60s function budget. maxRetries is 0 on
 // purpose: the SDK retries timeouts, so 55s x (1 + 1 retry) would run to 110s
