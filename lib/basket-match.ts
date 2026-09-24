@@ -49,13 +49,32 @@ export function findBasketMatch(name: string, basket: readonly string[]): string
   if (exact !== undefined) return exact;
   const tokens = ingredientTokens(lowered);
   if (tokens.size === 0) return BASKET_STAPLES.has(lowered) ? "" : null;
+
+  // Is this name a seasoning/fat the kitchen is assumed to have?
+  const isStaple =
+    BASKET_STAPLES.has(lowered) ||
+    [...BASKET_STAPLES].some((st) => {
+      const stt = ingredientTokens(st);
+      return stt.size > 0 && subset(stt, tokens);
+    });
+
   // Prefer the basket entry sharing the most tokens; ties → shortest name.
+  //
+  // A STAPLE may only be claimed by a basket entry that means the same thing —
+  // equal token sets, not merely overlapping. "olive oil" still resolves to a
+  // basket holding "Extra virgin olive oil" ({olive,oil} both sides), but
+  // "pepper" must NOT be swallowed by "Bell peppers" ({pepper} ⊂ {bell,pepper}).
+  // Without this, a week of recipes saying "season with salt and pepper" stored
+  // the user's bell peppers at 0.1 teaspoon — 10 of 29 dishes in a real run —
+  // and Clara read it back as an ingredient.
   let best: string | null = null;
   let bestScore = 0;
   for (const b of basket) {
     const bt = ingredientTokens(b);
     if (bt.size === 0) continue;
-    if (!(subset(tokens, bt) || subset(bt, tokens))) continue;
+    if (isStaple) {
+      if (!(subset(tokens, bt) && subset(bt, tokens))) continue;
+    } else if (!(subset(tokens, bt) || subset(bt, tokens))) continue;
     const score = Math.min(tokens.size, bt.size) * 10 - Math.abs(tokens.size - bt.size);
     if (score > bestScore || (score === bestScore && best !== null && b.length < best.length)) {
       best = b;
