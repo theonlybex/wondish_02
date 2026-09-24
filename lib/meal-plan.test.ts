@@ -1060,3 +1060,28 @@ test("a plan is refused rather than filled with implausible dishes", () => {
     assert.equal(res.rows.length, 0);
   });
 });
+
+test("one protein may fill two slots in a day, not three", () => {
+  // Observed in both QA weeks: turkey at breakfast, lunch AND dinner; beef in
+  // 3 of 4 slots the next day. todayProteins was tracked but only ever read as
+  // "yesterday's proteins", so nothing constrained a single day.
+  const chickenDish = (id: string) => ({
+    ...makeRecipe({ id, mealTypeId: MT_L.id, calories: 500, ingredients: [`Boneless chicken breasts ${id}`] }),
+    name: `Chicken ${id}`, tags: [] as string[], prepTime: 10, cookTime: 15,
+  });
+  const fishDish = (id: string) => ({
+    ...makeRecipe({ id, mealTypeId: MT_L.id, calories: 500, ingredients: [`Salmon fillets ${id}`] }),
+    name: `Salmon ${id}`, tags: [] as string[], prepTime: 10, cookTime: 15,
+  });
+  // Four lunch-typed slots on one day (lunch + dinner draw from lunch), with
+  // plenty of both proteins available so the builder never has to relax.
+  setDb(makePatient(), [MT_L, MT_D], [
+    chickenDish("c1"), chickenDish("c2"), chickenDish("c3"), chickenDish("c4"),
+    fishDish("f1"), fishDish("f2"), fishDish("f3"), fishDish("f4"),
+  ]);
+  return build("p1", new Date("2026-09-24T00:00:00Z"), 1, { windowDays: 1 }).then((res) => {
+    const chosen = res.rows.map((r: MenuRow) => r.recipeId);
+    const chicken = chosen.filter((id) => id.startsWith("c")).length;
+    assert.ok(chicken <= 2, `one protein took ${chicken} of ${chosen.length} slots`);
+  });
+});

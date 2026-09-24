@@ -1,4 +1,4 @@
-import { accountHasActivePremium, primarySubscriptionRow } from "@/lib/auth";
+import { accountHasActivePremium, hasActivePremium, primarySubscriptionRow } from "@/lib/auth";
 import { isProfileComplete, type ProfileCompletionInput } from "@/lib/onboarding";
 
 export type MeSubscriptionDTO = {
@@ -17,7 +17,16 @@ export type MeDTO = {
   lastName: string;
   photoUrl: string | null;
   onboardingComplete: boolean;
+  /**
+   * ENTITLEMENT, not billing: true for anyone with live elevated access,
+   * including a beta coupon holder. Read `tier` to tell those apart. A
+   * consumer that treats this alone as "paying customer" will greet a beta
+   * tester as one — which is exactly how /restaurants came to show a coupon
+   * holder a "Plus" badge.
+   */
   isPremium: boolean;
+  /** What the user should be CALLED. Mirrors lib/plan-badge.ts planBadgeFor. */
+  tier: "premium" | "beta" | "free";
   subscription: MeSubscriptionDTO;
 };
 
@@ -60,6 +69,15 @@ export function serializeMe(
     photoUrl: account.photoUrl,
     onboardingComplete: patient ? isProfileComplete(patient) : false,
     isPremium: accountHasActivePremium(subs),
+    // Same precedence as lib/ai-budget.ts tierFor: a live PAID row of any
+    // source outranks a coupon; coupons alone are beta; nothing live is free.
+    // (Kept local rather than imported: this module is pure, and ai-budget
+    // pulls in Prisma and the rate limiter.)
+    tier: (() => {
+      if (!accountHasActivePremium(subs)) return "free" as const;
+      const live = subs.filter((s) => hasActivePremium(s));
+      return live.length > 0 && live.every((s) => s.source === "COUPON") ? ("beta" as const) : ("premium" as const);
+    })(),
     subscription: active
       ? {
           plan: active.plan,

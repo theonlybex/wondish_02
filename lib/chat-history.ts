@@ -1,6 +1,12 @@
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
-const MAX_MESSAGE_CHARS = 4000;
+/**
+ * Longest single message. Exported so the composer can stop the user AT the
+ * limit — the server truncates silently, which meant a 5,000-character message
+ * was cut to 4,000 with no indication, answered from the fragment, and still
+ * charged against the day's allowance.
+ */
+export const MAX_MESSAGE_CHARS = 4000;
 const MAX_MESSAGES = 20;
 
 /**

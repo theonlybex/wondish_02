@@ -165,3 +165,30 @@ test("live COUPON grant plus live STRIPE subscription: the paid row is reported"
   assert.equal(me.isPremium, true);
   assert.equal(me.subscription?.source, "STRIPE");
 });
+
+// A coupon holder is entitled but is NOT a paying customer, and the payload
+// has to let a consumer tell the difference. Reading isPremium alone is how
+// /restaurants came to greet a beta tester with a "Plus" badge.
+test("tier distinguishes a beta coupon from a paid subscription", () => {
+  const future = new Date(Date.now() + 30 * 86400000);
+  const row = (source: string) => ({
+    plan: "PREMIUM", status: "ACTIVE", source,
+    stripeCurrentPeriodEnd: future, trialEndsAt: null, canceledAt: null,
+  });
+  const me = (subs: ReturnType<typeof row>[]) =>
+    serializeMe(
+      { id: "a", email: "e@x.io", firstName: "A", lastName: "B", photoUrl: null, subscriptions: subs },
+      null
+    );
+
+  const coupon = me([row("COUPON")]);
+  assert.equal(coupon.tier, "beta");
+  assert.equal(coupon.isPremium, true, "beta access IS an entitlement");
+
+  assert.equal(me([row("STRIPE")]).tier, "premium");
+  assert.equal(me([row("APPLE")]).tier, "premium");
+  // A paid row alongside a coupon is a paying customer.
+  assert.equal(me([row("COUPON"), row("STRIPE")]).tier, "premium");
+  assert.equal(me([]).tier, "free");
+  assert.equal(me([]).isPremium, false);
+});

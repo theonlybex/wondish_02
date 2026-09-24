@@ -169,6 +169,32 @@ export default function ProfileForm({
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
+    // A new attempt supersedes the last result. Without this the success
+    // banner from a previous save stayed on screen underneath every
+    // subsequent validation error, so the page said "Profile saved
+    // successfully." and "Weight must be between 50 and 700 lbs." at the same
+    // time, about the same action (QA 2026-09-24).
+    setSaved(false);
+
+    // Clearing a measurement is not a save. The client drops empty fields from
+    // the PATCH body, so blanking weight returned 200 with "saved
+    // successfully" while the value was untouched in the database — and the
+    // caloric summary silently vanished from the page, which is the only
+    // reason the user could tell anything was wrong.
+    {
+      const missing =
+        !form.weight?.trim()
+          ? "Weight"
+          : form.heightUnit === "ftin"
+            ? !form.heightFt?.trim() ? "Height" : null
+            : !form.height?.trim() ? "Height" : null;
+      if (missing) {
+        e.preventDefault();
+        setError(`${missing} is required — your calorie targets are calculated from it.`);
+        return;
+      }
+    }
+
     // Shared plausibility bounds (lib/body-bounds), identical to the server's.
     {
       const heightCm =

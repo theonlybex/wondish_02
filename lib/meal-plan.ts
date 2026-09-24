@@ -86,6 +86,9 @@ const PROTEIN_TYPES: [string, string[]][] = [
   ["tofu", ["tofu", "tempeh", "seitan"]],
   ["legume", ["bean", "lentil", "chickpea"]],
 ];
+/** Slots on one day that may share a primary protein. */
+export const MAX_SAME_PROTEIN_PER_DAY = 2;
+
 function proteinType(name: string): string | null {
   const n = name.toLowerCase();
   for (const [type, kws] of PROTEIN_TYPES) if (kws.some((k) => n.includes(k))) return type;
@@ -548,6 +551,13 @@ export async function buildMealPlanMenus(
     let dayCalories = 0;
     const dailyFamilies = new Set<string>();
     const todayProteins = new Set<string>();
+    // How many of today's slots each protein already fills. The set above was
+    // only ever read as "yesterday's proteins" for the NEXT day, so nothing
+    // stopped one protein taking every slot of a single day: two QA weeks each
+    // had days with the same protein in 3 of 4 slots (turkey breakfast, lunch
+    // and dinner). Twice in a day is normal home cooking; three times is the
+    // week feeling broken.
+    const todayProteinCounts = new Map<string, number>();
     // Dishes already on today's plate — the one repeat we never allow while
     // any other eligible dish exists (a week can repeat; a day must not).
     const todayUsedIds = new Set<string>();
@@ -620,15 +630,24 @@ export async function buildMealPlanMenus(
         // does a dish already on today's plate come back. The old two-tier
         // fallback jumped straight to "anything", so a thin basket pool put
         // the same chicken dish at lunch AND dinner every day.
-        const tiers: { protein: boolean; crossWeek: boolean; weekReuse: boolean; sameDay: boolean }[] = [
-          { protein: false, crossWeek: false, weekReuse: false, sameDay: false },
-          { protein: true,  crossWeek: false, weekReuse: false, sameDay: false },
-          { protein: true,  crossWeek: true,  weekReuse: false, sameDay: false },
-          { protein: true,  crossWeek: true,  weekReuse: true,  sameDay: false },
-          { protein: true,  crossWeek: true,  weekReuse: true,  sameDay: true },
+        // dayProtein is relaxed LAST of the variety rules (just before
+        // reusing a dish already on today's plate), because a third helping of
+        // the same protein in one day is more conspicuous than repeating
+        // yesterday's protein or last week's dish.
+        const tiers: { protein: boolean; crossWeek: boolean; weekReuse: boolean; dayProtein: boolean; sameDay: boolean }[] = [
+          { protein: false, crossWeek: false, weekReuse: false, dayProtein: false, sameDay: false },
+          { protein: true,  crossWeek: false, weekReuse: false, dayProtein: false, sameDay: false },
+          { protein: true,  crossWeek: true,  weekReuse: false, dayProtein: false, sameDay: false },
+          { protein: true,  crossWeek: true,  weekReuse: true,  dayProtein: false, sameDay: false },
+          { protein: true,  crossWeek: true,  weekReuse: true,  dayProtein: true,  sameDay: false },
+          { protein: true,  crossWeek: true,  weekReuse: true,  dayProtein: true,  sameDay: true },
         ];
         const matches = (r: PoolRecipe, relax: (typeof tiers)[number]): boolean =>
           base(r) &&
+          (relax.dayProtein || (() => {
+            const dp = dishProtein(r.ingredients);
+            return dp === null || (todayProteinCounts.get(dp) ?? 0) < MAX_SAME_PROTEIN_PER_DAY;
+          })()) &&
           (relax.protein || (() => { const dp = dishProtein(r.ingredients); return dp === null || !prevDayProteins.has(dp); })()) &&
           (relax.crossWeek || !excludeRecipeIds.has(r.id)) &&
           (relax.weekReuse || (!weekUsedIds.has(r.id) && !weekUsedSignatures.has(dishSignature(r.ingredients)))) &&
@@ -645,7 +664,10 @@ export async function buildMealPlanMenus(
         weekUsedSignatures.add(dishSignature(recipe.ingredients));
         todayUsedIds.add(recipe.id);
         const dp = dishProtein(recipe.ingredients);
-        if (dp) todayProteins.add(dp);
+        if (dp) {
+          todayProteins.add(dp);
+          todayProteinCounts.set(dp, (todayProteinCounts.get(dp) ?? 0) + 1);
+        }
         mealCalories += recipe.calories ?? 0;
         dayCalories  += recipe.calories ?? 0;
         menus.push({ patientId, recipeId: recipe.id, mealTypeId: mealType.id, date: new Date(current), planVersion });
@@ -752,6 +774,7 @@ export async function buildMealPlanMenus(
 
     // Carry today's proteins forward so tomorrow avoids them (no back-to-back).
     prevDayProteins = todayProteins;
+    todayProteinCounts.clear();
     current.setDate(current.getDate() + 1);
   }
 

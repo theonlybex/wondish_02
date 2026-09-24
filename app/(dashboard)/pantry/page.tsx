@@ -39,7 +39,14 @@ export default async function PantryPage({
         <h1 className="text-3xl font-bold text-[#1E1A1A]">Ingredients</h1>
         <div className="flex items-center gap-3 mt-4">
           <p className="text-xs" style={{ color: "#848181" }}>
-            Tap what you have to get dish suggestions, or switch to what to buy for this week&apos;s plan.
+            {/* "What to buy for this week's plan" promised a shopping list for
+                the generated week. Two of the three lenses are not that: "By
+                value" ranks the whole catalog by how many library dishes each
+                ingredient would unlock, and "By cuisine" stocks a cuisine.
+                Only the per-item amounts come from the plan. A QA run followed
+                the promise and got brown rice, quinoa, coffee and cocoa powder
+                — none of them in the week (2026-09-24). */}
+            Tap what you have to get dish suggestions, or switch to what to buy next.
           </p>
         </div>
       </div>

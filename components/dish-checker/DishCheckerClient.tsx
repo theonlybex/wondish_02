@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { MAX_MESSAGE_CHARS } from "@/lib/chat-history";
 import { apiFetch } from "@/lib/client-fetch";
 
 interface Message {
@@ -232,13 +233,23 @@ export default function DishCheckerClient({ firstName }: Props) {
           style={{ borderColor: "rgba(30,26,26,0.06)" }}
         >
           <div className="flex gap-3 items-end">
+            {/* maxLength matches the server's MAX_MESSAGE_CHARS. The server
+                truncates silently, so a 5,000-character message was accepted,
+                cut to 4,000 without a word, answered from the fragment, and
+                still cost one of the day's allowance (QA 2026-09-24). Stopping
+                the typing is the only version of this the user can see. */}
+            <label htmlFor="clara-input" className="sr-only">
+              Ask Clara about any food or dish
+            </label>
             <textarea
+              id="clara-input"
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => setInput(e.target.value.slice(0, MAX_MESSAGE_CHARS))}
               onKeyDown={handleKeyDown}
               placeholder="Ask Clara about any food or dish…"
               rows={1}
+              maxLength={MAX_MESSAGE_CHARS}
               disabled={isStreaming}
               className="flex-1 resize-none rounded-xl px-4 py-3 text-sm text-[#1E1A1A] bg-[#F9F7ED] border border-transparent focus:outline-none focus:border-primary/30 transition-colors disabled:opacity-50"
             />

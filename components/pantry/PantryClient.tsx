@@ -410,7 +410,7 @@ export default function PantryClient({
                   buyMode === m ? "bg-white text-primary shadow-sm" : "text-[#848181] hover:text-primary"
                 }`}
               >
-                {m === "category" ? "By category" : m === "value" ? "By value" : "By cuisine"}
+                {m === "category" ? "By category" : m === "value" ? "Unlocks most" : "By cuisine"}
               </button>
             ))}
           </div>
@@ -660,6 +660,9 @@ export default function PantryClient({
   }
 
   const readyCount = cookable?.readyTotal ?? cookable?.ready.length ?? 0;
+  // The same readiness the gate shows ("15 / 12 ingredients ✓"), so the two
+  // never contradict each other again.
+  const basketReady = computeBasketReadiness(Array.from(selected.values())).ready;
 
   return (
     <div className="space-y-8">
@@ -781,17 +784,30 @@ export default function PantryClient({
             boxShadow: "0 8px 32px rgba(30,26,26,0.25)",
           }}
         >
+          {/* This headline used to say "Your ingredients can't fill a whole
+              day yet" to a basket the readiness gate had just called "Enough
+              to fill a full week" — and the planner then filled seven days
+              from it (QA 2026-09-24). Both statements were about different
+              things: this panel counts READY-MADE library dishes, the gate
+              counts what Clara can cook. When the basket is plan-ready, the
+              honest framing is an offer, not a deficiency. */}
           <p className="text-white font-bold mb-1">
-            {cooking ? `Clara is cooking your ${cookingCuisine ?? ""} day…` : "Your ingredients can't fill a whole day yet"}
+            {cooking
+              ? `Clara is cooking your ${cookingCuisine ?? ""} day…`
+              : basketReady
+                ? "Let Clara cook a whole day from these"
+                : "Your ingredients can't fill a whole day yet"}
           </p>
           <p className="text-sm mb-4" style={{ color: "rgba(255,255,255,0.55)" }}>
             {cooking ? (
               "Building breakfast to dinner from exactly what you have — a few seconds."
             ) : (
               <>
-                {cookable.dayCoverage.coveredCalories > 0
-                  ? `These dishes cover ~${cookable.dayCoverage.coveredCalories} of your ${cookable.dayCoverage.targetCalories} kcal day.`
-                  : `Your day needs ${cookable.dayCoverage.targetCalories} kcal.`}{" "}
+                {basketReady
+                  ? `Ready-made library dishes only cover ~${cookable.dayCoverage.coveredCalories} of your ${cookable.dayCoverage.targetCalories} kcal day — Clara writes the rest from what you have.`
+                  : cookable.dayCoverage.coveredCalories > 0
+                    ? `These dishes cover ~${cookable.dayCoverage.coveredCalories} of your ${cookable.dayCoverage.targetCalories} kcal day.`
+                    : `Your day needs ${cookable.dayCoverage.targetCalories} kcal.`}{" "}
                 Pick a cuisine and Clara cooks the whole day from your ingredients.
               </>
             )}
