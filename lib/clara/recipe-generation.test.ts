@@ -99,9 +99,17 @@ test("proteinOptionsFor keeps only proteins the profile allows (Vegan + Kidney �
 
 test("freeStaplesFor drops a staple the profile bans (Hypertension → no free salt)", () => {
   const empty = { foodAllergies: [], foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [] };
-  assert.deepEqual(freeStaplesFor(buildDietMatchers(derivePatientBans(empty))), ["salt", "pepper", "water"]);
+  // The list is the cupboard the prompt may draw on for free — salt, pepper,
+  // water, a cooking fat and the dried spices. What matters here is that a
+  // profile ban removes an item rather than the exact membership.
+  const none = freeStaplesFor(buildDietMatchers(derivePatientBans(empty)));
+  for (const expected of ["salt", "pepper", "water", "olive oil", "butter"]) {
+    assert.ok(none.includes(expected), `${expected} should be free by default`);
+  }
   const hypertension = { ...empty, healthConditions: [{ condition: { bannedIngredients: [{ name: "salt" }, { name: "kosher salt" }] } }] };
-  assert.deepEqual(freeStaplesFor(buildDietMatchers(derivePatientBans(hypertension))), ["pepper", "water"]);
+  const banned = freeStaplesFor(buildDietMatchers(derivePatientBans(hypertension)));
+  assert.ok(!banned.includes("salt"), "a hypertension profile must not be handed free salt");
+  assert.ok(banned.includes("pepper") && banned.includes("olive oil"));
 });
 
 // ── A dish name must not promise food the dish lacks ────────────────────────

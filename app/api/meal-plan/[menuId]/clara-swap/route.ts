@@ -23,9 +23,8 @@ import {
   descriptionPromisesMissingFood,
   cooksWithUnlistedFat,
 } from "@/lib/clara/recipe-generation";
-import { dishProblem, BREAKFAST_MAX_MINUTES } from "@/lib/dish-plausibility";
+import { dishProblem, catalogFoodVocabulary, BREAKFAST_MAX_MINUTES } from "@/lib/dish-plausibility";
 import { dishProtein } from "@/lib/meal-plan";
-import { ingredientTokens } from "@/lib/basket-match";
 import {
   resolveMacroProfile,
   getMacroPercentages,
@@ -112,10 +111,9 @@ export async function POST(
 
   // The catalog's food vocabulary, so a swapped dish's name is held to the
   // same promise as a generated one ("…with Brown Rice" must contain it).
-  const catalogFoodTokens = new Set<string>();
-  for (const ing of await prisma.ingredient.findMany({ select: { name: true } })) {
-    for (const t of ingredientTokens(ing.name)) catalogFoodTokens.add(t);
-  }
+  const catalogFoodTokens = catalogFoodVocabulary(
+    (await prisma.ingredient.findMany({ select: { name: true } })).map((i) => i.name)
+  );
 
   // What else the user is eating today. The swap used to be blind to it, so
   // swapping two slots on one day produced ground turkey in all three

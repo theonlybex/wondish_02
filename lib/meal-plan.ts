@@ -18,7 +18,7 @@ import {
 } from "@/lib/caloric-engine";
 import { macroDeviation } from "@/lib/macros";
 import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
-import { dishProblem } from "@/lib/dish-plausibility";
+import { dishProblem, catalogFoodVocabulary } from "@/lib/dish-plausibility";
 import { isCoveredByBasket, BASKET_STAPLES } from "@/lib/basket-coverage";
 import { ingredientTokens } from "@/lib/basket-match";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
@@ -363,11 +363,10 @@ export async function buildMealPlanMenus(
   // rows are already in memory, and the two sources between them cover every
   // food word a dish or a generated recipe can legitimately name. Erring
   // small is the safe direction — an unknown word is skipped, not rejected.
-  const catalogFoodTokens = new Set<string>();
-  for (const r of recipePoolRaw) {
-    for (const ri of r.ingredients) for (const t of ingredientTokens(ri.ingredient.name)) catalogFoodTokens.add(t);
-  }
-  for (const b of opts.basket ?? []) for (const t of ingredientTokens(b)) catalogFoodTokens.add(t);
+  const catalogFoodTokens = catalogFoodVocabulary([
+    ...recipePoolRaw.flatMap((r) => r.ingredients.map((ri) => ri.ingredient.name)),
+    ...(opts.basket ?? []),
+  ]);
 
   // ── Plausibility ───────────────────────────────────────────────────────────
   // A dish is re-checked HERE, not only when it was written. The generation
@@ -436,6 +435,9 @@ export async function buildMealPlanMenus(
   // Clara dishes — still under every builder rule below. Default stays
   // thin-pool-only top-up.
   const MIN_POOL_PER_TYPE = opts.claraFirst ? 0 : 12;
+  // Snack is padding rather than a slot, so it needs enough dishes for a
+  // varied week and no more.
+  const SNACK_POOL_TARGET = 5;
   // One week of dishes: 7 per meal type → 7 distinct breakfasts/lunches/
   // dinners/snacks, i.e. a full week of variety. The builder then fills the
   // (unchanged) plan from these, repeating week to week per its no-repeat rule.
@@ -458,10 +460,16 @@ export async function buildMealPlanMenus(
         // empty snack pool is normal and must not trigger generation. Breakfast,
         // lunch and dinner are real slots — a gap there is a broken week.
         const isSnack = mt.name.toLowerCase() === "snack";
+        // Snacks get a SMALL top-up in basket mode, not none. Asking for zero
+        // kept the cost down and produced the same snack on all seven days: a
+        // 15-ingredient basket covers about one library snack, and the variety
+        // tiers then have nothing to offer but reuse (QA 2026-09-24, one dish
+        // in 7 of 28 rows). A handful is enough for a week of different
+        // afternoons, and far cheaper than treating snack as a full slot.
         const count = opts.claraFirst
           ? CLARA_PER_TYPE
-          : isSnack && opts.basket
-            ? 0
+          : isSnack
+            ? Math.min(SNACK_POOL_TARGET, Math.max(0, SNACK_POOL_TARGET - eligible))
             : Math.max(0, MIN_POOL_PER_TYPE - eligible);
         return {
           mealTypeId: mt.id,

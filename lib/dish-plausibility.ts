@@ -145,8 +145,54 @@ export function breakfastIsQuickEnough(d: PlausibleDish): boolean {
   return total <= BREAKFAST_MAX_MINUTES;
 }
 
+/**
+ * The food words a dish name may only use when the dish contains them.
+ *
+ * Built from the HEAD NOUN of each catalog name, not every token. Feeding in
+ * every token poisons the vocabulary with the adjectives inside multi-word
+ * ingredient names — "Creamy peanut butter" contributes "creamy", "Red bell
+ * peppers" contributes "red", "Mixed greens" contributes "mixed", "Sweet
+ * potatoes" contributes "sweet" — and those words then have to be "contained"
+ * in the dish. Measured against 400 real generated dishes on 2026-09-24: the
+ * every-token vocabulary flagged 45% of them, almost all for prose like
+ * "savory-sweet skillet" or "roasted red bell pepper" where the dish was
+ * exactly what it said. Head nouns keep every real catch — "lemon" from
+ * "Lemons", "almond" from "Almonds", "cinnamon" — and drop the adjectives.
+ */
+export function catalogFoodVocabulary(ingredientNames: Iterable<string>): Set<string> {
+  const vocab = new Set<string>();
+  for (const name of ingredientNames) {
+    const tokens = ingredientTokens(name);
+    if (tokens.size === 0) continue;
+    if (tokens.size === 1) {
+      for (const t of tokens) vocab.add(t);
+      continue;
+    }
+    let head: string | null = null;
+    for (const t of tokens) head = t; // insertion order: the last word
+    if (head) vocab.add(head);
+  }
+  return vocab;
+}
+
 /** Words describing how a dish is made or served, not what is in it. */
 export const TITLE_NON_FOOD = new Set([
+  // Preparations MADE from the listed ingredients rather than bought. A
+  // "lemon-cilantro dressing" over listed oil, lemon and cilantro is a
+  // description of technique, not a missing shopping item.
+  "sauce", "dressing", "glaze", "marinade", "drizzle", "dip", "broth", "stock",
+  "puree", "mash", "crumble", "topping", "mixture", "batter", "dough", "filling",
+  // FORMS of an ingredient that is listed. "Crisp carrot and celery sticks",
+  // "finished with lemon juice" over a listed lemon — the knife does not add a
+  // shopping item. Each of these was a false rejection of a correct dish.
+  "juice", "zest", "peel", "slice", "stick", "strip", "wedge", "cube", "chunk",
+  "spear", "ribbon", "round", "crumb", "meal", "green", "sliver", "shred",
+  // CATEGORY words. A description saying "cheese" over listed feta, or
+  // "berries" over listed strawberries, is accurate — the catalog just names
+  // the specific thing. Requiring the hypernym itself to be an ingredient
+  // rejects the dish for being MORE precise than its own description.
+  "cheese", "berry", "nut", "citrus", "fish", "seafood", "poultry", "melon",
+  "pasta", "noodle", "legume", "squash", "grain", "meat",
   // connectors
   "with", "and", "on", "in", "over", "of", "a", "an", "the", "plus", "topped", "served", "side",
   // methods

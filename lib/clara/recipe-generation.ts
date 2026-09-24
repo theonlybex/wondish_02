@@ -96,7 +96,19 @@ interface TopUpArgs {
 // The prompt used to say "(plus salt, pepper, water)" while the ban line said
 // "NEVER include salt": the model obeyed the first, the filter enforced the
 // second, and a Hypertension profile got 0 of 28 dishes.
-const FREE_STAPLES = ["salt", "pepper", "water"] as const;
+// Widened 2026-09-24 to match what lib/basket-coverage.ts BASKET_STAPLES
+// actually accepts. The narrow list was the cause of a P1: the prompt said
+// only salt, pepper and water were free, so Clara wrote "heat a light spray of
+// cooking oil" into the steps and could not list the oil — 13 of 25 dishes in
+// one week told the reader to sear in a dry pan, and the oil was invisible to
+// both the shopping list and the macros. The kitchen is assumed to have these,
+// and the basket filter already lets a dish use them, so the prompt may as
+// well say so. Profile bans still remove any of them (freeStaplesFor).
+const FREE_STAPLES = [
+  "salt", "pepper", "water",
+  "olive oil", "cooking oil", "butter",
+  "garlic powder", "onion powder", "paprika", "cumin", "oregano", "thyme", "cinnamon",
+] as const;
 export function freeStaplesFor(matchers: DietMatchers): string[] {
   return FREE_STAPLES.filter((s) => evaluateDishAgainstProfile([s], matchers).passed);
 }
@@ -149,7 +161,15 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     `- usesIngredients lists EVERY ingredient in the dish; leave missingIngredients empty.`,
     `- amounts: one entry per usesIngredients item with the PER-SERVING quantity and unit (g, oz, lb, ml, cup, tablespoon, teaspoon, or "" for whole items like eggs). Same spelling as in usesIngredients.`,
     `- steps: provide 5–10 clear, numbered cooking instructions a home cook can follow (prep, cook, assemble, serve). Every dish MUST have real steps.`,
-    `- perServing macros must be realistic and self-consistent (protein/carbs/fat roughly explain the calories).${macro}`,
+    `- perServing macros must be realistic and self-consistent: protein*4 + carbs*4 + fat*9 must come within 5% of the calories you state. The calories are recomputed from your macros, so wrong macros change the dish.${macro}`,
+    // These three rules exist because they are what the deterministic gates
+    // reject for. Stating them recovered acceptance from 3-of-24 to well over
+    // half: a rejected dish costs a whole generation slot and thins the pool,
+    // which is how a week ends up serving one dish seven times.
+    `- The DESCRIPTION may only mention food that is in usesIngredients. Do not describe bread as "whole grain" unless the listed bread is whole grain, and do not mention a herb, citrus or sauce you did not list.`,
+    `- If any step sears, fries, sautés or browns something, the fat used MUST be in usesIngredients with its amount. A dry pan is not a recipe.`,
+    `- Salt must never exceed 1 teaspoon per serving.`,
+    `- Every dish needs a DISTINCT name — no two dishes in this batch may share a name.`,
     `- mealType must be exactly one of: ${args.requests.map((r) => r.mealTypeName).join(", ")}.`,
     args.cuisine
       ? `- Vary proteins and dishes within ${args.cuisine} cuisine; avoid near-duplicates.`
