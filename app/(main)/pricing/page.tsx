@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 const faqs = [
   {
     q: "Do I need a credit card to start?",
-    a: "No. The Free plan requires no payment information. You only need a card when upgrading to Plus.",
+    a: "No. Free needs no payment information, and it is not a trial — it is the whole app with smaller allowances. You only need a card when you want Plus's higher limits.",
   },
   {
     q: "Can I cancel my Plus subscription?",
@@ -23,7 +23,7 @@ const faqs = [
   },
   {
     q: "What happens to my data if I downgrade?",
-    a: "All your meal history, journal entries, and profile data are preserved. Plus-only features (like the full planner) will be locked but your data stays safe.",
+    a: "Everything is preserved — meal history, journal entries, profile. And no feature disappears: Free has the same app, at Free's weekly and daily allowances. You keep the planner, Clara and your grocery lists; you just get fewer new weeks and messages.",
   },
   {
     q: "Is there a family or team plan?",
@@ -41,6 +41,10 @@ export default async function PricingPage({
   const showUpgradeBanner = upgrade === "1";
 
   let isLoggedIn = !!userId;
+  // A coupon holder is NOT a paying customer and not a free user; this page is
+  // the destination of their own "Beta → Plus" badge, so it has to say where
+  // they stand and when their access ends.
+  let betaAccessUntil: Date | null = null;
 
   if (userId) {
     const account = await prisma.account.findUnique({
@@ -54,16 +58,25 @@ export default async function PricingPage({
       redirect("/membership");
     }
     isLoggedIn = !!account;
+    const coupon = (account?.subscriptions ?? [])
+      .filter((s) => s.source === "COUPON" && s.plan === "PREMIUM" && s.status === "ACTIVE")
+      .map((s) => s.stripeCurrentPeriodEnd)
+      .filter((d): d is Date => d instanceof Date)
+      .sort((a, b) => b.getTime() - a.getTime());
+    betaAccessUntil = coupon[0] ?? null;
   }
 
   return (
     <div className="min-h-screen pt-16">
       {showUpgradeBanner && (
         <div className="bg-primary text-white text-center py-3 px-5 text-sm font-medium">
-          A Plus subscription is required to access the dashboard. Upgrade below to get full access.
+          {/* ?upgrade=1 is linked from a quota refusal, not from a locked
+              dashboard — the paywall was removed on 2026-09-17 and no
+              subscription is required to reach any screen. */}
+          You&apos;ve used up an allowance for now. Plus raises every limit — or wait for the reset, nothing is locked.
         </div>
       )}
-      <PricingSection isLoggedIn={isLoggedIn} />
+      <PricingSection isLoggedIn={isLoggedIn} betaAccessUntil={betaAccessUntil} />
 
       {/* FAQ */}
       <section className="bg-white py-24 px-5 sm:px-8">

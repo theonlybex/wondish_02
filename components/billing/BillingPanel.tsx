@@ -68,7 +68,12 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
         <p className="text-[9px] tracking-[0.28em] uppercase font-bold mb-2" style={{ color: "#ABA6A6" }}>Current plan</p>
         <p className="text-navy font-bold text-lg mb-1">Free</p>
         <p className="text-sm mb-5" style={{ color: "#848181" }}>
-          Upgrade to unlock the full meal planner, weekly generation and Clara without limits.
+          {/* Two false claims until 2026-09-24: nothing is "unlocked" by
+              paying — Free has the whole app, including the planner a free
+              account can and does generate — and Plus is not "without
+              limits", it is 25 Clara messages a day and 5 new weeks a week. */}
+          You have the whole app on Free: 1 new week a week and 5 Clara messages a day.
+          Plus raises those to 5 and 25.
         </p>
         <Link href="/pricing" className="inline-flex min-h-[44px] items-center px-6 rounded-2xl bg-primary text-white font-bold text-sm">
           See plans →

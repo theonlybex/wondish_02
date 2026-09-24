@@ -16,8 +16,24 @@ function Check({ dark = false }: { dark?: boolean }) {
   );
 }
 
-export default async function PricingSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
+export default async function PricingSection({
+  isLoggedIn = false,
+  betaAccessUntil = null,
+}: {
+  isLoggedIn?: boolean;
+  /**
+   * Set for a coupon holder: the date their beta access ends. A beta tester's
+   * own header badge links here, and the page used to greet them with two
+   * cards and a "Continue with Free →" button — offering to move them DOWN
+   * from the access they have, with no mention of the date it runs out
+   * (QA 2026-09-24).
+   */
+  betaAccessUntil?: Date | null;
+}) {
   const t = await getTranslations("pricing");
+  const betaEnds = betaAccessUntil
+    ? betaAccessUntil.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+    : null;
 
   const freeFeatures = [t("freeF1"), t("freeF2"), t("freeF3"), t("freeF4")];
   const premiumFeatures = [t("premiumF1"), t("premiumF2"), t("premiumF3"), t("premiumF4"), t("premiumF5"), t("premiumF6"), t("premiumF7"), t("premiumF8"), t("premiumF9")];
@@ -39,6 +55,21 @@ export default async function PricingSection({ isLoggedIn = false }: { isLoggedI
             {t("headline")}
           </h2>
           <p className="text-lg" style={{ color: "#4F4A4A" }}>{t("subheadline")}</p>
+
+          {betaEnds && (
+            <div
+              className="mt-7 rounded-2xl px-5 py-4 text-left"
+              style={{ background: "rgba(129,37,73,0.06)", border: "1px solid rgba(129,37,73,0.16)" }}
+            >
+              <p className="text-sm font-bold" style={{ color: "#812549" }}>
+                You&apos;re on Beta access until {betaEnds}
+              </p>
+              <p className="text-sm mt-1" style={{ color: "#4F4A4A" }}>
+                Beta sits between the two below — about half of Plus&apos;s allowances, and it ends on that
+                date. Plus keeps your access going afterwards; you don&apos;t need to do anything today.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="grid sm:grid-cols-2 gap-5 max-w-[880px] mx-auto mt-[54px]">
@@ -65,7 +96,7 @@ export default async function PricingSection({ isLoggedIn = false }: { isLoggedI
               className="w-full text-center px-7 py-[15px] rounded-full font-semibold text-[15px] transition-all hover:-translate-y-0.5 hover:bg-[#F5F1DD]"
               style={{ background: "#F9F7ED", color: "#5F1C35" }}
             >
-              {isLoggedIn ? t("freeCtaLoggedIn") : t("freeCta")}
+              {betaEnds ? "Back to the app →" : isLoggedIn ? t("freeCtaLoggedIn") : t("freeCta")}
             </Link>
           </div>
 
