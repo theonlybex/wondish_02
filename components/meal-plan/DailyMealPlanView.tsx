@@ -18,7 +18,15 @@ interface DailyMealPlanViewProps {
   initialLoggedRecipeIds?: string[];
   initialMealRatings?: Record<string, number>;
   initialDailyCalorieTarget?: number | null;
+  /** Target grams for the rendered day, so the four rings share a denominator
+   *  from the first paint rather than after a round-trip. */
+  initialDailyMacroTarget?: { protein: number; carbs: number; fat: number } | null;
+  /** True when the URL asked for a specific day (?date=). Suppresses the
+   *  "correct the server's timezone to the client's today" rewrite. */
+  pinnedDate?: boolean;
   initialStale?: boolean;
+  /** The account already has a generation in flight (mealPlanStatus). */
+  initialGenerating?: boolean;
 }
 
 function parseLocalDate(dateStr: string): Date {
@@ -44,6 +52,11 @@ const MEAL_TYPE_SLUG: Record<string, MealType> = {
 function mealTypeSlug(name?: string | null): MealType {
   return MEAL_TYPE_SLUG[name ?? ""] ?? "snack";
 }
+
+// Tags that record provenance rather than describing the food.
+const INTERNAL_TAGS = new Set(["clara", "clara-swap", "generated", "seed", "import"]);
+const visibleTags = (tags?: string[] | null): string[] =>
+  (tags ?? []).filter((t) => !INTERNAL_TAGS.has(t.trim().toLowerCase()));
 
 /**
  * The user-facing name for a dishType, or null when it says nothing. Every
@@ -253,10 +266,14 @@ function InlineDishExpand({
           </div>
         )}
 
-        {/* Tags */}
-        {r.tags?.length > 0 && (
+        {/* Tags — minus the internal ones. "clara" and "clara-swap" are how
+            the catalog records who WROTE a dish (lib/clara/recipe-generation.ts
+            tags every generated row), and they were rendering as a "#clara"
+            chip on every card in a generated week. Provenance is not a label
+            for the diner. */}
+        {visibleTags(r.tags).length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {r.tags.map((tag) => (
+            {visibleTags(r.tags).map((tag) => (
               <span key={tag} className="text-[9px] font-medium text-[#848181] bg-[#F7F6FB] px-2 py-0.5 rounded-full">
                 #{tag}
               </span>
@@ -301,7 +318,10 @@ export default function DailyMealPlanView({
   initialLoggedRecipeIds = [],
   initialMealRatings = {},
   initialDailyCalorieTarget = null,
+  initialDailyMacroTarget = null,
+  pinnedDate = false,
   initialStale = false,
+  initialGenerating = false,
 }: DailyMealPlanViewProps) {
   const [date, setDate]                 = useState(() => parseLocalDate(initialDate));
   const [menus, setMenus]               = useState(initialMenus);
@@ -327,7 +347,7 @@ export default function DailyMealPlanView({
   // Target grams for the day, from /api/meal-plan. The macro rows used to be
   // divided by the PLAN's own totals while the calorie ring above them used
   // the target — one widget, two denominators, neither labelled.
-  const [dailyMacroTarget, setDailyMacroTarget] = useState<{ protein: number; carbs: number; fat: number } | null>(null);
+  const [dailyMacroTarget, setDailyMacroTarget] = useState<{ protein: number; carbs: number; fat: number } | null>(initialDailyMacroTarget);
   // Basket readiness for the New-week gate (min ingredients + category
   // coverage). Generation is manual now — no auto-start; when the week runs
   // out the New-week panel below drives it.
@@ -363,34 +383,88 @@ export default function DailyMealPlanView({
   useEffect(() => {
     const clientToday = format(new Date(), "yyyy-MM-dd");
     const serverDay = format(date, "yyyy-MM-dd");
-    const dateStr = clientToday !== serverDay ? clientToday : serverDay;
+    // The timezone correction applies ONLY when the page is showing "today".
+    // When the URL asked for a specific day, the server rendered that day on
+    // purpose and "today" is not a correction, it is a different question:
+    // this branch was silently rewriting ?date=2026-09-26 back to today, which
+    // is why the parameter still looked dead after the page started honouring
+    // it (QA 2026-09-24).
+    const correctTimezone = !pinnedDate && clientToday !== serverDay;
+    const dateStr = correctTimezone ? clientToday : serverDay;
     apiFetch(`/api/meal-plan?date=${dateStr}&exchanges=1`)
       .then(async (r) => {
         const data = await r.json().catch(() => null);
         // Any error body (401 after idle, 404, 403) used to wipe the
         // server-rendered plan to [] and invite a wasted regeneration (C2).
         if (!r.ok || !data) return;
-        if (clientToday !== serverDay) {
+        if (correctTimezone) {
           setDate(parseLocalDate(clientToday));
           setMenus(data.menus ?? []);
           setLoggedRecipeIds(data.loggedRecipeIds ?? []);
           setMealRatings(data.mealRatings ?? {});
           setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
-      setDailyMacroTarget(data.dailyMacroTarget ?? null);
-          setDailyMacroTarget(data.dailyMacroTarget ?? null);
         } else if (dailyCalorieTarget === null && data.dailyCalorieTarget != null) {
           setDailyCalorieTarget(data.dailyCalorieTarget);
-          setDailyMacroTarget(data.dailyMacroTarget ?? null);
         }
+        // Unconditionally, and NOT inside either branch: the macro target has
+        // no server-rendered value to fall back on, so gating it behind
+        // "calorie target is still null" meant it stayed null on every normal
+        // load. The calorie ring then divided by the target while the three
+        // macro rows divided by the plan's own totals — the exact defect the
+        // single-denominator change was meant to fix, still shipping because
+        // the number it needed never arrived.
+        if (data.dailyMacroTarget) setDailyMacroTarget(data.dailyMacroTarget);
         setExchanges(data.exchanges ?? null);
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Adopt a build that was already running when this page loaded: poll until
+  // it finishes, then read the plan in, exactly as if this tab had asked.
+  useEffect(() => {
+    if (!initialGenerating) return;
+    let stop = false;
+    const tick = async () => {
+      if (stop) return;
+      try {
+        const res = await apiFetch("/api/meal-plan/status");
+        const data = await res.json().catch(() => null);
+        if (res.ok && data && data.status !== "GENERATING") {
+          const dateStr = format(new Date(), "yyyy-MM-dd");
+          const mRes = await apiFetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
+          const mData = await mRes.json().catch(() => null);
+          if (mRes.ok && mData) {
+            setMenus(mData.menus ?? []);
+            setLoggedRecipeIds(mData.loggedRecipeIds ?? []);
+            setMealRatings(mData.mealRatings ?? {});
+            if (mData.mealPlanStartDate) setStartDate(new Date(mData.mealPlanStartDate));
+            setDailyCalorieTarget(mData.dailyCalorieTarget ?? null);
+            if (mData.dailyMacroTarget) setDailyMacroTarget(mData.dailyMacroTarget);
+            setExchanges(mData.exchanges ?? null);
+            setStale(false);
+          }
+          setNewWeekLoading(false);
+          return;
+        }
+      } catch {
+        // A failed poll is not a failed build; keep waiting.
+      }
+      if (!stop) setTimeout(tick, 4000);
+    };
+    void tick();
+    return () => { stop = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // New-week (rolling) generation — manual, gated on basket readiness. Builds
   // the next 7 days from the pantry basket (see /api/meal-plan/new-week).
-  const [newWeekLoading, setNewWeekLoading] = useState(false);
+  // A build started elsewhere — another tab, or this tab before the user
+  // navigated away and came back. Until 2026-09-24 that state was invisible:
+  // /api/meal-plan/status said GENERATING while the page showed the OLD plan,
+  // the "profile changed" banner and a live New week button, so a tester was
+  // invited to spend a second weekly generation on a build already running.
+  const [newWeekLoading, setNewWeekLoading] = useState(initialGenerating);
   const [newWeekError, setNewWeekError] = useState("");
   // Set when the 429 body says the premium tier has a higher weekly limit.
   const [newWeekUpgrade, setNewWeekUpgrade] = useState(false);
@@ -589,14 +663,17 @@ export default function DailyMealPlanView({
   const consumedProtein  = menus.filter(menuDone).reduce((sum, m) => sum + menuMacro(m, "protein"), 0);
   const consumedCarbs    = menus.filter(menuDone).reduce((sum, m) => sum + menuMacro(m, "carbs"), 0);
   const consumedFat      = menus.filter(menuDone).reduce((sum, m) => sum + menuMacro(m, "fat"), 0);
-  const budgetCalories = dailyCalorieTarget ?? totalCalories;
-  // All four rings measure intake against the SAME thing: the day's target
-  // when we know it, the plan's own totals when we don't. Mixing the two made
-  // protein read 166 g here and 169 g on /overview for the same day.
-  const budgetProtein = dailyMacroTarget?.protein ?? totalProtein;
-  const budgetCarbs   = dailyMacroTarget?.carbs   ?? totalCarbs;
-  const budgetFat     = dailyMacroTarget?.fat     ?? totalFat;
+  // All four rings measure intake against the SAME thing, and the label says
+  // which: the day's target when BOTH denominators are known, the plan's own
+  // totals otherwise. The either/or matters — a first pass took calories from
+  // the target and macros from the plan whenever the macro target was missing,
+  // and then labelled the card "this day's plan", which was false for the
+  // headline number sitting right above it.
   const budgetIsTarget = dailyCalorieTarget != null && dailyMacroTarget != null;
+  const budgetCalories = budgetIsTarget ? dailyCalorieTarget! : totalCalories;
+  const budgetProtein  = budgetIsTarget ? dailyMacroTarget!.protein : totalProtein;
+  const budgetCarbs    = budgetIsTarget ? dailyMacroTarget!.carbs   : totalCarbs;
+  const budgetFat      = budgetIsTarget ? dailyMacroTarget!.fat     : totalFat;
 
   // Signed, so an overshoot is as visible as an undershoot. Math.max(0, …)
   // clamped it, so a day planned 100 kcal OVER target rendered as nothing at

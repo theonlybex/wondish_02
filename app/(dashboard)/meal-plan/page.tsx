@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { format } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
-import { computeAllMetrics, gradualDailyCals, maxDailyDeficit, resolvePlanDirection, resolveSex, type CaloricProfileInput } from "@/lib/caloric-engine";
+import { computeAllMetrics, computeDailyMacros, gradualDailyCals, maxDailyDeficit, resolveMacroProfile, resolvePlanDirection, resolveSex, type CaloricProfileInput } from "@/lib/caloric-engine";
 import DailyMealPlanView from "@/components/meal-plan/DailyMealPlanView";
 // import Link from "next/link"; // only used by the hidden Weekly view link
 
@@ -64,6 +64,10 @@ export default async function MealPlanPage({
         sexAtBirth: true, birthday: true,
         gender: { select: { name: true } },
         physicalActivity: { select: { level: true } },
+        // The macro split depends on conditions (diabetic) and motivations
+        // (muscle gain), so the SSR macro denominator needs them too.
+        healthConditions: { select: { condition: { select: { name: true } } } },
+        motivations: { select: { motivation: { select: { name: true } } } },
       },
     }),
   ]);
@@ -117,6 +121,24 @@ export default async function MealPlanPage({
     }
   }
 
+  // The macro denominator, server-rendered alongside the calorie one. Without
+  // it the first paint divided calories by the target and macros by the plan.
+  let initialDailyMacroTarget: { protein: number; carbs: number; fat: number } | null = null;
+  if (initialDailyCalorieTarget != null) {
+    const macros = computeDailyMacros(
+      initialDailyCalorieTarget,
+      resolveMacroProfile(
+        patient?.healthConditions?.map((hc) => hc.condition.name) ?? [],
+        patient?.motivations?.map((pm) => pm.motivation.name) ?? []
+      )
+    );
+    initialDailyMacroTarget = {
+      protein: Math.round(macros.totalProteinG),
+      carbs: Math.round(macros.totalCarbsG),
+      fat: Math.round(macros.totalFatG),
+    };
+  }
+
   return (
     <div className="max-w-6xl mx-auto pb-8">
       <style>{`
@@ -140,7 +162,10 @@ export default async function MealPlanPage({
           initialLoggedRecipeIds={loggedRecipeIds}
           initialMealRatings={initialMealRatings}
           initialDailyCalorieTarget={initialDailyCalorieTarget}
+          initialDailyMacroTarget={initialDailyMacroTarget}
+          pinnedDate={parsed !== null && !Number.isNaN(parsed.getTime())}
           initialStale={patient?.mealPlanStale ?? false}
+          initialGenerating={patient?.mealPlanStatus === "GENERATING"}
         />
       </div>
     </div>

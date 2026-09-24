@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import { MAX_MESSAGE_CHARS } from "@/lib/chat-history";
 import { apiFetch } from "@/lib/client-fetch";
 
@@ -24,6 +25,9 @@ export default function DishCheckerClient({ firstName }: Props) {
   const [messages, setMessages] = useState<Message[]>([
     { role: "assistant", content: opening },
   ]);
+  // Set when a refusal says a higher tier would help, so the bubble can offer
+  // the upgrade instead of naming a limit and stopping there.
+  const [quotaUpgrade, setQuotaUpgrade] = useState(false);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -101,6 +105,12 @@ export default function DishCheckerClient({ firstName }: Props) {
             if (typeof errData?.error === "string" && /[.!?…]$/.test(errData.error.trim())) {
               errMsg = errData.error;
             }
+            // guardAiSpend sets upgrade:true when a paid tier would actually
+            // get more. The plan surface has always rendered the link; this one
+            // dropped the flag, so a free user hit "You've used your 5 free
+            // Clara messages for today. Plus gives you 25 a day." with nothing
+            // to click and no /pricing anywhere on the page (QA 2026-09-24).
+            if (errData?.code === "quota" && errData?.upgrade === true) setQuotaUpgrade(true);
           } catch { /* ignore parse errors */ }
         }
         throw new Error(errMsg);
@@ -221,6 +231,18 @@ export default function DishCheckerClient({ firstName }: Props) {
                   ) : (
                     ""
                   ))}
+                {/* The link belongs IN the refusal bubble: naming a limit
+                    without offering the way past it is a dead end, and the
+                    plan surface has always got this right. */}
+                {msg.error && quotaUpgrade && i === messages.length - 1 && (
+                  <Link
+                    href="/pricing"
+                    className="block mt-2 font-bold hover:underline"
+                    style={{ color: "#812549" }}
+                  >
+                    Upgrade for more →
+                  </Link>
+                )}
               </div>
             </div>
           ))}
@@ -232,6 +254,20 @@ export default function DishCheckerClient({ firstName }: Props) {
           className="flex-shrink-0 p-4 border-t"
           style={{ borderColor: "rgba(30,26,26,0.06)" }}
         >
+          {/* A silent cap is still a surprise: the box simply stopped
+              accepting keystrokes at 4,000 with nothing to explain it. The
+              counter appears only once it is close enough to matter. */}
+          {input.length > MAX_MESSAGE_CHARS * 0.9 && (
+            <p
+              className="text-[10px] mb-1.5 text-right tabular-nums"
+              aria-live="polite"
+              style={{ color: input.length >= MAX_MESSAGE_CHARS ? "#B75E78" : "#848181" }}
+            >
+              {input.length >= MAX_MESSAGE_CHARS
+                ? `Message limit reached — ${MAX_MESSAGE_CHARS.toLocaleString()} characters.`
+                : `${(MAX_MESSAGE_CHARS - input.length).toLocaleString()} characters left`}
+            </p>
+          )}
           <div className="flex gap-3 items-end">
             {/* maxLength matches the server's MAX_MESSAGE_CHARS. The server
                 truncates silently, so a 5,000-character message was accepted,

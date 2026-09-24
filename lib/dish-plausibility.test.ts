@@ -128,10 +128,38 @@ test("a title may not name food the dish does not list", () => {
 test("cooking words and formats never have to appear in the ingredients", () => {
   const d = dish({
     generated: true,
-    name: "Grilled Chicken Skillet Bowl with Fresh Herbs",
+    name: "Grilled Chicken Skillet Bowl",
     ingredients: [{ name: "Boneless chicken breasts", quantity: 150, unit: "g" }, { name: "Jasmine rice", quantity: 1, unit: "cup" }],
   });
   assert.equal(dishProblem(d, CATALOG), null);
+});
+
+test("a generic \"with herbs\" still promises that SOME herb exists", () => {
+  // Three dishes in one QA week were titled or described "with herbs" while
+  // their only seasonings were salt and pepper. No specific herb is demanded —
+  // any one satisfies it — but "none at all" is not a herb.
+  const noHerb = dish({
+    generated: true,
+    name: "Zucchini and Tomato Bake with Herbs",
+    ingredients: [
+      { name: "zucchini", quantity: 200, unit: "g" },
+      { name: "Roma tomatoes", quantity: 120, unit: "g" },
+      { name: "Extra virgin olive oil", quantity: 1.75, unit: "tbsp" },
+      { name: "Salt", quantity: 0.25, unit: "tsp" },
+    ],
+  });
+  assert.equal(dishProblem(noHerb, CATALOG), "title-promises-missing-food");
+
+  const withThyme = dish({
+    generated: true,
+    name: "Roasted Broccoli with Olive Oil and Herbs",
+    ingredients: [
+      { name: "broccoli", quantity: 200, unit: "g" },
+      { name: "Extra virgin olive oil", quantity: 2, unit: "tsp" },
+      { name: "dried thyme", quantity: 0.25, unit: "tsp" },
+    ],
+  });
+  assert.equal(dishProblem(withThyme, CATALOG), null);
 });
 
 test("without catalog vocabulary the title check is skipped, not faked", () => {

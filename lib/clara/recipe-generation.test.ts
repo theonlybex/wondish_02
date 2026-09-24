@@ -174,12 +174,20 @@ test("a health claim in the name has to be in the ingredients", () => {
   );
 });
 
+test("\"herb-roasted\" with no herb in the list is rejected", () => {
+  // The generic word demands no SPECIFIC herb, but it does promise one exists.
+  assert.equal(
+    titlePromisesMissingFood(titled("Herb-Roasted Turkey Breast with Wild Rice", ["Turkey breast", "Wild rice", "Extra virgin olive oil", "salt"]), FOOD_VOCAB),
+    "herbs"
+  );
+});
+
 test("title gate does not reject over cooking methods, formats or generic seasoning", () => {
   // Every one of these is a real accepted dish; a gate that rejects them would
   // thin the pool and bring back the repeated-dish weeks.
   for (const [name, ings] of [
     ["Roasted Broccoli with Olive Oil and Herbs", ["broccoli", "Extra virgin olive oil", "salt", "dried thyme"]],
-    ["Herb-Roasted Turkey Breast with Wild Rice and Zucchini", ["Turkey breast", "Wild rice", "zucchini", "Extra virgin olive oil"]],
+    ["Herb-Roasted Turkey Breast with Wild Rice and Zucchini", ["Turkey breast", "Wild rice", "zucchini", "Extra virgin olive oil", "dried thyme"]],
     ["Ground Turkey Taco Bowl with Jasmine Rice and Bell Peppers", ["Ground turkey", "jasmine rice", "Bell peppers", "salt"]],
     ["Turkey and Vegetable Hash with Jasmine Rice", ["Turkey breast", "carrots", "zucchini", "jasmine rice"]],
     ["Pan-Seared Ground Beef with Basmati Rice and Carrots", ["ground beef", "Basmati rice", "carrots"]],

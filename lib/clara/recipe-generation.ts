@@ -294,6 +294,7 @@ export function toPlausibleDish(r: FridgeRecipe, mealTypeName: string): Plausibl
   const byName = new Map((r.amounts ?? []).map((a) => [a.name.trim().toLowerCase(), a]));
   return {
     name: r.name,
+    description: r.description ?? null,
     mealTypeName,
     prepMinutes: r.prepMinutes ?? null,
     cookMinutes: r.cookMinutes ?? null,
@@ -473,17 +474,14 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     const problem = dishProblem(toPlausibleDish(r, slot.mealTypeName), args.catalogFoodTokens ?? new Set());
     if (problem) { reject(problem, r); continue; }
 
-    // Generation-only, because both are fixable by asking again (see the
-    // comments on each). A stored dish is never refused over these.
-    if (args.catalogFoodTokens) {
-      const described = descriptionPromisesMissingFood(r, args.catalogFoodTokens);
-      if (described !== null) {
-        if (process.env.AI_DEBUG) console.warn(`[recipe-generation] rejected (description-promises-${described}): ${r.name}`);
-        reject("description-mismatch", r);
-        continue;
-      }
-    }
+    // Generation-only, because Clara is in the loop and can be asked again.
     if (cooksWithUnlistedFat(r)) { reject("cooks-without-listing-fat", r); continue; }
+    // EVERY ingredient needs an amount here, not just one. dishProblem only
+    // refuses a stored dish when no row has a quantity at all; at generation
+    // the standard is the whole list, because a half-measured dish becomes a
+    // grocery list that silently under-counts.
+    const plausible = toPlausibleDish(r, slot.mealTypeName);
+    if (plausible.ingredients.some((i) => i.quantity == null)) { reject("missing-amounts", r); continue; }
     const nameKey = r.name.trim().toLowerCase();
     if (!nameKey || seen.has(nameKey)) { reject("duplicate-name", r); continue; }
     seen.add(nameKey);

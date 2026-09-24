@@ -58,7 +58,15 @@ export interface BodyMetricsErrors {
   goalWeight?: string;
 }
 
-const provided = (v: number | null | undefined): v is number => v != null && v !== 0;
+// A field is "not provided" only when it is null/undefined. Zero used to count
+// as absent, which meant a weight of 0 skipped every check in this module —
+// client and server alike, since both call it — and saved: the profile form
+// answered "Profile saved successfully.", stored weight 0 and bmi 0, and the
+// dashboard then degraded to "Incomplete profile. Please fill in weight,
+// height, birthday…" with the calorie numbers gone (QA 2026-09-24). An empty
+// input must reach here as null; 0 is a number the user typed, and 0 lbs is
+// out of bounds like any other impossible value.
+const provided = (v: number | null | undefined): v is number => v != null;
 
 export function checkBodyMetrics(input: BodyMetricsInput, units: BodyMetricsUnits): BodyMetricsErrors {
   const errs: BodyMetricsErrors = {};

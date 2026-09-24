@@ -38,6 +38,8 @@ export interface PlausibleDish {
   prepMinutes?: number | null;
   cookMinutes?: number | null;
   ingredients: PlausibleIngredient[];
+  /** The dish's own description sentence, when the caller has it. */
+  description?: string | null;
   /**
    * True for a dish Clara wrote. Gates the title check ONLY — the physical
    * rules (salt, seasoning quantities, breakfast timing) apply to every dish
@@ -59,7 +61,9 @@ export type DishProblem =
   | "breakfast-too-slow"
   | "oversalted"
   | "seasoning-quantity-on-food"
-  | "title-promises-missing-food";
+  | "title-promises-missing-food"
+  | "description-promises-missing-food"
+  | "no-quantities";
 
 const SEASONING_UNIT = /\b(tsp|teaspoons?|pinch|pinches|dash(es)?)\b/i;
 const TABLESPOON = /\b(tbsp|tablespoons?)\b/i;
@@ -260,8 +264,21 @@ export function healthClaimNotListed(phrase: string, ingredientNames: readonly s
   for (const claim of new Set(HEALTH_CLAIMS.map(loosen))) {
     if (said.includes(claim) && !listed.includes(claim)) return claim;
   }
+  // "…with Herbs" and "finished with fresh herbs" over a dish whose only
+  // seasonings are salt and pepper. "herbs" is in TITLE_NON_FOOD because no
+  // SPECIFIC herb should be demanded by a generic word — but the generic word
+  // still promises that some herb exists, and three dishes in one QA week
+  // promised it with none at all. Satisfied by any herb, named or dried.
+  if (/\bherb|\bherbs\b/.test(said) && !HERB_NAMES.some((h) => listed.includes(h))) return "herbs";
   return null;
 }
+
+// Enough to tell "seasoned with herbs" from "salt and pepper only".
+const HERB_NAMES = [
+  "basil", "oregano", "thyme", "rosemary", "parsley", "cilantro", "coriander",
+  "dill", "sage", "tarragon", "chive", "mint", "marjoram", "bay leaf",
+  "italian seasoning", "herbes de provence", "za'atar", "herb",
+];
 
 /**
  * The one predicate. Returns the first problem found, or null when the dish is
@@ -283,6 +300,14 @@ export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): D
     if (seasoningQuantityOnFood(ing)) return "seasoning-quantity-on-food";
   }
 
+  // A dish nobody can shop from. 177 stored dishes have not one quantity on
+  // any ingredient row — one reached a real week as "Large eggs / Sliced bread
+  // / Bell peppers" with no numbers at all, while its own steps said "crack 3
+  // large eggs" (QA 2026-09-24). The amounts also feed the grocery list, so
+  // the dish is unusable rather than merely untidy. A single missing row (an
+  // unmeasured splash of water) is fine; none at all is not a recipe.
+  if (d.ingredients.length > 0 && d.ingredients.every((i) => i.quantity == null)) return "no-quantities";
+
   if (d.generated && catalogFoodTokens.size > 0) {
     const names = d.ingredients.map((i) => i.name);
     // displayDishName first: library rows carry portion-variant suffixes
@@ -290,6 +315,14 @@ export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): D
     // vocabulary and reject the dish over its own id.
     if (phrasePromisesMissingFood(displayDishName(d.name), names, catalogFoodTokens)) {
       return "title-promises-missing-food";
+    }
+    // The description is held to the same promise at SELECTION too, not only
+    // at generation. Keeping it generation-only was a deliberate call that a
+    // QA run then disproved: "…on whole grain toast" over plain sliced bread
+    // reached a user from a row written before the gate existed, and a lying
+    // sentence under an honest title is still the app lying.
+    if (d.description && phrasePromisesMissingFood(d.description, names, catalogFoodTokens)) {
+      return "description-promises-missing-food";
     }
   }
   return null;

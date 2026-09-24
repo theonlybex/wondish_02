@@ -105,7 +105,10 @@ function makeRecipe(o: RecipeOpts) {
     dishType: o.dishType === null || o.dishType === undefined
       ? (o.dishType === null ? null : { name: "Complete Meal" })
       : { name: o.dishType },
-    ingredients: (o.ingredients ?? [`ing-${o.id}`]).map((n) => ({ ingredient: { name: n } })),
+    // Quantities are part of what a real row looks like: the builder refuses a
+    // dish whose ingredient rows carry no amounts at all, because you cannot
+    // shop from it. Fixtures without them were not exercising the real shape.
+    ingredients: (o.ingredients ?? [`ing-${o.id}`]).map((n) => ({ ingredient: { name: n }, quantity: 100, unit: "g" })),
     description: o.description === undefined ? "desc" : o.description,
   };
 }

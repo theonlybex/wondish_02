@@ -44,8 +44,31 @@ test("checkBodyMetrics: goal weight must be a safe target for the height", () =>
 
 test("checkBodyMetrics: absent fields are skipped; firstBodyMetricsError orders weight → height → goal", () => {
   assert.deepEqual(checkBodyMetrics({}, both), {});
-  assert.deepEqual(checkBodyMetrics({ weightLbs: null, heightCm: 0 }, both), {});
+  // heightCm: 0 used to be "absent" here. That expectation was the defect —
+  // see the zero test below; a typed 0 is out of bounds, not unset.
+  assert.match(checkBodyMetrics({ weightLbs: null, heightCm: 0 }, both).height ?? "", /Height must be between/);
   const errs = checkBodyMetrics({ weightLbs: 1000, heightCm: 10, goalWeightLbs: 5 }, both);
   assert.deepEqual(firstBodyMetricsError(errs), { field: "weight", message: "Weight must be between 50 and 700 lbs." });
   assert.equal(firstBodyMetricsError({}), null);
+});
+
+test("zero is a value the user typed, not an absent field", () => {
+  // It skipped every check on both sides of the wire and saved: weight 0,
+  // bmi 0, "Profile saved successfully.", and a dashboard that then called
+  // the profile incomplete.
+  const lbsCm = { weight: "lbs" as const, height: "cm" as const };
+  assert.match(
+    checkBodyMetrics({ weightLbs: 0, heightCm: 170, goalWeightLbs: null }, lbsCm).weight ?? "",
+    /Weight must be between/
+  );
+  assert.match(
+    checkBodyMetrics({ weightLbs: 165, heightCm: 0, goalWeightLbs: null }, lbsCm).height ?? "",
+    /Height must be between/
+  );
+  assert.match(
+    checkBodyMetrics({ weightLbs: 165, heightCm: 170, goalWeightLbs: 0 }, lbsCm).goalWeight ?? "",
+    /Goal weight must be between/
+  );
+  // An untouched field still reaches here as null and is still not an error.
+  assert.deepEqual(checkBodyMetrics({ weightLbs: null, heightCm: null, goalWeightLbs: null }, lbsCm), {});
 });

@@ -363,10 +363,25 @@ export async function buildMealPlanMenus(
   // rows are already in memory, and the two sources between them cover every
   // food word a dish or a generated recipe can legitimately name. Erring
   // small is the safe direction — an unknown word is skipped, not rejected.
-  const catalogFoodTokens = catalogFoodVocabulary([
+  // Derived from the INGREDIENT CATALOG, with the pool and basket as a
+  // fallback. Deriving it from the pool alone (the first attempt, to avoid a
+  // second query) left out every food no stored recipe happened to use, and
+  // the title rule can only judge words it knows: "Chickpea and Spinach Snack
+  // Mix" containing no chickpeas passed cleanly because no pooled recipe used
+  // chickpeas, so "chickpea" was not a food word (QA 2026-09-24).
+  const poolAndBasketNames = [
     ...recipePoolRaw.flatMap((r) => r.ingredients.map((ri) => ri.ingredient.name)),
     ...(opts.basket ?? []),
-  ]);
+  ];
+  let catalogNames: string[] = [];
+  try {
+    catalogNames = (await prisma.ingredient.findMany({ select: { name: true } })).map((i) => i.name);
+  } catch {
+    // Test fixtures stub only the reads the builder needs; the vocabulary is a
+    // quality gate, not a correctness one, so a missing catalog degrades to
+    // the pool's own words rather than failing the build.
+  }
+  const catalogFoodTokens = catalogFoodVocabulary([...catalogNames, ...poolAndBasketNames]);
 
   // ── Plausibility ───────────────────────────────────────────────────────────
   // A dish is re-checked HERE, not only when it was written. The generation
@@ -386,6 +401,7 @@ export async function buildMealPlanMenus(
     const problem = dishProblem(
       {
         name: r.name ?? "",
+        description: r.description,
         mealTypeName: (r.mealTypeId && mealTypeNameById.get(r.mealTypeId)) || "",
         prepMinutes: r.prepTime ?? null,
         cookMinutes: r.cookTime ?? null,
