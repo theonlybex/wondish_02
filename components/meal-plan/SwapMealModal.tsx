@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/client-fetch";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import { RecipeDTO } from "@/types";
@@ -44,7 +45,13 @@ export default function SwapMealModal({
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/meal-plan/${menuId}/clara-swap`, {
+      // apiFetch, not bare fetch: it carries the session refresh every other
+      // call in the app uses. A QA run saw one swap end with the spinner
+      // clearing, the modal closing and nothing changed — unreproducible, but
+      // a raw fetch that 401s after an idle period looks exactly like that,
+      // and a silent no-op is the worst possible outcome for an action the
+      // user spent one of their daily allowance on.
+      const res = await apiFetch(`/api/meal-plan/${menuId}/clara-swap`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ request: request.trim(), cuisine }),
@@ -59,7 +66,9 @@ export default function SwapMealModal({
         onSwapped(menuId, data.recipe as RecipeDTO);
         onClose();
       } else {
-        setError("Clara couldn't swap that — try again.");
+        // 200 with no recipe is a contract violation, not a swap. Say so
+        // rather than closing as if something happened.
+        setError("Clara didn't return a new dish — nothing was changed. Try again.");
       }
     } catch {
       setError("Network error — please try again.");
