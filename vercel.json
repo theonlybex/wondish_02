@@ -1,5 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/beta",
+      "destination": "https://tally.so/r/lbQRQB",
+      "permanent": false
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron/clara-gap-purge",

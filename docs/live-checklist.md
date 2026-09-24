@@ -116,3 +116,24 @@ Local dev talks to the **shared production Postgres**, so these are real rows:
 - **Free `planInit` 2/day → 1/day?** It is the largest line in the free column
   ($0.16 of $0.36/day). Kept at 2 so one failed onboarding attempt cannot lock a
   brand-new account out for the day.
+
+---
+
+## Routing note: /beta
+
+`wondish.io/beta` → `https://tally.so/r/lbQRQB` (the beta signup form), as a
+**platform** redirect in `vercel.json`, not `next.config.js` and not a real
+page. `vercel.json` cannot hold comments, hence this note.
+
+Why the platform and not the app: Vercel applies `redirects` at the edge before
+the function runs, so the request never reaches `middleware.ts`. `/beta` is
+**not** in `isPublicRoute` (`middleware.ts:4`), so an in-app redirect risks a
+signed-out visitor being bounced to `/login?redirect_url=%2Fbeta` instead of
+the form — the one thing a signup link must never do.
+
+`permanent: false` (307) on purpose: the destination can be changed later
+without browsers having cached a 308.
+
+To change the form, edit the `destination` and redeploy. To verify:
+`curl -sI https://www.wondish.io/beta` should return 307 with a `location` of
+the Tally URL.
