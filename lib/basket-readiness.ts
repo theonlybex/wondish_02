@@ -6,19 +6,48 @@ import { classifyIngredient, type CategoryKey } from "./ingredient-categories";
 export const MIN_BASKET = 12;
 const REQUIRED: CategoryKey[] = ["protein", "carb", "vegetable"];
 
+/**
+ * Something you could put in front of someone at 8am.
+ *
+ * A QA basket of 15 items — four kinds of rice, four meats, six vegetables, no
+ * eggs, no oats, no bread, no yoghurt, no fruit — passed this gate as "enough
+ * to fill a full week", and the builder then shipped seven breakfasts it could
+ * not make properly: rice porridge with no protein, and a dish called "Oatmeal"
+ * built on brown rice. Asked for a breakfast with eggs, the swap answered
+ * "Clara could only think of dishes that need something you don't have."
+ *
+ * The gate was measuring protein/carb/vegetable, which a bag of rice and some
+ * chicken satisfies. Breakfast is the meal a savoury-dinner pantry cannot make,
+ * so it is the one that has to be asked about by name.
+ */
+// NB the explicit plurals: /\begg\b/ does not match "Large eggs", because the
+// word boundary fails before the "s". The first version of this list was
+// written with singulars and silently did not recognise eggs, oats or berries —
+// the three most obvious breakfast foods in the catalog.
+const BREAKFAST_CAPABLE =
+  /\b(eggs?|oats?|oatmeal|granola|muesli|yogh?urt|bread|toast|muffins?|bagels?|tortillas?|pancakes?|waffles?|bananas?|(?:straw|blue|rasp|black|cran)?berr(?:y|ies)|apples?|oranges?|melon|fruit|milk|cheese|cottage|peanut butter|almond butter|honey|jam)\b/i;
+
+export function hasBreakfastStaple(names: string[]): boolean {
+  return names.some((n) => BREAKFAST_CAPABLE.test(n));
+}
+
 export function computeBasketReadiness(names: string[]): {
   count: number;
   min: number;
   ready: boolean;
   missingCategories: CategoryKey[];
+  /** True when nothing in the basket belongs at breakfast. */
+  missingBreakfast: boolean;
 } {
   const present = new Set(names.map(classifyIngredient));
   const missingCategories = REQUIRED.filter((c) => !present.has(c));
   const count = names.length;
+  const missingBreakfast = !hasBreakfastStaple(names);
   return {
     count,
     min: MIN_BASKET,
-    ready: count >= MIN_BASKET && missingCategories.length === 0,
+    ready: count >= MIN_BASKET && missingCategories.length === 0 && !missingBreakfast,
     missingCategories,
+    missingBreakfast,
   };
 }

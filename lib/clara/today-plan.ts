@@ -86,11 +86,39 @@ export async function buildTodaysPlanText(patientId: string, localDate: string):
   // see what's in your meal plan right now". She had the plan in front of her
   // both times. A wrong denial is worse than a wrong answer — it teaches the
   // user the feature does not work.
+
+  // The day's added salt, computed the same way the app's own rail computes it.
+  // Asked how much salt was in a dish, Clara answered "about 1.2 grams of
+  // sodium" for a quarter teaspoon (581 mg) and, on another day, totalled the
+  // plan at "1.4 teaspoons … well within the recommendation" when her own
+  // itemisation came to 0.95 tsp and the rail said 2,210 mg. She was doing
+  // arithmetic she should not have to do, and contradicting the screen.
+  const sodiumMg = Math.round(
+    menus.reduce(
+      (sum, m) =>
+        sum +
+        (m.recipe.ingredients ?? []).reduce((s2, ri) => {
+          if (!/\bsalt\b/i.test(ri.ingredient.name)) return s2;
+          const q = ri.quantity ?? 0;
+          const u = ri.unit ?? "";
+          if (/\b(tsp|teaspoons?)\b/i.test(u)) return s2 + q * 2325;
+          if (/\b(tbsp|tablespoons?)\b/i.test(u)) return s2 + q * 6975;
+          if (/^\s*(g|gram|grams|gr)\s*$/i.test(u)) return s2 + q * 393;
+          return s2;
+        }, 0),
+      0
+    )
+  );
+  const saltLine = sodiumMg > 0
+    ? `\nADDED SALT FOR THE DAY: ${sodiumMg.toLocaleString()} mg of sodium, against a 2,300 mg daily guideline` +
+      `${sodiumMg > 2300 ? " — that is OVER the guideline, say so plainly" : ""}. Quote this figure rather than adding up teaspoons yourself, and never call a number over 2,300 mg "well within" anything.`
+    : "";
+
   return (
     `\n\nTODAY'S MEAL PLAN — this IS the user's plan, straight from their account. ` +
     `The amounts, timings and macros below are exactly what the app shows them, so quote them directly; ` +
     `never tell the user you cannot see their plan or that it has no quantities. ` +
     `If they ask about a dish that is NOT in this list, say plainly that it is not in their plan this week and offer to help anyway. ` +
-    `They may ask how to cook any of these, or for help mid-cook — walk them through the steps clearly and answer follow-ups:\n${lines.join("\n")}`
+    `They may ask how to cook any of these, or for help mid-cook — walk them through the steps clearly and answer follow-ups:\n${lines.join("\n")}${saltLine}`
   );
 }

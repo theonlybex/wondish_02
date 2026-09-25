@@ -15,6 +15,22 @@ const MAX_MESSAGES = 20;
  * with a user message (Anthropic rejects leading assistant messages) and is
  * capped to the most recent MAX_MESSAGES entries.
  */
+/**
+ * Is any message longer than the limit?
+ *
+ * The composer caps typing at MAX_MESSAGE_CHARS, but the route silently
+ * truncated instead of refusing — so a 5,000-character POST returned 200,
+ * answered from the first 4,000, and spent one of the day's allowance. A client
+ * that ignores the cap should be told, not quietly trimmed.
+ */
+export function hasOverlongMessage(input: unknown): boolean {
+  if (!Array.isArray(input)) return false;
+  return input.some(
+    (m) => !!m && typeof m === "object" && typeof (m as { content?: unknown }).content === "string" &&
+      ((m as { content: string }).content.length > MAX_MESSAGE_CHARS)
+  );
+}
+
 export function sanitizeChatHistory(input: unknown): ChatMessage[] | null {
   if (!Array.isArray(input)) return null;
 

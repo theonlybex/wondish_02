@@ -357,7 +357,7 @@ export default function DailyMealPlanView({
   // coverage). Generation is manual now — no auto-start; when the week runs
   // out the New-week panel below drives it.
   const [basketStatus, setBasketStatus] = useState<{
-    count: number; min: number; ready: boolean; missingCategories: string[];
+    count: number; min: number; ready: boolean; missingCategories: string[]; missingBreakfast?: boolean;
   } | null>(null);
   const loadBasketStatus = async () => {
     try {
@@ -595,6 +595,12 @@ export default function DailyMealPlanView({
       if (data.mealPlanStartDate) setStartDate(new Date(data.mealPlanStartDate));
       setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
       setDailyMacroTarget(data.dailyMacroTarget ?? null);
+      // This was the ONE of five fetch paths that forgot the salt figure, so
+      // paging a day left yesterday's number on screen — and a day over the
+      // guideline would have shown a stale under-guideline GREEN one. Every
+      // number on this card comes from the same response; they have to be set
+      // from it together.
+      setDaySalt(data.daySaltSodiumMg != null ? { mg: data.daySaltSodiumMg, guideline: data.dailySodiumGuidelineMg ?? 2300 } : null);
       setExchanges(data.exchanges ?? null);
     } catch {
       setDate(prevDate);
@@ -871,7 +877,8 @@ export default function DailyMealPlanView({
               </p>
               <p className="text-xs mt-0.5 mb-3" style={{ color: "#848181" }}>
                 Add {Math.max(0, basketStatus.min - basketStatus.count)} more
-                {basketStatus.missingCategories.length ? ` (include a ${basketStatus.missingCategories.join(", ")})` : ""} so
+                {basketStatus.missingCategories.length ? ` (include a ${basketStatus.missingCategories.join(", ")})` : ""}
+                {basketStatus.missingBreakfast ? " — including something for breakfast, like eggs, oats or bread" : ""} so
                 Clara can fill all 7 days without repeats.
               </p>
               <a href="/pantry" className="inline-block px-4 py-2 rounded-full text-xs font-semibold text-white" style={{ background: "#812549" }}>

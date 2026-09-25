@@ -929,12 +929,17 @@ export default function PantryClient({
               <span className="text-xs text-right" style={{ color: "#848181" }}>
                 {status.ready
                   ? "Enough to fill a full week"
-                  : status.count >= status.min
-                    // Count is fine, a food group is missing ("Add 0 more (a carb)" read as done).
-                    ? `Add a ${status.missingCategories.join(" and a ")} to cover a full week`
-                    : `Add ${status.min - status.count} more${
-                        status.missingCategories.length ? ` (including a ${status.missingCategories.join(", a ")})` : ""
-                      }`}
+                  : status.missingBreakfast && status.count >= status.min && !status.missingCategories.length
+                    // The specific, actionable case: plenty of food, none of it
+                    // breakfast. Naming it beats "add a carb" when the basket
+                    // already holds four kinds of rice.
+                    ? "Add something for breakfast — eggs, oats, bread, yoghurt or fruit"
+                    : status.count >= status.min
+                      // Count is fine, a food group is missing ("Add 0 more (a carb)" read as done).
+                      ? `Add a ${status.missingCategories.join(" and a ")}${status.missingBreakfast ? ", and something for breakfast," : ""} to cover a full week`
+                      : `Add ${status.min - status.count} more${
+                          status.missingCategories.length ? ` (including a ${status.missingCategories.join(", a ")})` : ""
+                        }${status.missingBreakfast ? " — and something for breakfast (eggs, oats, bread, yoghurt)" : ""}`}
               </span>
             </div>
             <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "#F0EFF5" }}>

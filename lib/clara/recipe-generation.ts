@@ -272,6 +272,15 @@ export const CALORIE_MACRO_TOLERANCE = 0.05;
 /** Countable foods whose bare count IS the measurement (see staple-density). */
 const COUNTABLE = /\b(eggs?|bread|toast|muffin|bagel|tortilla|pita|apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|carrots?|avocados?|lemons?|limes?)\b/i;
 
+/** The word for one of something, when a recipe gives a bare count. */
+export function countUnitFor(name: string): string | null {
+  if (/\bbread\b/i.test(name)) return "slice";
+  if (/\b(muffin|bagel|tortilla|pita|wrap)\b/i.test(name)) return "whole";
+  if (/\beggs?\b/i.test(name)) return "egg";
+  if (/\b(apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|avocados?|lemons?|limes?|carrots?)\b/i.test(name)) return "whole";
+  return null;
+}
+
 export function unitIsUsable(name: string, unit: string | null | undefined): boolean {
   const u = (unit ?? "").trim();
   if (u.length > 0) return true;
@@ -611,6 +620,8 @@ export async function persistValidatedRecipes(
     new Set(accepted.flatMap((a) => a.recipe.usesIngredients.map((n) => n.trim()).filter(Boolean)))
   );
   const idByLower = new Map<string, string>();
+  // The reverse map, for naming the unit of a bare count (see countUnitFor).
+  const nameById = new Map<string, string>();
   for (const name of allNames) {
     const existing = await prisma.ingredient.findFirst({
       where: { name: { equals: name, mode: "insensitive" } },
@@ -618,17 +629,19 @@ export async function persistValidatedRecipes(
     });
     if (existing) {
       idByLower.set(name.toLowerCase(), existing.id);
+      nameById.set(existing.id, name);
       continue;
     }
     try {
       const created = await prisma.ingredient.create({ data: { name }, select: { id: true } });
       idByLower.set(name.toLowerCase(), created.id);
+      nameById.set(created.id, name);
     } catch {
       const winner = await prisma.ingredient.findFirst({
         where: { name: { equals: name, mode: "insensitive" } },
         select: { id: true },
       });
-      if (winner) idByLower.set(name.toLowerCase(), winner.id);
+      if (winner) { idByLower.set(name.toLowerCase(), winner.id); nameById.set(winner.id, name); }
     }
   }
 
@@ -682,9 +695,17 @@ export async function persistValidatedRecipes(
               // Per-serving amount by name (usesIngredients and amounts share
               // the basket's canonical spelling after withinBasket).
               const amount = recipe.amounts?.find((a) => idByLower.get(a.name.trim().toLowerCase()) === ingredientId);
-              return amount
-                ? { ingredientId, quantity: amount.quantity, unit: amount.unit || null }
-                : { ingredientId };
+              if (!amount) return { ingredientId };
+              // A countable food with no unit reads as a bare number on the
+              // card — "Sliced bread 1.5", "Large eggs 2", "Roma tomatoes 2" —
+              // which QA flagged twice as the first thing a tester sees when
+              // they open a dish to cook it. The count IS the measurement, so
+              // name the thing being counted.
+              const unit =
+                amount.unit && amount.unit.trim().length > 0
+                  ? amount.unit
+                  : countUnitFor(nameById.get(ingredientId) ?? "");
+              return { ingredientId, quantity: amount.quantity, unit };
             }),
           },
         },

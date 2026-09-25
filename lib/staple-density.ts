@@ -104,7 +104,10 @@ const DENSITY: {
   // Vegetables and fruit, as a group: little of anything, but not nothing.
   // "bell peppers", not "peppers?": a bare "pepper" is the seasoning, and
   // matching it here put "pepper 0.1 teaspoon" into the floor as a vegetable.
-  { match: /\b(broccoli|cauliflower|zucchini|spinach|carrots?|bell peppers?|tomato(es)?|onions?|celery|cucumber|lettuce|cabbage|mushrooms?|greens?|kale|asparagus|green beans?)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110 },
+  // volumeUnambiguous: a cup of chopped vegetables weighs about a cup of
+  // chopped vegetables however it is later cooked, and tying veg rows to the
+  // dry-GRAIN test meant one bad step phrase took a whole dish out of pricing.
+  { match: /\b(broccoli|cauliflower|zucchini|spinach|carrots?|bell peppers?|tomato(es)?|onions?|celery|cucumber|lettuce|cabbage|mushrooms?|greens?|kale|asparagus|green beans?)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
   { match: /\b(potato(es)?|sweet potato(es)?|corn|peas)\b/i, carbs: 18, fat: 0, protein: 2, gramsPerCup: 150, gramsPerItem: 170 },
   { match: /\b(apples?|bananas?|berries|strawberries|blueberries|oranges?|grapes?|pears?|melon)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 150, gramsPerItem: 130 },
 ];
@@ -112,6 +115,11 @@ const DENSITY: {
 const GRAMS_PER_UNIT: { match: RegExp; grams: number | "cup" }[] = [
   { match: /^\s*(g|gram|grams|gr)\s*$/i, grams: 1 },
   { match: /^\s*(kg|kilogram|kilograms)\s*$/i, grams: 1000 },
+  // Volume in millilitres, treated as grams: water is 1.00 g/ml and oil 0.92,
+  // so the error at the amounts recipes use is under a gram. Missing entirely
+  // until cycle 7, which made "olive oil 8 ml" an unpriceable row.
+  { match: /^\s*(ml|millilitre|millilitres|milliliter|milliliters|cc)\s*$/i, grams: 1 },
+  { match: /^\s*(l|litre|litres|liter|liters)\s*$/i, grams: 1000 },
   { match: /^\s*(oz|ounce|ounces)\s*$/i, grams: 28.35 },
   { match: /^\s*(lb|lbs|pound|pounds)\s*$/i, grams: 453.6 },
   { match: /^\s*(cup|cups)\s*$/i, grams: "cup" },
@@ -182,12 +190,31 @@ const isCountOf = (name: string, unit: string | null | undefined): boolean => {
 // right when they are right, and it fails safe — a dish that really did mean
 // cooked rice is rejected as understating itself and regenerated, which costs
 // one dish; the other way round costs a user 250 kcal a day they never see.
+// Only phrasings that mean the grain ARRIVES cooked. "cooked rice" on its own
+// was in this list and it is the normal way a recipe refers to rice it cooked
+// itself two steps earlier — so a dish that rinsed and simmered its own rice
+// was classified as starting from cooked, every cup row went unpriced, coverage
+// collapsed below the bar, and the model's numbers stood unchecked. That single
+// false positive is the mechanism behind the worst macro gaps in two QA weeks:
+// a lunch declaring 620 kcal over 917 kcal of food, and another 603 over 825.
 const ALREADY_COOKED =
-  /\b(pre-?cooked|already cooked|cooked (rice|pasta|quinoa|grain|noodles)|leftover (rice|pasta)|day-old rice|from the fridge)\b/i;
+  /\b(pre-?cooked|already cooked|leftover (rice|pasta|grains?)|day-old rice|from the fridge|ready-cooked|microwave(able)? (rice|pouch))\b/i;
+
+// Instructions that cook the grain from dry. They take PRECEDENCE over a
+// mention of the cooked shortcut, because "Cook the brown rice according to
+// package directions or use pre-cooked rice" is a recipe that cooks its own
+// rice and offers an alternative — and reading the alternative as the plan
+// unpriced the rice, dropped the dish below the coverage bar, and let its
+// unchecked numbers stand (QA cycle 7, a lunch declaring 620 kcal over 917).
+const COOKS_FROM_DRY =
+  /\b(according to package|package directions|rinse|bring .{0,40}to a boil|simmer|boil|cook .{0,30}\b(rice|pasta|quinoa|oats|lentils|noodles)\b)/i;
 
 export function grainIsMeasuredDry(steps: readonly string[] | null | undefined): boolean {
   if (!steps || steps.length === 0) return true; // no steps to contradict it
-  return !ALREADY_COOKED.test(steps.join(" "));
+  const text = steps.join(" ");
+  if (!ALREADY_COOKED.test(text)) return true;
+  // Both present: the dish cooks it AND mentions the shortcut. Dry wins.
+  return COOKS_FROM_DRY.test(text);
 }
 
 /**

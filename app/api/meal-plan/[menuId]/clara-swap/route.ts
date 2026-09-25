@@ -25,7 +25,7 @@ import {
   pricedMacros,
 } from "@/lib/clara/recipe-generation";
 import { dishProblem, catalogFoodVocabulary, BREAKFAST_MAX_MINUTES } from "@/lib/dish-plausibility";
-import { dishProtein, dishProteinOfNames, MAX_SAME_PROTEIN_PER_DAY } from "@/lib/meal-plan";
+import { dishProtein, dishProteinOfNames, dishCarbBase, MAX_SAME_PROTEIN_PER_DAY, MAX_SAME_CARB_BASE_PER_DAY } from "@/lib/meal-plan";
 import {
   resolveMacroProfile,
   getMacroPercentages,
@@ -148,6 +148,19 @@ export async function POST(
     if (p) proteinCounts.set(p, (proteinCounts.get(p) ?? 0) + 1);
   }
   const otherProteins = Array.from(proteinCounts.keys());
+  // The same count for the day's starch. Two swaps on one day put basmati rice
+  // into a third slot behind two brown-rice dishes (QA cycle 7) — the protein
+  // rule was enforced and the starch rule existed only in the builder.
+  const starchCounts = new Map<string, number>();
+  for (const m of sameDay) {
+    const b = dishCarbBase(m.recipe?.ingredients ?? []);
+    if (b) starchCounts.set(b, (starchCounts.get(b) ?? 0) + 1);
+  }
+  const overusedStarch = new Set(
+    Array.from(starchCounts.entries())
+      .filter(([, n]) => n >= MAX_SAME_CARB_BASE_PER_DAY)
+      .map(([b]) => b)
+  );
   const overusedProteins = new Set(
     Array.from(proteinCounts.entries())
       .filter(([, n]) => n >= MAX_SAME_PROTEIN_PER_DAY)

@@ -73,6 +73,37 @@ function isSeasoningOnFood(name: string, quantity: number | null, unit: string |
 async function main() {
   const prisma = new PrismaClient();
 
+    // ── Fill NULL macros, on any row ──────────────────────────────────────────
+  //
+  // 599 public dishes carry a null protein, carb or fat — mostly curated
+  // library portion rows — and a dish with a null protein silently under-counts
+  // the protein ring of every day it appears in. Two QA reports found the same
+  // thing from opposite ends: a "Scrambled Eggs, V1S- 1 egg" side showing 102
+  // kcal with no protein figure, and a day's ring missing the ~6.5 g it
+  // contributes.
+  //
+  // Filling a null is not the same as rewriting a measured value, so unlike the
+  // repricing below this runs on library rows too: where the ingredients can be
+  // priced, the gap is filled from them; where they cannot, the row is left
+  // alone and lib/dish-plausibility.ts refuses it at selection instead.
+  const nullMacroRows = await prisma.recipe.findMany({
+    where: { isPublic: true, OR: [{ protein: null }, { carbs: null }, { fat: null }] },
+    select: {
+      id: true, name: true, calories: true, protein: true, carbs: true, fat: true, steps: true,
+      ingredients: { select: { quantity: true, unit: true, ingredient: { select: { name: true } } } },
+    },
+  });
+  const macroFills: { id: string; name: string; to: { protein: number; carbs: number; fat: number } }[] = [];
+  for (const r of nullMacroRows) {
+    const priced = priceDish(
+      r.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity, unit: ri.unit })),
+      r.steps
+    );
+    if (!priced || priced.coverage < PRICING_COVERAGE_MIN) continue;
+    macroFills.push({ id: r.id, name: r.name, to: { protein: priced.protein, carbs: priced.carbs, fat: priced.fat } });
+  }
+  console.log(`null-macro rows: ${nullMacroRows.length}; fillable from their amounts: ${macroFills.length}`);
+
   const generated = await prisma.recipe.findMany({
     where: { isPublic: true, tags: { hasSome: ["clara", "clara-swap"] } },
     select: {
@@ -161,9 +192,14 @@ async function main() {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backup = `/tmp/wondish-dish-repair-${stamp}.json`;
-  writeFileSync(backup, JSON.stringify({ macroFixes, calorieFixes, linkDrops }, null, 2));
+  writeFileSync(backup, JSON.stringify({ macroFills, macroFixes, calorieFixes, linkDrops }, null, 2));
   console.log(`\nbackup written: ${backup}`);
 
+  let filled = 0;
+  for (const f of macroFills) {
+    await prisma.recipe.update({ where: { id: f.id }, data: { protein: f.to.protein, carbs: f.to.carbs, fat: f.to.fat } });
+    filled++;
+  }
   let repriced = 0;
   for (const f of macroFixes) {
     await prisma.recipe.update({
@@ -182,7 +218,7 @@ async function main() {
     await prisma.recipeIngredient.deleteMany({ where: { recipeId: d.recipeId, ingredientId: d.ingredientId } });
     dropped++;
   }
-  console.log(`applied: ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
+  console.log(`applied: ${filled} null-macro rows filled, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
   await prisma.$disconnect();
 
 }

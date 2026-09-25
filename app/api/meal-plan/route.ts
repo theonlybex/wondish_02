@@ -69,10 +69,22 @@ export async function GET(req: NextRequest) {
   // come back as a 500 with an EMPTY body — the only error on the route that
   // wasn't JSON, so a client had nothing to show (QA: ?date=notadate,
   // ?date=9999-99-99). Answer like every other bad input here.
+  // Shape, RANGE, and a round-trip. The first version checked the shape and
+  // NaN only, which let "9999-99-99" through — new Date(9999, 98, 99) is a
+  // perfectly valid Date that rolls forward to year 10007 and then dies at the
+  // database as a 500 with an empty body. "2026-02-30" rolled to March 2nd and
+  // answered 200 for a day nobody asked about. A date that does not survive
+  // being parsed and re-formatted was never a date.
   const badDate = (v: string | null): boolean => {
     if (!v) return false;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return true;
-    return Number.isNaN(localMidnight(v).getTime());
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+    if (!m) return true;
+    const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    if (y < 1900 || y > 2200 || mo < 1 || mo > 12 || d < 1 || d > 31) return true;
+    const parsed = localMidnight(v);
+    if (Number.isNaN(parsed.getTime())) return true;
+    // Rejects 2026-02-30 and 2026-04-31: JS rolls them into the next month.
+    return parsed.getFullYear() !== y || parsed.getMonth() + 1 !== mo || parsed.getDate() !== d;
   };
   if (badDate(dateParam) || badDate(weekStartParam)) {
     return NextResponse.json({ error: "Invalid date — expected YYYY-MM-DD." }, { status: 400 });

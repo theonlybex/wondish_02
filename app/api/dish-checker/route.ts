@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { sanitizeChatHistory } from "@/lib/chat-history";
+import { sanitizeChatHistory, hasOverlongMessage, MAX_MESSAGE_CHARS } from "@/lib/chat-history";
 import { accountHasActivePremium, getAccountWithSubscription } from "@/lib/auth";
 import { guardAiSpend } from "@/lib/ai-budget";
 import { PATIENT_FOOD_MAP_INCLUDE, buildFoodMapText } from "@/lib/food-map";
@@ -75,6 +75,12 @@ async function handleChat(req: NextRequest) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
+  if (hasOverlongMessage((body as { messages?: unknown })?.messages)) {
+    return NextResponse.json(
+      { error: `A message can be at most ${MAX_MESSAGE_CHARS.toLocaleString()} characters.` },
+      { status: 400 }
+    );
+  }
   const history = sanitizeChatHistory((body as { messages?: unknown })?.messages);
   if (history === null || history.length === 0) {
     return NextResponse.json({ error: "Invalid messages" }, { status: 400 });

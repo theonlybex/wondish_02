@@ -98,6 +98,7 @@ export type DishProblem =
   | "title-promises-missing-food"
   | "description-promises-missing-food"
   | "no-quantities"
+  | "missing-macros"
   | "macros-contradict-amounts"
   | "cooks-without-listing-fat"
   | "step-outlasts-stated-time";
@@ -235,8 +236,11 @@ export function breakfastIsQuickEnough(d: PlausibleDish): boolean {
  * Carrots and Ground Beef", a salmon-and-rice bowl — were all generated. That
  * leaves 303 anchored breakfasts in the pool, so the slot stays deep either way.
  */
+// Explicit plurals, for the same reason as lib/basket-readiness.ts: /\begg\b/
+// does not match "Large eggs", so a singular-only list rejected egg dishes as
+// "not breakfast food".
 const BREAKFAST_FOODS =
-  /\b(egg|omelette|omelet|frittata|oat|oatmeal|porridge|granola|muesli|yogurt|yoghurt|bread|toast|muffin|bagel|croissant|pancake|waffle|crepe|banana|berr|apple|orange|grapefruit|melon|fruit|milk|cheese|cottage|peanut butter|almond butter|honey|jam|smoothie|beans|avocado|bacon|sausage|hash brown|potato)\b/i;
+  /\b(eggs?|omelettes?|omelets?|frittatas?|oats?|oatmeal|porridge|granola|muesli|yogh?urt|bread|toast|muffins?|bagels?|croissants?|pancakes?|waffles?|crepes?|bananas?|(?:straw|blue|rasp|black|cran)?berr(?:y|ies)|apples?|oranges?|grapefruit|melon|fruit|milk|cheese|cottage|peanut butter|almond butter|honey|jam|smoothies?|beans?|avocados?|bacon|sausages?|hash browns?|potato(es)?)\b/i;
 
 export function breakfastLooksLikeBreakfast(d: PlausibleDish): boolean {
   if (!d.generated) return true;
@@ -391,6 +395,13 @@ const DISH_REQUIRES: { dish: RegExp; needs: RegExp; label: string }[] = [
   { dish: /\b(bolognese|ragu|ragù|marinara|arrabbiata)\b/i, needs: /\b(tomato|passata|marinara|tomato sauce|tomato paste)\b/i, label: "tomato" },
   { dish: /\b(curry|curried|masala|tikka|korma|vindaloo)\b/i, needs: /\b(curry|masala|turmeric|cumin|coriander|garam|paprika|chili powder|cayenne|ginger)\b/i, label: "curry spice" },
   { dish: /\b(pesto)\b/i, needs: /\b(basil|pesto)\b/i, label: "basil" },
+  // "Oatmeal with Poached Chicken Breast and Carrots" — described as oatmeal,
+  // steps say "add the oats", made of brown rice. Three of seven breakfasts in
+  // one week. The token rule could not see it: the catalog's head noun is
+  // "oat" and the title word is "oatmeal", so the promise was invisible.
+  { dish: /\boatmeal\b/i, needs: /\boats?\b|\boatmeal\b/i, label: "oats" },
+  { dish: /\b(risotto)\b/i, needs: /\brice\b/i, label: "rice" },
+  { dish: /\b(polenta)\b/i, needs: /\b(polenta|cornmeal)\b/i, label: "cornmeal" },
   { dish: /\b(scramble|scrambled|omelette|omelet|frittata|shakshuka)\b/i, needs: /\b(egg)\b/i, label: "egg" },
   { dish: /\b(hummus)\b/i, needs: /\b(chickpea|garbanzo|tahini|hummus)\b/i, label: "chickpeas" },
   { dish: /\b(guacamole)\b/i, needs: /\b(avocado)\b/i, label: "avocado" },
@@ -472,6 +483,15 @@ export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): D
   // the dish is unusable rather than merely untidy. A single missing row (an
   // unmeasured splash of water) is fine; none at all is not a recipe.
   if (d.ingredients.length > 0 && d.ingredients.every((i) => i.quantity == null)) return "no-quantities";
+
+  // A dish with a missing macro cannot be shown honestly: it lands in a day's
+  // ring as a zero and silently lowers the total. QA found both ends of that —
+  // a card reading "102 kcal" with no protein figure, and a day's protein ring
+  // short by the egg it did not count. 298 such rows were fillable from their
+  // own amounts (scripts/repair-generated-dishes.ts); these are the rest.
+  if (d.macros && (d.macros.protein == null || d.macros.carbs == null || d.macros.fat == null)) {
+    return "missing-macros";
+  }
 
   // Steps that cook in a fat the dish never lists. This ran at generation
   // only, so the rows written before it existed kept flowing into plans: 4 of

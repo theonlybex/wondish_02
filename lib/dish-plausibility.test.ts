@@ -312,7 +312,7 @@ test("declared macros may not fall below what the listed staples contain", () =>
     name: "Chicken Thighs with Brown Rice and Roasted Broccoli",
     prepMinutes: 15,
     cookMinutes: 35,
-    macros: { carbs: 48, fat: 15 },
+    macros: { protein: 40, carbs: 48, fat: 15 },
     ingredients: [
       { name: "chicken thighs", quantity: 200, unit: "g" },
       { name: "Brown rice", quantity: 150, unit: "g" },
@@ -324,7 +324,7 @@ test("declared macros may not fall below what the listed staples contain", () =>
 
   // The same dish with an honest grain portion passes — this is the case that
   // proves the rule discriminates rather than just rejecting rice dishes.
-  const honest = { ...understated, name: "Baked Chicken Breast with Carrots and Jasmine Rice", macros: { carbs: 44, fat: 6 }, steps: ["Bake the chicken for 20 minutes."], prepMinutes: 5, cookMinutes: 20, ingredients: [
+  const honest = { ...understated, name: "Baked Chicken Breast with Carrots and Jasmine Rice", macros: { protein: 30, carbs: 44, fat: 6 }, steps: ["Bake the chicken for 20 minutes."], prepMinutes: 5, cookMinutes: 20, ingredients: [
     { name: "Boneless chicken breasts", quantity: 120, unit: "g" },
     { name: "carrots", quantity: 80, unit: "g" },
     { name: "jasmine rice", quantity: 60, unit: "g" },
@@ -402,4 +402,20 @@ test("a bare count prices — the unit-shaped hole, not an ingredient-shaped one
   // Priced honestly, the same dish passes.
   const honest = { ...d, calories: 615, macros: { protein: 27, carbs: 33, fat: 42 } };
   assert.equal(dishProblem(honest, CATALOG), null);
+});
+
+test("a dish with a missing macro is refused — a null lands in the ring as a zero", () => {
+  const noProtein = dish({
+    calories: 102,
+    macros: { protein: null, carbs: 1, fat: 7 },
+    ingredients: [{ name: "Large eggs", quantity: 1, unit: null }],
+  });
+  assert.equal(dishProblem(noProtein, CATALOG), "missing-macros");
+  // Complete macros pass.
+  assert.equal(
+    dishProblem({ ...noProtein, macros: { protein: 6, carbs: 1, fat: 7 } }, CATALOG),
+    null
+  );
+  // And a caller that does not supply macros at all is not second-guessed.
+  assert.equal(dishProblem({ ...noProtein, macros: null }, CATALOG), null);
 });

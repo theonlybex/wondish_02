@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 import { displayDishName } from "@/lib/dish-name";
+import { BASKET_STAPLES } from "@/lib/basket-coverage";
 import { getPlanDayCalories } from "@/lib/meal-plan";
 import { rateLimit } from "@/lib/rate-limit";
 import {
@@ -106,9 +107,16 @@ export async function GET() {
       if (names.some((n) => n.trim().toLowerCase() === dishName)) continue;
     }
 
+    // Staples do not count as missing. Salt is not a selectable basket item and
+    // nearly every dish uses it, so every suggestion on /pantry read "needs
+    // salt" — 20-plus cards all claiming the same blocker, which made the
+    // readiness copy meaningless and hid the ingredients that were genuinely
+    // absent. BASKET_STAPLES is the same list the plan builder treats as
+    // free (lib/basket-coverage.ts), so the two surfaces now agree.
     const missing = r.ingredients
       .filter((ri) => !onHand.has(ri.ingredientId))
-      .map((ri) => ri.ingredient.name);
+      .map((ri) => ri.ingredient.name)
+      .filter((name) => !BASKET_STAPLES.has(name.trim().toLowerCase()));
 
     const scored: Scored = {
       id: r.id,

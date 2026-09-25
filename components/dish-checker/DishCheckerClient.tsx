@@ -265,7 +265,7 @@ export default function DishCheckerClient({ firstName }: Props) {
             >
               {input.length >= MAX_MESSAGE_CHARS
                 ? `Message limit reached — ${MAX_MESSAGE_CHARS.toLocaleString()} characters.`
-                : `${(MAX_MESSAGE_CHARS - input.length).toLocaleString()} characters left`}
+                : `${(MAX_MESSAGE_CHARS - input.length).toLocaleString()} character${MAX_MESSAGE_CHARS - input.length === 1 ? "" : "s"} left`}
             </p>
           )}
           <div className="flex gap-3 items-end">
