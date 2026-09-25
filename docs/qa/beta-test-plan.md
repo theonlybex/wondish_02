@@ -112,6 +112,9 @@ effect.
 | 9 | 209 rows filed under a slot their own timing contradicts — invisible to the slot they fit AND refused by the one they carried (the `/pantry` defect from the other end); 8 of 16 generation rejections were prose-only, on dishes that were otherwise sound; the calorie top-up enforced family and reuse and nothing else | slot labels read off the dish; `truthfulDishName` rebuilds a lying name from the ingredient list (253 stored rows too); the day's sodium, protein and starch limits apply to padding and do not relax |
 | 10 | The cycle-8 variety penalty never bound — the line after it picked at random among the top three, so on a thin pool the penalty decided nothing (a flaky test caught it; QA saw one snack three times); the plan missed its own displayed fat target on 7 of 7 days, 173-241%, because the macro rule scored each dish's own ratios and 59% of the catalog's fat is added cooking oil; 983 of 1,040 salt rows above an eighth of a teaspoon | the random window is the least-used dishes only; scoring asks where the DAY lands (weight set by 18 measured weeks); salt clamped to a seasoning; 169 bare counts given their unit; an `<h1>` on two pages that had none |
 
+| 11 | **My own QA harness was wrong and had been understating the app for three cycles** — isCoveredByBasket lowercased the dish's ingredient name and tested it against the basket set as handed in, so catalog casing matched nothing but staples; 543 of 641 oil rows have step text that AGREES with the row, so the oil cannot simply be clamped; every priceable Clara row kept the model's numbers under a 25% tolerance | both sides normalised inside the predicate; oil clamped only where the steps name no amount or name less (266 rows) and re-priced; every priceable Clara row repriced with no tolerance; a breakfast's PROTEIN must be a breakfast protein; one dish may be 1.25× its slot, not 1.35× |
+| 12 | 301 dishes had amounts on every ingredient and still could not be priced — and the seasoning half of the unknown-ingredient list was never the cause, since priceDish already skips it; the escapes were UNIT-shaped for the third time (leaves, sprig, stalk, spear, pinch, clove); my own cycle-11 backfill never reached a fixpoint and needed two runs to settle; 93 dishes cook in a fat they never list; 105 "breakfasts" contain no breakfast food; a pantry of "eggs" could not cook any of the 288 "Large eggs" dishes | garnish units and the missing vegetables added (126 rows recovered); clamp rounds DOWN with a 2% margin; null-macro fills scale to the row's own calorie figure; 77 dishes given the teaspoon of oil their steps already use; 94 moved to the slot they fit; basket coverage matches on equal token sets |
+
 ## What the cycles taught
 
 A green test suite proves nothing about content: 1,284 tests passed while a week
@@ -139,3 +142,18 @@ calorie rewrite that mispriced egg whites threefold, a per-week dish cap that
 made slots unfillable, and an oil clamp that would have contradicted the step
 text of 379 recipes. Two prompt changes backfired and were reverted. A fix that
 has not been measured is a guess with a commit message.
+
+**And measure the measurement.** Three cycles of variety and fat numbers were
+reported through a harness whose basket never matched anything but staples, and
+the app looked worse than it was. Two separate fixes were then tuned against
+that hole. The tell was available the whole time and ignored: the pool arithmetic
+said 85 eligible breakfasts and the runtime served 2. When a measurement and a
+count disagree by a factor of forty, the measurement is the thing to check first
+— `WONDISH_DEBUG_POOL=1` exists now so the next person can see the runtime's own
+answer instead of reconstructing it.
+
+**A predicate that silently returns false for correct input is a bug, even when
+every caller happens to be correct.** isCoveredByBasket cost a day twice over —
+once through the harness, once by making a pantry of "eggs" ineligible for 288
+egg dishes. Both times nothing errored and nothing logged; a week just came out
+thinner for a reason no screen could show.
