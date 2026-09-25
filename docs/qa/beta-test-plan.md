@@ -115,6 +115,8 @@ effect.
 | 11 | **My own QA harness was wrong and had been understating the app for three cycles** — isCoveredByBasket lowercased the dish's ingredient name and tested it against the basket set as handed in, so catalog casing matched nothing but staples; 543 of 641 oil rows have step text that AGREES with the row, so the oil cannot simply be clamped; every priceable Clara row kept the model's numbers under a 25% tolerance | both sides normalised inside the predicate; oil clamped only where the steps name no amount or name less (266 rows) and re-priced; every priceable Clara row repriced with no tolerance; a breakfast's PROTEIN must be a breakfast protein; one dish may be 1.25× its slot, not 1.35× |
 | 12 | 301 dishes had amounts on every ingredient and still could not be priced — and the seasoning half of the unknown-ingredient list was never the cause, since priceDish already skips it; the escapes were UNIT-shaped for the third time (leaves, sprig, stalk, spear, pinch, clove); my own cycle-11 backfill never reached a fixpoint and needed two runs to settle; 93 dishes cook in a fat they never list; 105 "breakfasts" contain no breakfast food; a pantry of "eggs" could not cook any of the 288 "Large eggs" dishes | garnish units and the missing vegetables added (126 rows recovered); clamp rounds DOWN with a 2% margin; null-macro fills scale to the row's own calorie figure; 77 dishes given the teaspoon of oil their steps already use; 94 moved to the slot they fit; basket coverage matches on equal token sets |
 
+| 13 | **A plan served 70 g of raw salmon** — flaked onto cooked oats, with a 12-minute cook time on the card and no rule in the codebase able to see it, because every rule was about plausibility and none about safety. Fat 34.5-46% of calories on 7 of 7 days against a 25% target, with the app's own rail printing 133-175% in red. Every vegetable priced through ONE flat row, so a plate of tomatoes declared 3 g of protein over food holding 1.4 and "Spinach 2 cup" weighed 240 g instead of 60. Clara's per-dish sodium wrong by 2.5× and self-contradictory inside one reply ("1 tsp ≈ 5,800 mg of sodium"). A breakfast of oats and two slices of toast. "Cheese and Bell Pepper Oat Bowl" with no cheese. Snack SLOTS at 1.73-1.99× their cap because the ceiling was per-dish. And two defects I had introduced in cycle 11: "½ tablespoon" invisible to a digit-only regex, and clamped amounts like "0.37 tablespoon" | a safety rule (`rawProteinNeverCooked`), reached only after two earlier heuristics were measured and rejected for flagging correctly-cooked dishes; four vegetable groups with real cup weights and macros to a tenth of a gram; per-dish sodium handed to Clara as a number; a breakfast must carry protein of some kind and "chicken" joins the dinner proteins; category words satisfied by any member and refused when there is none; the calorie window subtracts what the slot already holds; unicode fractions counted and clamped amounts rounded to measurable eighths |
+
 ## What the cycles taught
 
 A green test suite proves nothing about content: 1,284 tests passed while a week
@@ -151,6 +153,24 @@ said 85 eligible breakfasts and the runtime served 2. When a measurement and a
 count disagree by a factor of forty, the measurement is the thing to check first
 — `WONDISH_DEBUG_POOL=1` exists now so the next person can see the runtime's own
 answer instead of reconstructing it.
+
+**The plural trap is a bug FAMILY, not a bug.** A singular-only pattern that
+never matches the catalog's own spelling has now appeared six times, in four
+different modules: `\begg\b` against "eggs" (egg dishes rejected as "not
+breakfast food"), `\bberries\b` against "strawberries", `\bpeppers?\b`
+catching "Bell peppers" (a vegetable priced as its seasoning), `\bcucumber\b`
+against "Cucumbers" (74 rows unpriceable), `\b(egg)\b` in the style rules
+(refusing 81 egg dishes for having no egg), and `\btortilla\b` against "Flour
+tortillas". Five were found by measuring the live database; one was found by the
+test written after the fourth. Any new pattern matching a food noun gets `s?`,
+and two tests hold the catalog's own spellings.
+
+**Every fix is a candidate defect.** Three of the changes in cycle 11 had to be
+repaired in cycles 12 and 13: a clamp that never reached a fixpoint, a
+digit-only regex that made "½ tablespoon" invisible and let the clamp contradict
+a recipe's own steps, and clamped amounts no kitchen can measure. All three were
+found by QA or by running the backfill twice — not by the tests written
+alongside them.
 
 **A predicate that silently returns false for correct input is a bug, even when
 every caller happens to be correct.** isCoveredByBasket cost a day twice over —
