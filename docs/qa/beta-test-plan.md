@@ -157,6 +157,8 @@ into a bot's later measurements.
 
 | 19 | Fat from 30-41% to mostly 25-32% of calories, by three fixes in a row, each one measured on generated weeks before the next: sides were taking the relaxation meant for an empty slot, the relaxed tier then ignored fat entirely, and an unpaced ceiling let breakfast and lunch spend dinner's share. Then **two more fixes that never took effect**: the macro split had been sent to Clara as "~0% protein, ~0% carbs, ~0% fat" in both generation prompts (`Math.round` of a fraction), and cycle 15's weight-unit toggle was overwritten to "lbs" by the server on every save. A brand-new FREE account went through the whole cold start for the first time: every misinput refused, focus now on the field, first week built, the 2nd week and the 6th Clara message refused with the right numbers and /pricing — and oatmeal served as a dinner side | fat pacing + least-fat relaxed tier + no relaxation for sides; protein-dense mains preferred; `macroSplitLine`; one weight-unit rule; onboarding focus and linked errors; porridge excluded from lunch/dinner padding; `formatBmi`; journal dots 44px; es/ru/en pricing from AI_LIMITS; a phone hit-test of /meal-plan at 0 overlaps, 0 under 44 |
 
+| 20 | A phone sweep of 16 pages, the first to cover /what-to-buy, /journey, /dishes and /pricing: eleven more targets under 44px, all fixed and re-swept to zero. And a defect cycle 18 had CREATED: renaming at render on two screens gave one dish two names across the day view and the weekly grid. Fat re-measured on a third profile: 25-28% on 7 of 7 days | the name rule moved into displayDishName, the one function every screen and Clara use; 44px floors on inputs, pills, date pickers and links |
+
 ## What the cycles taught
 
 A green test suite proves nothing about content: 1,284 tests passed while a week
@@ -277,6 +279,11 @@ for their whole lives, and the model's dishes were then judged against the real
 target — so every rejection it caused looked like the model's fault. Anything
 that turns a stored number into text for a reader (a person or a model) needs
 one test that reads the text.
+
+**A fix applied on some screens is a new inconsistency.** Renaming a dish at
+render where it was convenient meant the day view and the weekly grid named the
+same dish differently — worse than the defect it replaced. A presentation rule
+belongs in the one function every surface already calls, or in the data.
 
 **Relabelling is not repairing.** A dish filed under the wrong slot is repaired
 by moving it. A dish that is wrong in every slot is repaired by retiring it, and

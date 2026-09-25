@@ -88,9 +88,9 @@ already applied to the shared Neon DB, so landing is code-only. **[verified]**
 
 ---
 
-## 0b. Open QA defects (cycles 8-19, 2026-09-25)
+## 0b. Open QA defects (cycles 8-20, 2026-09-25)
 
-Nineteen fix→test cycles against the live database. The cycle procedure is
+Twenty fix→test cycles against the live database. The cycle procedure is
 `docs/qa/beta-test-plan.md` → "How a cycle runs"; this section is the list it
 edits at the START of each one.
 
@@ -363,6 +363,28 @@ or reproduced; where a bot could not pin something down, it says so.
 - [x] **"BMI 25.0 (Healthy)"** for 24.99 — truncated now, so the number and
       the class agree.
 - [x] **"0/5 meals logged" over four meals** — it counts dishes, and says so.
+
+**Cycle 20 — a phone sweep of 16 pages, and what cycle 18's render repair did**
+- [x] **One dish had two names.** Cycle 18 renamed egg dishes at render on
+      /meal-plan and /dishes only, so the weekly grid said "Large Eggs with
+      Bell Peppers and Carrots" while the day view said "Baked Eggs with…".
+      The grade-drop moved into displayDishName, which every screen and
+      Clara's plan text use; the method rename stays with the stored rows.
+      Measured: all five of a day's dishes read identically on the day view
+      and the weekly grid.
+- [x] **Touch targets on pages no cycle had swept**: search inputs (42px),
+      the what-to-buy lens pills and /dishes filters (38-40px), date pickers
+      (42px), and three text links (16-17px). The sweep of 16 pages at 390px
+      on a touch device now reports 0 under 44, 0 overlaps, 0 horizontal
+      overflow, 0 console errors.
+- [ ] **Seen once:** /meal-plan/weekly returned 500 ("Cannot read properties
+      of null (reading 'useContext')") during a dev-server recompile. 3 of 3
+      reloads were 200. Dev-only as far as can be told; watch for it on a
+      production build.
+- The porridge rule and the fat pacing, re-measured on a third profile (the
+  free account, 1,725-1,931 kcal): fat 25-28% of calories on 7 of 7 days,
+  88-106% of the gram target; calories 85-102%; no oat dish at lunch or
+  dinner.
 
 **Still open from before**
 - [x] **The journal's five step dots are 32px wide** (44 tall). Five 44px
