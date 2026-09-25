@@ -960,7 +960,14 @@ export async function buildMealPlanMenus(
         const dayFatRoomLeft = (r: PoolRecipe): boolean => {
           const budget = dayMacroTargetG.fat;
           if (!budget) return true;
-          return todayMacroG.fat + (r.fat ?? 0) <= budget * DAY_FAT_CEILING;
+          // PACED: the fat allowed so far scales with the share of the day's
+          // calories planned so far. Checked only against the whole-day
+          // ceiling, breakfast and lunch could spend it all and leave dinner
+          // nothing that fits — which sent dinner to the relaxed tier on most
+          // days of every week measured in cycle 19. The 0.35 floor keeps an
+          // egg breakfast possible.
+          const share = dayBudget > 0 ? Math.min(1, Math.max(0.35, (dayCalories + (r.calories ?? 0)) / dayBudget)) : 1;
+          return todayMacroG.fat + (r.fat ?? 0) <= budget * DAY_FAT_CEILING * share;
         };
         const sodiumRoomLeft = (r: PoolRecipe): boolean =>
           todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG;
