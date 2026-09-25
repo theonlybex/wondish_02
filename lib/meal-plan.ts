@@ -916,11 +916,32 @@ export async function buildMealPlanMenus(
         const calGap  = weekCals - dayCalories;
         const minCals = Math.round(calGap * 0.25);
         const maxCals = Math.round(calGap);
+        // The day's own limits apply here too, and they do NOT relax.
+        //
+        // This block enforced family and reuse and nothing else, and it updated
+        // none of the day's counters — so every dish it added was invisible to
+        // the sodium ceiling, the two-per-day protein and starch caps, the
+        // variety penalty, and to the NEXT pass of this very loop. It stayed
+        // hidden while the snack pool held one dish and this path almost never
+        // ran; the moment 209 mislabelled rows were filed correctly and the
+        // pool tripled, it fired on most days and took the week with it:
+        // sodium over 2,300 mg on 6 days of 7 (one at 3,566), one protein in
+        // three slots on 5 days, one dish six times in a week — all of it from
+        // padding, after the graded slots had come out clean.
+        //
+        // In the main loop these relax on the last tier, because there the
+        // alternative is an empty slot. Here the alternative is a day under
+        // target, which this block already treats as the honest outcome, so
+        // there is no tier to fall to: a 300 kcal top-up is never worth a third
+        // helping of chicken or a day over the sodium guideline.
         const matchesExtra = (r: PoolRecipe, excludeUsed: boolean): boolean =>
           r.mealTypeId === snackMealType.id &&
           r.ingredients.length > 0 && r.description !== null &&
           r.calories !== null && r.calories >= minCals && r.calories <= maxCals &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
+          todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG &&
+          (() => { const b = dishCarbBase(r.ingredients); return b === null || (todayCarbBaseCounts.get(b) ?? 0) < MAX_SAME_CARB_BASE_PER_DAY; })() &&
+          (() => { const p = dishProtein(r.ingredients); return p === null || (todayProteinCounts.get(p) ?? 0) < MAX_SAME_PROTEIN_PER_DAY; })() &&
           !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id) || weekUsedSignatures.has(dishSignature(r.ingredients))));
         // Same ladder as the meals: fresh → week reuse — but never the same
         // dish twice in one day. A thin snack pool used to fall through to
@@ -932,7 +953,9 @@ export async function buildMealPlanMenus(
           extraCandidates = selectionPool.filter((r) => matchesExtra(r, false) && !todayUsedIds.has(r.id));
         }
         if (extraCandidates.length === 0) break;
-        const extra = pickByMotivation(extraCandidates, motivationNames, affinityMap, seenIngredientNames, macroTarget);
+        const extra = pickByMotivation(
+          extraCandidates, motivationNames, affinityMap, seenIngredientNames, macroTarget, todaySodiumMg, weekUseCounts
+        );
         const extraCals = extra.calories ?? 0;
         if (extraCals <= 0) break; // no useful calorie contribution; further picks won't help
         dayCalories += extraCals;
@@ -940,6 +963,18 @@ export async function buildMealPlanMenus(
         weekUsedIds.add(extra.id);
         todayUsedIds.add(extra.id);
         weekUsedSignatures.add(dishSignature(extra.ingredients));
+        // Counted into the day, exactly as a graded slot is. Without this the
+        // filters above read stale zeros and the second pass of this loop
+        // repeated the first pass's protein and sodium.
+        weekUseCounts.set(extra.id, (weekUseCounts.get(extra.id) ?? 0) + 1);
+        todaySodiumMg += dishSodiumMg(extra.ingredients);
+        const extraCarb = dishCarbBase(extra.ingredients);
+        if (extraCarb) todayCarbBaseCounts.set(extraCarb, (todayCarbBaseCounts.get(extraCarb) ?? 0) + 1);
+        const extraProtein = dishProtein(extra.ingredients);
+        if (extraProtein) {
+          todayProteinCounts.set(extraProtein, (todayProteinCounts.get(extraProtein) ?? 0) + 1);
+          todayProteins.add(extraProtein);
+        }
         if (extra.family && !isBeverageExempt(extra)) dailyFamilies.add(extra.family);
         menus.push({ patientId, recipeId: extra.id, mealTypeId: snackMealType.id, date: new Date(current), planVersion });
       }

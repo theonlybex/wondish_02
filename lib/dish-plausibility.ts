@@ -350,6 +350,118 @@ export function phrasePromisesMissingFood(
   return null;
 }
 
+// Seasonings, fats and aromatics a dish is never NAMED after. A dish named
+// after its salt is not named.
+//
+// Matched on head nouns rather than as a substring, for the same reason
+// isStapleName above refuses subset matching: `/\bpeppers?\b/` excludes "Bell
+// peppers", and a bell pepper is a vegetable that happens to have "pepper" in
+// its name. That conflation is the original sin this whole module was written
+// to catch, and it reappeared here the moment the rule was written as a regex
+// over the raw name (caught by the test, 2026-09-25).
+const SEASONING_HEAD = new Set([
+  "salt", "pepper", "peppercorn", "water", "oil", "butter", "ghee", "margarine",
+  "vinegar", "spice", "seasoning", "stock", "broth", "powder", "flake", "zest", "extract",
+  "cilantro", "coriander", "basil", "parsley", "oregano", "thyme", "rosemary", "sage",
+  "dill", "chive", "mint", "paprika", "cumin", "cinnamon", "nutmeg", "clove", "turmeric",
+]);
+// Words that say which VARIETY of a thing, not which thing: "black
+// peppercorns" and "sea salt" are still seasonings, "bell peppers" are not.
+const VARIETY_WORD =
+  /^(black|white|red|green|pink|yellow|sea|kosher|table|coarse|fine|whole|cracked|dried|fresh|raw|light|dark|extra|virgin|ground|chopped|minced|sliced|grated|toasted|roasted|unsalted|salted)$/;
+
+// Deliberately WITHOUT "pepper": a bell pepper's head noun is "pepper", so
+// putting it here excludes a vegetable (caught by the test, 2026-09-25).
+// Peppercorns need no entry — the substantive-token rule below strips "black"
+// as a variety word and is left with a pure seasoning.
+const HEAD_IS_NEVER_THE_DISH = new Set([
+  "oil", "vinegar", "salt", "broth", "stock", "seasoning",
+  "powder", "extract", "essence", "zest", "syrup", "water",
+]);
+
+function notAHeadline(name: string): boolean {
+  const tokens = [...ingredientTokens(name)];
+  if (tokens.length === 0) return true;
+  // Some head nouns are never the dish, however the variety is qualified: an
+  // oil is a cooking medium whatever it is pressed from, and "Apple cider
+  // vinegar" is a dressing, not an apple dish. Judged on the HEAD noun so the
+  // qualifier cannot smuggle it back in — the substantive-token rule below
+  // passed "Avocados with Arugula and Apple Cider Vinegar" because "apple" and
+  // "cider" are foods (observed on the live catalog, 2026-09-25).
+  //
+  // Butter is deliberately absent: "Almond butter" is a food a dish is named
+  // after, plain butter is not, and the rule below separates them on its own
+  // ({almond,butter} keeps a substantive token, {butter} does not).
+  const head = tokens[tokens.length - 1];
+  if (HEAD_IS_NEVER_THE_DISH.has(head)) return true;
+  const substantive = tokens.filter((t) => !VARIETY_WORD.test(t));
+  return substantive.length > 0 && substantive.every((t) => SEASONING_HEAD.has(t));
+}
+
+// What a reader calls the dish. Two tiers, because "Greek Yogurt Veggie
+// Omelette" is an egg dish and cheese is a topping on most dishes that carry it.
+const HEADLINE_ANCHOR =
+  /\b(chicken|turkey|beef|pork|lamb|veal|salmon|tuna|cod|tilapia|halibut|sardines?|mackerel|shrimps?|prawns?|fish|eggs?|tofu|tempeh|seitan|lentils?|chickpeas?|garbanzos?|beans?)\b/i;
+const HEADLINE_DAIRY = /\b(yogh?urt|cheese|feta|paneer|cottage|ricotta|mozzarella|parmesan)\b/i;
+
+const NAME_CONNECTORS = new Set(["with", "and", "of", "in", "on", "the", "a", "an"]);
+function titleCase(s: string): string {
+  return s
+    .split(/\s+/)
+    .map((w, i) =>
+      i > 0 && NAME_CONNECTORS.has(w.toLowerCase()) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1)
+    )
+    .join(" ");
+}
+
+/**
+ * A name built from the dish's own ingredients, in the library's convention:
+ * "Chicken Breast with Brown Rice and Broccoli".
+ *
+ * The counterpart to phrasePromisesMissingFood. That predicate answers "does
+ * this name lie?", and for a long time the only available response was to throw
+ * the dish away — 8 of 16 rejections in a measured generation batch, and 134
+ * rows already in the catalog stranded for the same reason, 22 of them in the
+ * snack slot that a QA week then filled with one dish four times.
+ *
+ * So the answer is a truthful name instead. Built from the ingredient list in
+ * its own order (both the model and the catalog put the main ingredients
+ * first), then RE-CHECKED by the same predicate rather than assumed clean, and
+ * refused rather than forced when no honest name can be made. `taken` holds
+ * names already in use, and a longer name is the way out of a collision.
+ */
+export function truthfulDishName(
+  ingredientNames: readonly string[],
+  catalogFoodTokens: Set<string>,
+  taken: Set<string> = new Set()
+): string | null {
+  const heads = ingredientNames.map((n) => n.trim()).filter((n) => n && !notAHeadline(n));
+  if (heads.length === 0) return null;
+  // The dish's namesake leads. Taking the list in its stored order renamed
+  // "Greek Yogurt Veggie Omelette" to "Spinach with Feta Cheese and Plain Greek
+  // Yogurt" and lost the eggs — a stored RecipeIngredient list has no
+  // importance order, only insertion order. So the anchor comes first: the meat,
+  // fish, egg, tofu or legume a reader would call the dish, then the dairy
+  // proteins, then everything else, each group keeping its original order. This
+  // is the library's own naming convention ("Chicken Breast with Broccoli and
+  // Brown Rice"), and it is a heuristic about EMPHASIS only — every name it
+  // produces is still checked against the ingredient list before it is used.
+  const rank = (n: string) => (HEADLINE_ANCHOR.test(n) ? 0 : HEADLINE_DAIRY.test(n) ? 1 : 2);
+  heads.sort((a, b) => rank(a) - rank(b)); // stable in V8: ties keep list order
+  // The fullest honest name first, then shorter ones.
+  for (const n of [3, 4, 2, 1].filter((n) => n <= heads.length)) {
+    const parts = heads.slice(0, n);
+    const rest = parts.slice(1);
+    const tail =
+      rest.length <= 1 ? rest.join("") : `${rest.slice(0, -1).join(", ")} and ${rest[rest.length - 1]}`;
+    const name = titleCase(rest.length === 0 ? parts[0] : `${parts[0]} with ${tail}`);
+    if (phrasePromisesMissingFood(name, ingredientNames, catalogFoodTokens)) continue;
+    if (taken.has(name.trim().toLowerCase())) continue;
+    return name;
+  }
+  return null;
+}
+
 // Claims a reader acts on that the token rule structurally cannot see.
 // ingredientTokens treats "whole" and "grain" as descriptors — deliberately,
 // so a basket holding "bread" still matches "whole grain bread" — which means

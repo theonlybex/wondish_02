@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes } from "./dish-plausibility";
+import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName } from "./dish-plausibility";
 
 // The catalog vocabulary, as lib/meal-plan.ts builds it from Ingredient.name.
 const CATALOG = new Set([
@@ -418,4 +418,27 @@ test("a dish with a missing macro is refused — a null lands in the ring as a z
   );
   // And a caller that does not supply macros at all is not second-guessed.
   assert.equal(dishProblem({ ...noProtein, macros: null }, CATALOG), null);
+});
+
+// truthfulDishName — the rename that returns a prose-rejected dish to the pool.
+// Every case here is a real row from the live catalog.
+test("truthfulDishName names a dish after its own ingredients, anchor first", () => {
+  assert.equal(
+    truthfulDishName(["Spinach", "Feta cheese", "Plain Greek yogurt", "Large eggs"], CATALOG),
+    "Large Eggs with Feta Cheese and Plain Greek Yogurt"
+  );
+});
+
+test("truthfulDishName never names a dish after a seasoning — but a bell pepper is a vegetable", () => {
+  // The conflation this module exists to catch, reappearing in the namer.
+  assert.equal(
+    truthfulDishName(["Sea salt", "Black peppercorns", "Extra virgin olive oil", "Bell peppers", "Brown rice"], CATALOG),
+    "Bell Peppers with Brown Rice"
+  );
+  // A nut butter IS a food; plain butter is not.
+  assert.equal(truthfulDishName(["Unsalted butter", "Almond butter", "Bananas"], CATALOG), "Almond Butter with Bananas");
+});
+
+test("truthfulDishName refuses rather than inventing when nothing is nameable", () => {
+  assert.equal(truthfulDishName(["Sea salt", "Water", "Coconut oil"], CATALOG), null);
 });

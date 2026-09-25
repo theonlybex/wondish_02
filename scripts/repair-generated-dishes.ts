@@ -34,6 +34,11 @@ import { PrismaClient } from "@prisma/client";
 import { ingredientTokens } from "../lib/basket-match";
 import { priceDish, PRICING_COVERAGE_MIN, macrosDisagreeWithPricing } from "../lib/staple-density";
 import { BASKET_STAPLES } from "../lib/basket-coverage";
+import {
+  SNACK_MAX_MINUTES, BREAKFAST_MAX_MINUTES, SMALL_DISH_KCAL, breakfastLooksLikeBreakfast,
+  catalogFoodVocabulary, phrasePromisesMissingFood, truthfulDishName,
+} from "../lib/dish-plausibility";
+import { displayDishName } from "../lib/dish-name";
 
 for (const line of readFileSync(".env.local", "utf8").split("\n")) {
   const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
@@ -253,6 +258,136 @@ async function main() {
     console.log(`  ${d.ingredient} ${d.quantity} ${d.unit}  in  ${d.name}`);
   }
 
+  // ── Move dishes whose slot label their own numbers contradict ─────────────
+  //
+  // 155 rows sit under Snack and take longer than 20 minutes; 54 sit under
+  // Breakfast and take longer than 30. These are not broken dishes and they are
+  // not bad snacks — they are dinners with the wrong label: "Ground Beef and
+  // Celery with Brown Rice", 40 minutes, 503 kcal, filed as a Snack. Two QA
+  // reports found them from opposite ends — /pantry offering a 772 kcal braise
+  // as Breakfast and 20 rice dinners as Snack — and the plan builder found them
+  // too, as an absence: it filters candidates by `recipe.mealTypeId`, so a
+  // mislabelled dinner is invisible to the dinner slot AND rejected from the
+  // snack slot by the timing gate. 209 usable dishes, in the pool for nothing.
+  //
+  // The destination comes from the row's own figures, not from a guess: over
+  // 450 kcal it is a dinner, otherwise it goes to the fastest slot its timing
+  // fits. Timing and calories are what the slot MEANS (a snack is small and
+  // quick), so this is reading the label off the dish rather than assigning one.
+  //
+  // A destination is only used if the row would SURVIVE there. The first draft
+  // sent "Chicken Breast with Zucchini and Roma Tomato Skewers" (27 min) from
+  // Snack to Breakfast, where the breakfast-food rule drops it — that is not a
+  // repair, it is moving a dish from one gate to another. So Breakfast is
+  // offered only to rows breakfastLooksLikeBreakfast accepts, called from the
+  // same module the runtime calls, and the rest fall through to Lunch (which
+  // the Dinner slot also draws from).
+  //
+  // Nothing here widens what a slot accepts — the gates are unchanged. It only
+  // stops 209 dishes being filed under a slot that then refuses them.
+  const mealTypes = await prisma.mealType.findMany({ select: { id: true, name: true } });
+  const idOf = (n: string) => mealTypes.find((m) => m.name.toLowerCase() === n.toLowerCase())?.id ?? null;
+  const slotRows = await prisma.recipe.findMany({
+    where: { isPublic: true, mealTypeId: { not: null } },
+    select: {
+      id: true, name: true, mealTypeId: true, calories: true, prepTime: true, cookTime: true,
+      description: true, tags: true, steps: true, protein: true, carbs: true, fat: true,
+      ingredients: { select: { quantity: true, unit: true, note: true, ingredient: { select: { name: true, groceryCategory: true } } } },
+    },
+  });
+  const slotMoves: { id: string; name: string; from: string; to: string; toId: string; minutes: number }[] = [];
+  for (const r of slotRows) {
+    const from = mealTypes.find((m) => m.id === r.mealTypeId)?.name ?? "";
+    const minutes = (r.prepTime ?? 0) + (r.cookTime ?? 0);
+    if (minutes === 0) continue; // no timing on file: nothing to contradict
+    const tooSlowForSnack = from.toLowerCase() === "snack" && minutes > SNACK_MAX_MINUTES;
+    const tooSlowForBreakfast = from.toLowerCase() === "breakfast" && minutes > BREAKFAST_MAX_MINUTES;
+    if (!tooSlowForSnack && !tooSlowForBreakfast) continue;
+    const asBreakfast = {
+      name: r.name,
+      description: r.description,
+      steps: r.steps,
+      mealTypeName: "Breakfast",
+      prepMinutes: r.prepTime,
+      cookMinutes: r.cookTime,
+      calories: r.calories,
+      macros: { protein: r.protein, carbs: r.carbs, fat: r.fat },
+      generated: (r.tags ?? []).some((t) => /clara/i.test(t)),
+      ingredients: r.ingredients.map((ri) => ({
+        name: ri.ingredient.name, quantity: ri.quantity, unit: ri.unit, note: ri.note,
+        category: ri.ingredient.groceryCategory,
+      })),
+    };
+    const to =
+      r.calories != null && r.calories >= SMALL_DISH_KCAL
+        ? "Dinner"
+        : tooSlowForSnack && minutes <= BREAKFAST_MAX_MINUTES && breakfastLooksLikeBreakfast(asBreakfast)
+          ? "Breakfast"
+          : "Lunch";
+    const toId = idOf(to);
+    if (!toId || toId === r.mealTypeId) continue;
+    slotMoves.push({ id: r.id, name: r.name, from, to, toId, minutes });
+  }
+  const moveTally: Record<string, number> = {};
+  for (const m of slotMoves) moveTally[`${m.from}→${m.to}`] = (moveTally[`${m.from}→${m.to}`] ?? 0) + 1;
+  console.log(`slot labels contradicted by the row's own timing: ${slotMoves.length} ${JSON.stringify(moveTally)}`);
+  for (const m of slotMoves.slice(0, 5)) {
+    console.log(`  ${m.from} → ${m.to} (${m.minutes} min) — ${m.name}`);
+  }
+
+  // ── Rename generated rows whose own name promises food they don't contain ──
+  //
+  // The same repair generation now does at the write point (repairProse), for
+  // the rows written before it existed. 134 generated dishes carry a name or
+  // description that names food they do not list, and selection refuses every
+  // one — including 22 of the ~75 snacks in the catalog, which is why a QA week
+  // served the same snack four times.
+  //
+  // Renaming is not cosmetic here: the name is the claim a reader shops from.
+  // "Ground Beef with Bell Peppers and Brown Rice" made with jasmine rice sends
+  // someone to buy brown rice for a dish that never uses it. The ingredient
+  // list is the truth, so the name is rebuilt from it, re-checked by the
+  // predicate that condemned the old one, and left alone when no honest name
+  // can be formed (that row stays out of the pool, correctly).
+  //
+  // CLARA-tagged rows only. A curated name is editorial and measured; this
+  // script has no business rewriting one.
+  const vocabulary = catalogFoodVocabulary(
+    (await prisma.ingredient.findMany({ select: { name: true } })).map((i) => i.name)
+  );
+  const takenNames = new Set(
+    (await prisma.recipe.findMany({ select: { name: true } })).map((r) => r.name.trim().toLowerCase())
+  );
+  const proseRows = await prisma.recipe.findMany({
+    where: { isPublic: true, tags: { hasSome: ["clara", "Clara", "clara-generated"] } },
+    select: {
+      id: true, name: true, description: true,
+      ingredients: { select: { ingredient: { select: { name: true } } } },
+    },
+  });
+  const renames: { id: string; from: string; to: string; lied: string; description: string | null }[] = [];
+  for (const r of proseRows) {
+    const names = r.ingredients.map((ri) => ri.ingredient.name);
+    const nameLie = phrasePromisesMissingFood(displayDishName(r.name), names, vocabulary);
+    const descLie = r.description ? phrasePromisesMissingFood(r.description, names, vocabulary) : null;
+    if (!nameLie && !descLie) continue;
+    let to = r.name;
+    if (nameLie) {
+      const honest = truthfulDishName(names, vocabulary, takenNames);
+      if (!honest) continue;
+      to = honest;
+      takenNames.delete(r.name.trim().toLowerCase());
+      takenNames.add(honest.trim().toLowerCase());
+    }
+    renames.push({ id: r.id, from: r.name, to, lied: nameLie ?? descLie ?? "", description: to });
+  }
+  const titleFixes = renames.filter((r) => r.to !== r.from);
+  console.log(
+    `generated rows whose prose names absent food: ${renames.length} repairable ` +
+      `(${titleFixes.length} renamed, ${renames.length - titleFixes.length} description-only)`
+  );
+  for (const r of titleFixes.slice(0, Number(process.env.SHOW ?? 5))) console.log(`  "${r.from}" (no ${r.lied}) → "${r.to}"`);
+
   if (!APPLY) {
     console.log("\nreport only — pass --apply to write");
     await prisma.$disconnect();
@@ -261,7 +396,7 @@ async function main() {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backup = `/tmp/wondish-dish-repair-${stamp}.json`;
-  writeFileSync(backup, JSON.stringify({ macroFills, macroCorrections, macroFixes, calorieFixes, linkDrops }, null, 2));
+  writeFileSync(backup, JSON.stringify({ macroFills, macroCorrections, macroFixes, calorieFixes, linkDrops, slotMoves, renames }, null, 2));
   console.log(`\nbackup written: ${backup}`);
 
   let filled = 0;
@@ -292,7 +427,17 @@ async function main() {
     await prisma.recipeIngredient.deleteMany({ where: { recipeId: d.recipeId, ingredientId: d.ingredientId } });
     dropped++;
   }
-  console.log(`applied: ${filled} null-macro rows filled, ${corrected} contradictory macro sets corrected, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
+  let renamed = 0;
+  for (const r of renames) {
+    await prisma.recipe.update({ where: { id: r.id }, data: { name: r.to, description: r.description } });
+    renamed++;
+  }
+  let moved = 0;
+  for (const m of slotMoves) {
+    await prisma.recipe.update({ where: { id: m.id }, data: { mealTypeId: m.toId } });
+    moved++;
+  }
+  console.log(`applied: ${renamed} dishes renamed from their ingredients, ${moved} dishes moved to the slot their timing fits, ${filled} null-macro rows filled, ${corrected} contradictory macro sets corrected, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
   await prisma.$disconnect();
 
 }

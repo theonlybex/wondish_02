@@ -13,6 +13,7 @@ import { priceDish, PRICING_COVERAGE_MIN, type PricedDish } from "@/lib/staple-d
 import {
   dishProblem,
   phrasePromisesMissingFood,
+  truthfulDishName,
   breakfastIsQuickEnough as quickEnough,
   BREAKFAST_MAX_MINUTES,
   TITLE_NON_FOOD,
@@ -391,6 +392,54 @@ export function descriptionPromisesMissingFood(r: FridgeRecipe, catalogFoodToken
 }
 
 /**
+ * Rewrite prose that contradicts the dish's own ingredient list.
+ *
+ * Measured 2026-09-24: of 22 generated dishes, 16 were rejected and 8 of those
+ * rejections were `title-promises-missing-food` or its description twin. Those
+ * eight dishes were SOUND — real amounts, units, steps, macros, inside the
+ * basket, past the allergen filter — and were thrown away over their label.
+ * Meanwhile the snack pool stayed at one dish and the builder served it four
+ * times in a week, which is the defect both QA bots named as the top blocker.
+ *
+ * Discarding a good dish because the model mis-titled it is the wrong disposal.
+ * "Clara proposes, deterministic machinery disposes" cuts both ways: when the
+ * prose disagrees with the ingredient list, the ingredient list is the truth
+ * and the prose is what gets replaced. Nothing substantive is repaired here —
+ * an allergen, an out-of-basket ingredient, a missing amount, a lying macro or
+ * a step that outlasts its stated time is still a hard rejection, because those
+ * are the dish, not its name.
+ *
+ * The new name is built from the dish's own ingredients in the model's own
+ * order (it lists the main ones first) and is then re-checked by the same
+ * predicate that rejected the old one — built truthful, verified truthful, not
+ * assumed. Returns null when no honest name can be formed, and the caller
+ * rejects as before.
+ */
+export function repairProse(
+  r: FridgeRecipe,
+  catalogFoodTokens: Set<string>,
+  taken: Set<string>
+): FridgeRecipe | null {
+  const titleLies = titlePromisesMissingFood(r, catalogFoodTokens) !== null;
+  const descLies = descriptionPromisesMissingFood(r, catalogFoodTokens) !== null;
+  if (!titleLies && !descLies) return r;
+
+  let next = r;
+  if (titleLies) {
+    const chosen = truthfulDishName(r.usesIngredients, catalogFoodTokens, taken);
+    if (!chosen) return null;
+    next = { ...next, name: chosen };
+  }
+  if (descLies || descriptionPromisesMissingFood(next, catalogFoodTokens) !== null) {
+    // The library's own convention: most curated rows use the dish name as the
+    // description. Truthful by construction, and the card reads the same as
+    // every other card.
+    next = { ...next, description: next.name };
+  }
+  return next;
+}
+
+/**
  * Do the steps cook in a fat the dish never lists?
  *
  * 13 of 25 dishes in one QA week said to sear, sauté or brown something and
@@ -514,12 +563,21 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
       if (process.env.AI_DEBUG) console.warn(`[recipe-generation] rejected (allergen): ${r.name} — ${violations.map((v) => `${v.term}←${v.ingredient}`).slice(0, 3).join(", ")}`);
     }
   }
-  for (const r of filtered) {
+  let retitled = 0;
+  for (const raw of filtered) {
     if (accepted.length >= total) break;
-    if (!withinBasket(r)) { reject("out-of-basket", r); continue; }
-    if (!passesSanity(r)) { reject("sanity", r); continue; }
-    const slot = typeByName.get((r.mealType ?? "").toLowerCase());
-    if (!slot) { reject("meal-type", r); continue; }
+    if (!withinBasket(raw)) { reject("out-of-basket", raw); continue; }
+    if (!passesSanity(raw)) { reject("sanity", raw); continue; }
+    const slot = typeByName.get((raw.mealType ?? "").toLowerCase());
+    if (!slot) { reject("meal-type", raw); continue; }
+
+    // Prose that contradicts the ingredient list is rewritten from the list,
+    // not grounds for discarding the dish (see repairProse). Everything the
+    // gates below judge is judged on the repaired dish, so a rewritten name
+    // still has to pass the same predicate the old one failed.
+    const r = repairProse(raw, args.catalogFoodTokens ?? new Set(), seen);
+    if (!r) { reject("title-promises-missing-food", raw); continue; }
+    if (r.name !== raw.name) retitled++;
 
     // The same predicate the builder applies at selection — salt, seasoning
     // quantities, slot timing, and the title's promise.
@@ -565,7 +623,7 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     seen.add(nameKey);
     accepted.push({ recipe: r, mealTypeId: slot.mealTypeId });
   }
-  console.info(`[recipe-generation] generated=${recipes.length} accepted=${accepted.length} rejected=${JSON.stringify(rejected)}${rejected.allergen > 0 ? ` banTerms=${JSON.stringify(banTerms)}` : ""}`);
+  console.info(`[recipe-generation] generated=${recipes.length} accepted=${accepted.length}${retitled > 0 ? ` retitled=${retitled}` : ""} rejected=${JSON.stringify(rejected)}${rejected.allergen > 0 ? ` banTerms=${JSON.stringify(banTerms)}` : ""}`);
   if (accepted.length === 0) return [];
   // dishType "complete meal" so the builder's primary-dish step (Step 1) can
   // select these under the full calorie-window + macro + variety rules, not

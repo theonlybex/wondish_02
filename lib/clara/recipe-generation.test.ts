@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { passesSanity, chunkTopUpRequests, freeStaplesFor, proteinOptionsFor, titlePromisesMissingFood, breakfastIsQuickEnough } from "./recipe-generation";
+import { passesSanity, chunkTopUpRequests, freeStaplesFor, proteinOptionsFor, titlePromisesMissingFood, breakfastIsQuickEnough, repairProse } from "./recipe-generation";
 import { buildDietMatchers, derivePatientBans } from "../diet-match";
 import { validateFridgeRecipeSnapshot, type FridgeRecipe } from "../fridge";
 
@@ -308,4 +308,64 @@ test("a dish's calories are reconciled to its own macro rows", async () => {
   // A dish whose macros imply an impossible total is left for the sanity gate
   // to reject rather than being quietly rewritten to something plausible.
   assert.equal(reconcileCalories({ perServing: { calories: 600, protein: 1, carbs: 2, fat: 1 } } as never), null);
+});
+
+// repairProse — the cycle-9 fix. 8 of 16 rejections in a measured generation
+// batch were prose-only: the dish was sound and its name lied. Discarding it
+// left the snack pool at one dish, which the builder then served four times in
+// a week. The ingredient list is the truth; the prose is what gets replaced.
+
+const prosed = (name: string, usesIngredients: string[], description = "") =>
+  ({ name, usesIngredients, description }) as never;
+
+test("repairProse renames a lying title from the dish's own ingredients", () => {
+  const fixed = repairProse(
+    prosed("Ground Beef with Bell Peppers and Brown Rice", ["ground beef", "Bell peppers", "jasmine rice", "salt"]),
+    FOOD_VOCAB,
+    new Set()
+  );
+  assert.ok(fixed);
+  assert.equal(fixed.name, "Ground Beef with Bell Peppers and Jasmine Rice");
+  // Built truthful AND verified truthful by the predicate that rejected the old name.
+  assert.equal(titlePromisesMissingFood(fixed, FOOD_VOCAB), null);
+});
+
+test("repairProse leaves an honest dish untouched", () => {
+  const dish = prosed("Turkey Breast with Wild Rice", ["Turkey breast", "Wild rice", "Extra virgin olive oil", "salt"], "A plain description.");
+  assert.equal(repairProse(dish, FOOD_VOCAB, new Set()), dish);
+});
+
+test("repairProse never names a dish after its salt or oil", () => {
+  const fixed = repairProse(
+    prosed("Lemon Herb Chicken", ["salt", "Extra virgin olive oil", "chicken breast", "broccoli"]),
+    FOOD_VOCAB,
+    new Set()
+  );
+  assert.ok(fixed);
+  assert.equal(fixed.name, "Chicken Breast with Broccoli");
+});
+
+test("repairProse replaces a description that promises what the dish lacks", () => {
+  const fixed = repairProse(
+    prosed("Chicken Breast with Broccoli", ["chicken breast", "broccoli"], "Served over brown rice with a squeeze of lemon."),
+    FOOD_VOCAB,
+    new Set()
+  );
+  assert.ok(fixed);
+  assert.equal(fixed.name, "Chicken Breast with Broccoli");
+  assert.equal(fixed.description, "Chicken Breast with Broccoli");
+});
+
+test("repairProse lengthens the name rather than colliding with one already taken", () => {
+  const fixed = repairProse(
+    prosed("Lemon Chicken", ["chicken breast", "broccoli", "carrots"]),
+    FOOD_VOCAB,
+    new Set(["chicken breast with broccoli"])
+  );
+  assert.ok(fixed);
+  assert.equal(fixed.name, "Chicken Breast with Broccoli and Carrots");
+});
+
+test("repairProse gives up when the dish has no nameable ingredient", () => {
+  assert.equal(repairProse(prosed("Lemon Salt Bowl", ["salt", "water"]), FOOD_VOCAB, new Set()), null);
 });
