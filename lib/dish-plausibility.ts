@@ -462,17 +462,35 @@ export function readableProse(text: string): string {
 }
 
 /**
+ * A description as a user should read it. Many library descriptions are just a
+ * title — often the dish's OLD title, left behind when the name was repaired —
+ * so a short line with no sentence in it gets the title rule too. A real
+ * sentence keeps "whisk 2 large eggs": that is an amount, not a grade.
+ */
+export function readableDescription(text: string, steps?: readonly string[] | null): string {
+  const prose = readableProse(text);
+  const titleLike = prose.length <= 100 && !/[.!?;:]/.test(prose.trim().replace(/\.$/, ""));
+  return titleLike ? (nameFromCookedForm(prose, steps) ?? prose) : prose;
+}
+
+/**
  * A recipe with its steps and description passed through readableProse.
  *
  * Applied where a page hands a stored dish to the screen, so a row the
  * backfill has not reached yet still reads correctly — the stored rows are
  * repaired by scripts/repair-steps-and-titles.ts, and Clara reads those.
  */
-export function withReadableProse<T extends { steps?: string[] | null; description?: string | null }>(r: T): T {
+export function withReadableProse<
+  T extends { name?: string; steps?: string[] | null; description?: string | null },
+>(r: T): T {
+  // The title too: a grading word off the egg box is not a dish name, and the
+  // stored rows wait on the same backfill as the prose.
+  const renamed = typeof r.name === "string" ? nameFromCookedForm(r.name, r.steps) : null;
   return {
     ...r,
+    ...(renamed ? { name: renamed } : {}),
     ...(Array.isArray(r.steps) ? { steps: r.steps.map(readableProse) } : {}),
-    ...(typeof r.description === "string" ? { description: readableProse(r.description) } : {}),
+    ...(typeof r.description === "string" ? { description: readableDescription(r.description, r.steps) } : {}),
   };
 }
 
@@ -1389,6 +1407,8 @@ const EGG_METHODS: { pattern: RegExp; form: string }[] = [
 
 /** The grade anywhere in the name — "Spinach and Large Eggs Wrap". */
 const GRADED_EGGS = /\b(?:large|medium|jumbo|extra[- ]large|free[- ]range)\s+(eggs?)\b/gi;
+/** The same, already stored: an egg dish's form and then a capital connector. */
+const EGG_FORM_THEN_CONNECTOR = /^((?:(?:Scrambled|Poached|Fried|Boiled|Baked) )?Eggs|Omelette) (With|And|In|On|Over)\b/;
 /** A connector the join left capitalised: "Scrambled Eggs With Tomatoes". */
 const LEADING_CONNECTOR = /^(With|And|In|On|Over)\b/;
 
@@ -1404,7 +1424,10 @@ const LEADING_CONNECTOR = /^(With|And|In|On|Over)\b/;
  */
 export function nameFromCookedForm(name: string, steps: readonly string[] | null | undefined): string | null {
   const led = EGG_LED_TITLE.test(name);
-  if (!led && !new RegExp(GRADED_EGGS.source, "i").test(name)) return null;
+  // The first rename wrote "Scrambled Eggs With Mushrooms" into the catalog
+  // itself; with the grade already gone, it needs only its connector fixed.
+  const joined = EGG_FORM_THEN_CONNECTOR.test(name);
+  if (!led && !joined && !new RegExp(GRADED_EGGS.source, "i").test(name)) return null;
 
   let out = name;
   if (led) {
@@ -1424,6 +1447,7 @@ export function nameFromCookedForm(name: string, steps: readonly string[] | null
     // after it, just the dish.
     out = rest ? `${head} ${rest}` : head;
   }
+  out = out.replace(EGG_FORM_THEN_CONNECTOR, (_m, form: string, c: string) => `${form} ${c.toLowerCase()}`);
   // The grade mid-name, where there is no method to put in its place.
   out = out.replace(GRADED_EGGS, (_m, eggs: string) => eggs.charAt(0).toUpperCase() + eggs.slice(1));
   out = out.replace(/\s+/g, " ").trim();

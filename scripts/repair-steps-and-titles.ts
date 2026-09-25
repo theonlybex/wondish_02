@@ -32,6 +32,7 @@ import {
   stepRinsesRawProtein,
   nameFromCookedForm,
   readableProse as repairedProse,
+  readableDescription,
 } from "../lib/dish-plausibility";
 
 const APPLY = process.argv.includes("--apply");
@@ -56,7 +57,7 @@ async function main() {
       stepFixes.push({ id: r.id, name: r.name, from: r.steps.join(" ⏎ "), to: next.join(" ⏎ ") });
     }
     if (r.description) {
-      const d = repairedProse(r.description);
+      const d = readableDescription(r.description, r.steps);
       if (d !== r.description) descFixes.push({ id: r.id, name: r.name, from: r.description, to: d });
     }
 

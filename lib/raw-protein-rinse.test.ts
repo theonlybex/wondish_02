@@ -123,6 +123,11 @@ test("it leaves alone what it cannot name", () => {
   assert.equal(nameFromCookedForm("Whole Wheat Toast with Egg Whites", ["Toast."]), null);
 });
 
+test("a stored name the first rename wrote gets its connector fixed", () => {
+  assert.equal(nameFromCookedForm("Scrambled Eggs With Mushrooms", ["Scramble."]), "Scrambled Eggs with Mushrooms");
+  assert.equal(nameFromCookedForm("Scrambled Eggs with Mushrooms", ["Scramble."]), null);
+});
+
 test("the grade goes mid-name too, and a joined connector is not capitalised", () => {
   assert.equal(nameFromCookedForm("Spinach and Large Eggs Wrap", ["Wrap it."]), "Spinach and Eggs Wrap");
   assert.equal(

@@ -11,6 +11,15 @@ test("strips import-sheet variant suffixes", () => {
   assert.equal(displayDishName("Dried Figs, V2"), "Dried Figs");
 });
 
+test("the variant shapes /dishes still showed in cycle 18", () => {
+  assert.equal(displayDishName("Blueberries Chia Pudding , V1 S- 1/2 cup almond milk"), "Blueberries Chia Pudding");
+  assert.equal(displayDishName("Brown Rice with Sizzling Tofu, V2,5 M- 4 oz tofu."), "Brown Rice with Sizzling Tofu");
+  assert.equal(displayDishName("Dave’s Herb-stuffed Mushrooms , V2,3,4"), "Dave’s Herb-stuffed Mushrooms");
+  assert.equal(displayDishName("Latte, V4,6,7 Decaf with low-fat milk"), "Latte");
+  assert.equal(displayDishName("Milk Chocolate , V7, 11"), "Milk Chocolate");
+  assert.equal(displayDishName("Mushroom Steak Fajitas , V4 M- 4 oz beef"), "Mushroom Steak Fajitas");
+});
+
 test("leaves real names alone", () => {
   assert.equal(displayDishName("Chicken and Vegetable Egg Scramble"), "Chicken and Vegetable Egg Scramble");
   assert.equal(displayDishName("Vitamin C Smoothie, Version 2"), "Vitamin C Smoothie, Version 2");

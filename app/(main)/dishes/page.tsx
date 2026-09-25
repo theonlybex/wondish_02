@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import DishesGrid from "@/components/DishesGrid";
 import type { Dish, MealTypeKey } from "@/types";
 import { displayDishName } from "@/lib/dish-name";
-import { readableProse } from "@/lib/dish-plausibility";
+import { readableDescription, nameFromCookedForm } from "@/lib/dish-plausibility";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +19,19 @@ export default async function DishesPage() {
     orderBy: { name: "asc" },
   });
 
-  const dishes: Dish[] = recipes.map((r, i) => ({
+  const dishes: Dish[] = recipes.map((r, i) => {
+    const name = nameFromCookedForm(displayDishName(r.name), r.steps) ?? displayDishName(r.name);
+    return {
     id: i + 1,
     // The public menu was the one surface still printing raw import rows —
     // "2-Step Chicken , V1L- 6 oz chicken" on 626 dishes (QA cycle 17) — and
     // the description, which repeats the whole method on 784 of them.
-    name: displayDishName(r.name),
-    description: readableProse(r.description ?? ""),
+    name,
+    // Many descriptions just repeat the name — the raw one, variant code and all.
+    description:
+      r.description && r.description.trim() === r.name.trim()
+        ? name
+        : readableDescription(r.description ?? "", r.steps),
     mealType: (r.mealType?.name?.toLowerCase() ?? "dinner") as MealTypeKey,
     calories: r.calories ?? 0,
     protein: r.protein ?? 0,
@@ -37,7 +43,8 @@ export default async function DishesPage() {
     tags: r.tags ?? [],
     emoji: r.emoji ?? "🍽️",
     imageUrl: r.imageUrl ?? undefined,
-  }));
+    };
+  });
 
   return (
     <div className="min-h-screen bg-[#F8F7FA] pt-24 pb-16">

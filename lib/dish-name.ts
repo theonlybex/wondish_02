@@ -9,7 +9,10 @@
 //   ", V2,5M- 4 oz plant-based ground beef."  (a comma inside the code itself)
 // The dot form was missing, so "Black coffee, V1. Plain" reached /pantry cards
 // intact (QA cycle 8). Anything after the code is part of the code's label.
-const VARIANT_SUFFIX = /\s*,\s*V\d+(?:[,.]\d+)?[A-Za-z]*(?:\s*[-.].*)?$/;
+// …and five more found on /dishes in cycle 18: a space before the size letter
+// (", V1 S- 1/2 cup"), a list of variants (", V2,3,4", ", V7, 11"), and a label
+// after a space (", V4,6,7 Decaf with low-fat milk").
+const VARIANT_SUFFIX = /\s*,\s*V\d+(?:\s*[,.]\s*\d+)*[A-Za-z]*(?:[\s.\-].*)?$/;
 
 export function displayDishName(name: string): string {
   const cleaned = name.replace(VARIANT_SUFFIX, "").trim();
