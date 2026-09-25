@@ -88,7 +88,7 @@ already applied to the shared Neon DB, so landing is code-only. **[verified]**
 
 ---
 
-## 0b. Open QA defects (cycles 8-16, 2026-09-25)
+## 0b. Open QA defects (cycles 8-17, 2026-09-25)
 
 Sixteen fix→test cycles against the live database. The cycle procedure is
 `docs/qa/beta-test-plan.md` → "How a cycle runs"; this section is the list it
@@ -136,24 +136,142 @@ re-measured after the fix rather than assumed.
       run was killed mid-cook was meeting a 90-second "Clara is already
       cooking" and reporting a working feature as broken.
 
-### Open
+### Open — found by the cycle-16 bot pass (two bots, frozen `e5fed9e`)
+
+Ranked by how badly each would hurt a beta tester. Everything here was measured
+or reproduced; where a bot could not pin something down, it says so.
+
+**The feature that hides itself**
+- [ ] **cook-my-day is unreachable with a well-stocked pantry.** Its card is the
+      feature's only entry point (`PantryClient.tsx:793`) and renders only when
+      `!cookable.dayCoverage.canFillDay`. With a normal 16-ingredient basket the
+      API returns `canFillDay: true` and the whole feature — cuisine chips,
+      allowance line, upgrade offer — is absent from the page, with no
+      explanation anywhere. The bot had to strip its pantry to five items to
+      reach it, and it vanished again on restocking. A metered, paid-for
+      capability that disappears from the users most likely to use it.
+
+**The amount fix reached the backfill and not the write path**
+- [ ] **A freshly generated week contains `0.1 teaspoon` and `0.2 teaspoon`** —
+      16 and 4 rows across 11 of 28 dishes, always pepper/salt/garlic powder,
+      sitting on the same card as a correctly rendered `⅛ teaspoon`.
+      `repairAmount` is called by the backfill and the audit and NOT at
+      generation, so the catalog is clean and everything new is not. This is the
+      cycle-13-to-15 shape exactly: the rule exists, the write path never calls
+      it.
+- [ ] **185 unmeasurable amounts are written into step PROSE**, in 115 dishes:
+      "Season with 0.0625 teaspoon kosher salt", "Pour 0.33 cup of mung bean
+      plant-based egg", "Spray with 0.25 gr of avocado oil". The amount repair
+      only ever touched ingredient ROWS. A cook reads the steps.
+- [ ] **`2 mediums`** — `formatAmount` pluralises "medium", which is an
+      adjective ("2 medium eggs"), and the step prose says "Pour 2 medium large
+      eggs into a bowl".
+
+**The instructions exist twice**
+- [ ] **784 library rows carry the whole method a second time in
+      `description`**, and 4 of them still tell the user to rinse raw fish
+      ("Baked Trout" ×4). The rinse repair rewrote `steps`; `/dishes` renders
+      `description`. My own verification query read `steps`, found zero, and
+      would have reported the fix as landed — the bot read the screen.
+
+**Titles**
+- [ ] **21 dishes still start with "Large Eggs", 7 more carry it mid-name**, and
+      one reached a plan card as "Large Eggs with Bell Peppers and Carrots". The
+      rename only fires when an egg-mentioning step names a method; these
+      describe the method without using one of the words ("whisk … cook
+      undisturbed"). Dropping the grading word alone — "Eggs with…" — is never
+      wrong and was not done.
+- [ ] **"Scrambled Eggs With Sautéed Tomatoes"** — a stray capital W, produced
+      by the rename joining a method to a remainder that began with "With".
+- [ ] **626 public dishes show their internal variant code** on `/dishes`
+      ("2-Step Chicken , V1L- 6 oz chicken"). `displayDishName()` exists and is
+      called on plan cards, the weekly grid, the pantry and swaps;
+      `app/(main)/dishes/page.tsx:22` passes `r.name` raw. The marketing menu is
+      the one surface showing the raw rows.
+
+**Keyboard and interaction**
+- [ ] **The four dish rows on /meal-plan are keyboard-unreachable** — `<div
+      onClick>` with no `role` and no `tabindex`. They are the only way to
+      expand a dish, rate it, or open the swap modal, so the swap modal (whose
+      focus trap and Escape handling both test clean) cannot be reached at all
+      by keyboard. /meal-plan has 14 tab stops because of this.
+- [ ] **`Button` drops out of the tab order for ~60s while loading.**
+      `disabled={disabled || loading}` makes it natively disabled during a
+      generation (measured 58s and 64s), which defeats the documented reason for
+      using `aria-disabled` on that very button — a keyboard user can neither
+      reach it nor hear its reason for the whole minute.
+- [ ] **Save Profile double-submits** — three rapid clicks fired three
+      `PATCH /api/patient/profile`; the button is never disabled in flight and
+      shows no spinner.
+- [ ] **Swap modal touch targets**: `Close dialog` 32×32 and eleven cuisine
+      chips at 24px tall, with no expander.
+- [ ] **Profile errors are not tied to their fields.** `role="alert"` is
+      present, but `aria-invalid` is never set, no `aria-describedby` links a
+      field to its message, and focus stays on `BODY` instead of moving to the
+      first invalid field.
+- [ ] **Tab order inversion**: the header (`Beta → Plus`, `Settings`) is tabbed
+      after the entire left nav, on /meal-plan and /profile.
+- [ ] **0px gap between `lbs` and `kg`** on /profile; 4px between the /pantry
+      tabs. The guideline asks 8px.
+
+**Numbers that argue with each other**
+- [ ] **"▲ 3% there" over "CURRENT WEIGHT 150.0 lbs"** — the ring reports
+      PLANNED progress while the weight has not moved, and the visible label
+      (`CaloricProfileCard.tsx:460`) disagrees with the component's own
+      accessible name at `:436` ("3 percent through your plan"). The arithmetic
+      also rounds 3.9% to 3.
+- [ ] **"▼ 0.39/wk" next to "week 1 of 21"** with a 10 lb gap — that is 26
+      weeks at that rate. Explainable (the engine simulates an accelerating
+      ramp) but nothing on screen says the rate changes.
+- [ ] **A cooked day can under-deliver by 40% with no warning** — both
+      cook-my-day runs filled all four slots and then showed 1160/1981 and
+      963/1981 kcal. The "Clara filled X of Y meals" caveat only fires on
+      missing SLOTS, never on an 800 kcal shortfall.
+- [ ] **A Clara swap left the day at `Fat 86g of 53g · 162%`** with no flag on
+      the swap that accepted it.
+
+**Smaller**
+- [ ] **`?date=2026-02-30` silently renders "Monday, March 2"** — an invalid day
+      rolls into the next month with no indication the URL was corrected. (The
+      other bad dates are handled well, and `?date=<script>` is safe.)
+- [ ] **~89 library dishes have visibly broken prose** — "Add Tofu , cook 8-10
+      minutes until done, flipping half wathroughou, remove from heat." Import
+      noise, on a public page.
+- [ ] **84 of 2,440 dishes declare under 60 kcal and 5 over 1,200**, including
+      `Beef Pot Roast` at 0 kcal and `Air fryer French Fries` at 11. A
+      25 kcal condiment ("Homemade Cashew parmesan cheese") was served as a
+      SNACK slot. Library data, not the repriced macros — all 28 freshly priced
+      dishes were within ±0.3% of 4P+4C+9F.
+- [ ] **A stray second click on "New week" spends a real allowance** with no
+      confirmation step. The bot burned two of three weekly generations on one
+      script click.
+- [ ] **The `stale` banner hides itself during generation** (`stale &&
+      !newWeekLoading`), taking its own button's spinner with it, so the screen
+      goes quiet for ~60s. Reported unconfirmed — the bot could not catch the
+      window.
+
+**Closed in cycle 17 (this pass's own regressions)**
+- [x] **The journal step dots stole each other's taps.** My `-mx-[13px]
+      px-[13px]` inside a 6px gap overlapped consecutive targets by 20px:
+      tapping the second visible dot went to step three, the fourth to step
+      five. Real width and a real gap now; the measurement checks OVERLAP as
+      well as size.
+- [x] **The touch-target expander only applied below 481px** — a phone in
+      landscape is 844px wide. Now `(pointer: coarse)`, along with the four
+      `sm:min-h-0` variants of the same width-for-pointer confusion. Measured
+      clean at phone portrait, phone landscape and tablet.
+
+**Still open from before**
 - [ ] **The journal's five step dots are 32px wide** (44 tall). Five 44px
-      targets need 220px inside a 46px control, and abutting targets with no
-      gap trade a small target for a mis-tap. Fixing it properly means
-      redesigning that progress row, not padding it. Skip/Next — the primary
-      path — are a full 44.
-- [ ] **es and ru pricing copy is a different feature list.** `freeF3` in
-      Spanish reads "Resumen nutricional diario" and `premiumF5` "500+ recetas
-      seleccionadas": the translations were written against an older column and
-      never re-synced, so a Spanish or Russian reader is shown allowances and
-      features that are not the ones enforced. Found while adding cook-my-day
-      to the English Free column. Needs a real translation pass, not a guess.
-- [ ] **A stale plan can read 166% of its fat target.** Observed on the QA
-      fixture's existing week (101 g against a 61 g target) while checking the
-      fraction rendering. The fat CEILING landed in cycle 15, so a week built
-      BEFORE it keeps its numbers — this is probably an old plan rather than a
-      live defect, and the bot pass should confirm that a freshly generated
-      week lands inside the 25-38% band that was measured.
+      targets need 220px inside a 46px control; fixing it properly means
+      redesigning that progress row.
+- [ ] **es and ru pricing copy is a different, older feature list.** A Spanish
+      reader is shown allowances that are not the ones enforced. Needs a real
+      translation pass, not a guess.
+- [ ] **A stale plan can read 166% of its fat target** (101 g against 61 g).
+      The fat ceiling landed in cycle 15, so weeks built before it keep their
+      numbers. A freshly generated week still needs measuring against the
+      25-38% band.
 
 ### Refused by design — listed so nobody re-opens them as bugs
 Each was measured and left deliberately; the reason is the entry.

@@ -151,6 +151,8 @@ into a bot's later measurements.
 
 | 16 | The cycle became a written procedure (edit the list, add, plan, fix, bot-test each fix, journey-test) after "whats left" had no written answer. Then the list itself: **the in-flight lock was a rate limit**, which has no release, so a successful cook-my-day locked the user out for the rest of its 90-second window. **Unmeasurable amounts, open since cycle 13** — and the RULE was wrong too, snapping to eighths so a third of a cup was repaired to a quarter; the stored rows had never been touched at all (1,919 of 16,420). The 80 kcal sanity floor in both repair scripts was an **escape hatch** that exempted small dishes from being priced. 22 dishes told the user to rinse raw chicken. 31 were titled "Large Eggs…". A hit-test of all five pages found **17** undersized touch targets against the 8 reported. Three controls rendered the SAME new-week refusal at once | lib/in-flight-lock.ts (SET NX EX, released in a `finally`); repairAmount + the kitchen-fraction set shared by generator, backfill and audit, with sub-spoon seasoning becoming the `pinch` unit so the salt does not double; `formatQuantity` renders ⅓ and 1½, because snapping writes thirds and a third has no exact float; `pricingMayOverwrite`; the rinse and egg-title repairs run at generation too; targets fixed with real height in dense rows and the invisible expander only where neighbours are far; the refusal is gated on which control asked; `rate-limit:reset-user` now clears a stale lock as well as counters |
 
+| 17 | Two bots against frozen `e5fed9e`, one per fixture, allowances reset first. The lock fix, the repricing and /pricing held. **Three claims were false, and the worst defect on the board was one I had shipped hours earlier**: to widen the journal's step dots I used a negative margin larger than the gap, so consecutive hit areas overlapped by 20px and tapping the second visible dot went to step THREE. The touch-target expander turned out to be scoped to `max-width: 480px` — a phone in LANDSCAPE is 844px wide, so the whole fix switched off with the same finger on the same buttons. The amount repair never reached the write path: a freshly generated week carries 16 rows of `0.1 teaspoon`. And the instructions exist TWICE — 784 library rows repeat the whole method in `description`, which is what /dishes renders, so 4 dishes still say to rinse raw fish while the `steps` I checked were clean | overlap is now measured alongside size, at three viewports; `(pointer: coarse)` replaces every width test for a finger (Button, four components); the dots get real width and a real gap. The rest is written into BACKLOG §0b — 24 open items with the measurement behind each |
+
 ## What the cycles taught
 
 A green test suite proves nothing about content: 1,284 tests passed while a week
@@ -212,6 +214,23 @@ catalog and READ what it flags. Every time that was done, it found something —
 a "Scramble" stripped from 81 correctly-named dishes, three properly-cooked
 dishes condemned as raw, four correct products refused as untrue. Every time it
 was skipped, QA found it instead, a cycle later.
+
+**A target that grows into its neighbour is worse than a small one.** Padding
+a 6px dot out to 32px inside a 6px gap made two of five dots unreachable and
+sent the user two steps away from where they tapped — and in a size report it
+looked like a fix. Any hit-area change has to be measured for OVERLAP, not just
+for size.
+
+**Ask the question you actually mean.** `max-width: 480px` and `sm:min-h-0` are
+both asking "is this a phone?" in order to answer "is this a finger?". A phone
+in landscape is 844px wide, so both switched the hit areas off exactly where
+they were still needed. `(pointer: coarse)` asks the real question.
+
+**Check the field the user reads.** The rinse repair rewrote `steps` and the
+public page renders `description`, where 784 library rows keep a second copy of
+the whole method. Querying `steps` returned zero and would have confirmed a fix
+that had not reached the screen. When the same content lives in two columns,
+verifying the one you edited proves nothing.
 
 **A fix that is not applied to the stored rows is not applied.** "0.37
 tablespoon" was reported fixed in three consecutive cycles. Each fix landed in
