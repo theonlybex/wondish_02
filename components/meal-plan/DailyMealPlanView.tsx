@@ -3,7 +3,7 @@
 import { apiFetch } from "@/lib/client-fetch";
 import Link from "next/link";
 import React, { useState, useEffect, useRef } from "react";
-import { displayDishName } from "@/lib/dish-name";
+import { displayDishName, formatAmount } from "@/lib/dish-name";
 import { basketBlockerText } from "@/lib/basket-readiness";
 import { CUISINES } from "@/lib/cuisines";
 import { format, addDays, subDays } from "date-fns";
@@ -242,7 +242,7 @@ function InlineDishExpand({
                   </span>
                   {ri.quantity && (
                     <span className="text-[10px] text-[#848181]">
-                      {ri.quantity}{(ri.unit ?? ri.ingredient.unit) ? ` ${ri.unit ?? ri.ingredient.unit}` : ""}
+                      {formatAmount(ri.quantity, ri.unit ?? ri.ingredient.unit)}
                     </span>
                   )}
                 </li>

@@ -41,6 +41,28 @@ export async function buildTodaysPlanText(patientId: string, localDate: string):
   });
   if (!patient) return "";
 
+  // Tomorrow as well as today. Asked "what's in my plan tomorrow?" Clara said
+  // "I can only see today's meal plan on my end" — honest about her context and
+  // wrong about the app's, which holds the whole week. It is an obvious first
+  // question and "check the other screen" is a poor answer from an assistant
+  // looking at the same database.
+  //
+  // Names and numbers only, no steps: the steps are what make the block large,
+  // and nobody asks how to cook tomorrow's dinner while standing in today's
+  // kitchen. She is told the distinction so she does not offer what she lacks.
+  const tomorrowStart = new Date(start);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const tomorrowEnd = new Date(tomorrowStart);
+  tomorrowEnd.setHours(23, 59, 59, 999);
+
+  const tomorrow = await prisma.menu.findMany({
+    where: { patientId, planVersion: patient.activePlanVersion, date: { gte: tomorrowStart, lte: tomorrowEnd } },
+    include: {
+      mealType: { select: { name: true } },
+      recipe: { select: { name: true, calories: true } },
+    },
+  });
+
   const menus = await prisma.menu.findMany({
     where: { patientId, planVersion: patient.activePlanVersion, date: { gte: start, lte: end } },
     include: {
@@ -135,11 +157,25 @@ export async function buildTodaysPlanText(patientId: string, localDate: string):
       `${sodiumMg > 2300 ? " — that is OVER the guideline, say so plainly" : ""}. Quote this figure, and the per-dish figures above, rather than converting teaspoons yourself — a teaspoon of salt WEIGHS about 6,000 mg but contains about 2,325 mg of sodium, and confusing the two overstates every answer by 2.5x. Never call a number over 2,300 mg "well within" anything.`
     : "";
 
+  const tomorrowLine =
+    tomorrow.length > 0
+      ? `\n\nTOMORROW'S PLAN (names and calories only — you do NOT have tomorrow's ingredients or steps, so offer to walk through them when the day comes rather than guessing): ` +
+        tomorrow
+          .sort((a, b) => rank(a.mealType?.name) - rank(b.mealType?.name))
+          .map(
+            (m) =>
+              `${m.mealType?.name ?? "Meal"} ${displayDishName(m.recipe.name)}` +
+              `${m.recipe.calories ? ` (~${Math.round(m.recipe.calories)} kcal)` : ""}`
+          )
+          .join("; ") +
+        `. If they ask about any day beyond tomorrow, say plainly that you can see today and tomorrow and point them at the plan screen.`
+      : "";
+
   return (
     `\n\nTODAY'S MEAL PLAN — this IS the user's plan, straight from their account. ` +
     `The amounts, timings and macros below are exactly what the app shows them, so quote them directly; ` +
     `never tell the user you cannot see their plan or that it has no quantities. ` +
     `If they ask about a dish that is NOT in this list, say plainly that it is not in their plan this week and offer to help anyway. ` +
-    `They may ask how to cook any of these, or for help mid-cook — walk them through the steps clearly and answer follow-ups:\n${lines.join("\n")}${saltLine}`
+    `They may ask how to cook any of these, or for help mid-cook — walk them through the steps clearly and answer follow-ups:\n${lines.join("\n")}${saltLine}${tomorrowLine}`
   );
 }

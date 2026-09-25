@@ -895,3 +895,21 @@ test("a snack is small as well as quick", () => {
   const noCalories = { ...(snack(876) as object), calories: null } as never;
   assert.equal(snackIsSmallEnough(noCalories), true);
 });
+
+test("a name saying a food is ABSENT is not promising it", () => {
+  // Measured against the curated library: "gluten-free, nuts-free multigrain
+  // bread" holds no nuts and says so, and the category rule read it as a nut
+  // dish. Three rows, all the same product.
+  assert.equal(categoryWithNoMember("gluten-free, nuts-free multigrain bread", ["Sliced bread"]), null);
+  // A free-from qualifier anywhere marks a SUBSTITUTE product, where the
+  // category names the style rather than an ingredient. (And a vegan cheese
+  // really is made of cashews and nutritional yeast, so the members list knows
+  // them too — "Homemade Cashew parmesan cheese" is not a lie.)
+  assert.equal(categoryWithNoMember("Dairy-Free Cheese Sauce", ["Nutritional yeast", "cashews"]), null);
+  assert.equal(categoryWithNoMember("Homemade Cashew parmesan cheese", ["Dry unsalted roasted cashews", "Nutritional yeast"]), null);
+  assert.equal(categoryWithNoMember("Salad with no nuts", ["romaine lettuce"]), null);
+  assert.equal(categoryWithNoMember("Meatless Bolognese", ["Roma tomatoes", "lentils"]), null);
+  // …and a genuine promise still fails.
+  assert.equal(categoryWithNoMember("Nut Butter Toast", ["Sliced bread", "jam"]), "nut");
+  assert.equal(categoryWithNoMember("Cheese Toastie", ["Sliced bread", "Roma tomatoes"]), "cheese");
+});

@@ -673,7 +673,7 @@ export const TITLE_NON_FOOD = new Set([
 // So the category check is the sole authority on these words: it decides, and
 // the token loop skips them entirely rather than getting a second vote.
 const CATEGORY_MEMBERS: { word: RegExp; token: string; members: RegExp }[] = [
-  { word: /\bcheeses?\b/i, token: "cheese", members: /\b(cheeses?|cheddar|parmesan|feta|mozzarella|ricotta|cottage|halloumi|gouda|brie|goat|paneer|queso)\b/i },
+  { word: /\bcheeses?\b/i, token: "cheese", members: /\b(cheeses?|cheddar|parmesan|feta|mozzarella|ricotta|cottage|halloumi|gouda|brie|goat|paneer|queso|nutritional yeast|cashews?)\b/i },
   { word: /\bberr(y|ies)\b/i, token: "berry", members: /\b(berr(y|ies)|strawberr(y|ies)|blueberr(y|ies)|raspberr(y|ies)|blackberr(y|ies)|cranberr(y|ies))\b/i },
   { word: /\bnuts?\b/i, token: "nut", members: /\b(nuts?|almonds?|walnuts?|pecans?|cashews?|pistachios?|hazelnuts?|peanuts?|macadamias?)\b/i },
   { word: /\bcitrus\b/i, token: "citrus", members: /\b(lemons?|limes?|oranges?|grapefruits?|citrus|clementines?|mandarins?)\b/i },
@@ -701,9 +701,38 @@ export function categoryWithNoMember(
   for (const { word, token, members } of CATEGORY_MEMBERS) {
     if (!word.test(said)) continue;
     if (members.test(listed)) continue;
+    // A name saying a food is ABSENT is not promising it. "gluten-free,
+    // nuts-free multigrain bread" holds no nuts and says so, and this rule read
+    // it as a nut dish (measured against the curated library, 2026-09-25). The
+    // generation prompt forbids "X-Free" names for a related reason, but stored
+    // rows predate it and a real product name can carry one.
+    if (negates(said, word)) continue;
     return token;
   }
   return null;
+}
+
+/**
+ * Is this category named as ABSENT, or is the whole dish a free-from substitute?
+ *
+ * Two shapes, both measured against the curated library:
+ *   - the category itself negated — "nuts-free multigrain bread" holds no nuts
+ *     and says so, and this rule read it as a nut dish;
+ *   - a free-from qualifier anywhere in the name, which marks a SUBSTITUTE
+ *     product where the category word describes the style rather than an
+ *     ingredient. "Dairy-Free Cheese Sauce" is a cheese sauce; it is not a
+ *     promise of dairy.
+ */
+const FREE_FROM = /\b(?:\w+)[\s-]*free\b|\bfree[\s-]from\b|\bvegan\b|\bplant[\s-]based\b|\bmeatless\b/i;
+
+function negates(phrase: string, word: RegExp): boolean {
+  if (FREE_FROM.test(phrase)) return true;
+  const bare = word.source.replace(/\\b/g, "");
+  const re = new RegExp(
+    `\\b(?:no|without|zero)\\s+(?:\\w+\\s+){0,2}?(?:${bare})|(?:${bare})[\\s-]*(?:free|less)\\b`,
+    "i"
+  );
+  return re.test(phrase);
 }
 
 export function phrasePromisesMissingFood(

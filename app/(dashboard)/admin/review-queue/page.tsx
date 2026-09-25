@@ -5,6 +5,7 @@
 // PUBLISH takes the dish live, approving an EDIT swaps the staged payload
 // into the live dish. Rejections require a note — the restaurant sees it.
 
+import { formatAmount } from "@/lib/dish-name";
 import { useCallback, useEffect, useState } from "react";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
@@ -39,7 +40,7 @@ interface QueueItem {
 }
 
 function formatRow(i: IngredientRow): string {
-  const qty = i.quantity != null ? ` — ${i.quantity}${i.unit ? ` ${i.unit}` : ""}` : "";
+  const qty = i.quantity != null ? ` — ${formatAmount(i.quantity, i.unit)}` : "";
   return `${i.name}${qty}`;
 }
 

@@ -3,10 +3,17 @@ import assert from "node:assert/strict";
 
 // Same technique as lib/meal-plan.test.ts: a data stub on globalThis before the
 // module loads, so the builder is a pure string function over fixture rows.
-const db = { patient: { activePlanVersion: 3 } as unknown, menus: [] as unknown[] };
+const db = { patient: { activePlanVersion: 3 } as unknown, menus: [] as unknown[], tomorrow: [] as unknown[] };
 (globalThis as never as { prisma: unknown }).prisma = {
   patient: { findUnique: async () => db.patient },
-  menu: { findMany: async () => db.menus },
+  // Two findMany calls now: tomorrow's names first, then today's full detail.
+  // Returned in call order so the fixture can distinguish them.
+  menu: {
+    findMany: (() => {
+      let call = 0;
+      return async () => (call++ % 2 === 0 ? db.tomorrow : db.menus);
+    })(),
+  },
 };
 const modPromise = import("./today-plan");
 
@@ -122,4 +129,35 @@ test("the per-dish figures sum to the day figure", async () => {
   assert.match(text, /Added salt in this dish: 349 mg/);
   assert.match(text, /Added salt in this dish: 581 mg/);
   assert.match(text, /ADDED SALT FOR THE DAY: 930 mg/);
+});
+
+// Asked "what's in my plan tomorrow?" Clara said "I can only see today's meal
+// plan on my end" — honest about her context and wrong about the app's, which
+// holds the whole week (QA 2026-09-25). An obvious first question, and "check
+// the other screen" is a poor answer from an assistant reading the same database.
+test("tomorrow is in the context, by name and calories only", async () => {
+  const { buildTodaysPlanText } = await modPromise;
+  db.menus = [menu("Breakfast")];
+  db.tomorrow = [
+    { mealType: { name: "Dinner" }, recipe: { name: "Chicken Creole, V1", calories: 512 } },
+    { mealType: { name: "Breakfast" }, recipe: { name: "Oatmeal with Blueberries", calories: 310 } },
+  ];
+  const text = await buildTodaysPlanText("p1", "2026-09-24");
+
+  assert.match(text, /TOMORROW'S PLAN/);
+  // Ordered by slot, and the variant suffix cleaned as everywhere else.
+  assert.match(text, /Breakfast Oatmeal with Blueberries \(~310 kcal\); Dinner Chicken Creole \(~512 kcal\)/);
+  // She is told what she does NOT have, so she cannot offer to walk through
+  // steps she was never given.
+  assert.match(text, /you do NOT have tomorrow's ingredients or steps/);
+  // Today still carries its full detail.
+  assert.match(text, /150 g Ground turkey/);
+});
+
+test("no tomorrow in the plan means no tomorrow in the prompt", async () => {
+  const { buildTodaysPlanText } = await modPromise;
+  db.menus = [menu("Breakfast")];
+  db.tomorrow = [];
+  const text = await buildTodaysPlanText("p1", "2026-09-24");
+  assert.doesNotMatch(text, /TOMORROW/);
 });
