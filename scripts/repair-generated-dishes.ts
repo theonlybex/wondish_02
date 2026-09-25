@@ -37,7 +37,7 @@ import { BASKET_STAPLES } from "../lib/basket-coverage";
 import {
   SNACK_MAX_MINUTES, BREAKFAST_MAX_MINUTES, SMALL_DISH_KCAL, breakfastLooksLikeBreakfast,
   catalogFoodVocabulary, phrasePromisesMissingFood, truthfulDishName,
-  saltRowTsp, addedSaltCapTsp, countUnitFor, clampCookingFat,
+  saltRowTsp, addedSaltCapTsp, countUnitFor, clampCookingFat, dishProblem,
 } from "../lib/dish-plausibility";
 import { displayDishName } from "../lib/dish-name";
 
@@ -292,7 +292,7 @@ async function main() {
     console.log(`  ${d.ingredient} ${d.quantity} ${d.unit}  in  ${d.name}`);
   }
 
-  // ── Move dishes whose slot label their own numbers contradict ─────────────
+  // ── Move dishes whose slot label the dish itself contradicts ──────────────
   //
   // 155 rows sit under Snack and take longer than 20 minutes; 54 sit under
   // Breakfast and take longer than 30. These are not broken dishes and they are
@@ -319,6 +319,9 @@ async function main() {
   //
   // Nothing here widens what a slot accepts — the gates are unchanged. It only
   // stops 209 dishes being filed under a slot that then refuses them.
+  const vocabulary = catalogFoodVocabulary(
+    (await prisma.ingredient.findMany({ select: { name: true } })).map((i) => i.name)
+  );
   const mealTypes = await prisma.mealType.findMany({ select: { id: true, name: true } });
   const idOf = (n: string) => mealTypes.find((m) => m.name.toLowerCase() === n.toLowerCase())?.id ?? null;
   const slotRows = await prisma.recipe.findMany({
@@ -336,7 +339,28 @@ async function main() {
     if (minutes === 0) continue; // no timing on file: nothing to contradict
     const tooSlowForSnack = from.toLowerCase() === "snack" && minutes > SNACK_MAX_MINUTES;
     const tooSlowForBreakfast = from.toLowerCase() === "breakfast" && minutes > BREAKFAST_MAX_MINUTES;
-    if (!tooSlowForSnack && !tooSlowForBreakfast) continue;
+    // Timing is not the only way a slot label can be contradicted by the dish.
+    // 105 generated rows sit under Breakfast and contain no breakfast food at
+    // all — "Chicken Breast with Roasted Broccoli and Jasmine Rice", "Vegetable
+    // and Ground Turkey Hash with Brown Rice" — and 67 of them pass every rule
+    // as a Lunch. Same defect as the timing one and the same repair: the label
+    // is wrong, the dish is not.
+    const notBreakfastFood =
+      from.toLowerCase() === "breakfast" &&
+      dishProblem(
+        {
+          name: r.name, description: r.description, steps: r.steps, mealTypeName: "Breakfast",
+          prepMinutes: r.prepTime, cookMinutes: r.cookTime, calories: r.calories,
+          macros: { protein: r.protein, carbs: r.carbs, fat: r.fat },
+          generated: (r.tags ?? []).some((t) => /clara/i.test(t)),
+          ingredients: r.ingredients.map((ri) => ({
+            name: ri.ingredient.name, quantity: ri.quantity, unit: ri.unit, note: ri.note,
+            category: ri.ingredient.groceryCategory,
+          })),
+        },
+        vocabulary
+      ) === "not-breakfast-food";
+    if (!tooSlowForSnack && !tooSlowForBreakfast && !notBreakfastFood) continue;
     const asBreakfast = {
       name: r.name,
       description: r.description,
@@ -364,7 +388,7 @@ async function main() {
   }
   const moveTally: Record<string, number> = {};
   for (const m of slotMoves) moveTally[`${m.from}→${m.to}`] = (moveTally[`${m.from}→${m.to}`] ?? 0) + 1;
-  console.log(`slot labels contradicted by the row's own timing: ${slotMoves.length} ${JSON.stringify(moveTally)}`);
+  console.log(`slot labels the dish itself contradicts (timing or food): ${slotMoves.length} ${JSON.stringify(moveTally)}`);
   for (const m of slotMoves.slice(0, 5)) {
     console.log(`  ${m.from} → ${m.to} (${m.minutes} min) — ${m.name}`);
   }
@@ -386,9 +410,6 @@ async function main() {
   //
   // CLARA-tagged rows only. A curated name is editorial and measured; this
   // script has no business rewriting one.
-  const vocabulary = catalogFoodVocabulary(
-    (await prisma.ingredient.findMany({ select: { name: true } })).map((i) => i.name)
-  );
   const takenNames = new Set(
     (await prisma.recipe.findMany({ select: { name: true } })).map((r) => r.name.trim().toLowerCase())
   );
@@ -553,6 +574,46 @@ async function main() {
     console.log(`  ${f.rows.map((x) => `${x.from}→${x.to} ${x.unit ?? ""}`).join(", ")} — ${f.name}`);
   }
 
+  // ── List the fat the steps already cook in ────────────────────────────────
+  //
+  // 93 dishes tell the reader to sear, sauté, fry or brown something and list no
+  // oil or butter. Selection refuses every one, which is right — the amount
+  // feeds the macros, and somebody following the steps cannot tell whether a
+  // teaspoon or a tablespoon was costed into the calories on the card.
+  //
+  // But refusing is not the only available answer. The dish DOES use oil: its
+  // own steps say so. The missing thing is the amount, and one teaspoon is what
+  // the generation prompt now asks for. So the row is added at a teaspoon and
+  // the dish is repriced — the same disposal as a lying title, and it returns 93
+  // dishes to the pool instead of stranding them.
+  //
+  // Generated rows only. A curated recipe that says to sear without listing oil
+  // is an editorial omission for a person to fix, not a number to invent.
+  const OIL_INGREDIENT_ID = "cmtus6qhc0001972puqy3x1rp"; // "Extra virgin olive oil", the catalog's canonical one (851 recipes)
+  const FAT_METHOD_STEP = /\b(sear|seared|searing|saut[ée]|saut[ée]ed|fry|fried|frying|pan-?fry|brown the|stir-?fry|grease|coat the pan|scrambl)/i;
+  const HAS_FAT = /\b(oil|butter|ghee|margarine|cooking spray|lard|tallow)\b/i;
+  const fatless = await prisma.recipe.findMany({
+    where: { isPublic: true, tags: { hasSome: ["clara", "Clara", "clara-generated"] } },
+    select: {
+      id: true, name: true, steps: true, calories: true,
+      ingredients: { select: { ingredientId: true, quantity: true, unit: true, note: true, ingredient: { select: { name: true } } } },
+    },
+  });
+  const fatAdds: { id: string; name: string; priced: { calories: number; protein: number; carbs: number; fat: number } | null }[] = [];
+  for (const r of fatless) {
+    if (!(r.steps ?? []).some((s) => FAT_METHOD_STEP.test(s))) continue;
+    if (r.ingredients.some((ri) => HAS_FAT.test(ri.ingredient.name))) continue;
+    const withOil = [
+      ...r.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity, unit: ri.unit, note: ri.note })),
+      { name: "Extra virgin olive oil", quantity: 1, unit: "teaspoon", note: null },
+    ];
+    const priced = priceDish(withOil, r.steps);
+    if (!priced || priced.coverage < PRICING_COVERAGE_MIN) continue;
+    fatAdds.push({ id: r.id, name: r.name, priced });
+  }
+  console.log(`dishes that cook in a fat they never list, repairable by listing a teaspoon: ${fatAdds.length}`);
+  for (const f of fatAdds.slice(0, 3)) console.log(`  + 1 tsp olive oil → ${f.priced?.calories} kcal — ${f.name}`);
+
   if (!APPLY) {
     console.log("\nreport only — pass --apply to write");
     await prisma.$disconnect();
@@ -561,7 +622,7 @@ async function main() {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backup = `/tmp/wondish-dish-repair-${stamp}.json`;
-  writeFileSync(backup, JSON.stringify({ macroFills, macroCorrections, macroFixes, calorieFixes, linkDrops, slotMoves, renames, saltClamps, unitFills, fatClamps }, null, 2));
+  writeFileSync(backup, JSON.stringify({ macroFills, macroCorrections, macroFixes, calorieFixes, linkDrops, slotMoves, renames, saltClamps, unitFills, fatClamps, fatAdds }, null, 2));
   console.log(`\nbackup written: ${backup}`);
 
   let filled = 0;
@@ -591,6 +652,19 @@ async function main() {
   for (const d of linkDrops) {
     await prisma.recipeIngredient.deleteMany({ where: { recipeId: d.recipeId, ingredientId: d.ingredientId } });
     dropped++;
+  }
+  let fatListed = 0;
+  for (const f of fatAdds) {
+    await prisma.recipeIngredient.create({
+      data: { recipeId: f.id, ingredientId: OIL_INGREDIENT_ID, quantity: 1, unit: "teaspoon" },
+    });
+    if (f.priced) {
+      await prisma.recipe.update({
+        where: { id: f.id },
+        data: { calories: f.priced.calories, protein: f.priced.protein, carbs: f.priced.carbs, fat: f.priced.fat },
+      });
+    }
+    fatListed++;
   }
   let defatted = 0;
   for (const f of fatClamps) {
@@ -634,7 +708,7 @@ async function main() {
     await prisma.recipe.update({ where: { id: m.id }, data: { mealTypeId: m.toId } });
     moved++;
   }
-  console.log(`applied: ${defatted} dishes de-oiled and repriced, ${unitsNamed} bare counts given their unit, ${clamped} salt amounts clamped to a seasoning, ${renamed} dishes renamed from their ingredients, ${moved} dishes moved to the slot their timing fits, ${filled} null-macro rows filled, ${corrected} contradictory macro sets corrected, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
+  console.log(`applied: ${fatListed} dishes given the oil their steps already use, ${defatted} dishes de-oiled and repriced, ${unitsNamed} bare counts given their unit, ${clamped} salt amounts clamped to a seasoning, ${renamed} dishes renamed from their ingredients, ${moved} dishes moved to the slot their timing fits, ${filled} null-macro rows filled, ${corrected} contradictory macro sets corrected, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
   await prisma.$disconnect();
 
 }
