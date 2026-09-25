@@ -104,7 +104,7 @@ export default function SwapMealModal({
       />
 
       <p className="text-sm font-medium text-[#1E1A1A] mt-4 mb-1.5">Cuisine</p>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Choose a cuisine">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Choose a cuisine">
         {CUISINES.map((c) => {
           const active = cuisine === c;
           return (
@@ -113,7 +113,7 @@ export default function SwapMealModal({
               type="button"
               onClick={() => setCuisine(c)}
               aria-pressed={active}
-              className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+              className={`px-3 py-1 [@media(pointer:coarse)]:min-h-11 rounded-full text-xs font-semibold transition-colors ${
                 active
                   ? "bg-primary text-white shadow-sm shadow-primary/30"
                   : "bg-[#F3F2FF] text-[#848181] hover:bg-primary/10 hover:text-primary"

@@ -39,24 +39,42 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       disabled,
       children,
       className,
+      onClick,
       ...props
     },
     ref
   ) => {
+    // LOADING is not DISABLED. A natively disabled button leaves the tab order,
+    // and a generation holds it there for about a minute (QA cycle 17 measured
+    // 58s and 64s): a keyboard user could neither reach the button nor hear
+    // what it was doing. While loading it stays focusable, says it is busy,
+    // and swallows activation — including the synthetic click a form's
+    // Enter-to-submit sends, so a second submit cannot slip through.
+    const busy = Boolean(loading) && !disabled;
     return (
       <button
+        {...props}
         ref={ref}
-        disabled={disabled || loading}
+        disabled={disabled}
+        aria-disabled={busy || (props["aria-disabled"] as boolean | undefined) || undefined}
+        aria-busy={busy || undefined}
+        onClick={(e) => {
+          if (busy) {
+            e.preventDefault();
+            return;
+          }
+          onClick?.(e);
+        }}
         className={twMerge(
-          "inline-flex items-center justify-center gap-2 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed",
+          "inline-flex items-center justify-center gap-2 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed aria-busy:opacity-70 aria-busy:cursor-progress",
           variants[variant],
           sizes[size],
           className
         )}
-        {...props}
       >
         {loading && (
           <svg
+            aria-hidden="true"
             className="animate-spin h-4 w-4"
             viewBox="0 0 24 24"
             fill="none"

@@ -26,10 +26,16 @@ export default async function MealPlanPage({
   // today instead (QA 2026-09-24). Anything unparseable falls back to today
   // rather than erroring: a mangled link should still show a meal plan.
   const { date: dateParam } = await searchParams;
-  const parsed =
-    typeof dateParam === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
-      ? new Date(`${dateParam}T00:00:00`)
-      : null;
+  // A round-trip, like the API's badDate: "2026-02-30" parses, rolls into
+  // March 2nd and rendered that day as if it had been asked for (QA cycle 17).
+  // A date that does not survive being re-formatted was never a date.
+  const parsed = (() => {
+    if (typeof dateParam !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) return null;
+    const d = new Date(`${dateParam}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return null;
+    const [y, m, day] = dateParam.split("-").map(Number);
+    return d.getFullYear() === y && d.getMonth() + 1 === m && d.getDate() === day ? d : null;
+  })();
   const dayStart = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
   dayStart.setHours(0, 0, 0, 0);
   const dayEnd = new Date(dayStart);

@@ -113,7 +113,7 @@ export default function Modal({
               type="button"
               aria-label="Close dialog"
               onClick={onClose}
-              className="text-[#848181] hover:text-navy transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#F3F2FF]"
+              className="text-[#848181] hover:text-navy transition-colors w-11 h-11 -my-1.5 -mr-2 flex items-center justify-center rounded-lg hover:bg-[#F3F2FF]"
             >
               ✕
             </button>

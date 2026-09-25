@@ -273,7 +273,7 @@ export default function CaloricProfileCard() {
               {/* "goal · N" read as a second, competing daily target. It is
                   where the ramp ENDS: today's headline is higher on purpose
                   while the plan eases the user toward it. */}
-              easing toward {dailyTarget} kcal/day
+              today, moving gradually to {dailyTarget} kcal/day
             </span>
           )}
         </div>
@@ -451,11 +451,17 @@ function WeeklyTargetHero({
             </span>
             <span className="text-base font-bold text-[#ABA6A6] mb-0.5">{unit}</span>
             <span className="inline-flex items-center text-xs font-bold text-[#B75E78] bg-[#B75E78]/10 rounded-full px-2 py-0.5 mb-1">
-              {arrow} {deltaLbs.toFixed(2)}/wk
+              {/* "this week": the engine ramps, so 0.39/wk beside "week 1 of 21"
+                  with a 10 lb gap read as 26 weeks of arithmetic (QA cycle 17).
+                  The rate is this week's, and it says so. */}
+              {arrow} {deltaLbs.toFixed(2)}/wk this week
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2 mt-3 text-xs">
-            <span className="font-bold text-[#812549]">▲ {Math.round(nowProgress)}% there</span>
+            {/* The PLANNED position, said in the words the accessible name
+                already used. "▲ 3% there" over an unmoved current weight read
+                as weight lost (QA cycle 17). */}
+            <span className="font-bold text-[#812549]">{Math.round(nowProgress)}% through your plan</span>
             <span className="text-[#D8D2D2]">•</span>
             <span className="text-[#848181]">week {weekIndex} of {totalWeeks}</span>
             <span className="text-[#D8D2D2]">•</span>

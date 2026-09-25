@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
@@ -43,6 +43,29 @@ export default function ProfileForm({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  /**
+   * Which field the error is about, when it is about one. The message used to
+   * live only in a banner at the top: `role="alert"` announced it, but no field
+   * carried aria-invalid or pointed at its message, and focus stayed on BODY
+   * (QA cycle 17). A field error now renders under its field, marks it invalid
+   * and takes focus there; the banner is for errors about the whole save.
+   */
+  type ErrorField = "firstName" | "lastName" | "weight" | "height" | "goalWeight";
+  const [errorField, setErrorField] = useState<ErrorField | null>(null);
+  const [errorTick, setErrorTick] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!errorField) return;
+    formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [errorField, errorTick]);
+  const fieldError = (f: ErrorField) => (errorField === f ? error : undefined);
+  const failField = (f: ErrorField, message: string) => {
+    setError(message);
+    setErrorField(f);
+    setErrorTick((t) => t + 1);
+  };
+  /** Three rapid clicks fired three PATCHes (QA cycle 17). */
+  const inFlight = useRef(false);
   const [saved, setSaved] = useState(false);
 
   const patient = initialData as Record<string, unknown> | null;
@@ -208,23 +231,23 @@ export default function ProfileForm({
       // the name reverted on reload, because the client drops empty fields from
       // the PATCH body. The comment above already described the failure; only
       // weight and height had been added to the fix.
-      const missing =
+      const missing: { key: ErrorField; field: string; why: string } | null =
         !form.firstName?.trim()
-          ? { field: "First name", why: "it is how the app addresses you" }
+          ? { key: "firstName", field: "First name", why: "it is how the app addresses you" }
           : !form.lastName?.trim()
-            ? { field: "Last name", why: "it is how the app addresses you" }
+            ? { key: "lastName", field: "Last name", why: "it is how the app addresses you" }
             : !form.weight?.trim()
-              ? { field: "Weight", why: "your calorie targets are calculated from it" }
+              ? { key: "weight", field: "Weight", why: "your calorie targets are calculated from it" }
               : form.heightUnit === "ftin"
                 ? !form.heightFt?.trim()
-                  ? { field: "Height", why: "your calorie targets are calculated from it" }
+                  ? { key: "height", field: "Height", why: "your calorie targets are calculated from it" }
                   : null
                 : !form.height?.trim()
-                  ? { field: "Height", why: "your calorie targets are calculated from it" }
+                  ? { key: "height", field: "Height", why: "your calorie targets are calculated from it" }
                   : null;
       if (missing) {
         e.preventDefault();
-        setError(`${missing.field} is required — ${missing.why}.`);
+        failField(missing.key, `${missing.field} is required — ${missing.why}.`);
         return;
       }
     }
@@ -243,13 +266,16 @@ export default function ProfileForm({
       );
       if (bodyErr) {
         e.preventDefault();
-        setError(bodyErr.message);
+        failField(bodyErr.field, bodyErr.message);
         return;
       }
     }
     e.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
     setLoading(true);
     setError("");
+    setErrorField(null);
 
     try {
       const res = await apiFetch("/api/patient/profile", {
@@ -305,6 +331,7 @@ export default function ProfileForm({
           : "Something went wrong saving your profile. Please try again."
       );
     } finally {
+      inFlight.current = false;
       setLoading(false);
     }
   };
@@ -312,14 +339,14 @@ export default function ProfileForm({
   return (
     // noValidate: out-of-range numbers get the shared inline message from
     // handleSubmit instead of the browser's native bubble.
-    <form onSubmit={handleSubmit} noValidate className="space-y-10 max-w-2xl">
+    <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-10 max-w-2xl">
       {isOnboarding && (
         <div className="bg-primary/10 border border-primary/20 text-primary rounded-xl px-4 py-3 text-sm font-medium">
           Welcome! Complete your profile to get a personalized meal plan.
         </div>
       )}
 
-      {error && (
+      {error && !errorField && (
         <div role="alert" className="bg-error/10 border border-error/20 text-error rounded-xl px-4 py-3 text-sm">
           {error}
         </div>
@@ -339,6 +366,7 @@ export default function ProfileForm({
             label="First Name"
             value={form.firstName}
             onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+            error={fieldError("firstName")}
             required
             maxLength={100}
           />
@@ -346,6 +374,7 @@ export default function ProfileForm({
             label="Last Name"
             value={form.lastName}
             onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+            error={fieldError("lastName")}
             required
             maxLength={100}
           />
@@ -379,6 +408,7 @@ export default function ProfileForm({
                 step="1"
                 className="flex-1"
                 value={form.heightFt}
+                error={fieldError("height")}
                 onChange={(e) => setForm((f) => ({ ...f, heightFt: e.target.value }))}
                 placeholder="5"
               />
@@ -416,6 +446,7 @@ export default function ProfileForm({
                 step="0.1"
                 className="flex-1"
                 value={form.height}
+                error={fieldError("height")}
                 onChange={(e) => setForm((f) => ({ ...f, height: e.target.value }))}
                 placeholder="170"
               />
@@ -444,6 +475,7 @@ export default function ProfileForm({
                   max={weightUnitShown === "kg" ? "318" : "700"}
                   step="0.1"
                   value={weightText}
+                  error={fieldError("weight")}
                   onChange={(e) => { setWeightText(e.target.value); setForm((f) => ({ ...f, weight: toLbs(e.target.value, weightUnitShown) })); }}
                   placeholder={weightUnitShown === "kg" ? "68" : "150"}
                 />
@@ -530,6 +562,7 @@ export default function ProfileForm({
             min="0"
             step="0.1"
             value={goalText}
+            error={fieldError("goalWeight")}
             onChange={(e) => { setGoalText(e.target.value); setForm((f) => ({ ...f, goalWeight: toLbs(e.target.value, weightUnitShown) })); }}
             placeholder={weightUnitShown === "kg" ? "60" : "130"}
           />

@@ -378,7 +378,7 @@ export default function PantryClient({
   );
 
   const tabs = (
-    <div className="flex gap-1 mb-6 p-1 rounded-xl bg-[#F3F2FF] w-fit">
+    <div className="flex gap-2 mb-6 p-1 rounded-xl bg-[#F3F2FF] w-fit">
       {(["have", "buy"] as const).map((v) => (
         <button
           key={v}
@@ -789,8 +789,15 @@ export default function PantryClient({
       </section>
 
       {/* Clara day-cooking: the user picks a cuisine FIRST — nothing generates
-          until a chip is clicked. */}
-      {selected.size >= 3 && cookable?.dayCoverage && !cookable.dayCoverage.canFillDay && !cookDay && (
+          until a chip is clicked.
+
+          Shown whether or not the library can already fill the day. It was
+          gated on `!canFillDay`, and this card is the feature's ONLY entry
+          point, so a normal 16-ingredient basket made cook-my-day — chips,
+          allowance line, upgrade offer — vanish from the page with no
+          explanation, for exactly the users most likely to want it (QA cycle
+          17: the bot had to strip its pantry to five items to find it). */}
+      {selected.size >= 3 && cookable?.dayCoverage && !cookDay && (
         <section
           className="rounded-2xl p-6 text-center"
           style={{
@@ -808,16 +815,20 @@ export default function PantryClient({
           <p className="text-white font-bold mb-1">
             {cooking
               ? `Clara is cooking your ${cookingCuisine ?? ""} day…`
-              : basketReady
-                ? "Let Clara cook a whole day from these"
-                : "Your ingredients can't fill a whole day yet"}
+              : cookable.dayCoverage.canFillDay
+                ? "Cook a fresh day with Clara"
+                : basketReady
+                  ? "Let Clara cook a whole day from these"
+                  : "Your ingredients can't fill a whole day yet"}
           </p>
           <p className="text-sm mb-4" style={{ color: "rgba(255,255,255,0.55)" }}>
             {cooking ? (
               "Building breakfast to dinner from exactly what you have — a few seconds."
             ) : (
               <>
-                {basketReady
+                {cookable.dayCoverage.canFillDay
+                  ? "The dishes above can already fill your day. Want something new instead?"
+                  : basketReady
                   ? `Ready-made library dishes only cover ~${cookable.dayCoverage.coveredCalories} of your ${cookable.dayCoverage.targetCalories} kcal day — Clara writes the rest from what you have.`
                   : cookable.dayCoverage.coveredCalories > 0
                     ? `These dishes cover ~${cookable.dayCoverage.coveredCalories} of your ${cookable.dayCoverage.targetCalories} kcal day.`
@@ -873,6 +884,17 @@ export default function PantryClient({
               Clara filled {cookDay.slotsFilled} of {cookDay.slotsRequested} meals safely from your ingredients — add a few more for full coverage.
             </p>
           )}
+          {/* Every slot filled is not the same as a day eaten. Two QA runs filled
+              all four and came to 1160 and 963 of 1981 kcal, and the caveat
+              above only ever counted SLOTS (QA cycle 17). */}
+          {cookDay.slotsFilled >= cookDay.slotsRequested &&
+            cookDay.targetCalories > 0 &&
+            cookDay.totalCalories < cookDay.targetCalories * 0.85 && (
+              <p className="text-xs mb-3" style={{ color: "#848181" }}>
+                This day comes to {cookDay.totalCalories} of your {cookDay.targetCalories} kcal — about{" "}
+                {cookDay.targetCalories - cookDay.totalCalories} short. Add a snack, or larger portions of what you have.
+              </p>
+            )}
           <div className="space-y-3">
             {cookDay.meals.map((m) => (
               <div

@@ -485,6 +485,19 @@ export default function DailyMealPlanView({
   const [newWeekUpgrade, setNewWeekUpgrade] = useState(false);
   const [newWeekFrom, setNewWeekFrom] = useState<"banner" | "empty" | "sidebar">("sidebar");
   /**
+   * A blocked control that was pressed anyway. The reason is always rendered
+   * beside it and read on focus, but pressing it did nothing at all — no
+   * request, no message, no live-region update (QA cycle 17) — so anyone who
+   * had not read the static line got a dead tap. Pressing it now says why.
+   */
+  const [blockedPress, setBlockedPress] = useState<"banner" | "sidebar" | null>(null);
+  /**
+   * The sidebar button replaces a week the user already has and spends one of
+   * their weekly generations. A stray second click spent two of three for a QA
+   * bot (cycle 17), so with a plan on screen it asks once first.
+   */
+  const [confirmReplace, setConfirmReplace] = useState(false);
+  /**
    * Which control asked for the week — the refusal renders beside that one and
    * nowhere else.
    *
@@ -752,6 +765,11 @@ export default function DailyMealPlanView({
         .mp-bar { animation: mp-bar 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
       `}</style>
       <div className="flex-1 min-w-0">
+      {/* Mounted empty so the text arriving is what gets announced. */}
+      <p role="status" className="sr-only">
+        {blockedPress && basketStatus && !basketStatus.ready ? `Can't build a week yet. ${basketBlockerText(basketStatus)}` : ""}
+      </p>
+
       {profileIncomplete && (
         <div className="bg-error/10 border border-error/20 rounded-2xl p-4 mb-4 text-sm text-error">
           Complete your health profile before generating a meal plan.{" "}
@@ -775,7 +793,10 @@ export default function DailyMealPlanView({
               aria-disabled={basketStatus ? !basketStatus.ready : false}
               aria-describedby={basketStatus && !basketStatus.ready ? "new-week-blocker-banner" : undefined}
               onClick={() => {
-                if (basketStatus && !basketStatus.ready) return;
+                if (basketStatus && !basketStatus.ready) {
+                  setBlockedPress("banner");
+                  return;
+                }
                 void generateNewWeek("banner");
               }}
               className={basketStatus && !basketStatus.ready ? "opacity-50 cursor-not-allowed" : undefined}
@@ -784,7 +805,10 @@ export default function DailyMealPlanView({
             </Button>
           </div>
           {basketStatus && !basketStatus.ready && (
-            <p id="new-week-blocker-banner" className="text-[11px] mt-2 leading-snug text-amber-800">
+            <p
+              id="new-week-blocker-banner"
+              className={`text-[11px] mt-2 leading-snug text-amber-800${blockedPress === "banner" ? " font-semibold" : ""}`}
+            >
               {basketBlockerText(basketStatus)}{" "}
               <Link href="/pantry" className="underline font-semibold">open Ingredients</Link>
             </p>
@@ -1144,11 +1168,27 @@ export default function DailyMealPlanView({
                               {dIdx > 0 && <div className="h-px bg-[#F5F1DD] my-2" />}
 
                               {/* Dish row */}
+                              {/* A control, not a div with a click. It is the only way to
+                                  open a dish, rate it or reach the swap modal, and as a
+                                  bare div it had no tab stop and no role: the modal's
+                                  own focus trap tested clean and could not be reached
+                                  by keyboard at all (QA cycle 17). role="button" rather
+                                  than <button>, because the row holds paragraphs. */}
                               <div
-                                className={`flex items-center justify-between gap-2 cursor-pointer rounded-lg transition-colors ${
+                                role="button"
+                                tabIndex={0}
+                                aria-expanded={isSelected}
+                                className={`flex items-center justify-between gap-2 cursor-pointer rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 ${
                                   isSelected ? "-mx-1.5 px-1.5 py-0.5 bg-[#ffffff]" : ""
                                 }`}
                                 onClick={() => selectCard(isSelected ? null : menu.id)}
+                                onKeyDown={(e) => {
+                                  if (e.target !== e.currentTarget) return;
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    selectCard(isSelected ? null : menu.id);
+                                  }
+                                }}
                               >
                                 <div className="flex-1 min-w-0">
                                   {/* 13px on desktop, not 11. The 12px floor in
@@ -1437,16 +1477,42 @@ export default function DailyMealPlanView({
                 loading={newWeekLoading}
                 aria-disabled={basketStatus ? !basketStatus.ready : false}
                 aria-describedby={basketStatus && !basketStatus.ready ? "new-week-blocker" : undefined}
+                aria-expanded={menus.length > 0 && !stale ? confirmReplace : undefined}
                 onClick={() => {
-                  if (basketStatus && !basketStatus.ready) return;
+                  if (basketStatus && !basketStatus.ready) {
+                    setBlockedPress("sidebar");
+                    return;
+                  }
+                  if (menus.length > 0 && !stale && !confirmReplace) {
+                    setConfirmReplace(true);
+                    return;
+                  }
+                  setConfirmReplace(false);
                   void generateNewWeek("sidebar");
                 }}
                 className={`w-full${basketStatus && !basketStatus.ready ? " opacity-50 cursor-not-allowed" : ""}`}
               >
                 Generate a new week
               </Button>
+              {confirmReplace && !newWeekLoading && (
+                <div role="group" aria-label="Replace this week?" className="mt-2 rounded-xl p-3 text-[11px] leading-snug" style={{ background: "#FBFAF5", border: "1px solid #EAE4CA", color: "#5F1C35" }}>
+                  <p>This replaces the week you have and uses one of your weekly plans.</p>
+                  <div className="flex gap-2 mt-2">
+                    <Button size="sm" autoFocus onClick={() => { setConfirmReplace(false); void generateNewWeek("sidebar"); }}>
+                      Replace my week
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => setConfirmReplace(false)}>
+                      Keep this week
+                    </Button>
+                  </div>
+                </div>
+              )}
               {basketStatus && !basketStatus.ready ? (
-                <p id="new-week-blocker" className="text-[11px] mt-1.5 leading-snug" style={{ color: "#848181" }}>
+                <p
+                  id="new-week-blocker"
+                  className={`text-[11px] mt-1.5 leading-snug${blockedPress === "sidebar" ? " font-semibold" : ""}`}
+                  style={{ color: blockedPress === "sidebar" ? "#5F1C35" : "#848181" }}
+                >
                   {basketBlockerText(basketStatus)}{" "}
                   <Link href="/pantry" className="underline font-semibold" style={{ color: "#812549" }}>
                     open Ingredients

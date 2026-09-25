@@ -129,10 +129,14 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-surface overflow-hidden">
-      <div className="hidden lg:block">
-        <DashboardSidebar isAdmin={isAdmin} isRestaurantStaff={isRestaurantStaff} showTrials={showTrials} />
-      </div>
-
+      {/* First stop for a keyboard: past the header and the nav, straight to
+          the page. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-xl focus:bg-white focus:px-4 focus:py-3 focus:text-sm focus:font-semibold focus:text-primary focus:shadow-lg"
+      >
+        Skip to content
+      </a>
       <div className="flex-1 flex flex-col min-w-0 lg:ml-64">
         <MobileNav
           email={account?.email ?? ""}
@@ -157,7 +161,14 @@ export default async function DashboardLayout({
             The CouponEndingBanner above was also gated on premiumGatesEnabled();
             it now shows whenever a coupon is ending, since losing the coupon
             drops a tester from beta limits to free ones either way. */}
-        <main className="flex-1 overflow-y-auto p-5 sm:p-8">{children}</main>
+        {/* The desktop sidebar is position:fixed, so where it sits in the DOM
+            decides only the TAB order. It came first, and the header — plan
+            pill, Settings — was reached after the entire nav (QA cycle 17).
+            Header, then nav, then the page. */}
+        <div className="hidden lg:block">
+          <DashboardSidebar isAdmin={isAdmin} isRestaurantStaff={isRestaurantStaff} showTrials={showTrials} />
+        </div>
+        <main id="main" tabIndex={-1} className="flex-1 overflow-y-auto p-5 sm:p-8 outline-none">{children}</main>
       </div>
     </div>
   );

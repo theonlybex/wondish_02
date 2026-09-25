@@ -35,6 +35,7 @@ import { guardAiSpend } from "@/lib/ai-budget";
 import { rateLimit } from "@/lib/rate-limit";
 import { buildFoodMapText } from "@/lib/food-map";
 import { fitBasket, freeStaplesFor } from "@/lib/clara/recipe-generation";
+import { swapPushesDayFat } from "@/lib/swap-day-fat";
 
 // POST /api/meal-plan/[menuId]/clara-swap — the user asks Clara for something
 // else in this slot ("what would you like instead?") and Clara generates a
@@ -84,6 +85,7 @@ export async function POST(
       recipe: {
         select: {
           calories: true,
+          fat: true,
           name: true,
           ingredients: { select: { ingredient: { select: { name: true } } } },
         },
@@ -213,6 +215,20 @@ export async function POST(
   // refuse almost everything, which costs the user their swap. This refuses the
   // candidate that takes a day well past its target, not the one that nudges it.
   const DAY_FAT_TOLERANCE = 1.3;
+  // …and until cycle 18 none of the three numbers above was READ anywhere. The
+  // budget was computed, commented and ignored, and QA's swap left a day at
+  // "Fat 86g of 53g · 162%" (cycle 17). A candidate may not take the day past
+  // the ceiling — unless the day was already there and it still carries less
+  // fat than the dish it replaces, because refusing an improvement costs the
+  // user a swap and leaves them worse off.
+  const pushesDayFat = (candidateFatG: number): boolean =>
+    swapPushesDayFat({
+      otherFatG,
+      candidateFatG,
+      replacedFatG: menu.recipe?.fat ?? 0,
+      dayFatBudgetG,
+      tolerance: DAY_FAT_TOLERANCE,
+    });
   const { allergyNames, exactBanned } = derivePatientBans(patient);
   const matchers = buildDietMatchers({ allergyNames, exactBanned });
   const bannedNames = [...allergyNames, ...exactBanned.map((b) => b.name)];
@@ -327,6 +343,8 @@ export async function POST(
             ? "implausible-numbers"
             : overusedProteins.has(dishProteinOfNames(r.usesIngredients) ?? "")
               ? "third-helping-of-the-day's-protein"
+              : pushesDayFat(pricedMacros(r)?.fat ?? r.perServing.fat ?? 0)
+                ? "takes-the-day-past-its-fat-target"
               : (() => {
                   const dish = toPlausibleDish(r, mealTypeName);
                   const priced = pricedMacros(r);
