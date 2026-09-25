@@ -98,7 +98,31 @@ export function buildFoodMapText(patient: FoodMapPatient | null | undefined): st
     const names = patient.healthConditions.map((c) => c.condition.name).join(", ");
     const banned = patient.healthConditions.flatMap((c) => c.condition.bannedIngredients.map((b) => b.name));
     lines.push(`Health conditions: ${names}`);
-    if (banned.length > 0) lines.push(`Restricted from conditions: ${banned.join(", ")}`);
+    if (banned.length > 0) {
+      // Attributed to the condition, and described as what the APP does.
+      //
+      // This line read "Restricted from conditions: lard, …, egg yolks, …" and
+      // went into Clara's prompt under "respect every line", so she told a
+      // tester with an empty avoid list "you can't have egg yolks" — a
+      // restriction they never set, derived from the one condition they
+      // reported. The motivation half of this function was fixed for exactly
+      // this and the condition half was left, one block above it.
+      //
+      // These ARE enforced (derivePatientBans feeds the plan builder), so they
+      // cannot be softened to a preference like the motivation list. What was
+      // wrong is the voice: the app applies them because of a condition the
+      // user told us about, which is a different sentence from "you are
+      // forbidden these". The enforcement is also phrase-exact, so a term can
+      // be announced and never bind — "egg yolks" never matches the catalog's
+      // "Large eggs", and the plan serves two whole eggs while Clara says
+      // otherwise. Saying who is doing the avoiding is what makes that
+      // survivable; see lib/clara/registry.ts for how she must phrase it.
+      lines.push(
+        `Because of those conditions the app avoids these where they appear as ingredients ` +
+          `(the diner did not choose this list; describe it as the app's doing, and never as food they are forbidden): ` +
+          `${Array.from(new Set(banned)).join(", ")}`
+      );
+    }
     // A user-written guidance line is quoted so the model reads it as the
     // diner's instruction, not as ours.
     const guidance = patient.healthConditions

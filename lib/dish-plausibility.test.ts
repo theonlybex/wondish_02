@@ -333,3 +333,31 @@ test("a bare accented \"sauté\" is caught — \\b after é is never a word boun
     assert.equal(dishProblem({ ...d, steps: [step] }, CATALOG), "cooks-without-listing-fat", step);
   }
 });
+
+test("a bare count prices — the unit-shaped hole, not an ingredient-shaped one", () => {
+  // QA's correlation was total: every dish in a fresh week with a unitless row
+  // was wrong, every dish without one was exact. The worst declared 432 kcal
+  // and 24 g of fat over food that is ~615 kcal and ~42 g, including 243 kcal
+  // of poured olive oil, because "Sliced bread 2" could not be priced and the
+  // dish therefore kept the model's numbers with no upper bound at all.
+  const d = dish({
+    generated: true,
+    name: "Salmon and Spinach on Toasted Bread",
+    prepMinutes: 5,
+    cookMinutes: 12,
+    steps: ["Toast the bread.", "Pan-sear the salmon in the oil."],
+    calories: 432,
+    macros: { protein: 28, carbs: 26, fat: 24 },
+    ingredients: [
+      { name: "Salmon fillets", quantity: 100, unit: "g" },
+      { name: "Sliced bread", quantity: 2, unit: null },
+      { name: "spinach", quantity: 60, unit: "g" },
+      { name: "Extra virgin olive oil", quantity: 2, unit: "tablespoon" },
+    ],
+  });
+  assert.equal(dishProblem(d, CATALOG), "macros-contradict-amounts");
+
+  // Priced honestly, the same dish passes.
+  const honest = { ...d, calories: 615, macros: { protein: 27, carbs: 33, fat: 42 } };
+  assert.equal(dishProblem(honest, CATALOG), null);
+});

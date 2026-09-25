@@ -52,6 +52,22 @@ const DENSITY: {
    * 20.4 g of poured oil.
    */
   volumeUnambiguous?: boolean;
+  /**
+   * Grams in one of the thing, for rows written as a bare count.
+   *
+   * "Sliced bread 2" and "Large eggs 2" carry a quantity and no unit, and
+   * gramsOf returned null for them — so the row counted as unpriced food,
+   * coverage fell under the bar, and the dish kept the model's numbers with no
+   * upper bound at all. QA measured the correlation as total: in one fresh
+   * week every one of the 18 dishes with no unitless row was exact on all four
+   * macros, and every one of the 11 dishes with one was wrong — three by more
+   * than 25%, the worst declaring 432 kcal and 24 g of fat over food that is
+   * 615 kcal and 42 g, including 243 kcal of poured olive oil.
+   *
+   * The escapes were never ingredient-shaped, they were unit-shaped: oil in
+   * tablespoons first, bare counts second.
+   */
+  gramsPerItem?: number;
 }[] = [
   // Grains and pasta, dry. ~75 g carbs/100 g is true of every rice, and of
   // pasta, couscous and most flours within a few grams.
@@ -74,10 +90,11 @@ const DENSITY: {
   { match: /\b(salmon)\b/i, carbs: 0, fat: 13, protein: 20, gramsPerCup: 150 },
   { match: /\b(tuna|cod|tilapia|haddock|white fish)\b/i, carbs: 0, fat: 2, protein: 22, gramsPerCup: 150 },
   { match: /\b(shrimp|prawns?)\b/i, carbs: 1, fat: 1, protein: 20, gramsPerCup: 145 },
-  { match: /\b(eggs?)\b/i, carbs: 1, fat: 10, protein: 13, gramsPerCup: 243 },
+  { match: /\b(eggs?)\b/i, carbs: 1, fat: 10, protein: 13, gramsPerCup: 243, gramsPerItem: 50 },
   { match: /\b(tofu|tempeh)\b/i, carbs: 4, fat: 8, protein: 17, gramsPerCup: 250 },
   // Bread and dairy.
-  { match: /\b(bread|muffin|bagel|tortilla|pita|toast)\b/i, carbs: 49, fat: 3, protein: 9, gramsPerCup: 120 },
+  { match: /\b(bread|toast)\b/i, carbs: 49, fat: 3, protein: 9, gramsPerCup: 120, gramsPerItem: 30 },
+  { match: /\b(muffin|bagel|tortilla|pita)\b/i, carbs: 49, fat: 3, protein: 9, gramsPerCup: 120, gramsPerItem: 60 },
   { match: /\b(greek yogurt)\b/i, carbs: 4, fat: 4, protein: 9, gramsPerCup: 245 , volumeUnambiguous: true },
   { match: /\b(yogurt|milk)\b/i, carbs: 5, fat: 3, protein: 3, gramsPerCup: 245 , volumeUnambiguous: true },
   { match: /\b(cheddar|parmesan|feta|mozzarella|cheese)\b/i, carbs: 2, fat: 28, protein: 24, gramsPerCup: 110 },
@@ -87,9 +104,9 @@ const DENSITY: {
   // Vegetables and fruit, as a group: little of anything, but not nothing.
   // "bell peppers", not "peppers?": a bare "pepper" is the seasoning, and
   // matching it here put "pepper 0.1 teaspoon" into the floor as a vegetable.
-  { match: /\b(broccoli|cauliflower|zucchini|spinach|carrots?|bell peppers?|tomato(es)?|onions?|celery|cucumber|lettuce|cabbage|mushrooms?|greens?|kale|asparagus|green beans?)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120 },
-  { match: /\b(potato(es)?|sweet potato(es)?|corn|peas)\b/i, carbs: 18, fat: 0, protein: 2, gramsPerCup: 150 },
-  { match: /\b(apples?|bananas?|berries|strawberries|blueberries|oranges?|grapes?|pears?|melon)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 150 },
+  { match: /\b(broccoli|cauliflower|zucchini|spinach|carrots?|bell peppers?|tomato(es)?|onions?|celery|cucumber|lettuce|cabbage|mushrooms?|greens?|kale|asparagus|green beans?)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110 },
+  { match: /\b(potato(es)?|sweet potato(es)?|corn|peas)\b/i, carbs: 18, fat: 0, protein: 2, gramsPerCup: 150, gramsPerItem: 170 },
+  { match: /\b(apples?|bananas?|berries|strawberries|blueberries|oranges?|grapes?|pears?|melon)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 150, gramsPerItem: 130 },
 ];
 
 const GRAMS_PER_UNIT: { match: RegExp; grams: number | "cup" }[] = [
@@ -108,10 +125,15 @@ const CUP_FRACTION: { match: RegExp; fraction: number }[] = [
 ];
 
 /** Grams of `name` implied by `quantity` `unit`, or null when not convertible. */
+const COUNT_UNIT = /^\s*(|unit|units|piece|pieces|slice|slices|whole|each|item|items|large|medium|small|egg|eggs)\s*$/i;
+
 export function gramsOf(name: string, quantity: number | null | undefined, unit: string | null | undefined): number | null {
   if (quantity == null || !Number.isFinite(quantity) || quantity <= 0) return null;
   const u = unit ?? "";
   const density = DENSITY.find((d) => d.match.test(name));
+  // A bare count ("Sliced bread 2", "Large eggs 2") or a count-shaped unit
+  // ("2 slices", "1 unit") prices from the food's own per-item weight.
+  if (density?.gramsPerItem && COUNT_UNIT.test(u)) return quantity * density.gramsPerItem;
   const conv = GRAMS_PER_UNIT.find((c) => c.match.test(u));
   if (!conv) return null;
   if (conv.grams === "cup") {
@@ -134,6 +156,13 @@ export interface MacroFloor {
 // Mass always does: "150 g brown rice" is 150 g of rice however it is cooked.
 const isMassUnit = (unit: string | null | undefined): boolean =>
   /^\s*(g|gram|grams|gr|kg|kilogram|kilograms|oz|ounce|ounces|lb|lbs|pound|pounds)\s*$/i.test(unit ?? "");
+
+// A count is as firm as a mass once the food has a per-item weight: two slices
+// of bread is two slices of bread however it is later toasted.
+const isCountOf = (name: string, unit: string | null | undefined): boolean => {
+  const density = DENSITY.find((d) => d.match.test(name));
+  return density?.gramsPerItem != null && COUNT_UNIT.test(unit ?? "");
+};
 
 // A grain measured by volume is DRY unless the recipe says otherwise.
 //
@@ -178,7 +207,7 @@ export function macroFloor(
   for (const ing of ingredients) {
     const density = DENSITY.find((d) => d.match.test(ing.name));
     if (!density) continue;
-    if (!isMassUnit(ing.unit) && !density.volumeUnambiguous && !volumeCountsAsDry) continue;
+    if (!isMassUnit(ing.unit) && !isCountOf(ing.name, ing.unit) && !density.volumeUnambiguous && !volumeCountsAsDry) continue;
     // A seasoning-sized amount contributes nothing worth arguing about and
     // only clutters the explanation ("…the 78 g in pepper 0.1 teaspoon").
     if (/\b(tsp|teaspoons?|pinch|dash)\b/i.test(ing.unit ?? "") && (ing.quantity ?? 0) <= 1) continue;
@@ -273,7 +302,9 @@ export function priceDish(
     const grams = density ? gramsOf(ing.name, ing.quantity, ing.unit) : null;
     // A volume amount is only usable when the steps show the grain starts dry;
     // otherwise the same number could mean three times the food.
-    const usable = grams != null && (isMassUnit(ing.unit) || density?.volumeUnambiguous === true || volumeOk);
+    const usable =
+      grams != null &&
+      (isMassUnit(ing.unit) || isCountOf(ing.name, ing.unit) || density?.volumeUnambiguous === true || volumeOk);
     if (!density || !usable) {
       // Weight unknown, so it cannot be weighed against what IS known. Count
       // it as one average portion of unpriced food so coverage reflects it.

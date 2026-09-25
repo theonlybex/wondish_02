@@ -86,7 +86,9 @@ test("buildFoodMapText: healthConditions render names + banned-ingredients line"
   };
   const text = buildFoodMapText(p);
   assert.match(text, /Health conditions: Diabetes/);
-  assert.match(text, /Restricted from conditions: Sugar/);
+  assert.match(text, /the app avoids these where they appear/);
+  assert.match(text, /Sugar/);
+  assert.doesNotMatch(text, /Restricted from conditions/);
 });
 
 test("buildFoodMapText: a goal's foods are attributed to the goal, not stated as a restriction", () => {
@@ -170,7 +172,7 @@ test("buildFoodMapText: avoid children and condition guidance reach the prompt",
   const text = buildFoodMapText(patient);
   assert.match(text, /Restricted from foods to avoid: beef, lamb/);
   assert.match(text, /Condition guidance: keep sodium low/);
-  assert.match(text, /Restricted from conditions: soy sauce/);
+  assert.match(text, /the app avoids these where they appear[^\n]*soy sauce/);
 });
 
 test("buildFoodMapText: trial lines for elimination, reintroduction and a likely-trigger result", () => {
@@ -195,7 +197,7 @@ test("buildFoodMapText: a condition's own guidance is quoted as the diner's note
   };
   const text = buildFoodMapText(p);
   assert.match(text, /Health conditions: Gout, Hypertension/);
-  assert.match(text, /Restricted from conditions: anchovies/);
+  assert.match(text, /the app avoids these where they appear[^\n]*anchovies/);
   assert.match(text, /Gout \(the diner's own note\): "no beer, small portions of red meat"/);
   assert.match(text, /keep sodium low — season with herbs/);
 });
