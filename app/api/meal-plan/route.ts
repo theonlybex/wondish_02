@@ -211,6 +211,17 @@ export async function POST(req: NextRequest) {
   // Cuisine now only scopes the current-day route (/api/meal-plan/day).
   const wantClara = claraFirst === true;
 
+  // Does this account already have a plan? Decides which allowance pays (see
+  // the preflight below). The anchor moving is still an init: that IS the
+  // start-date change planInit exists for.
+  const anchorMoves =
+    patient.mealPlanStartDate != null &&
+    toLocalDateString(new Date(patient.mealPlanStartDate)) !== toLocalDateString(start);
+  const existingRows = await prisma.menu.count({
+    where: { patientId: patient.id, planVersion: patient.activePlanVersion },
+  });
+  const hasExistingPlan = existingRows > 0 && !anchorMoves;
+
   try {
     const count = await regeneratePlan(patient.id, start, undefined, {
       claraFirst: wantClara,
@@ -219,7 +230,15 @@ export async function POST(req: NextRequest) {
       // guard. Charged under the claim, so only the request that actually
       // builds pays for it.
       preflight: async () => {
-        const guard = await guardAiSpend(userId, "planInit", aiTier);
+        // planInit is the ONBOARDING allowance — the first plan, and a change
+        // of start date. A patient who already has a plan calling this route is
+        // regenerating, and that is what planGen meters: without the
+        // distinction, a beta account refused its 4th new week of the week
+        // (planGen 3/week) could simply POST here and rebuild 172 rows on the
+        // planInit budget, twice a day, for free (QA 2026-09-24). Whichever
+        // bucket applies, it is charged before the model runs.
+        const kind = hasExistingPlan ? "planGen" : "planInit";
+        const guard = await guardAiSpend(userId, kind, aiTier);
         return guard.ok ? null : { status: guard.status, body: { ...guard.body } };
       },
     });

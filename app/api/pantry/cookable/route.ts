@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
+import { displayDishName } from "@/lib/dish-name";
 import { getPlanDayCalories } from "@/lib/meal-plan";
 import { rateLimit } from "@/lib/rate-limit";
 import {
@@ -95,6 +96,15 @@ export async function GET() {
     // These rows stay in the planner's pool, where a portion of bread is a
     // legitimate side. They are just not an answer to "what can I cook?".
     if (r.ingredients.length === 1) continue;
+    // …and a row whose NAME is one of its own ingredients, whatever else it
+    // carries. "Brown Rice , V1L- 1 cup, cooked unsalted" holds brown rice plus
+    // parsley, so the one-ingredient rule above missed it, and the API was
+    // still handing the iOS client five near-identical "Brown Rice" dishes
+    // (QA 2026-09-24). The web UI had stopped showing them; the payload had not.
+    {
+      const dishName = displayDishName(r.name).trim().toLowerCase();
+      if (names.some((n) => n.trim().toLowerCase() === dishName)) continue;
+    }
 
     const missing = r.ingredients
       .filter((ri) => !onHand.has(ri.ingredientId))

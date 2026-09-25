@@ -133,9 +133,36 @@ export function buildFoodMapText(patient: FoodMapPatient | null | undefined): st
 
   if (patient.motivations?.length > 0) {
     const names = patient.motivations.map((m) => m.motivation.name).join(", ");
-    const banned = patient.motivations.flatMap((m) => m.motivation.bannedIngredients.map((b) => b.name));
+    // Deduplicated, and described as a LEANING rather than a restriction.
+    //
+    // This line used to read "Restricted from goals: sugar, …, white rice, …"
+    // — once per motivation, undeduplicated — and it goes into Clara's prompt
+    // under "respect every line". So when a tester with an empty foodToAvoid
+    // list asked about jasmine rice, she answered "yes, your profile does avoid
+    // white rice": not a hallucination, the server told her so (QA 2026-09-24).
+    //
+    // Nothing else in the app treats these as bans — derivePatientBans, which
+    // the plan builder and the swap use, reads allergies and foodToAvoid only.
+    // So the app invited the user to stock four kinds of rice, certified the
+    // basket, built them a week of rice, and then told them it conflicted with
+    // their goals. A goal is a direction of travel; only an allergy or an
+    // explicit avoid entry forbids a food.
+    //
+    // Attributed rather than dropped, because the strength varies with the
+    // goal: "Sobriety → alcohol" is worth saying out loud, "Eat healthier →
+    // white rice" is not a prohibition. Naming the goal lets Clara say the
+    // true thing in both cases without asserting a restriction that is not
+    // there.
+    const leanAway = Array.from(
+      new Set(patient.motivations.flatMap((m) => m.motivation.bannedIngredients.map((b) => b.name)))
+    );
     lines.push(`Goals: ${names}`);
-    if (banned.length > 0) lines.push(`Restricted from goals: ${banned.join(", ")}`);
+    if (leanAway.length > 0) {
+      lines.push(
+        `Foods those GOALS steer away from (attribute these to the goal, never to a dietary restriction — ` +
+          `the diner has not banned them and the app will still plan with them): ${leanAway.join(", ")}`
+      );
+    }
   }
 
   return lines.length > 0 ? lines.join("\n") : "No specific dietary restrictions on file.";

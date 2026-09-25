@@ -173,8 +173,15 @@ function seasoningQuantityOnFood(ing: PlausibleIngredient): boolean {
 }
 
 // Cooking that needs a fat in the pan, and the fats that satisfy it.
+//
+// "sauté" is matched without a trailing \b, because \b after a non-ASCII
+// letter is never a word boundary — /saut[ée]\b/ is false for "sauté the
+// onions" and the `u` flag does not change that. The commonest way a step is
+// written was therefore invisible to this check, at generation and at
+// selection alike, and a QA sweep found a frittata sautéing in an oil it never
+// listed while dishProblem returned null for all 25 dishes in the week.
 const FAT_METHOD =
-  /\b(sear|seared|searing|saut[ée]|saut[ée]ed|saut[ée]ing|fry|fried|frying|pan-?fry|brown the|stir-?fry|stir-?fried|grease|coat the pan)\b/i;
+  /(\bsear(ed|ing)?\b|saut[ée]|\bfry\b|\bfried\b|\bfrying\b|pan-?fry|\bbrown the\b|stir-?fr(y|ied)|\bgrease\b|coat the pan)/i;
 const FAT_NAME = /\b(oil|butter|ghee|margarine|cooking spray|lard|tallow|bacon fat|drippings?)\b/i;
 
 /**

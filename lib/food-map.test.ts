@@ -89,14 +89,32 @@ test("buildFoodMapText: healthConditions render names + banned-ingredients line"
   assert.match(text, /Restricted from conditions: Sugar/);
 });
 
-test("buildFoodMapText: motivations render names + banned-ingredients line", () => {
+test("buildFoodMapText: a goal's foods are attributed to the goal, not stated as a restriction", () => {
   const p: FoodMapPatient = {
     ...emptyPatient(),
     motivations: [{ motivation: { name: "Sobriety", bannedIngredients: [{ name: "Alcohol" }] } }],
   };
   const text = buildFoodMapText(p);
   assert.match(text, /Goals: Sobriety/);
-  assert.match(text, /Restricted from goals: Alcohol/);
+  assert.match(text, /GOALS steer away from/);
+  assert.match(text, /Alcohol/);
+  // The old wording was "Restricted from goals: …", and it went into Clara's
+  // prompt under "respect every line" — so she told a tester whose foodToAvoid
+  // was empty that "your profile does avoid white rice", about a plan the app
+  // had just built from rice the tester chose (QA 2026-09-24).
+  assert.doesNotMatch(text, /Restricted from goals/);
+});
+
+test("buildFoodMapText: a goal's food list is deduplicated across goals", () => {
+  const p: FoodMapPatient = {
+    ...emptyPatient(),
+    motivations: [
+      { motivation: { name: "Eat healthier", bannedIngredients: [{ name: "white rice" }, { name: "candy" }] } },
+      { motivation: { name: "Improve energy", bannedIngredients: [{ name: "white rice" }, { name: "candy" }] } },
+    ],
+  };
+  const text = buildFoodMapText(p);
+  assert.equal(text.match(/white rice/g)?.length, 1, "the same food listed once per goal padded the prompt");
 });
 
 test("buildFoodMapText: empty sections are omitted (only populated sections render)", () => {

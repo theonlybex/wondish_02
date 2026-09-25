@@ -314,3 +314,22 @@ test("the salt cap scales with the size of the dish", () => {
   // Unknown calories keep the old behaviour rather than guessing small.
   assert.equal(dishProblem({ ...small, calories: null }, CATALOG), null);
 });
+
+test("a bare accented \"sauté\" is caught — \\b after é is never a word boundary", () => {
+  // /saut[ée]\b/ is false for "sauté the onions", u flag or not, so the
+  // commonest phrasing escaped the fat check entirely.
+  const d = dish({
+    name: "Beef Patty with Carrots",
+    steps: ["Form the patty.", "In the same skillet, sauté carrots over medium heat for 4 minutes."],
+    ingredients: [
+      { name: "ground beef", quantity: 4, unit: "oz" },
+      { name: "carrots", quantity: 80, unit: "g" },
+      { name: "Salt", quantity: 0.3, unit: "tsp" },
+    ],
+  });
+  assert.equal(dishProblem(d, CATALOG), "cooks-without-listing-fat");
+  // And the accented past participle, and the plain spelling.
+  for (const step of ["Sautéed until golden.", "Saute the onions.", "Sauté the garlic."]) {
+    assert.equal(dishProblem({ ...d, steps: [step] }, CATALOG), "cooks-without-listing-fat", step);
+  }
+});

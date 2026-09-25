@@ -198,7 +198,7 @@ export default function CaloricProfileCard() {
           <div
             className="relative w-[110px] h-[110px]"
             role="img"
-            aria-label={`${rampTargetCalories != null ? "Today's target" : "Daily target"} ${headlineTarget} kilocalories${
+            aria-label={`${rampTargetCalories != null ? "Today's target" : "Goal once the ramp settles"} ${headlineTarget} kilocalories${
               intake ? `, ${Math.round(eatenCalories)} eaten today` : ""
             }${rampTargetCalories != null ? `, long-run goal ${dailyTarget} per day` : ""}`}
           >
@@ -250,7 +250,13 @@ export default function CaloricProfileCard() {
               <span className="text-[10px] text-[#848181] uppercase tracking-wider">kcal/day</span>
             </div>
           </div>
-          <p className="text-xs text-[#848181] mt-1.5">{rampTargetCalories != null ? "Today's target" : "Daily Target"}</p>
+          {/* When today's ramped number is not in hand, this is the long-run
+              goal — and calling it "Daily Target" put 1818 under that caption
+              while Today's Log, /meal-plan and the API all said 1938 for the
+              same day (QA 2026-09-24). Name what it is instead. */}
+          <p className="text-xs text-[#848181] mt-1.5">
+            {rampTargetCalories != null ? "Today's target" : "Your goal, once the ramp settles"}
+          </p>
           {intake && (
             <p
               className="text-[10px] font-semibold tabular-nums mt-0.5"

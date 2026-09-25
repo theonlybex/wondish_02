@@ -32,7 +32,27 @@
  * oat breakfasts declaring exactly DOUBLE the carbohydrate their oats contain.
  * A floor catches under-declaration; over-declaration needs a priced dish.
  */
-const DENSITY: { match: RegExp; carbs: number; fat: number; protein?: number; gramsPerCup: number }[] = [
+const DENSITY: {
+  match: RegExp;
+  carbs: number;
+  fat: number;
+  protein?: number;
+  gramsPerCup: number;
+  /**
+   * True when a volume measure means the same thing however the food is
+   * cooked, so it can be priced without evidence from the steps.
+   *
+   * A cup of rice is ~185 g dry and ~195 g cooked with a third of the
+   * carbohydrate, which is why grains need the dry-grain test. A tablespoon of
+   * oil is 13.6 g of oil in every kitchen in the world. Gating oil behind the
+   * GRAIN test is what QA found next: a dish whose steps lacked
+   * grain-cooking language had its oil row left unpriced, coverage fell below
+   * the bar, the model's numbers stood, and 5 dishes in one week declared less
+   * total fat than their oil alone contains — one of them 11 g of fat over
+   * 20.4 g of poured oil.
+   */
+  volumeUnambiguous?: boolean;
+}[] = [
   // Grains and pasta, dry. ~75 g carbs/100 g is true of every rice, and of
   // pasta, couscous and most flours within a few grams.
   { match: /\b(rice)\b/i, carbs: 78, fat: 1, protein: 7, gramsPerCup: 185 },
@@ -41,10 +61,10 @@ const DENSITY: { match: RegExp; carbs: number; fat: number; protein?: number; gr
   { match: /\b(quinoa|bulgur|farro|barley|millet)\b/i, carbs: 70, fat: 6, protein: 13, gramsPerCup: 170 },
   { match: /\b(flour|cornmeal|breadcrumbs?)\b/i, carbs: 76, fat: 1, protein: 10, gramsPerCup: 120 },
   { match: /\b(lentils?|chickpeas?|black beans?|kidney beans?|white beans?)\b/i, carbs: 60, fat: 2, protein: 24, gramsPerCup: 190 },
-  { match: /\b(sugar|honey|maple syrup)\b/i, carbs: 95, fat: 0, protein: 0, gramsPerCup: 200 },
+  { match: /\b(sugar|honey|maple syrup)\b/i, carbs: 95, fat: 0, protein: 0, gramsPerCup: 200 , volumeUnambiguous: true },
   // Fats. Oil is the one ingredient that is essentially 100% fat.
-  { match: /\b(oil)\b/i, carbs: 0, fat: 100, protein: 0, gramsPerCup: 218 },
-  { match: /\b(butter|ghee)\b/i, carbs: 0, fat: 81, protein: 1, gramsPerCup: 227 },
+  { match: /\b(oil)\b/i, carbs: 0, fat: 100, protein: 0, gramsPerCup: 218 , volumeUnambiguous: true },
+  { match: /\b(butter|ghee)\b/i, carbs: 0, fat: 81, protein: 1, gramsPerCup: 227 , volumeUnambiguous: true },
   // Proteins, raw. Enough to tell 16 g of protein from a claimed 32 g.
   { match: /\b(chicken breasts?|turkey breast)\b/i, carbs: 0, fat: 3, protein: 23, gramsPerCup: 140 },
   { match: /\b(chicken thighs?)\b/i, carbs: 0, fat: 11, protein: 19, gramsPerCup: 140 },
@@ -58,8 +78,8 @@ const DENSITY: { match: RegExp; carbs: number; fat: number; protein?: number; gr
   { match: /\b(tofu|tempeh)\b/i, carbs: 4, fat: 8, protein: 17, gramsPerCup: 250 },
   // Bread and dairy.
   { match: /\b(bread|muffin|bagel|tortilla|pita|toast)\b/i, carbs: 49, fat: 3, protein: 9, gramsPerCup: 120 },
-  { match: /\b(greek yogurt)\b/i, carbs: 4, fat: 4, protein: 9, gramsPerCup: 245 },
-  { match: /\b(yogurt|milk)\b/i, carbs: 5, fat: 3, protein: 3, gramsPerCup: 245 },
+  { match: /\b(greek yogurt)\b/i, carbs: 4, fat: 4, protein: 9, gramsPerCup: 245 , volumeUnambiguous: true },
+  { match: /\b(yogurt|milk)\b/i, carbs: 5, fat: 3, protein: 3, gramsPerCup: 245 , volumeUnambiguous: true },
   { match: /\b(cheddar|parmesan|feta|mozzarella|cheese)\b/i, carbs: 2, fat: 28, protein: 24, gramsPerCup: 110 },
   { match: /\b(almonds?|walnuts?|peanuts?|cashews?|nuts)\b/i, carbs: 22, fat: 50, protein: 21, gramsPerCup: 140 },
   { match: /\b(peanut butter|almond butter)\b/i, carbs: 20, fat: 50, protein: 25, gramsPerCup: 258 },
@@ -157,7 +177,7 @@ export function macroFloor(
   for (const ing of ingredients) {
     const density = DENSITY.find((d) => d.match.test(ing.name));
     if (!density) continue;
-    if (!isMassUnit(ing.unit) && !volumeCountsAsDry) continue;
+    if (!isMassUnit(ing.unit) && !density.volumeUnambiguous && !volumeCountsAsDry) continue;
     // A seasoning-sized amount contributes nothing worth arguing about and
     // only clutters the explanation ("…the 78 g in pepper 0.1 teaspoon").
     if (/\b(tsp|teaspoons?|pinch|dash)\b/i.test(ing.unit ?? "") && (ing.quantity ?? 0) <= 1) continue;
@@ -252,7 +272,7 @@ export function priceDish(
     const grams = density ? gramsOf(ing.name, ing.quantity, ing.unit) : null;
     // A volume amount is only usable when the steps show the grain starts dry;
     // otherwise the same number could mean three times the food.
-    const usable = grams != null && (isMassUnit(ing.unit) || volumeOk);
+    const usable = grams != null && (isMassUnit(ing.unit) || density?.volumeUnambiguous === true || volumeOk);
     if (!density || !usable) {
       // Weight unknown, so it cannot be weighed against what IS known. Count
       // it as one average portion of unpriced food so coverage reflects it.

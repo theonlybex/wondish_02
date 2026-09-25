@@ -22,6 +22,7 @@ import {
   toPlausibleDish,
   descriptionPromisesMissingFood,
   cooksWithUnlistedFat,
+  pricedMacros,
 } from "@/lib/clara/recipe-generation";
 import { dishProblem, catalogFoodVocabulary, BREAKFAST_MAX_MINUTES } from "@/lib/dish-plausibility";
 import { dishProtein, dishProteinOfNames, MAX_SAME_PROTEIN_PER_DAY } from "@/lib/meal-plan";
@@ -164,7 +165,14 @@ export async function POST(
     : ``;
 
   const system = [
-    `You are Clara, Wondish's nutrition assistant. Generate ONE ${cuisine ? cuisine + " " : ""}${mealTypeName.toLowerCase()} dish to replace one the user didn't want.`,
+    // FOUR candidates, not one. Every gate the plan builder applies now runs
+    // here too — diet, basket, salt, timings, the title's promise, the day's
+    // proteins, the arithmetic — and with a single candidate one miss meant a
+    // total failure: a QA account got 422 on three consecutive swaps, each
+    // billed against a 3-per-day allowance, with a message blaming the user's
+    // ingredients for a chicken dish their basket plainly supported. Asking for
+    // four costs one call and turns "all or nothing" into "best of four".
+    `You are Clara, Wondish's nutrition assistant. Suggest FOUR different ${cuisine ? cuisine + " " : ""}${mealTypeName.toLowerCase()} dishes to replace one the user didn't want. Vary the protein and the method between them; the app picks whichever fits the rest of the day.`,
     `Rules:`,
     `- mealType must be exactly "${mealTypeName}".`,
     `- Target ≈${targetCalories} kcal per serving (within ±20%).`,
@@ -189,12 +197,13 @@ export async function POST(
   ].join("\n");
 
   let candidate: FridgeRecipe | null = null;
+  const rejections: string[] = [];
   try {
     // 20s x 1 attempt fits under this route's maxDuration = 30 with room for the DB work.
     const anthropic = createAnthropic({ timeout: 20_000, maxRetries: 0 });
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 1536,
+      max_tokens: 4096, // four candidate dishes with their steps
       thinking: { type: "disabled" },
       system,
       tools: [
@@ -222,17 +231,33 @@ export async function POST(
     // (about 45 minutes ahead)". dishProblem covers salt, seasoning quantities,
     // the breakfast ceiling and the title's promise; the two generation-only
     // checks apply here too, because Clara is in the loop and can be asked again.
-    candidate =
-      applyAllergenFilter(parsed, matchers).find(
-        (r) =>
-          (basket.length === 0 || fitBasket(r, basket)) &&
-          passesSanity(r) &&
-          // Not a third helping of something the day already has twice.
-          !overusedProteins.has(dishProteinOfNames(r.usesIngredients) ?? "") &&
-          dishProblem(toPlausibleDish(r, mealTypeName), catalogFoodTokens) === null &&
-          descriptionPromisesMissingFood(r, catalogFoodTokens) === null &&
-          !cooksWithUnlistedFat(r)
-      ) ?? null;
+    const survivors = applyAllergenFilter(parsed, matchers);
+    if (process.env.AI_DEBUG || survivors.length === 0) {
+      console.info(`[clara-swap] parsed=${parsed.length} afterAllergen=${survivors.length}`);
+    }
+    // Each rejection is named, so a 422 is explainable instead of guessed at.
+    for (const r of survivors) {
+      const why =
+        basket.length > 0 && !fitBasket(r, basket)
+          ? "out-of-basket"
+          : !passesSanity(r)
+            ? "implausible-numbers"
+            : overusedProteins.has(dishProteinOfNames(r.usesIngredients) ?? "")
+              ? "third-helping-of-the-day's-protein"
+              : (() => {
+                  const dish = toPlausibleDish(r, mealTypeName);
+                  const priced = pricedMacros(r);
+                  if (priced) {
+                    dish.macros = { carbs: priced.carbs, fat: priced.fat };
+                    dish.calories = priced.calories;
+                  }
+                  return dishProblem(dish, catalogFoodTokens);
+                })() ??
+                (descriptionPromisesMissingFood(r, catalogFoodTokens) ? "description-promises-missing-food" : null) ??
+                (cooksWithUnlistedFat(r) ? "cooks-without-listing-fat" : null);
+      if (!why) { candidate = r; break; }
+      rejections.push(`${r.name}: ${why}`);
+    }
   } catch (err) {
     const busy = claraBusyStatus(err);
     if (busy) return NextResponse.json({ error: CLARA_BUSY_MESSAGE }, { status: busy });
@@ -240,6 +265,12 @@ export async function POST(
   }
 
   if (!candidate) {
+    // Say what was actually rejected. "Couldn't make that from your
+    // ingredients" was shown for every failure mode, including ones that had
+    // nothing to do with the basket.
+    console.info(
+      `[clara-swap] no candidate for ${mealTypeName} (menu ${params.menuId}): ${rejections.join("; ") || "model returned nothing usable"}`
+    );
     return NextResponse.json(
       {
         error: basket.length > 0
