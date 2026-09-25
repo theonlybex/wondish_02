@@ -1292,6 +1292,120 @@ export function breakfastStarchWithSavouryProtein(d: PlausibleDish): boolean {
   return BREAKFAST_STARCH.test(listed) && SAVOURY_PROTEIN.test(listed);
 }
 
+// ── A title that is a grocery line ───────────────────────────────────────────
+//
+// "Large Eggs with Spinach and Yellow Onions" is the catalog row name used as a
+// recipe name. It does not LIE — the dish contains exactly that — so the title
+// gate passes it, and it still under-describes six of its seven ingredients and
+// tells the cook nothing about what they are making. QA flagged it on the card.
+//
+// "Large" is a grading term off an egg box, and the steps always say what was
+// actually done: whisked and scrambled, folded into an omelette, poached. So
+// the method replaces the grade, and the title becomes the dish.
+//
+// Deliberately narrow. 867 of 1,487 generated dishes lead with a catalog row
+// name, and most are fine English — "Ground Beef with Rice and Broccoli" is a
+// dish. Rewriting all 867 would be a mass rename of good names to catch a
+// grading word, so this handles the case where the shopping form and the cooked
+// form are genuinely different words, and the rest is recorded in BACKLOG §0b.
+const EGG_LED_TITLE = /^\s*(?:large|medium|jumbo|extra[- ]large|free[- ]range|whole)\s+eggs\b/i;
+
+/** scrambled, poached, fried… whichever the steps actually describe. */
+const EGG_METHODS: { pattern: RegExp; form: string }[] = [
+  { pattern: /\bomelet(?:te)?s?\b/i, form: "Omelette" },
+  { pattern: /\bpoach(?:ed|ing)?\b/i, form: "Poached Eggs" },
+  { pattern: /\bscrambl(?:e|ed|ing)\b/i, form: "Scrambled Eggs" },
+  { pattern: /\bfried\b|\bfry the eggs\b|\bsunny[- ]side\b/i, form: "Fried Eggs" },
+  { pattern: /\b(?:hard[- ]?(?:boil|cook)(?:ed|ing)?|boiled eggs?)\b/i, form: "Boiled Eggs" },
+  { pattern: /\bbaked?\b/i, form: "Baked Eggs" },
+];
+
+/**
+ * The dish's name with its grocery grading replaced by what the steps do, or
+ * null when the title is fine or the steps do not say.
+ */
+export function nameFromCookedForm(name: string, steps: readonly string[] | null | undefined): string | null {
+  if (!steps || steps.length === 0) return null;
+  if (!EGG_LED_TITLE.test(name)) return null;
+  // Only steps that mention the eggs. "Fried Eggs with Bell Peppers and Rolled
+  // Oats" came out of this function's first run, off a step that stir-fried the
+  // PEPPERS, and "Baked Eggs" off a step that baked the bread. A method lifted
+  // from the wrong sentence is exactly the wrong title this is meant to avoid.
+  const prose = steps.filter((s) => /\beggs?\b/i.test(s)).join(" ");
+  if (!prose) return null;
+  const method = EGG_METHODS.find((m) => m.pattern.test(prose));
+  // No method named: the eggs are in there somewhere and this function is not
+  // going to guess. A wrong method is worse than a dull title.
+  if (!method) return null;
+  const rest = name.replace(EGG_LED_TITLE, "").trim();
+  // "Omelette with Spinach", "Scrambled Eggs with Spinach"; and with nothing
+  // after it, just the dish.
+  return rest ? `${method.form} ${rest}`.replace(/\s+/g, " ").trim() : method.form;
+}
+
+// ── Rinsing raw meat ─────────────────────────────────────────────────────────
+//
+// "Rinse the chicken breast and pat dry" appears in 22 public dishes, and USDA
+// and FSIS have told people not to do it for years: running water aerosolises
+// whatever is on the surface across the sink, the tap and anything nearby, and
+// the cooking that follows was already going to kill it. The pat-dry is the
+// useful half of the instruction and the rinse is the harmful half.
+//
+// This is the "repair over rejection" shape. Every one of the 22 is otherwise a
+// good dish, and every one says the same thing the same way, so the sentence is
+// rewritten rather than the dish discarded.
+//
+// The object matters, not the verb. An earlier pass matched any step holding
+// both a rinse word and a meat word and flagged 36 — including "While the fish
+// bakes, wash the celery, mushrooms, and bell peppers", where washing is
+// exactly right. Only what the verb is DONE TO counts.
+const RINSE_VERB = /\b(rinse|rinsing|wash|washing)\b/gi;
+const RAW_PROTEIN_WORD =
+  /\b(chicken|poultry|turkey|beef|pork|steaks?|lamb|duck|breasts?|thighs?|drumsticks?|mince|fillets?|filets?|salmon|trout|cod|tilapia|halibut|shrimps?|prawns?|fish)\b/i;
+/** Trailing "under cold running water" — part of the rinse, not of the object. */
+const UNDER_WATER = /\s+under\s+(?:cold|cool|warm|running|the tap)[^,.;]*/i;
+
+/** True when a step tells the user to rinse or wash raw meat, poultry or fish. */
+export function stepRinsesRawProtein(step: string): boolean {
+  for (const m of step.matchAll(RINSE_VERB)) {
+    const clause = step.slice(m.index! + m[0].length).split(/[,.;:]| then | and then /i)[0];
+    if (RAW_PROTEIN_WORD.test(clause)) return true;
+  }
+  return false;
+}
+
+/**
+ * The same step with the rinse removed and the pat-dry kept, or null when there
+ * was nothing to remove.
+ */
+export function withoutRawProteinRinse(step: string): string | null {
+  if (!stepRinsesRawProtein(step)) return null;
+  let out = step;
+
+  // "Rinse and pat dry the chicken breast" → "Pat dry the chicken breast"
+  out = out.replace(/\b(rinse|wash)\s+and\s+pat\s+dry\b/gi, "pat dry");
+
+  // "Rinse the salmon fillet [under cold water] and pat it dry" →
+  // "Pat the salmon fillet dry"
+  out = out.replace(
+    /\b(?:rinse|wash)\s+(.+?)\s+and\s+pat\s+(?:it\s+|them\s+)?dry\b/gi,
+    (_m, obj: string) => `pat ${obj.replace(UNDER_WATER, "")} dry`
+  );
+
+  // Whatever is left: a rinse with no pat-dry to inherit. The drying still
+  // belongs there — a wet surface will not brown.
+  out = out.replace(
+    /\b(?:rinse|wash)\s+(.+?)(?=\s+and\b|[,.;:]|$)/gi,
+    (m0: string, obj: string) => (RAW_PROTEIN_WORD.test(obj) ? `pat ${obj.replace(UNDER_WATER, "")} dry` : m0)
+  );
+
+  // The verb usually opened the sentence, so the replacement has to open it
+  // too. Sentence starts only: a semicolon joins clauses and "; Season with
+  // salt" is not a sentence.
+  out = out.replace(/(^|[.!?]\s+)([a-z])/g, (_m, lead: string, ch: string) => lead + ch.toUpperCase());
+  return out === step ? null : out;
+}
+
 export function rawProteinNeverCooked(d: PlausibleDish): boolean {
   if (!d.generated) return false;
   const steps = d.steps ?? [];

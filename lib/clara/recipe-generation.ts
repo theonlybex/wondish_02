@@ -14,6 +14,9 @@ import {
   dishProblem,
   phrasePromisesMissingFood,
   truthfulDishName,
+  stepRinsesRawProtein,
+  withoutRawProteinRinse,
+  nameFromCookedForm,
   clampAddedSalt,
   clampCookingFat,
   countUnitFor,
@@ -585,8 +588,24 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     // not grounds for discarding the dish (see repairProse). Everything the
     // gates below judge is judged on the repaired dish, so a rewritten name
     // still has to pass the same predicate the old one failed.
-    const prosed = repairProse(raw, args.catalogFoodTokens ?? new Set(), seen);
-    if (!prosed) { reject("title-promises-missing-food", raw); continue; }
+    const prosed0 = repairProse(raw, args.catalogFoodTokens ?? new Set(), seen);
+    if (!prosed0) { reject("title-promises-missing-food", raw); continue; }
+
+    // Two more repairs of the same kind — the prose is wrong, the dish is fine.
+    //
+    // A step that says to rinse raw chicken is a safety instruction against
+    // USDA/FSIS advice (22 stored dishes said it before the backfill), and a
+    // title that is the grocery row — "Large Eggs with Spinach" — tells the
+    // cook nothing while passing the title gate, because it does not lie. Both
+    // are rewritten from what the dish already contains, and both were fixed in
+    // the catalog on 2026-09-25; without this the generator writes them again.
+    const derinsed = prosed0.steps?.some(stepRinsesRawProtein)
+      ? { ...prosed0, steps: prosed0.steps.map((s) => withoutRawProteinRinse(s) ?? s) }
+      : prosed0;
+    const cooked = nameFromCookedForm(derinsed.name, derinsed.steps);
+    const prosed =
+      cooked && !seen.has(cooked.trim().toLowerCase()) ? { ...derinsed, name: cooked } : derinsed;
+
     if (prosed.name !== raw.name) retitled++;
 
     // Added salt is clamped to a seasoning amount rather than left to the
