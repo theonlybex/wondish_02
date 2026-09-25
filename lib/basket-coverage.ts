@@ -40,14 +40,30 @@ export const BASKET_STAPLES = new Set([
   "turmeric", "ground turmeric", "ground ginger", "curry powder",
 ]);
 
+/**
+ * Does the basket cover every ingredient this dish needs (staples free)?
+ *
+ * Both sides are normalised HERE rather than trusted to arrive normalised. The
+ * function used to lowercase only the dish's ingredient name and test it against
+ * the basket set as given, so a caller that passed catalog names unchanged —
+ * "Large eggs", "Roma tomatoes" — matched nothing but staples, and the dish pool
+ * silently collapsed to whatever could be built from oil and spices. The
+ * production caller does lowercase (app/api/meal-plan/new-week/route.ts), so
+ * this was never wrong in the app; it cost an afternoon of chasing a "breakfast
+ * repeats four times" bug that existed only in a QA harness, which is exactly
+ * how long it will cost the next person. A predicate that silently returns false
+ * for correct input is worth one Set allocation.
+ */
 export function isCoveredByBasket(
   ingredientNames: string[],
   basket: Set<string>,
   staples: Set<string> = BASKET_STAPLES
 ): boolean {
+  const have = new Set<string>();
+  for (const b of basket) have.add(b.trim().toLowerCase());
   for (const raw of ingredientNames) {
     const n = raw.trim().toLowerCase();
-    if (!basket.has(n) && !staples.has(n)) return false;
+    if (!have.has(n) && !staples.has(n)) return false;
   }
   return true;
 }

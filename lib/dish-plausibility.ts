@@ -18,7 +18,7 @@
 import { ingredientTokens } from "@/lib/basket-match";
 import { BASKET_STAPLES } from "@/lib/basket-coverage";
 import { displayDishName } from "@/lib/dish-name";
-import { macrosContradictAmounts, macrosDisagreeWithPricing } from "@/lib/staple-density";
+import { macrosContradictAmounts, macrosDisagreeWithPricing, gramsOf } from "@/lib/staple-density";
 
 export const BREAKFAST_MAX_MINUTES = 30;
 
@@ -110,6 +110,106 @@ export function clampAddedSalt<T extends { name: string; quantity?: number | nul
   return changed ? { ingredients: out, changed } : { ingredients: [...ingredients], changed: false };
 }
 
+/**
+ * Cooking fat per serving: a tablespoon, or a teaspoon for a small dish.
+ *
+ * Measured on the live catalog 2026-09-25: added cooking oil is 59% of ALL fat
+ * in the generated dishes — 432 of 912 rows above a tablespoon per serving, 112
+ * above a tablespoon and a half — and a built week came out at 44-55% of
+ * calories from fat. That is the single largest reason the plan misses its own
+ * displayed fat target.
+ *
+ * Unlike salt, this CANNOT simply be clamped, and the reason is the step text.
+ * The model writes the amount into the instructions too ("toss with 1.5
+ * tablespoons olive oil"), often split across two steps that sum to the row. Of
+ * 641 rows whose steps state an amount, 543 AGREE with the row: those recipes
+ * genuinely use that much oil, and rewriting the row alone would leave the card
+ * contradicting itself. So the clamp below is deliberately narrow, and the rest
+ * is handled where it can be: the generation prompt states the budget, so new
+ * dishes are written lean and self-consistent from the start.
+ */
+export const COOKING_FAT_G = 14; // one tablespoon
+export const COOKING_FAT_G_SMALL_DISH = 5; // one teaspoon
+
+export function cookingFatCapG(calories?: number | null): number {
+  return calories != null && calories < SMALL_DISH_KCAL ? COOKING_FAT_G_SMALL_DISH : COOKING_FAT_G;
+}
+
+const FAT_ROW = /\b(oils?|butters?|ghee|margarine|lard|tallow)\b/i;
+// "1.5 tablespoons extra virgin olive oil", "2 tbsp butter", "10 g of ghee".
+const FAT_IN_STEP =
+  /(\d+(?:\.\d+)?)\s*(tsp|teaspoons?|tbsp|tablespoons?|g|grams?|ml)\b(?:\s+[\w-]+){0,3}?\s*(oils?|butters?|ghee|margarine)\b/gi;
+
+/**
+ * How many grams of cooking fat the STEPS commit to, or null when they name no
+ * amount. Null is the permissive answer: it means nothing in the prose will be
+ * contradicted by changing the row.
+ */
+export function fatStatedInSteps(steps?: readonly string[] | null): number | null {
+  if (!steps || steps.length === 0) return null;
+  let total = 0;
+  let found = false;
+  for (const s of steps) {
+    for (const m of s.matchAll(FAT_IN_STEP)) {
+      const q = Number(m[1]);
+      const u = m[2];
+      if (!Number.isFinite(q) || q <= 0) continue;
+      total += /tsp|teaspoon/i.test(u) ? q * 4.7 : /tbsp|tablespoon/i.test(u) ? q * 14 : /ml/i.test(u) ? q * 0.92 : q;
+      found = true;
+    }
+  }
+  return found ? total : null;
+}
+
+/**
+ * Bring a dish's cooking fat down, but only where doing so contradicts nothing.
+ *
+ * Two cases, and no others:
+ *   - the steps name no amount → clamp to the per-serving budget
+ *   - the steps name LESS than the row → clamp to what the steps say, because
+ *     the row is over-declared against the recipe's own instructions
+ *
+ * Where the steps agree with the row, the dish is left exactly as it is. On the
+ * live catalog that is 543 of 1,014 rows, and 266 are reachable: 98 that
+ * over-declare against their own steps and 168 whose steps are silent, together
+ * about 2,200 g of fat.
+ *
+ * Rows are scaled proportionally rather than rewritten one at a time, so a dish
+ * using both oil and butter keeps their ratio, and each row keeps its own unit.
+ */
+export function clampCookingFat<T extends { name: string; quantity?: number | null; unit?: string | null }>(
+  ingredients: readonly T[],
+  steps?: readonly string[] | null,
+  calories?: number | null
+): { ingredients: T[]; changed: boolean } {
+  const fats = ingredients.filter((i) => FAT_ROW.test(i.name));
+  if (fats.length === 0) return { ingredients: [...ingredients], changed: false };
+  let total = 0;
+  for (const f of fats) total += gramsOf(f.name, f.quantity, f.unit) ?? 0;
+  if (total <= 0) return { ingredients: [...ingredients], changed: false };
+
+  const stated = fatStatedInSteps(steps);
+  let target: number;
+  if (stated === null) {
+    target = Math.min(total, cookingFatCapG(calories));
+  } else if (total > stated * 1.1) {
+    target = stated; // the row over-declares against the recipe's own steps
+  } else {
+    return { ingredients: [...ingredients], changed: false }; // the prose agrees; leave it
+  }
+  if (target >= total) return { ingredients: [...ingredients], changed: false };
+
+  const factor = target / total;
+  return {
+    ingredients: ingredients.map((i) =>
+      FAT_ROW.test(i.name) && i.quantity != null
+        ? { ...i, quantity: Math.round(i.quantity * factor * 100) / 100 }
+        : i
+    ),
+    changed: true,
+  };
+}
+
 export interface PlausibleIngredient {
   name: string;
   quantity?: number | null;
@@ -153,6 +253,7 @@ export type DishProblem =
   | "breakfast-too-slow"
   | "snack-too-slow"
   | "not-breakfast-food"
+  | "dinner-protein-at-breakfast"
   | "method-not-used"
   | "oversalted"
   | "seasoning-quantity-on-food"
@@ -308,6 +409,32 @@ export function breakfastLooksLikeBreakfast(d: PlausibleDish): boolean {
   if (d.mealTypeName.toLowerCase() !== "breakfast") return true;
   const text = `${displayDishName(d.name)} ${d.ingredients.map((i) => i.name).join(" ")}`;
   return BREAKFAST_FOODS.test(text);
+}
+
+// Proteins nobody builds breakfast on, and the ones people do.
+//
+// The rule above asks whether a breakfast food is PRESENT, and that is not the
+// same question as what the dish is built on. "Oatmeal with Ground Beef and
+// Spinach" contains oats and passes; it is still a dinner protein at 8am, and
+// QA reported that exact shape in three consecutive cycles ("Rolled Oats with
+// Ground Beef and Carrots", "Salmon Fillet with Roasted Carrots and Toast",
+// "Oatmeal with Chicken and Zucchini") while the letter of the rule was met.
+//
+// Eggs, yoghurt, cheese, nut butter, bacon and sausage are breakfast proteins,
+// so a dish carrying one of those is fine whatever else is in it — this refuses
+// only a breakfast whose ONLY protein is a dinner protein. On the live catalog
+// that is 28 of 378 usable breakfasts, which the slot can afford.
+const DINNER_PROTEIN =
+  /\b(ground beef|beef|steaks?|sirloin|lamb|pork|salmon|tuna|cod|tilapia|halibut|shrimps?|prawns?|chicken thighs?|turkey|mince)\b/i;
+const BREAKFAST_PROTEIN =
+  /\b(eggs?|yogh?urt|cottage|cheese|bacon|sausages?|milk|peanut butter|almond butter|almonds?|walnuts?|pecans?|tofu|beans?|lentils?|smoked salmon)\b/i;
+
+export function breakfastIsBuiltOnBreakfastFood(d: PlausibleDish): boolean {
+  if (!d.generated) return true;
+  if (d.mealTypeName.toLowerCase() !== "breakfast") return true;
+  const text = `${displayDishName(d.name)} ${d.ingredients.map((i) => i.name).join(" ")}`;
+  if (BREAKFAST_PROTEIN.test(text)) return true;
+  return !DINNER_PROTEIN.test(text);
 }
 
 export function snackIsQuickEnough(d: PlausibleDish): boolean {
@@ -656,6 +783,7 @@ export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): D
   if (!breakfastIsQuickEnough(d)) return "breakfast-too-slow";
   if (!snackIsQuickEnough(d)) return "snack-too-slow";
   if (!breakfastLooksLikeBreakfast(d)) return "not-breakfast-food";
+  if (!breakfastIsBuiltOnBreakfastFood(d)) return "dinner-protein-at-breakfast";
 
   for (const ing of d.ingredients) {
     if (/\bsalt\b/i.test(ing.name)) {

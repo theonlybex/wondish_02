@@ -39,6 +39,9 @@ import type { TopUpRequest } from "@/lib/clara/recipe-generation";
 // so run-to-run spread is wider than the effect being measured.
 const DAY_MACRO_WEIGHT = 90;
 
+/** How far above its slot's calorie target a single dish may sit. */
+export const MEAL_CAL_CEILING = 1.25;
+
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -890,9 +893,17 @@ export async function buildMealPlanMenus(
           (relax.crossWeek || !excludeRecipeIds.has(r.id)) &&
           (relax.weekReuse || (!weekUsedIds.has(r.id) && !weekUsedSignatures.has(dishSignature(r.ingredients)))) &&
           (relax.sameDay || !todayUsedIds.has(r.id));
-        for (const relax of tiers) {
+        for (const [ti, relax] of tiers.entries()) {
           const pool = selectionPool.filter((r) => matches(r, relax));
-          if (pool.length > 0) return pool;
+          if (pool.length > 0) {
+            if (process.env.WONDISH_DEBUG_POOL) {
+              console.log(`[pool] ${mealType.name} day${dayIndex} tier${ti} n=${pool.length} dishTypes=${dishTypeNames ?? "any"} win=${calWin ? `${calWin.min}-${calWin.max}` : "none"}`);
+            }
+            return pool;
+          }
+        }
+        if (process.env.WONDISH_DEBUG_POOL) {
+          console.log(`[pool] ${mealType.name} day${dayIndex} EMPTY dishTypes=${dishTypeNames ?? "any"} win=${calWin ? `${calWin.min}-${calWin.max}` : "none"}`);
         }
         return [];
       };
@@ -923,7 +934,12 @@ export async function buildMealPlanMenus(
 
       // ── Step 1: Try a complete meal ────────────────────────────────────────
       if (target !== null) {
-        const calMax = dinnerCalCap !== null ? Math.min(target * 1.35, dinnerCalCap) : target * 1.35;
+        // 1.25, not 1.35. At 1.35 a 735 kcal lunch target admitted a 992 kcal
+        // dish, and QA found two lunches at 977 and 955 — 44% of the day in one
+        // sitting, with the arithmetic correct and the portion simply large
+        // (140-145 g of dry rice plus 1.5 tbsp of oil). Costs 34 of 673 usable
+        // lunches, and the slot keeps 626.
+        const calMax = dinnerCalCap !== null ? Math.min(target * MEAL_CAL_CEILING, dinnerCalCap) : target * MEAL_CAL_CEILING;
         const pool   = queryRecipes(["complete meal"], target * 0.55, calMax);
         if (pool.length > 0) addRecipe(pick(pool));
       }

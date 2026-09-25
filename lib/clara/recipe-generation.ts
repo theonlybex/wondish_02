@@ -15,6 +15,7 @@ import {
   phrasePromisesMissingFood,
   truthfulDishName,
   clampAddedSalt,
+  clampCookingFat,
   countUnitFor,
   unitIsUsable,
   breakfastIsQuickEnough as quickEnough,
@@ -163,6 +164,10 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     `- prepMinutes and cookMinutes: realistic whole minutes for a home cook (prep = washing/chopping/mixing, cook = time on heat; 0 for no-cook dishes).`,
     `- Each dish is a COMPLETE MEAL for its slot (protein + carb + veg where sensible), close to the stated per-serving calorie target.`,
     `- Match the dish to the TIME OF DAY, not just the calorie target. A Breakfast must be something people actually eat in the morning and must be quick — under ${BREAKFAST_MAX_MINUTES} minutes prep+cook in total. Eggs, oats, toast, yoghurt, fruit, a quick scramble or hash are breakfasts. Braised or roasted meat, curries, stews and rice bowls are NOT breakfasts, however well they hit the calorie target. If the available ingredients cannot make a real breakfast, return fewer Breakfast dishes rather than serving a dinner at 8am.`,
+    // Adding oats to a beef dish satisfied the letter of the rule above and
+    // produced "Oatmeal with Ground Beef and Spinach". Three QA cycles reported
+    // that shape while the gate passed it, so the PROTEIN is now named too.
+    `- A Breakfast's protein must be a breakfast protein: eggs, yoghurt, cottage cheese, cheese, nut butter, nuts, beans, tofu, bacon or sausage. Putting oats or toast next to ground beef, steak, a salmon fillet or chicken thighs does not make it breakfast. If the basket has no breakfast protein, return fewer Breakfast dishes.`,
     `- usesIngredients lists EVERY ingredient in the dish; leave missingIngredients empty.`,
     `- amounts: one entry per usesIngredients item with the PER-SERVING quantity and unit (g, oz, lb, ml, cup, tablespoon, teaspoon, or "" for whole items like eggs). Same spelling as in usesIngredients.`,
     `- steps: provide 5–10 clear, numbered cooking instructions a home cook can follow (prep, cook, assemble, serve). Every dish MUST have real steps.`,
@@ -564,6 +569,7 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
   }
   let retitled = 0;
   let desalted = 0;
+  let defatted = 0;
   for (const raw of filtered) {
     if (accepted.length >= total) break;
     if (!withinBasket(raw)) { reject("out-of-basket", raw); continue; }
@@ -585,8 +591,16 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     // conditions came out over 2,300 mg on 6 days of 7 with every dish passing
     // every gate (measured 2026-09-25). See SEASONING_SALT_TSP.
     const salted = clampAddedSalt(prosed.amounts ?? [], prosed.perServing?.calories);
-    const r = salted.changed ? { ...prosed, amounts: salted.ingredients } : prosed;
+    // Cooking fat too, but only where the steps name no amount to contradict —
+    // see clampCookingFat. Added oil is 59% of all fat in the catalog and the
+    // reason a week came out at 44-55% of calories from fat. The prompt asks for
+    // a tablespoon; this is what happens when it is not obeyed. Both clamps run
+    // BEFORE pricedMacros below, so the stored numbers are the clamped ones.
+    const fatted = clampCookingFat(salted.ingredients, prosed.steps, prosed.perServing?.calories);
+    const r =
+      salted.changed || fatted.changed ? { ...prosed, amounts: fatted.ingredients } : prosed;
     if (salted.changed) desalted++;
+    if (fatted.changed) defatted++;
 
     // The same predicate the builder applies at selection — salt, seasoning
     // quantities, slot timing, and the title's promise.
@@ -632,7 +646,7 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     seen.add(nameKey);
     accepted.push({ recipe: r, mealTypeId: slot.mealTypeId });
   }
-  console.info(`[recipe-generation] generated=${recipes.length} accepted=${accepted.length}${retitled > 0 ? ` retitled=${retitled}` : ""}${desalted > 0 ? ` desalted=${desalted}` : ""} rejected=${JSON.stringify(rejected)}${rejected.allergen > 0 ? ` banTerms=${JSON.stringify(banTerms)}` : ""}`);
+  console.info(`[recipe-generation] generated=${recipes.length} accepted=${accepted.length}${retitled > 0 ? ` retitled=${retitled}` : ""}${desalted > 0 ? ` desalted=${desalted}` : ""}${defatted > 0 ? ` defatted=${defatted}` : ""} rejected=${JSON.stringify(rejected)}${rejected.allergen > 0 ? ` banTerms=${JSON.stringify(banTerms)}` : ""}`);
   if (accepted.length === 0) return [];
   // dishType "complete meal" so the builder's primary-dish step (Step 1) can
   // select these under the full calorie-window + macro + variety rules, not

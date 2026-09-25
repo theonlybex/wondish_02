@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH } from "./dish-plausibility";
+import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood } from "./dish-plausibility";
 
 // The catalog vocabulary, as lib/meal-plan.ts builds it from Ingredient.name.
 const CATALOG = new Set([
@@ -474,4 +474,82 @@ test("clampAddedSalt converts a tablespoon before judging it", () => {
   assert.equal(changed, true);
   assert.equal(ingredients[0].unit, "teaspoon");
   assert.equal(ingredients[0].quantity, SEASONING_SALT_TSP);
+});
+
+// clampCookingFat — narrow on purpose. Added oil is 59% of all fat in the
+// generated catalog, but 543 of 1,014 rows have step text that AGREES with the
+// row, so those recipes really do use that much and the row cannot be rewritten
+// without the card contradicting itself.
+test("clampCookingFat leaves the dish alone when the steps agree with the row", () => {
+  const rows = [{ name: "Extra virgin olive oil", quantity: 1.5, unit: "tablespoon" }];
+  const steps = ["Toss the vegetables with 1.5 tablespoons extra virgin olive oil and roast."];
+  assert.equal(clampCookingFat(rows, steps, 620).changed, false);
+});
+
+test("clampCookingFat clamps to the budget when the steps name no amount", () => {
+  const rows = [{ name: "Extra virgin olive oil", quantity: 1.5, unit: "tablespoon" }];
+  const steps = ["Heat a little olive oil and sauté the onions."]; // no amount
+  const { ingredients, changed } = clampCookingFat(rows, steps, 620);
+  assert.equal(changed, true);
+  // 1.5 tbsp is ~20 g; the budget is 14 g, so it scales to ~1 tbsp.
+  assert.equal(ingredients[0].unit, "tablespoon");
+  assert.ok(ingredients[0].quantity <= 1.05, `expected ~1 tbsp, got ${ingredients[0].quantity}`);
+});
+
+test("clampCookingFat clamps to what the steps say when the row over-declares", () => {
+  const rows = [{ name: "Extra virgin olive oil", quantity: 2, unit: "tablespoon" }];
+  const steps = ["Heat 1 tablespoon olive oil in a skillet.", "Serve."];
+  const { ingredients, changed } = clampCookingFat(rows, steps, 700);
+  assert.equal(changed, true);
+  assert.ok(ingredients[0].quantity <= 1.05, `expected ~1 tbsp, got ${ingredients[0].quantity}`);
+});
+
+test("clampCookingFat keeps the ratio between two fats and each row's unit", () => {
+  const rows = [
+    { name: "Olive oil", quantity: 2, unit: "teaspoon" },
+    { name: "Unsalted butter", quantity: 10, unit: "g" },
+    { name: "Boneless chicken breasts", quantity: 150, unit: "g" },
+  ];
+  const { ingredients, changed } = clampCookingFat(rows, ["Sauté in oil and butter."], 300);
+  assert.equal(changed, true);
+  // ~9.4 g oil + 10 g butter = 19.4 g against a 5 g small-dish budget.
+  assert.equal(ingredients[0].unit, "teaspoon");
+  assert.equal(ingredients[1].unit, "g");
+  assert.equal(ingredients[2].quantity, 150, "a non-fat row is never touched");
+  assert.ok(
+    Math.abs(ingredients[0].quantity / 2 - ingredients[1].quantity / 10) < 0.01,
+    "both fats scale by the same factor"
+  );
+});
+
+test("clampCookingFat is a no-op on a dish with no fat at all", () => {
+  const rows = [{ name: "Rolled oats", quantity: 40, unit: "g" }];
+  assert.equal(clampCookingFat(rows, ["Simmer the oats."], 300).changed, false);
+});
+
+// The breakfast-food rule asks whether a breakfast food is PRESENT, which is a
+// different question from what the dish is built on. QA reported "Oatmeal with
+// Ground Beef", "Rolled Oats with Ground Beef and Carrots" and "Oatmeal with
+// Chicken and Zucchini" in three consecutive cycles, each passing the letter.
+const bfast = (name: string, ings: string[], generated = true) => ({
+  name, mealTypeName: "Breakfast", generated,
+  ingredients: ings.map((n) => ({ name: n })),
+}) as never;
+
+test("a dinner protein at breakfast is refused even when oats are in the bowl", () => {
+  assert.equal(breakfastIsBuiltOnBreakfastFood(bfast("Oatmeal with Ground Beef and Spinach", ["Rolled oats", "ground beef", "spinach"])), false);
+  assert.equal(breakfastIsBuiltOnBreakfastFood(bfast("Salmon Fillet with Roasted Carrots and Toast", ["Salmon fillets", "carrots", "Sliced bread"])), false);
+});
+
+test("a breakfast protein makes the dish a breakfast whatever else is in it", () => {
+  assert.equal(breakfastIsBuiltOnBreakfastFood(bfast("Large Eggs with Spinach and Bacon", ["Large eggs", "spinach", "bacon"])), true);
+  // Smoked salmon on toast IS a breakfast; a salmon fillet with rice is not.
+  assert.equal(breakfastIsBuiltOnBreakfastFood(bfast("Smoked Salmon with Sliced Bread", ["smoked salmon", "Sliced bread"])), true);
+  assert.equal(breakfastIsBuiltOnBreakfastFood(bfast("Plain Greek Yogurt with Blueberries", ["Plain Greek yogurt", "blueberries"])), true);
+});
+
+test("the breakfast protein rule never touches a curated row or another slot", () => {
+  assert.equal(breakfastIsBuiltOnBreakfastFood(bfast("Oatmeal with Ground Beef", ["Rolled oats", "ground beef"], false)), true);
+  const atDinner = { name: "Ground Beef with Rice", mealTypeName: "Dinner", generated: true, ingredients: [{ name: "ground beef" }] } as never;
+  assert.equal(breakfastIsBuiltOnBreakfastFood(atDinner), true);
 });

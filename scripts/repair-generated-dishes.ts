@@ -32,12 +32,12 @@ import { writeFileSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import { ingredientTokens } from "../lib/basket-match";
-import { priceDish, PRICING_COVERAGE_MIN, macrosDisagreeWithPricing } from "../lib/staple-density";
+import { priceDish, PRICING_COVERAGE_MIN, macrosDisagreeWithPricing, gramsOf } from "../lib/staple-density";
 import { BASKET_STAPLES } from "../lib/basket-coverage";
 import {
   SNACK_MAX_MINUTES, BREAKFAST_MAX_MINUTES, SMALL_DISH_KCAL, breakfastLooksLikeBreakfast,
   catalogFoodVocabulary, phrasePromisesMissingFood, truthfulDishName,
-  saltRowTsp, addedSaltCapTsp, countUnitFor,
+  saltRowTsp, addedSaltCapTsp, countUnitFor, clampCookingFat,
 } from "../lib/dish-plausibility";
 import { displayDishName } from "../lib/dish-name";
 
@@ -212,16 +212,31 @@ async function main() {
       priced.calories >= 80 &&
       priced.calories <= 1400 &&
       r.calories &&
-      // Same threshold the runtime gate uses, and the same per-macro check —
-      // not a fifth of it. QA named the gap between the two as the defect: the
-      // gate tolerated 25% while this script corrected at 5%, so the dishes in
-      // between were repaired only when a person remembered to run --apply,
-      // and 95 needed it in a single observed run.
-      macrosDisagreeWithPricing(
-        { calories: r.calories, protein: r.protein, carbs: r.carbs, fat: r.fat },
-        r.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity, unit: ri.unit })),
-        r.steps
-      ) !== null
+      // No threshold at all for a CLARA row whose amounts price in full.
+      //
+      // The old rule reused the runtime gate's 25% tolerance, because a
+      // narrower one here than there had already shipped a population of wrong
+      // dishes once. But the tolerance exists to keep the POOL deep — refusing
+      // a dish at selection costs a slot — and that is not a reason to keep the
+      // model's number when the arithmetic is available. Generation already
+      // overwrites declared macros with priced ones at the write point; this is
+      // the same rule applied to the rows written before it did.
+      //
+      // "Not measured data" is the test. A curated row's figures come from a
+      // nutrition source and are left alone above (the 25% coherence rule);
+      // Clara's are a claim, and 0.7 cup of jasmine rice declared as 87 g of
+      // carbohydrate when the arithmetic says 114 is the claim being wrong.
+      //
+      // Measured before shipping, because a calorie rewrite was written and
+      // REMOVED once before for flagging "Scrambled Egg Whites" at 36→218 kcal:
+      // of 1,108 priceable generated rows, 1,083 already agree within 5%, 25
+      // move at all, and NONE moves by more than 25%. The egg-white case is
+      // gone because the density table now knows egg whites from eggs.
+      // Anything beyond rounding. Most rows already agree and are skipped.
+      (Math.abs(priced.calories - r.calories) > 1 ||
+        Math.abs((priced.protein ?? 0) - (r.protein ?? 0)) > 0.5 ||
+        Math.abs((priced.carbs ?? 0) - (r.carbs ?? 0)) > 0.5 ||
+        Math.abs((priced.fat ?? 0) - (r.fat ?? 0)) > 0.5)
     ) {
       macroFixes.push({
         id: r.id, name: r.name,
@@ -459,6 +474,67 @@ async function main() {
   console.log(`unitless count rows: ${countRows.length}; nameable: ${unitFills.length}`);
   for (const u of unitFills.slice(0, 4)) console.log(`  "${u.name} ${u.quantity}" → "${u.quantity} ${u.unit}" — ${u.dish}`);
 
+  // ── Bring cooking fat down where nothing contradicts it ───────────────────
+  //
+  // Added oil is 59% of all fat in the generated catalog and the single largest
+  // reason a built week came out at 44-55% of calories from fat against a target
+  // of 25%. It cannot be clamped wholesale: of 641 rows whose steps state an
+  // amount, 543 AGREE with the row, so those recipes really do use that much and
+  // rewriting the row would leave the card contradicting its own instructions.
+  //
+  // 266 rows are reachable without touching a word of prose — 168 whose steps
+  // name no amount at all, and 98 that over-declare against what their own steps
+  // say ("row 2 tablespoon, steps 1 tablespoon"). That is ~2,200 g of fat.
+  //
+  // Unlike salt, fat has calories, so every dish changed here is RE-PRICED from
+  // its clamped amounts in the same pass. Leaving the stored macros behind would
+  // trade a fat problem for a lying-macro problem, which selection would then
+  // refuse — the dish would vanish from the pool instead of getting leaner.
+  const fatRows = await prisma.recipe.findMany({
+    where: { isPublic: true, tags: { hasSome: ["clara", "Clara", "clara-generated"] } },
+    select: {
+      id: true, name: true, calories: true, steps: true,
+      ingredients: { select: { ingredientId: true, quantity: true, unit: true, note: true, ingredient: { select: { name: true } } } },
+    },
+  });
+  const fatClamps: {
+    id: string; name: string;
+    rows: { ingredientId: string; from: number | null; to: number | null; unit: string | null }[];
+    priced: { calories: number; protein: number; carbs: number; fat: number } | null;
+  }[] = [];
+  let fatGramsRemoved = 0;
+  for (const r of fatRows) {
+    const before = r.ingredients.map((ri) => ({
+      ingredientId: ri.ingredientId, name: ri.ingredient.name,
+      quantity: ri.quantity, unit: ri.unit, note: ri.note,
+    }));
+    const { ingredients: after, changed } = clampCookingFat(before, r.steps, r.calories);
+    if (!changed) continue;
+    const priced = priceDish(after, r.steps);
+    // Only where the clamped dish can still be priced: the stored macros have to
+    // move with the amounts, and without pricing there is nothing to move them to.
+    if (!priced || priced.coverage < PRICING_COVERAGE_MIN) continue;
+    for (let i = 0; i < before.length; i++) {
+      const a = gramsOf(before[i].name, before[i].quantity, before[i].unit) ?? 0;
+      const b = gramsOf(after[i].name, after[i].quantity, after[i].unit) ?? 0;
+      fatGramsRemoved += Math.max(0, a - b);
+    }
+    fatClamps.push({
+      id: r.id, name: r.name,
+      rows: after
+        .map((a, i) => ({ ingredientId: a.ingredientId, from: before[i].quantity, to: a.quantity, unit: a.unit }))
+        .filter((x, i) => x.to !== before[i].quantity),
+      priced: { calories: priced.calories, protein: priced.protein, carbs: priced.carbs, fat: priced.fat },
+    });
+  }
+  console.log(
+    `dishes whose cooking fat can come down without contradicting their steps: ${fatClamps.length} ` +
+      `(${Math.round(fatGramsRemoved)} g of fat, ~${Math.round(fatGramsRemoved * 9).toLocaleString()} kcal)`
+  );
+  for (const f of fatClamps.slice(0, 4)) {
+    console.log(`  ${f.rows.map((x) => `${x.from}→${x.to} ${x.unit ?? ""}`).join(", ")} — ${f.name}`);
+  }
+
   if (!APPLY) {
     console.log("\nreport only — pass --apply to write");
     await prisma.$disconnect();
@@ -467,7 +543,7 @@ async function main() {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backup = `/tmp/wondish-dish-repair-${stamp}.json`;
-  writeFileSync(backup, JSON.stringify({ macroFills, macroCorrections, macroFixes, calorieFixes, linkDrops, slotMoves, renames, saltClamps, unitFills }, null, 2));
+  writeFileSync(backup, JSON.stringify({ macroFills, macroCorrections, macroFixes, calorieFixes, linkDrops, slotMoves, renames, saltClamps, unitFills, fatClamps }, null, 2));
   console.log(`\nbackup written: ${backup}`);
 
   let filled = 0;
@@ -498,6 +574,22 @@ async function main() {
     await prisma.recipeIngredient.deleteMany({ where: { recipeId: d.recipeId, ingredientId: d.ingredientId } });
     dropped++;
   }
+  let defatted = 0;
+  for (const f of fatClamps) {
+    for (const row of f.rows) {
+      await prisma.recipeIngredient.updateMany({
+        where: { recipeId: f.id, ingredientId: row.ingredientId },
+        data: { quantity: row.to },
+      });
+    }
+    if (f.priced) {
+      await prisma.recipe.update({
+        where: { id: f.id },
+        data: { calories: f.priced.calories, protein: f.priced.protein, carbs: f.priced.carbs, fat: f.priced.fat },
+      });
+    }
+    defatted++;
+  }
   let unitsNamed = 0;
   for (const u of unitFills) {
     await prisma.recipeIngredient.updateMany({
@@ -524,7 +616,7 @@ async function main() {
     await prisma.recipe.update({ where: { id: m.id }, data: { mealTypeId: m.toId } });
     moved++;
   }
-  console.log(`applied: ${unitsNamed} bare counts given their unit, ${clamped} salt amounts clamped to a seasoning, ${renamed} dishes renamed from their ingredients, ${moved} dishes moved to the slot their timing fits, ${filled} null-macro rows filled, ${corrected} contradictory macro sets corrected, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
+  console.log(`applied: ${defatted} dishes de-oiled and repriced, ${unitsNamed} bare counts given their unit, ${clamped} salt amounts clamped to a seasoning, ${renamed} dishes renamed from their ingredients, ${moved} dishes moved to the slot their timing fits, ${filled} null-macro rows filled, ${corrected} contradictory macro sets corrected, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
   await prisma.$disconnect();
 
 }

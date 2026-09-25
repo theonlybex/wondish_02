@@ -19,3 +19,14 @@ test("not covered when any ingredient is missing from the basket", () => {
 test("an empty ingredient list is trivially covered", () => {
   assert.equal(isCoveredByBasket([], basket), true);
 });
+
+test("isCoveredByBasket normalises the basket, not just the dish", () => {
+  // Catalog casing on both sides. This returned false before 2026-09-25 and
+  // silently reduced the dish pool to what staples alone can build.
+  const basket = new Set(["Large eggs", "Roma tomatoes", "  Sliced Bread "]);
+  assert.equal(isCoveredByBasket(["Large eggs", "Roma tomatoes"], basket), true);
+  assert.equal(isCoveredByBasket(["large eggs", "sliced bread"], basket), true);
+  assert.equal(isCoveredByBasket(["Large eggs", "Salmon fillets"], basket), false);
+  // Staples stay free regardless of casing.
+  assert.equal(isCoveredByBasket(["Large eggs", "Olive Oil", "SALT"], basket), true);
+});
