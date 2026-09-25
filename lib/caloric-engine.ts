@@ -862,8 +862,22 @@ export interface DailyMacroDistribution {
   meals:         Record<string, MealMacros>;
 }
 
+// `balanced` moved from 30/50/20 to 30/45/25 on 2026-09-25, by decision, after
+// QA measured a week against it: calories landed inside ±7% of target on all
+// seven days and the fat line rendered 173-241% of its own target every day
+// ("Fat 111g of 46g · 241%" beside "Carbs 139g of 261g · 53%").
+//
+// 20% fat is the very bottom edge of the AMDR (20-35%), and the arithmetic made
+// it close to unreachable: the protein foods in a normal week — salmon, ground
+// beef, eggs, chicken thighs — contribute around 40 g of fat before a drop of
+// cooking oil, against a 46 g target. An app that displays a target it cannot
+// plan inside is worse than one that displays a reachable one, and 25% is
+// mid-range rather than a concession.
+//
+// `diabetic` keeps 20% deliberately: it is a clinical split, not the default,
+// and changing it is a different decision from changing the default.
 const MACRO_PROFILES: Record<MacroProfile, MacroPercentages> = {
-  balanced:    { protein: 0.30, carbs: 0.50, fat: 0.20 },
+  balanced:    { protein: 0.30, carbs: 0.45, fat: 0.25 },
   diabetic:    { protein: 0.35, carbs: 0.45, fat: 0.20 },
   gain_muscle: { protein: 0.30, carbs: 0.40, fat: 0.30 },
 };

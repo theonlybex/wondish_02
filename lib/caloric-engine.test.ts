@@ -700,7 +700,9 @@ test("resolveMacroProfile: defaults to balanced (case-insensitive matching)", ()
 });
 
 test("getMacroPercentages: each profile's splits sum to 100%", () => {
-  assert.deepEqual(getMacroPercentages("balanced"), { protein: 0.30, carbs: 0.50, fat: 0.20 });
+  // 30/45/25 since 2026-09-25 — see MACRO_PROFILES for why 20% fat was
+  // unreachable in practice.
+  assert.deepEqual(getMacroPercentages("balanced"), { protein: 0.30, carbs: 0.45, fat: 0.25 });
   assert.deepEqual(getMacroPercentages("diabetic"), { protein: 0.35, carbs: 0.45, fat: 0.20 });
   assert.deepEqual(getMacroPercentages("gain_muscle"), { protein: 0.30, carbs: 0.40, fat: 0.30 });
   for (const p of ["balanced", "diabetic", "gain_muscle"] as const) {
@@ -727,10 +729,13 @@ test("computeDailyMacros: balanced 2000 kcal gram math (4/4/9 kcal per g)", () =
   const d = computeDailyMacros(2000, "balanced");
   assert.equal(d.dailyCalories, 2000);
   assert.equal(d.totalProteinG, 150);  // 2000*0.30/4
-  assert.equal(d.totalCarbsG, 250);    // 2000*0.50/4
-  assert.equal(d.totalFatG, 44.4);     // 2000*0.20/9, rounded to 0.1
-  // Breakfast = 400 kcal → 30 g protein, 50 g carbs, 8.9 g fat.
-  assert.deepEqual(d.meals.breakfast, { calories: 400, proteinG: 30, carbsG: 50, fatG: 8.9 });
+  assert.equal(d.totalCarbsG, 225);    // 2000*0.45/4
+  assert.equal(d.totalFatG, 55.6);     // 2000*0.25/9, rounded to 0.1
+  // Breakfast = 400 kcal → 30 g protein, 45 g carbs, 11.1 g fat.
+  assert.deepEqual(d.meals.breakfast, { calories: 400, proteinG: 30, carbsG: 45, fatG: 11.1 });
+  // The split is the thing being pinned, so check it reads back as intended
+  // rather than only that the grams are arithmetically consistent.
+  assert.equal(Math.round((d.totalFatG * 9) / 2000 * 100), 25);
 });
 
 test("computeDailyMacros: per-meal calories sum back to the daily total", () => {
