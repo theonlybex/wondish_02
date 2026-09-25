@@ -153,6 +153,8 @@ into a bot's later measurements.
 
 | 17 | Two bots against frozen `e5fed9e`, one per fixture, allowances reset first. The lock fix, the repricing and /pricing held. **Three claims were false, and the worst defect on the board was one I had shipped hours earlier**: to widen the journal's step dots I used a negative margin larger than the gap, so consecutive hit areas overlapped by 20px and tapping the second visible dot went to step THREE. The touch-target expander turned out to be scoped to `max-width: 480px` — a phone in LANDSCAPE is 844px wide, so the whole fix switched off with the same finger on the same buttons. The amount repair never reached the write path: a freshly generated week carries 16 rows of `0.1 teaspoon`. And the instructions exist TWICE — 784 library rows repeat the whole method in `description`, which is what /dishes renders, so 4 dishes still say to rinse raw fish while the `steps` I checked were clean | overlap is now measured alongside size, at three viewports; `(pointer: coarse)` replaces every width test for a finger (Button, four components); the dots get real width and a real gap. The rest is written into BACKLOG §0b — 24 open items with the measurement behind each |
 
+| 18 | The fix list from cycle 17, then a bot pass on each fix by name. **The Clara swap's fat budget had been computed, commented and never read** — the fourth fix in this project that never took effect, found by reading the route rather than by a test. The pass on the fixes found their neighbourhood: an ENDED plan read as "beyond your current week" on today and left a returning user no generate control at all (the cycle-17 guard for far-future dates could not tell the two apart); five variant-code shapes the name regex never knew; descriptions still printing the OLD title a rename had fixed; three buttons in the expanded dish at 31px, never measured because the rows could not be reached until this cycle made them keyboard controls. A fresh week measured 30-41% fat, over the band cycle 15 claimed. And the agent was refused live-DB reads, so every data fix was built three ways — write path, render, backfill — with the backfill left for a human to run | `repairForStorage` at the one write door; `readableProse`/`withReadableProse` at render on /meal-plan and /dishes; `swapPushesDayFat`, extracted and tested; rows as role=button; Button loading stays focusable; field-level profile errors with focus; replace-week confirm; header→nav→main tab order and a skip link; 44px on touch for swap, rating, cuisine chips and the modal close. Measured on screen: 0 variant codes, rinses, prose decimals or grade titles on /dishes; 1 PATCH from three clicks; 0 requests from a cancelled replace |
+
 ## What the cycles taught
 
 A green test suite proves nothing about content: 1,284 tests passed while a week
@@ -260,6 +262,12 @@ seconds and would have caught it.
 measurement; three runs gave 27-43% and QA's week hit 52%. The builder shuffles,
 so one week is a sample. Any number quoted from a generated plan needs at least
 three runs behind it, stated as a range.
+
+**A computed number nobody reads is a fix that never happened.** The swap's
+day-fat budget had a paragraph of comment explaining why it existed and not one
+line that used it. `tsc` does not warn about an unused `const` inside a
+function body here, and no test can fail on a rule that is never called. When a
+fix adds a threshold, grep for its READ, not its definition.
 
 **Relabelling is not repairing.** A dish filed under the wrong slot is repaired
 by moving it. A dish that is wrong in every slot is repaired by retiring it, and

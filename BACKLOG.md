@@ -88,9 +88,9 @@ already applied to the shared Neon DB, so landing is code-only. **[verified]**
 
 ---
 
-## 0b. Open QA defects (cycles 8-17, 2026-09-25)
+## 0b. Open QA defects (cycles 8-18, 2026-09-25)
 
-Seventeen fix→test cycles against the live database. The cycle procedure is
+Eighteen fix→test cycles against the live database. The cycle procedure is
 `docs/qa/beta-test-plan.md` → "How a cycle runs"; this section is the list it
 edits at the START of each one.
 
@@ -149,7 +149,7 @@ Ranked by how badly each would hurt a beta tester. Everything here was measured
 or reproduced; where a bot could not pin something down, it says so.
 
 **The feature that hides itself**
-- [ ] **cook-my-day is unreachable with a well-stocked pantry.** Its card is the
+- [x] **cook-my-day is unreachable with a well-stocked pantry.** Its card is the
       feature's only entry point (`PantryClient.tsx:793`) and renders only when
       `!cookable.dayCoverage.canFillDay`. With a normal 16-ingredient basket the
       API returns `canFillDay: true` and the whole feature — cuisine chips,
@@ -157,90 +157,110 @@ or reproduced; where a bot could not pin something down, it says so.
       explanation anywhere. The bot had to strip its pantry to five items to
       reach it, and it vanished again on restocking. A metered, paid-for
       capability that disappears from the users most likely to use it.
+      **Cycle 18:** the card renders whenever the basket has 3+ items, with its own copy when the library can already fill the day. Measured on screen with 17 ingredients: "Cook a fresh day with Clara", 12 chips at 44px on touch, the allowance line.
 
 **The amount fix reached the backfill and not the write path**
-- [ ] **A freshly generated week contains `0.1 teaspoon` and `0.2 teaspoon`** —
+- [x] **A freshly generated week contains `0.1 teaspoon` and `0.2 teaspoon`** —
       16 and 4 rows across 11 of 28 dishes, always pepper/salt/garlic powder,
       sitting on the same card as a correctly rendered `⅛ teaspoon`.
       `repairAmount` is called by the backfill and the audit and NOT at
       generation, so the catalog is clean and everything new is not. This is the
       cycle-13-to-15 shape exactly: the rule exists, the write path never calls
       it.
-- [ ] **185 unmeasurable amounts are written into step PROSE**, in 115 dishes:
+      **Cycle 18:** `repairForStorage` in `persistValidatedRecipes`, the one door for top-up, cook-my-day and Clara swap. A week generated after it: 18 sub-spoon rows stored as pinches, 0 new unmeasurable rows. The 2 `0.05 teaspoon pepper` rows it did carry were stored by the cycle-17 bots BEFORE the fix — see the backfill item below; they are repaired at render meanwhile.
+- [x] **185 unmeasurable amounts are written into step PROSE**, in 115 dishes:
       "Season with 0.0625 teaspoon kosher salt", "Pour 0.33 cup of mung bean
       plant-based egg", "Spray with 0.25 gr of avocado oil". The amount repair
       only ever touched ingredient ROWS. A cook reads the steps.
-- [ ] **`2 mediums`** — `formatAmount` pluralises "medium", which is an
+      **Cycle 18:** `repairProseAmounts`/`readableProse`, at generation, at render (/meal-plan, /dishes) and in `scripts/repair-steps-and-titles.ts`. /dishes and a fresh week: 0 decimal amounts in prose. Stored rows wait on the backfill.
+- [x] **`2 mediums`** — `formatAmount` pluralises "medium", which is an
       adjective ("2 medium eggs"), and the step prose says "Pour 2 medium large
       eggs into a bowl".
+      **Cycle 18:** sizes never pluralise; "2 medium large eggs" → "2 large eggs" in prose. 0 on screen.
 
 **The instructions exist twice**
-- [ ] **784 library rows carry the whole method a second time in
+- [x] **784 library rows carry the whole method a second time in
       `description`**, and 4 of them still tell the user to rinse raw fish
       ("Baked Trout" ×4). The rinse repair rewrote `steps`; `/dishes` renders
       `description`. My own verification query read `steps`, found zero, and
       would have reported the fix as landed — the bot read the screen.
+      **Cycle 18:** the rinse and amount repairs run on `description` too (render + backfill). /dishes: 0 raw-meat rinses on the page.
 
 **Titles**
-- [ ] **21 dishes still start with "Large Eggs", 7 more carry it mid-name**, and
+- [x] **21 dishes still start with "Large Eggs", 7 more carry it mid-name**, and
       one reached a plan card as "Large Eggs with Bell Peppers and Carrots". The
       rename only fires when an egg-mentioning step names a method; these
       describe the method without using one of the words ("whisk … cook
       undisturbed"). Dropping the grading word alone — "Eggs with…" — is never
       wrong and was not done.
-- [ ] **"Scrambled Eggs With Sautéed Tomatoes"** — a stray capital W, produced
+      **Cycle 18:** the grade goes when no method is named, and mid-name. /dishes: 0 "Large Eggs" titles or title-shaped descriptions; a fresh week's 5 egg dishes all titled by method.
+- [x] **"Scrambled Eggs With Sautéed Tomatoes"** — a stray capital W, produced
       by the rename joining a method to a remainder that began with "With".
-- [ ] **626 public dishes show their internal variant code** on `/dishes`
+      **Cycle 18:** connector lowercased at the join, and on the 9 stored rows the first rename wrote. /dishes: 0.
+- [x] **626 public dishes show their internal variant code** on `/dishes`
       ("2-Step Chicken , V1L- 6 oz chicken"). `displayDishName()` exists and is
       called on plan cards, the weekly grid, the pantry and swaps;
       `app/(main)/dishes/page.tsx:22` passes `r.name` raw. The marketing menu is
       the one surface showing the raw rows.
+      **Cycle 18:** /dishes uses `displayDishName`, and the suffix regex learnt five shapes it never knew (`V1 S-`, `V2,3,4`, `V7, 11`). Descriptions that repeat the raw name show the repaired one. /dishes: 0 variant codes.
 
 **Keyboard and interaction**
-- [ ] **The four dish rows on /meal-plan are keyboard-unreachable** — `<div
+- [x] **The four dish rows on /meal-plan are keyboard-unreachable** — `<div
       onClick>` with no `role` and no `tabindex`. They are the only way to
       expand a dish, rate it, or open the swap modal, so the swap modal (whose
       focus trap and Escape handling both test clean) cannot be reached at all
       by keyboard. /meal-plan has 14 tab stops because of this.
-- [ ] **`Button` drops out of the tab order for ~60s while loading.**
+      **Cycle 18:** role=button, tab stop, Enter/Space, aria-expanded, focus ring. Measured: first row 4 tabs from #main, Enter expands, Space collapses, Swap reached by keyboard, dialog opens and Esc closes it.
+- [x] **`Button` drops out of the tab order for ~60s while loading.**
       `disabled={disabled || loading}` makes it natively disabled during a
       generation (measured 58s and 64s), which defeats the documented reason for
       using `aria-disabled` on that very button — a keyboard user can neither
       reach it nor hear its reason for the whole minute.
-- [ ] **Save Profile double-submits** — three rapid clicks fired three
+      **Cycle 18:** loading = aria-disabled + aria-busy, still focusable, activation swallowed (incl. Enter-to-submit). Measured on Save Profile mid-request: `disabled:false, aria-busy:true`.
+- [x] **Save Profile double-submits** — three rapid clicks fired three
       `PATCH /api/patient/profile`; the button is never disabled in flight and
       shows no spinner.
-- [ ] **Swap modal touch targets**: `Close dialog` 32×32 and eleven cuisine
+      **Cycle 18:** ref guard + the Button change. Three rapid clicks: 1 PATCH.
+- [x] **Swap modal touch targets**: `Close dialog` 32×32 and eleven cuisine
       chips at 24px tall, with no expander.
-- [ ] **Profile errors are not tied to their fields.** `role="alert"` is
+      **Cycle 18:** close 44×44, chips 44px tall with an 8px gap on a touch device. Measured.
+- [x] **Profile errors are not tied to their fields.** `role="alert"` is
       present, but `aria-invalid` is never set, no `aria-describedby` links a
       field to its message, and focus stays on `BODY` instead of moving to the
       first invalid field.
-- [ ] **Tab order inversion**: the header (`Beta → Plus`, `Settings`) is tabbed
+      **Cycle 18:** the error renders under its field; aria-invalid, aria-describedby and focus all land on it. Measured with First Name cleared.
+- [x] **Tab order inversion**: the header (`Beta → Plus`, `Settings`) is tabbed
       after the entire left nav, on /meal-plan and /profile.
-- [ ] **0px gap between `lbs` and `kg`** on /profile; 4px between the /pantry
+      **Cycle 18:** DOM order is now header → nav → main (the sidebar is fixed, so nothing moved visually) plus a skip link. Measured: Skip → Plus → Settings → nav.
+- [x] **0px gap between `lbs` and `kg`** on /profile; 4px between the /pantry
       tabs. The guideline asks 8px.
+      **Cycle 18:** the pantry tabs are 8px apart. `lbs|kg` is REFUSED: it is one segmented control (radiogroup) of two 44×44 radios, where a gap would break the control's shape; the 8px rule is for separate targets.
 
 **Numbers that argue with each other**
-- [ ] **"▲ 3% there" over "CURRENT WEIGHT 150.0 lbs"** — the ring reports
+- [x] **"▲ 3% there" over "CURRENT WEIGHT 150.0 lbs"** — the ring reports
       PLANNED progress while the weight has not moved, and the visible label
       (`CaloricProfileCard.tsx:460`) disagrees with the component's own
       accessible name at `:436` ("3 percent through your plan"). The arithmetic
       also rounds 3.9% to 3.
-- [ ] **"▼ 0.39/wk" next to "week 1 of 21"** with a 10 lb gap — that is 26
+      **Cycle 18:** the visible label says what the accessible name says: "9% through your plan". Measured.
+- [x] **"▼ 0.39/wk" next to "week 1 of 21"** with a 10 lb gap — that is 26
       weeks at that rate. Explainable (the engine simulates an accelerating
       ramp) but nothing on screen says the rate changes.
-- [ ] **A cooked day can under-deliver by 40% with no warning** — both
+      **Cycle 18:** reads "▼ 0.27/wk this week". Measured.
+- [x] **A cooked day can under-deliver by 40% with no warning** — both
       cook-my-day runs filled all four slots and then showed 1160/1981 and
       963/1981 kcal. The "Clara filled X of Y meals" caveat only fires on
       missing SLOTS, never on an 800 kcal shortfall.
-- [ ] **A Clara swap left the day at `Fat 86g of 53g · 162%`** with no flag on
+      **Cycle 18:** a fully-slotted day >15% under target says how far under and what to do. Not yet seen on screen — no cook-my-day was spent this pass.
+- [x] **A Clara swap left the day at `Fat 86g of 53g · 162%`** with no flag on
       the swap that accepted it.
+      **Cycle 18:** **the fat budget had been computed, commented and never read** — a fix that never took effect, again. `swapPushesDayFat` (tested) now refuses a candidate that takes the day past 130% unless it lowers the day's fat. Not yet exercised by a live swap.
 
 **Smaller**
-- [ ] **`?date=2026-02-30` silently renders "Monday, March 2"** — an invalid day
+- [x] **`?date=2026-02-30` silently renders "Monday, March 2"** — an invalid day
       rolls into the next month with no indication the URL was corrected. (The
       other bad dates are handled well, and `?date=<script>` is safe.)
+      **Cycle 18:** round-trip check on the page, like the API's. Measured: today.
 - [ ] **~89 library dishes have visibly broken prose** — "Add Tofu , cook 8-10
       minutes until done, flipping half wathroughou, remove from heat." Import
       noise, on a public page.
@@ -249,13 +269,15 @@ or reproduced; where a bot could not pin something down, it says so.
       25 kcal condiment ("Homemade Cashew parmesan cheese") was served as a
       SNACK slot. Library data, not the repriced macros — all 28 freshly priced
       dishes were within ±0.3% of 4P+4C+9F.
-- [ ] **A stray second click on "New week" spends a real allowance** with no
+- [x] **A stray second click on "New week" spends a real allowance** with no
       confirmation step. The bot burned two of three weekly generations on one
       script click.
-- [ ] **The `stale` banner hides itself during generation** (`stale &&
+      **Cycle 18:** with a plan on screen the sidebar asks first ("Replace my week" / "Keep this week", focus on the first). Measured: Keep this week fired 0 requests. The empty-state control's stray second click during a build: 1 POST.
+- [x] **The `stale` banner hides itself during generation** (`stale &&
       !newWeekLoading`), taking its own button's spinner with it, so the screen
       goes quiet for ~60s. Reported unconfirmed — the bot could not catch the
       window.
+      **Cycle 18:** closed on reading, not a defect: while a build runs with a plan on screen, a `role="status"` card ("Building your new week… you can leave this page") takes the banner's place, so the screen is not quiet.
 
 **Closed in cycle 17 (this pass's own regressions)**
 - [x] **The journal step dots stole each other's taps.** My `-mx-[13px]
@@ -267,6 +289,36 @@ or reproduced; where a bot could not pin something down, it says so.
       landscape is 844px wide. Now `(pointer: coarse)`, along with the four
       `sm:min-h-0` variants of the same width-for-pointer confusion. Measured
       clean at phone portrait, phone landscape and tablet.
+
+**Open — found by the cycle-18 bot pass (frozen `03e78cb`, then its own fixes)**
+- [ ] **The stored rows still need the backfill, and it needs a human to run
+      it.** The live-DB read that measures them was refused to the agent this
+      cycle (production reads need explicit permission), so every data fix
+      landed at the write path and at RENDER — the screen is right, the rows
+      are not. Clara reads the rows. To finish it:
+      `node --import tsx scripts/repair-steps-and-titles.ts` (report), then
+      `--apply`; then `scripts/repair-amounts.ts` the same way (the rows the
+      cycle-17 bots stored before the write-path fix, e.g. `0.05 teaspoon
+      pepper`). Both write a backup to /tmp first.
+- [ ] **A fresh week's fat is 30-41%**, three of seven days at or above the 38%
+      top of the band cycle 15 claimed (Sep 29 38%, Sep 30 39%, Oct 1 41%, on
+      days of 1401-1748 kcal). One week — per "report the range, not the run",
+      two more are needed before tuning anything. Also worth reading: the same
+      days sit 150-500 kcal under the 1895 kcal target.
+- [ ] **"Maintain — you're at a healthy weight" beside "TARGET WEIGHT 75 kg"
+      and "CURRENT WEIGHT 80 kg"** on /overview (qa.nocond). Two statements on
+      one card that cannot both be the plan. Needs a product answer first: does
+      a healthy-BMI user with a lower goal weight get a deficit or not?
+- [x] **An ENDED plan stranded the user.** Opening /meal-plan on Sep 25 with a
+      plan for Sep 11-17 said "That day is beyond your current week" about
+      TODAY, with no generate control anywhere on the page. The cycle-17 guard
+      for `?date=2027-12-31` could not tell "paged past a running plan" from
+      "the plan is over". Fixed in cycle 18 and measured: the same account now
+      gets "Generate my whole week".
+- [x] **The expanded dish's Swap, Not for me and Loved it buttons were 31-32px
+      on touch** — never measured before because the rows could not be reached.
+      44px now, measured; the ratings announce aria-pressed.
+- [x] **cook-my-day's cuisine chips were 34px on touch.** 44px, measured.
 
 **Still open from before**
 - [ ] **The journal's five step dots are 32px wide** (44 tall). Five 44px
@@ -298,21 +350,23 @@ second person to see it having no idea it was seen before.
 - [ ] **An ingredient count jumped by two.** Tapping `★ Cauliflower` left the
       count at 9, then `★ Carrots` moved it 9 → 11. Self-corrected, not
       reproducible; possibly a 1s poll racing an optimistic update.
-- [ ] **The `stale` banner hides itself during generation.** `stale &&
+- [x] **The `stale` banner hides itself during generation.** (Closed on reading in cycle 18 — see above.) `stale &&
       !newWeekLoading` removes the whole banner — including its own button's
       spinner — so pressing "New week" there makes the screen go quiet for the
       ~60s the build takes. The bot saw the banner still present at its 250ms
       sample and could not pin the window.
 
 ### Smaller, and still true
-- [ ] **An `aria-disabled` button is a silent no-op on activation.** Pressing
+- [x] **An `aria-disabled` button is a silent no-op on activation.** Pressing
       Enter on the blocked "Generate a new week" fires no request, shows no new
       message and updates no live region. The reason IS permanently rendered
       beside it and wired with `aria-describedby`, so a screen reader hears it
       on focus — but anyone who did not notice the static line gets a dead tap.
-- [ ] **Two daily calorie targets on one card**: "1895 KCAL/DAY · Today's
+      **Cycle 18:** pressing a blocked New week now fills a live region with the reason and bolds the static line. Code-read and typed; not yet pressed by a bot (both fixtures had ready baskets).
+- [x] **Two daily calorie targets on one card**: "1895 KCAL/DAY · Today's
       target" above "easing toward 1788 kcal/day". Both are correct (1981 − 1788
       = 193 kcal/day = 0.386 lb/wk) and the card never says why they differ.
+      **Cycle 18:** the pill reads "today, moving gradually to 1688 kcal/day". Measured.
 - [ ] **Some ingredient rows lost their unit** and render as a bare `2` or `½`.
 - [ ] **`View full week`'s expander overlaps `Next day` by 40×6px** on
       /meal-plan. `Next day` is later in the DOM and wins that band, so it costs
@@ -331,9 +385,10 @@ untouched ground.
       match what the guard enforced at 2), and "your 1 free cook-my-day plan"
       was never rendered. A genuinely free fixture is needed — see the process
       item below.
-- [ ] **The empty-state "Generate my whole week" control.** Both accounts had an
+- [x] **The empty-state "Generate my whole week" control.** Both accounts had an
       active plan, so only two of the three new-week controls were exercised.
       The third is verified by reading the code, not by pressing it.
+      **Cycle 18:** pressed by the cycle-18 pass: 200, 32 dishes, 62s.
 - [ ] **/dish-checker in conversation.** Only its 4 resting controls were
       audited; no Clara messages were sent, so its in-conversation surfaces,
       streaming states and refusals are unaudited.
@@ -344,9 +399,16 @@ untouched ground.
 - [ ] **cook-my-day's result cards** list ingredient names only, with no amounts
       and no steps, so they could not be used to check either the amount or the
       rinse repairs.
-- [ ] **A freshly generated week has never been measured against the 25-38% fat
+- [x] **A freshly generated week has never been measured against the 25-38% fat
       band** that cycle 15 claimed. The one week that was measured (166%) was
       built before the ceiling landed.
+      **Cycle 18:** MEASURED, and it does not hold — see the new open item.
+
+- [ ] **Cycle 18's fixes that no bot has exercised live**: a Clara swap under
+      the new fat rule (the rule is unit-tested, the route is not); a
+      cook-my-day that comes in under target (the caveat has never rendered);
+      a blocked New week pressed with an unready basket (both fixtures were
+      ready). Each costs an allowance, so each wants its own fixture.
 
 ### Refused by design — listed so nobody re-opens them as bugs
 Each was measured and left deliberately; the reason is the entry.
