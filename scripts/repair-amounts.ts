@@ -36,7 +36,7 @@ config({ path: ".env.local" });
 import { PrismaClient } from "@prisma/client";
 import { writeFileSync } from "node:fs";
 import { repairAmount } from "../lib/dish-plausibility";
-import { priceDish, PRICING_COVERAGE_MIN } from "../lib/staple-density";
+import { priceDish, pricingMayOverwrite } from "../lib/staple-density";
 
 const APPLY = process.argv.includes("--apply");
 
@@ -134,8 +134,7 @@ async function main() {
       r.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity, unit: ri.unit, note: ri.note })),
       r.steps
     );
-    if (!priced || priced.coverage < PRICING_COVERAGE_MIN) continue;
-    if (priced.calories < 80 || priced.calories > 1400) continue;
+    if (!priced || !pricingMayOverwrite(priced)) continue;
     await prisma.recipe.update({
       where: { id: r.id },
       data: {

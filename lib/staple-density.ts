@@ -576,6 +576,38 @@ export function priceDish(
 /** Coverage at or above which a dish's own amounts decide its nutrition. */
 export const PRICING_COVERAGE_MIN = 0.9;
 
+/**
+ * The band inside which a priced figure is trusted enough to overwrite a stored
+ * one — and the escape hatch it used to leave open.
+ *
+ * The repair scripts refused to write anything under 80 kcal, a guard against
+ * a broken price writing nonsense onto a real dish. But "Sliced Tomatoes with
+ * Olive Oil and Oregano" prices at 75 kcal over 150 g of tomato and a third of
+ * a tablespoon of oil, and 75 is simply what that plate is. So the row kept the
+ * 93 kcal / 3 / 9 / 5 it was born with — whole numbers where every repriced row
+ * carries a tenth-of-a-gram signature, arithmetically self-consistent
+ * (3×4 + 9×4 + 5×9 = 93) and wrong against the food.
+ *
+ * QA found it by that signature. The lesson is the general one: a sanity band
+ * meant to catch bad prices was also silently exempting good ones, and nothing
+ * reported the exemption.
+ *
+ * At FULL coverage the table has seen every ingredient, so a low number is a
+ * small dish rather than a missing one, and the floor drops. Below 40 kcal a
+ * "dish" is a garnish and the stored figure still wins.
+ */
+export const PRICING_KCAL_FLOOR = 80;
+export const PRICING_KCAL_FLOOR_FULL_COVERAGE = 40;
+export const PRICING_KCAL_CEILING = 1400;
+
+/** True when a priced result may overwrite a dish's stored nutrition. */
+export function pricingMayOverwrite(priced: { calories: number; coverage: number }): boolean {
+  if (priced.coverage < PRICING_COVERAGE_MIN) return false;
+  if (priced.calories > PRICING_KCAL_CEILING) return false;
+  const floor = priced.coverage >= 0.999 ? PRICING_KCAL_FLOOR_FULL_COVERAGE : PRICING_KCAL_FLOOR;
+  return priced.calories >= floor;
+}
+
 
 /** How far a priced dish's declared calories may sit from the arithmetic. */
 export const PRICING_TOLERANCE = 0.25;

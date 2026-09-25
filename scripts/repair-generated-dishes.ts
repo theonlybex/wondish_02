@@ -3,6 +3,12 @@
 //   npx tsx scripts/repair-generated-dishes.ts            # report only
 //   npx tsx scripts/repair-generated-dishes.ts --apply     # write, after a backup
 //
+// RUN IT TO A FIXPOINT. Each pass is idempotent in itself, but one rule's
+// output is another's input — a de-oiled dish is repriced, a repriced dish's
+// salt cap moves with its calories — so the first pass after a large change
+// leaves a handful for the second. It converges in three; a run that still
+// reports changes means there is more to do, not that it is looping.
+//
 // lib/dish-plausibility.ts stops bad dishes from being SELECTED, and
 // reconcileCalories stops bad numbers from being WRITTEN. Neither fixes the
 // rows already in the table, and there are enough of them to matter: 63 dishes
@@ -32,7 +38,7 @@ import { writeFileSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import { ingredientTokens } from "../lib/basket-match";
-import { priceDish, PRICING_COVERAGE_MIN, macrosDisagreeWithPricing, gramsOf } from "../lib/staple-density";
+import { priceDish, PRICING_COVERAGE_MIN, pricingMayOverwrite, macrosDisagreeWithPricing, gramsOf } from "../lib/staple-density";
 import { BASKET_STAPLES } from "../lib/basket-coverage";
 import {
   SNACK_MAX_MINUTES, BREAKFAST_MAX_MINUTES, SMALL_DISH_KCAL, breakfastLooksLikeBreakfast,
@@ -226,9 +232,13 @@ async function main() {
     );
     if (
       priced &&
-      priced.coverage >= PRICING_COVERAGE_MIN &&
-      priced.calories >= 80 &&
-      priced.calories <= 1400 &&
+      // The band is lib/staple-density.ts's now. It used to be a flat 80 kcal
+      // floor written here, and the floor was an escape hatch: "Sliced Tomatoes
+      // with Olive Oil and Oregano" prices at 75 and so kept the 93 kcal /
+      // 3 / 9 / 5 it was born with — whole numbers, self-consistent, wrong
+      // against the food. At full coverage the table has seen everything on the
+      // plate, so a small number means a small dish.
+      pricingMayOverwrite(priced) &&
       r.calories &&
       // No threshold at all for a CLARA row whose amounts price in full.
       //
