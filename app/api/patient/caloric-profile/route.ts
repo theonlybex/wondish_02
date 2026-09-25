@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { CM_PER_IN, LBS_PER_KG, checkBodyMetrics, firstBodyMetricsError } from "@/lib/body-bounds";
+import { resolveWeightUnit } from "@/lib/weight-unit-pref";
 import {
   computeAllMetrics, computeWeeklyTarget, convertWeight, resolveSex, resolveSexForCalories,
   type Sex, type SexInput, type CaloricProfileInput,
@@ -86,7 +87,8 @@ export async function GET() {
     planStartDate: patient.mealPlanStartDate ?? null,
   });
 
-  // Weight is stored in lbs; a metric-height user reads weights in kg.
-  const displayUnit: "kg" | "lbs" = patient.heightUnit === "cm" ? "kg" : "lbs";
+  // Weight is stored in lbs; the person's own choice decides how it is read,
+  // and a metric height stands in until they have made one.
+  const displayUnit = resolveWeightUnit(patient.displayWeightUnit, patient.heightUnit);
   return NextResponse.json({ profile: { ...profile, weeklyTarget, displayUnit } });
 }

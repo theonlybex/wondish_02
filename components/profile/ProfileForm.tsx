@@ -17,7 +17,7 @@ import {
   type CaloricProfile,
 } from "@/lib/caloric-engine";
 import { kgToLbs } from "@/lib/prediction-data";
-import { defaultWeightUnit, readWeightUnitPref, writeWeightUnitPref } from "@/lib/weight-unit-pref";
+import { resolveWeightUnit } from "@/lib/weight-unit-pref";
 import { CM_PER_IN, checkBodyMetrics, firstBodyMetricsError } from "@/lib/body-bounds";
 
 interface RefData {
@@ -99,6 +99,7 @@ export default function ProfileForm({
     heightIn: String(patient?.heightIn ?? ""),
     weight: String(patient?.weight ?? ""),
     weightUnit: (patient?.weightUnit as string) ?? "lbs",
+    displayWeightUnit: (patient?.displayWeightUnit as string | undefined) ?? "",
     physicalActivityId: (patient?.physicalActivityId as string) ?? "",
     goalWeight: String(patient?.goalWeight ?? ""),
     goalWeightUnit: (patient?.goalWeightUnit as string) ?? "lbs",
@@ -114,7 +115,7 @@ export default function ProfileForm({
   // STORAGE unit and always "lbs" — so this page said lbs while /overview,
   // reading the height, said kg, for the same account (cycle 19).
   const [weightUnitShown, setWeightUnitShown] = useState<"kg" | "lbs">(() =>
-    defaultWeightUnit(patient?.heightUnit as string | undefined)
+    resolveWeightUnit(patient?.displayWeightUnit as string | undefined, patient?.heightUnit as string | undefined)
   );
   const fmtWeight = (lbs: string, unit: "kg" | "lbs") => {
     const v = parseFloat(lbs);
@@ -133,23 +134,10 @@ export default function ProfileForm({
     setWeightUnitShown(unit);
     setWeightText(fmtWeight(form.weight, unit));
     setGoalText(fmtWeight(form.goalWeight, unit));
-    // …and the CHOICE. It was sent as form.weightUnit, which the server
-    // overwrites with "lbs" on every save (it is the storage unit), so the
-    // choice reverted on reload while the save said it had worked. Kept on the
-    // device until the account has a preference column; see weight-unit-pref.
-    writeWeightUnitPref(unit);
+    // …and the CHOICE, saved to the account with the rest of the form
+    // (Patient.displayWeightUnit — weightUnit is the storage unit).
+    setForm((f) => ({ ...f, displayWeightUnit: unit }));
   };
-  // After mount: localStorage does not exist on the server, and reading it in
-  // the initialiser would render a different unit on each side of hydration.
-  useEffect(() => {
-    const pref = readWeightUnitPref();
-    if (pref && pref !== weightUnitShown) {
-      setWeightUnitShown(pref);
-      setWeightText(fmtWeight(form.weight, pref));
-      setGoalText(fmtWeight(form.goalWeight, pref));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Live caloric preview
   const liveProfile: CaloricProfile | null = useMemo(() => {
@@ -484,7 +472,7 @@ export default function ProfileForm({
                   placeholder={weightUnitShown === "kg" ? "68" : "150"}
                 />
               </div>
-              <div role="radiogroup" aria-label="Weight unit (remembered on this device)" title="Remembered on this device" className="flex rounded-xl border border-[#EAE4CA] overflow-hidden mb-[1px]">
+              <div role="radiogroup" aria-label="Weight unit" className="flex rounded-xl border border-[#EAE4CA] overflow-hidden mb-[1px]">
                 {(["lbs", "kg"] as const).map((u) => (
                   <button
                     key={u}
