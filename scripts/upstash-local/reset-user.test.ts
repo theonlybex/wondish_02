@@ -75,3 +75,20 @@ test("userRateLimitKeys: only rl:<bucket>:<thisUser>:<window>, never ALL, never 
   assert.deepEqual(userRateLimitKeys(keys, "*"), []);
   assert.deepEqual(userRateLimitKeys(keys, ""), []);
 });
+
+test("an in-flight lock is cleared with the counters, and only its owner's", () => {
+  // A bot whose previous run was killed mid-cook arrives to "Clara is already
+  // cooking your day" for up to 90 seconds and reports a working feature as
+  // broken. The lock is part of what a fixture reset has to clear.
+  const mine = "user_3JloWruVkfVjnK3y3f18HbYB6Li";
+  const theirs = "user_9ZZZZZZZZZZZZZZZZZZZZZZZZZZ";
+  const keys = [
+    `rl:ai-chat:${mine}:1`,
+    `lock:cookday:${mine}`,
+    `lock:cookday:${theirs}`,
+    "lock:cookday:ALL",
+    `lock:${mine}`,
+    `lock:cookday:${mine}:extra`,
+  ];
+  assert.deepEqual(userRateLimitKeys(keys, mine), [`rl:ai-chat:${mine}:1`, `lock:cookday:${mine}`]);
+});

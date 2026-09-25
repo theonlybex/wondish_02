@@ -88,70 +88,80 @@ already applied to the shared Neon DB, so landing is code-only. **[verified]**
 
 ---
 
-## 0b. Open QA defects (cycles 8-15, 2026-09-25)
+## 0b. Open QA defects (cycles 8-16, 2026-09-25)
 
-Fifteen fix→test cycles ran against the live database, the last four verified by
-two independent QA bots driving the browser. What those cycles FIXED is in the
-commit log and in `docs/qa/beta-test-plan.md`'s cycle table. **This is what they
-found and left open.** None of it blocks a beta on its own; §0 does.
+Sixteen fix→test cycles against the live database. The cycle procedure is
+`docs/qa/beta-test-plan.md` → "How a cycle runs"; this section is the list it
+edits at the START of each one.
 
-Confidence: every line below was measured or observed by a QA bot on
-`2e788d2` unless marked otherwise.
+Confidence: every line below was measured or observed, and every `[x]` was
+re-measured after the fix rather than assumed.
 
-### Half-fixed — finish these first
-- [ ] **cook-my-day's in-flight lock is never released.** `ai-cookday-inflight`
-      is a 90-second rate limit taken at `app/api/pantry/cook-day/route.ts:133`
-      and never cleared on completion, so after a SUCCESSFUL run the user is
-      told "Clara is already cooking your day — give her a moment" for 90
-      seconds. Cycle 15 fixed the ordering (quota is now checked before the
-      lock, so a refused user no longer burns it) and not the release.
+### Closed in cycle 16
+- [x] **cook-my-day's in-flight lock is never released.** It was a rate limit,
+      and a rate limit has no release: a day that cooked in eight seconds left
+      the user refused for the other eighty-two. Now `SET NX EX` + `DEL`
+      (`lib/in-flight-lock.ts`), released in a `finally` so the route's three
+      early returns free it too. Verified on both backends and by reintroducing
+      the bug against the test.
+- [x] **Unmeasurable amounts** (open since cycle 13). 1,919 stored rows
+      repaired; the audit reports 0 of 16,424. The rule was wrong as well as
+      unapplied — it snapped to eighths, so a third of a cup was being
+      "repaired" to a quarter. 1,340 pinch-sized seasoning rows became the
+      `pinch` unit rather than rounding up to an eighth-teaspoon, which would
+      have doubled the salt on every one of them.
+- [x] **Decimals on the card.** A consequence of the above, fixed with it:
+      snapping writes thirds, and a third has no exact float. `formatAmount`
+      renders ⅓, ¾, 1½. Not a kitchen fraction → prints as a number.
+- [x] **One dish's macros were not computed from its amounts.** The escape was
+      an 80 kcal sanity floor in both repair scripts; "Sliced Tomatoes with
+      Olive Oil and Oregano" prices at 75. `pricingMayOverwrite` now drops the
+      floor to 40 at full coverage. Exactly two rows were affected.
+- [x] **A step tells the user to rinse raw chicken.** 22 dishes, rewritten to
+      keep the pat-dry. Also wired into generation, so new dishes cannot
+      reintroduce it.
+- [x] **A dish titled "Large Eggs".** 31 renamed from what their steps do —
+      Scrambled, Poached, Fried, Baked, Omelette.
+- [x] **Touch targets under 44px.** Measured 17 across five pages (nine more
+      than QA listed), all fixed but the journal's step dots. Input and Select
+      were fixed in the primitives.
+- [x] **"Once a day" is hardcoded.** Reads from AI_LIMITS through the tier.
+      /pricing's Free column now names its cook-my-day too.
+- [x] **The new-week refusal renders twice.** Gated on which control asked.
+- [x] **The banner's "New week" button is not blocked.** Same basket guard as
+      the sidebar's.
+- [x] **QA fixtures arrive with their allowances spent.** `npm run
+      rate-limit:reset-user -- <email>` is the answer, and it now clears that
+      user's in-flight LOCK as well as their counters — a bot whose previous
+      run was killed mid-cook was meeting a 90-second "Clara is already
+      cooking" and reporting a working feature as broken.
 
-### Reported as fixed twice and still on screen
-- [ ] **Unmeasurable amounts.** `0.37 tablespoons`, `1.03 tablespoons`,
-      `1.03 teaspoons`, `0.51 tablespoons`, `4.7 ml`, `0.063 teaspoons` — 17
-      rows in one week. `measurableAmount` (lib/dish-plausibility.ts) rounds to
-      eighths but only runs inside `clampCookingFat`, so stored rows keep the
-      old clamp's output and seasoning rows were never rounded at all. A
-      backfill that normalises EVERY amount is the fix; sub-eighth spoon
-      amounts should probably become "1 pinch" rather than rounding up, which
-      would inflate sodium.
-
-### Correctness
-- [ ] **One dish's macros were not computed from its amounts.** "Sliced
-      Tomatoes with Olive Oil and Oregano" declares 93 kcal / 3 g protein over
-      food worth 72 kcal / 1.4 g. The tell is that its macros are all whole
-      numbers (`3 / 9 / 5`) while every other dish carries the tenth-of-a-gram
-      signature — and `3×4 + 9×4 + 5×9 = 93`, so it passes the internal
-      self-consistency check while being wrong against food. Small harm; the
-      value is that it proves the "computed from amounts" path has an escape.
-      Finding every all-integer macro row is a one-query job.
-- [ ] **A step tells the user to rinse raw chicken** ("Rinse the chicken breast
-      and pat dry"), against USDA/FSIS advice — rinsing aerosolises pathogens.
-      One instance in 18 meat dishes.
-- [ ] **A dish titled "Large Eggs"** — the catalog row name used as a recipe
-      name, under-describing six of its seven ingredients. Does not lie, so the
-      title gate passes it.
-
-### Copy and UI
-- [ ] **Touch targets under 44px**, measured by hit-test (not bounding box):
-      "Beta → Plus" 94.8×**30.8**, "Settings" 73.9×**30**, /meal-plan's "Cuisine
-      for today" and "View full week" ×**16**, /overview's "+ Add" ×**20.8** and
-      "FULL JOURNAL →" ×**16.8**, all 28 /pantry chips ×**32**, /profile's three
-      selects ×**42**. The hamburger and the day pagers PASS — their
-      `.touch-target::after` expanders work and an earlier 28×26 report was a
-      measurement error.
-- [ ] **"Once a day" is hardcoded** on the cook-my-day card
-      (`PantryClient.tsx:850`). Beta gets 2, Plus gets 3. /pricing's Free column
-      also never mentions Free's 1 cook-my-day.
-- [ ] **The new-week refusal renders twice** — in the sidebar and again inside
-      the unrelated amber "Your profile changed" banner, which then carries a
-      quota error about something else. A screen reader announces it twice.
-- [ ] **The banner's "New week" button is not blocked** when the basket is
-      unready; the sidebar's equivalent is (`aria-disabled` +
-      `aria-describedby`).
+### Open
+- [ ] **The journal's five step dots are 32px wide** (44 tall). Five 44px
+      targets need 220px inside a 46px control, and abutting targets with no
+      gap trade a small target for a mis-tap. Fixing it properly means
+      redesigning that progress row, not padding it. Skip/Next — the primary
+      path — are a full 44.
+- [ ] **es and ru pricing copy is a different feature list.** `freeF3` in
+      Spanish reads "Resumen nutricional diario" and `premiumF5` "500+ recetas
+      seleccionadas": the translations were written against an older column and
+      never re-synced, so a Spanish or Russian reader is shown allowances and
+      features that are not the ones enforced. Found while adding cook-my-day
+      to the English Free column. Needs a real translation pass, not a guess.
+- [ ] **A stale plan can read 166% of its fat target.** Observed on the QA
+      fixture's existing week (101 g against a 61 g target) while checking the
+      fraction rendering. The fat CEILING landed in cycle 15, so a week built
+      BEFORE it keeps its numbers — this is probably an old plan rather than a
+      live defect, and the bot pass should confirm that a freshly generated
+      week lands inside the 25-38% band that was measured.
 
 ### Refused by design — listed so nobody re-opens them as bugs
 Each was measured and left deliberately; the reason is the entry.
+- **867 of 1,487 generated dishes are titled after a catalog row.** Most are
+  fine English — "Ground Beef with Rice and Broccoli" is a dish. Only the cases
+  where the shopping form and the cooked form are genuinely different words
+  (the egg grades) were repaired; rewriting the rest would be a mass rename of
+  good names to catch a grading word.
 - **199 dishes with no quantity on any ingredient.** The largest single
   refusal. Cannot be repaired without inventing amounts.
 - **29 that cook in a fat they never list** and cannot be priced after the oil
@@ -177,11 +187,6 @@ Each was measured and left deliberately; the reason is the entry.
   bread at 490 mg/100 g sets the floor.
 
 ### Process
-- [ ] **Give each QA bot its own fixture account.** Both share
-      `qa.bot1/bot2.0924@wondish.io`, and cycle 15's second bot arrived to find
-      every allowance already spent — so it verified every refusal and not one
-      success path. The swap's behaviour and Clara's answers went untested for
-      that reason alone.
 - [ ] **Freeze HEAD for the whole QA window, edits included.** Cycle 14 was
       invalidated by 11 commits landing mid-run. Cycle 15 froze commits but not
       the working tree, and the dev server hot-reloaded uncommitted edits into

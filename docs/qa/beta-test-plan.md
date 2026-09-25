@@ -149,6 +149,8 @@ into a bot's later measurements.
 
 | 15 | Two bots against a **frozen, pushed** commit. They confirmed most of 13 and 14 — 33 distinct dishes in 33 slots, 32 of 33 priced right against an independent USDA table, zero raw protein in 18 meat dishes, the modal trapping focus through 25 tabs, 11 of 11 profile misinputs refused, the 12px floor holding on every mobile page. Then: **the headline fix of the commit they were testing did not work** — /pantry's cook-my-day route rewrote the guard's sentence and dropped the `upgrade` flag, so the component was right and had nothing to render, **and the test written to prevent that was green and blind to it** because it only checked the client. Fat measured **29-52%** against a 25% target where I had reported 27-33% — my figure was a lucky run. And the sodium rail counted ADDED SALT against the **total**-sodium guideline, so a day at ~3,300 mg printed green | the test now checks all nine metered routes forward `guard.body`, verified by reintroducing the bug; fat gets the CEILING that fixed sodium (scoring was only ever a preference, and the oil is genuinely in the recipes — the rows agree with the step text), landing 25-38%; DENSITY gains a sodium column and the ceiling, rail, label and Clara all move together; quota checked before the in-flight lock; the weight-unit toggle persists its choice; /pantry's cookable list gets the slot rules; /pricing gets an h1 |
 
+| 16 | The cycle became a written procedure (edit the list, add, plan, fix, bot-test each fix, journey-test) after "whats left" had no written answer. Then the list itself: **the in-flight lock was a rate limit**, which has no release, so a successful cook-my-day locked the user out for the rest of its 90-second window. **Unmeasurable amounts, open since cycle 13** — and the RULE was wrong too, snapping to eighths so a third of a cup was repaired to a quarter; the stored rows had never been touched at all (1,919 of 16,420). The 80 kcal sanity floor in both repair scripts was an **escape hatch** that exempted small dishes from being priced. 22 dishes told the user to rinse raw chicken. 31 were titled "Large Eggs…". A hit-test of all five pages found **17** undersized touch targets against the 8 reported. Three controls rendered the SAME new-week refusal at once | lib/in-flight-lock.ts (SET NX EX, released in a `finally`); repairAmount + the kitchen-fraction set shared by generator, backfill and audit, with sub-spoon seasoning becoming the `pinch` unit so the salt does not double; `formatQuantity` renders ⅓ and 1½, because snapping writes thirds and a third has no exact float; `pricingMayOverwrite`; the rinse and egg-title repairs run at generation too; targets fixed with real height in dense rows and the invisible expander only where neighbours are far; the refusal is gated on which control asked; `rate-limit:reset-user` now clears a stale lock as well as counters |
+
 ## What the cycles taught
 
 A green test suite proves nothing about content: 1,284 tests passed while a week
@@ -210,6 +212,23 @@ catalog and READ what it flags. Every time that was done, it found something —
 a "Scramble" stripped from 81 correctly-named dishes, three properly-cooked
 dishes condemned as raw, four correct products refused as untrue. Every time it
 was skipped, QA found it instead, a cycle later.
+
+**A fix that is not applied to the stored rows is not applied.** "0.37
+tablespoon" was reported fixed in three consecutive cycles. Each fix landed in
+the generator; the 16,420 rows a user actually reads were never touched. When a
+defect is in DATA, the fix has two halves and the backfill is the one the user
+sees.
+
+**Write the rule down and it will turn out to be wrong.** Every time a
+threshold has been moved from a habit into a shared function in this project,
+the act of writing it exposed an error: the eighths rule condemned a third of a
+cup, the rinse rule condemned washing celery, the egg-title rule read a method
+off the wrong sentence. Three for three. The predicate is not the easy half.
+
+**A guard against bad input silently exempts good input.** The 80 kcal floor
+existed to stop a broken price overwriting a real dish, and it also exempted
+every genuinely small dish from being priced at all — quietly, with nothing
+reporting the exemption. Any sanity band needs a list of what it caught.
 
 **A test that watches one end of a wire proves nothing about the wire.** The
 no-paywall test asserted the CLIENT reads the `upgrade` flag and passed green

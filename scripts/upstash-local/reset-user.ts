@@ -101,6 +101,13 @@ export function userRateLimitKeys(keys: string[], clerkId: string): string[] {
   if (!isClerkUserId(clerkId)) return [];
   return keys.filter((k) => {
     const parts = k.split(":");
-    return parts.length === 4 && parts[0] === "rl" && parts[2] === clerkId;
+    // `rl:<bucket>:<id>:<window>` — the counters.
+    if (parts.length === 4 && parts[0] === "rl" && parts[2] === clerkId) return true;
+    // `lock:<name>:<id>` — an in-flight lock (lib/in-flight-lock.ts). Held for
+    // up to its TTL, so a bot whose previous run was killed mid-cook arrives to
+    // "Clara is already cooking your day" and reports a feature as broken that
+    // is only busy. Same exact-id rule; nothing else may match.
+    if (parts.length === 3 && parts[0] === "lock" && parts[2] === clerkId) return true;
+    return false;
   });
 }
