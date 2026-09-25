@@ -90,12 +90,19 @@ already applied to the shared Neon DB, so landing is code-only. **[verified]**
 
 ## 0b. Open QA defects (cycles 8-17, 2026-09-25)
 
-Sixteen fix→test cycles against the live database. The cycle procedure is
+Seventeen fix→test cycles against the live database. The cycle procedure is
 `docs/qa/beta-test-plan.md` → "How a cycle runs"; this section is the list it
 edits at the START of each one.
 
-Confidence: every line below was measured or observed, and every `[x]` was
-re-measured after the fix rather than assumed.
+**This is the whole outstanding list.** It holds what was found and left open,
+what was found and REFUSED on purpose (with the measurement that settled each,
+so nobody re-opens them as bugs), what was seen once and could not be
+reproduced, and what was never tested at all. The beta-blocking work is §0
+above; nothing here blocks a beta on its own.
+
+Confidence: every line was measured or observed, every `[x]` was re-measured
+after the fix rather than assumed, and anything a bot could not pin down says
+so in its own entry.
 
 ### Closed in cycle 16
 - [x] **cook-my-day's in-flight lock is never released.** It was a rate limit,
@@ -273,6 +280,74 @@ or reproduced; where a bot could not pin something down, it says so.
       numbers. A freshly generated week still needs measuring against the
       25-38% band.
 
+### Seen once, not reproduced — kept so a second sighting is recognised
+
+Neither bot could make these happen again, and both said so rather than
+claiming them. They are recorded because the expensive version of this is the
+second person to see it having no idea it was seen before.
+
+- [ ] **The pantry selection changed on its own.** Between two scripts a bot's
+      basket went from the 5 items it had chosen to a 13-item plan-derived set:
+      `celery`, `zucchini`, `eggs`, `ground beef`, `Ground turkey` gone,
+      `Large eggs` and `Unsalted butter` present, neither ever tapped. A
+      follow-up test of three reloads with no clicks showed the selection
+      perfectly stable and zero non-GET `/api/pantry` calls, so its own
+      clicking is a plausible cause. Worth looking at regardless: the catalog
+      holds both `eggs` and `Large eggs` as separate ingredients, which is how
+      a basket could appear to swap one for the other.
+- [ ] **An ingredient count jumped by two.** Tapping `★ Cauliflower` left the
+      count at 9, then `★ Carrots` moved it 9 → 11. Self-corrected, not
+      reproducible; possibly a 1s poll racing an optimistic update.
+- [ ] **The `stale` banner hides itself during generation.** `stale &&
+      !newWeekLoading` removes the whole banner — including its own button's
+      spinner — so pressing "New week" there makes the screen go quiet for the
+      ~60s the build takes. The bot saw the banner still present at its 250ms
+      sample and could not pin the window.
+
+### Smaller, and still true
+- [ ] **An `aria-disabled` button is a silent no-op on activation.** Pressing
+      Enter on the blocked "Generate a new week" fires no request, shows no new
+      message and updates no live region. The reason IS permanently rendered
+      beside it and wired with `aria-describedby`, so a screen reader hears it
+      on focus — but anyone who did not notice the static line gets a dead tap.
+- [ ] **Two daily calorie targets on one card**: "1895 KCAL/DAY · Today's
+      target" above "easing toward 1788 kcal/day". Both are correct (1981 − 1788
+      = 193 kcal/day = 0.386 lb/wk) and the card never says why they differ.
+- [ ] **Some ingredient rows lost their unit** and render as a bare `2` or `½`.
+- [ ] **`View full week`'s expander overlaps `Next day` by 40×6px** on
+      /meal-plan. `Next day` is later in the DOM and wins that band, so it costs
+      `View full week` ~6px of its own hit area and steals nothing — the only
+      overlap left after cycle 17, and the reason the measurement now reports
+      overlaps rather than just sizes.
+
+### Not tested — the coverage gaps this pass leaves behind
+
+The next cycle starts here. None of this is a clean bill of health; it is
+untouched ground.
+
+- [ ] **The FREE tier's own strings were never exercised.** Both fixture
+      accounts are on coupons, so `tier: "beta"` answered every guard: the
+      pantry card was verified as "Twice a day" (correct for beta, and it did
+      match what the guard enforced at 2), and "your 1 free cook-my-day plan"
+      was never rendered. A genuinely free fixture is needed — see the process
+      item below.
+- [ ] **The empty-state "Generate my whole week" control.** Both accounts had an
+      active plan, so only two of the three new-week controls were exercised.
+      The third is verified by reading the code, not by pressing it.
+- [ ] **/dish-checker in conversation.** Only its 4 resting controls were
+      audited; no Clara messages were sent, so its in-conversation surfaces,
+      streaming states and refusals are unaudited.
+- [ ] **Fraction rendering on a live card.** `formatQuantity` is covered by
+      unit tests and was confirmed on generated dishes by bot 1, but ⅓/⅔ —
+      the values the backfill actually wrote — appear on repaired CATALOG rows,
+      and no bot reached a plan built from those.
+- [ ] **cook-my-day's result cards** list ingredient names only, with no amounts
+      and no steps, so they could not be used to check either the amount or the
+      rinse repairs.
+- [ ] **A freshly generated week has never been measured against the 25-38% fat
+      band** that cycle 15 claimed. The one week that was measured (166%) was
+      built before the ceiling landed.
+
 ### Refused by design — listed so nobody re-opens them as bugs
 Each was measured and left deliberately; the reason is the entry.
 - **867 of 1,487 generated dishes are titled after a catalog row.** Most are
@@ -305,6 +380,13 @@ Each was measured and left deliberately; the reason is the entry.
   bread at 490 mg/100 g sets the floor.
 
 ### Process
+- [ ] **One fixture per TIER, not just one per bot.** Giving each bot its own
+      account fixed cycle 15's problem (a bot arriving to find every allowance
+      already spent) and exposed the next one: both fixtures hold coupons, so
+      every guard answered `tier: "beta"` and the free tier's own copy and
+      limits went untested two cycles running. Needed: a free fixture, a beta
+      fixture and a paid fixture, each reset with `npm run rate-limit:reset-user`
+      before a run.
 - [ ] **Freeze HEAD for the whole QA window, edits included.** Cycle 14 was
       invalidated by 11 commits landing mid-run. Cycle 15 froze commits but not
       the working tree, and the dev server hot-reloaded uncommitted edits into
