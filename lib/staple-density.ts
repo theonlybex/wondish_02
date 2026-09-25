@@ -107,7 +107,32 @@ const DENSITY: {
   // volumeUnambiguous: a cup of chopped vegetables weighs about a cup of
   // chopped vegetables however it is later cooked, and tying veg rows to the
   // dry-GRAIN test meant one bad step phrase took a whole dish out of pricing.
-  { match: /\b(broccoli|cauliflower|zucchini|spinach|carrots?|bell peppers?|green peppers?|red peppers?|yellow peppers?|jalape(n|ñ)o peppers?|chipotle peppers?|poblano peppers?|tomato(es)?|onions?|celery|cucumbers?|lettuce|cabbages?|mushrooms?|greens?|kale|asparagus|green beans?)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
+  // Three groups, not one. QA priced the cards by hand against real composition
+  // and found the single flat row (6 g carbs, 2 g protein, 0 g fat per 100 g,
+  // 120 g per cup) wrong in both directions and by a lot:
+  //   "Sliced Tomatoes with Olive Oil" declared 3 g of protein over 150 g of
+  //   Roma tomato, which holds 1.4 — a 122% overstatement;
+  //   "Zucchini with Roma Tomatoes and Carrots" declared 7 g of protein over
+  //   370 g of vegetables that hold 3.9;
+  //   "Roasted Broccoli with Olive Oil" declared 109 kcal against a real 127.
+  // And 120 g/cup is badly wrong for leaves: "Spinach 2 cup" priced as 240 g
+  // when two cups of raw spinach is about 60 g, which alone put a breakfast at
+  // a declared 305 kcal against food worth 252.
+  //
+  // At the day level the error was small — vegetables are a minority of intake —
+  // but it inflated one day's declared protein by ~9 g of protein that does not
+  // exist, and the protein ring is a number people act on.
+  //
+  // Leaves: a cup is 30 g, and they carry real protein for their weight.
+  { match: /\b(spinach|kale|arugula|rocket|romaine|lettuce|chard|watercress|radicchio|endive|bok choy|collards?|greens?|herbs?|basil leaves)\b/i, carbs: 4, fat: 0.4, protein: 3, gramsPerCup: 30, gramsPerItem: 100, volumeUnambiguous: true },
+  // Watery vegetables and fruit-vegetables: a cup is ~120 g, ~1 g protein.
+  { match: /\b(tomato(es)?|cucumbers?|zucchini|courgettes?|celery|mushrooms?|cabbages?|asparagus|green beans?|eggplants?|aubergines?|radish(es)?|bean sprouts?|sauerkraut|okra)\b/i, carbs: 4, fat: 0.2, protein: 1.2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
+  // Brassicas carry real protein for a vegetable — broccoli is 2.8 g/100 g.
+  { match: /\b(broccoli|cauliflower|brussels sprouts?|cabbages?|broccolini|kohlrabi)\b/i, carbs: 6, fat: 0.3, protein: 2.6, gramsPerCup: 100, gramsPerItem: 110, volumeUnambiguous: true },
+  // Roots, alliums and peppers: more carbohydrate, about a gram of protein.
+  // Grouped apart from the brassicas because averaging broccoli (2.8 g protein,
+  // 7 g carbs) with carrots (0.9 and 9.6) lands on neither of them.
+  { match: /\b(carrots?|bell peppers?|green peppers?|red peppers?|yellow peppers?|jalape(n|ñ)o peppers?|chipotle peppers?|poblano peppers?|onions?|beets?|turnips?|parsnips?|squash|pumpkins?|artichokes?|fennel|leeks|rutabagas?)\b/i, carbs: 8, fat: 0.2, protein: 1.1, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
   { match: /\b(potato(es)?|sweet potato(es)?|corn|peas)\b/i, carbs: 18, fat: 0, protein: 2, gramsPerCup: 150, gramsPerItem: 170 },
   { match: /\b(apples?|bananas?|berries|strawberries|blueberries|oranges?|grapes?|pears?|melon)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 150, gramsPerItem: 130 },
 
@@ -475,10 +500,14 @@ export function priceDish(
   if (total === 0) return null;
   const coverage = priced / total;
   return {
+    // A tenth of a gram, not a whole one. Rounding to integers is what made QA's
+    // check read "protein +122%" on a plate of tomatoes: the food holds 1.4 g
+    // and the table said 2. The table was fine; the rounding was the error, and
+    // it lands on the protein ring, which is a number people act on.
     calories: Math.round(protein * 4 + carbs * 4 + fat * 9),
-    protein: Math.round(protein),
-    carbs: Math.round(carbs),
-    fat: Math.round(fat),
+    protein: Math.round(protein * 10) / 10,
+    carbs: Math.round(carbs * 10) / 10,
+    fat: Math.round(fat * 10) / 10,
     coverage,
   };
 }

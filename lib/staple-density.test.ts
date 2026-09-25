@@ -99,3 +99,52 @@ test("a plural name weighs the same as its singular", () => {
     assert.equal(gramsOf(one, 1, "cup"), gramsOf(many, 1, "cup"), `${one} vs ${many}`);
   }
 });
+
+// ── QA's hand arithmetic, as a test ─────────────────────────────────────────
+//
+// A QA pass priced these three dishes against real composition and found the
+// table wrong in both directions: every vegetable went through ONE flat row
+// (6 g carbs, 2 g protein, 0 g fat per 100 g, 120 g a cup), so a plate of
+// tomatoes declared 3 g of protein over food holding 1.4, a mixed vegetable side
+// declared 7 g over 3.9, and roasted broccoli declared 109 kcal against 127.
+// 120 g a cup is also badly wrong for leaves — "Spinach 2 cup" priced as 240 g
+// when two cups of raw spinach is about 60.
+//
+// The numbers on the right are QA's, computed independently of this table.
+test("vegetable pricing lands within 10% of real composition", () => {
+  const cases: [string, { name: string; quantity: number; unit: string }[], { kcal: number; protein: number; carbs: number }][] = [
+    ["sliced tomatoes with oil",
+      [{ name: "Roma tomatoes", quantity: 150, unit: "g" }, { name: "Extra virgin olive oil", quantity: 5, unit: "g" }],
+      { kcal: 76, protein: 1.4, carbs: 5.9 }],
+    ["mixed vegetable side",
+      [{ name: "zucchini", quantity: 200, unit: "g" }, { name: "Roma tomatoes", quantity: 120, unit: "g" },
+       { name: "carrots", quantity: 50, unit: "g" }, { name: "Extra virgin olive oil", quantity: 5, unit: "g" }],
+      { kcal: 132, protein: 3.9, carbs: 15.7 }],
+    ["roasted broccoli",
+      [{ name: "broccoli", quantity: 200, unit: "g" }, { name: "Extra virgin olive oil", quantity: 5, unit: "g" }],
+      { kcal: 127, protein: 5.6, carbs: 13.2 }],
+  ];
+  for (const [label, rows, real] of cases) {
+    const p = priceDish(rows, null);
+    assert.ok(p, label);
+    assert.ok(Math.abs(p.calories - real.kcal) / real.kcal < 0.10, `${label} kcal: ${p.calories} vs ${real.kcal}`);
+    assert.ok(Math.abs(p.carbs - real.carbs) / real.carbs < 0.10, `${label} carbs: ${p.carbs} vs ${real.carbs}`);
+    // Protein within half a gram: percentages are meaningless on a 1.4 g base.
+    assert.ok(Math.abs(p.protein - real.protein) < 0.6, `${label} protein: ${p.protein} vs ${real.protein}`);
+  }
+});
+
+test("a cup of leaves is not a cup of carrots", () => {
+  assert.equal(gramsOf("spinach", 2, "cup"), 60, "two cups of raw spinach is ~60 g, not 240");
+  assert.equal(gramsOf("arugula", 1, "cup"), 30);
+  assert.equal(gramsOf("carrots", 1, "cup"), 120);
+  assert.equal(gramsOf("broccoli", 1, "cup"), 100);
+});
+
+test("priced macros carry a tenth of a gram, not a whole one", () => {
+  // Rounding to integers is what made a 1.4 g protein read as 2 and the error
+  // read as +43%.
+  const p = priceDish([{ name: "Roma tomatoes", quantity: 150, unit: "g" }], null);
+  assert.ok(p);
+  assert.ok(p.protein % 1 !== 0 || p.protein === 0, `expected a fractional gram, got ${p.protein}`);
+});
