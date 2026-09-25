@@ -1,6 +1,28 @@
 import { prisma } from "@/lib/db";
 import { displayDishName } from "@/lib/dish-name";
 
+/**
+ * Sodium from a dish's added salt, in mg. One definition for the per-dish line
+ * and the day total, so the two cannot disagree with each other or with the
+ * rail (lib/meal-plan.ts dishSodiumMg uses the same constants).
+ */
+function dishSodium(
+  ingredients: readonly { quantity: number | null; unit: string | null; ingredient: { name: string } }[]
+): number {
+  let mg = 0;
+  for (const ri of ingredients) {
+    if (!/\bsalt\b/i.test(ri.ingredient.name)) continue;
+    const q = ri.quantity ?? 0;
+    if (q <= 0) continue;
+    const u = ri.unit ?? "";
+    if (/\b(tsp|teaspoons?)\b/i.test(u)) mg += q * 2325;
+    else if (/\b(tbsp|tablespoons?)\b/i.test(u)) mg += q * 6975;
+    else if (/\b(pinch|pinches|dash(es)?)\b/i.test(u)) mg += q * (2325 / 16);
+    else if (/^\s*(g|gram|grams|gr)\s*$/i.test(u)) mg += q * 393;
+  }
+  return mg;
+}
+
 // A text block describing the user's dishes for `localDate`, appended to Clara's
 // system prompt so she knows exactly what they're cooking today and can answer
 // cooking questions ("how do I make my lunch?", "what temperature?") in detail.
@@ -76,7 +98,21 @@ export async function buildTodaysPlanText(patientId: string, localDate: string):
         (m.recipe.prepTime ?? 0) + (m.recipe.cookTime ?? 0) > 0
           ? ` Takes ${(m.recipe.prepTime ?? 0) + (m.recipe.cookTime ?? 0)} min in total${m.recipe.servings && m.recipe.servings > 1 ? `, serves ${m.recipe.servings}` : ""}.`
           : "";
-      return `- ${m.mealType?.name ?? "Meal"}: ${displayDishName(m.recipe.name)}${kcal}${macros}.${time} Ingredients (amounts are per serving): ${ings}.${steps}`;
+      // The dish's own sodium, computed the same way the rail computes it.
+      //
+      // Given only the day's total, Clara did the per-dish arithmetic herself
+      // and got it wrong in the direction that matters: asked about one
+      // breakfast she answered "0.15 teaspoon × 5,800 mg = 870 mg of sodium".
+      // A teaspoon of salt weighs ~6,000 mg but contains ~2,325 mg of SODIUM —
+      // she had confused the salt with the mineral, by a factor of 2.5, on a
+      // figure someone on a sodium restriction acts on. The contradiction was
+      // inside one reply: the 1,802 mg day total she quoted in the same sentence
+      // is the app's, computed at 2,325 mg per teaspoon.
+      //
+      // So she is given the number instead of the ingredients to convert.
+      const dishMg = Math.round(dishSodium(m.recipe.ingredients ?? []));
+      const sodium = dishMg > 0 ? ` Added salt in this dish: ${dishMg.toLocaleString()} mg of sodium.` : "";
+      return `- ${m.mealType?.name ?? "Meal"}: ${displayDishName(m.recipe.name)}${kcal}${macros}.${time}${sodium} Ingredients (amounts are per serving): ${ings}.${steps}`;
     });
 
   // The closing instruction exists because of what Clara said without it: she
@@ -93,25 +129,10 @@ export async function buildTodaysPlanText(patientId: string, localDate: string):
   // plan at "1.4 teaspoons … well within the recommendation" when her own
   // itemisation came to 0.95 tsp and the rail said 2,210 mg. She was doing
   // arithmetic she should not have to do, and contradicting the screen.
-  const sodiumMg = Math.round(
-    menus.reduce(
-      (sum, m) =>
-        sum +
-        (m.recipe.ingredients ?? []).reduce((s2, ri) => {
-          if (!/\bsalt\b/i.test(ri.ingredient.name)) return s2;
-          const q = ri.quantity ?? 0;
-          const u = ri.unit ?? "";
-          if (/\b(tsp|teaspoons?)\b/i.test(u)) return s2 + q * 2325;
-          if (/\b(tbsp|tablespoons?)\b/i.test(u)) return s2 + q * 6975;
-          if (/^\s*(g|gram|grams|gr)\s*$/i.test(u)) return s2 + q * 393;
-          return s2;
-        }, 0),
-      0
-    )
-  );
+  const sodiumMg = Math.round(menus.reduce((sum, m) => sum + dishSodium(m.recipe.ingredients ?? []), 0));
   const saltLine = sodiumMg > 0
     ? `\nADDED SALT FOR THE DAY: ${sodiumMg.toLocaleString()} mg of sodium, against a 2,300 mg daily guideline` +
-      `${sodiumMg > 2300 ? " — that is OVER the guideline, say so plainly" : ""}. Quote this figure rather than adding up teaspoons yourself, and never call a number over 2,300 mg "well within" anything.`
+      `${sodiumMg > 2300 ? " — that is OVER the guideline, say so plainly" : ""}. Quote this figure, and the per-dish figures above, rather than converting teaspoons yourself — a teaspoon of salt WEIGHS about 6,000 mg but contains about 2,325 mg of sodium, and confusing the two overstates every answer by 2.5x. Never call a number over 2,300 mg "well within" anything.`
     : "";
 
   return (

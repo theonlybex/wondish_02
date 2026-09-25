@@ -851,7 +851,18 @@ export async function buildMealPlanMenus(
         // unless calMin was also set).
         let calWin: { min: number; max: number } | null = null;
         if (calMax != null) {
-          const win = capWindowToDayBudget(calMin ?? 0, calMax, dayBudget, dayCalories);
+          // The SLOT's remaining room, not only the dish's ceiling.
+          //
+          // MEAL_CAL_CEILING is a per-dish rule, and a per-dish rule cannot see
+          // a slot — the lesson this file has now learnt for salt, oil, starch,
+          // protein and repeats. QA measured the consequence: every individual
+          // dish honoured 1.25×, and three snack slots came to 1.73-1.99× their
+          // target because each held two of them. One day's "snack" was 609 kcal
+          // — larger than that day's breakfast AND its dinner.
+          const slotRoom = target !== null ? target * MEAL_CAL_CEILING - mealCalories : null;
+          if (slotRoom !== null && slotRoom <= 0) return [];
+          const boundedMax = slotRoom !== null ? Math.min(calMax, slotRoom) : calMax;
+          const win = capWindowToDayBudget(calMin ?? 0, boundedMax, dayBudget, dayCalories);
           if (!win) return [];
           calWin = { min: Math.round(win.calMin), max: Math.round(win.calMax) };
         }

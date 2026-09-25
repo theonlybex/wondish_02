@@ -94,3 +94,32 @@ test("meals are ordered breakfast → lunch → dinner → snack whatever the DB
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
   assert.ok(order.every((i) => i > 0));
 });
+
+// Given only the day's total, Clara did the per-dish arithmetic herself and got
+// it wrong by 2.5×: asked about one breakfast she answered "0.15 teaspoon ×
+// 5,800 mg = 870 mg of sodium", confusing the WEIGHT of a teaspoon of salt
+// (~6,000 mg) with its sodium content (~2,325 mg). The correct answer was 349
+// mg, and the day total she quoted in the same sentence was the app's own.
+test("each dish carries its own sodium, so Clara never converts teaspoons", async () => {
+  const { buildTodaysPlanText } = await modPromise;
+  db.menus = [menu("Breakfast")]; // 1 teaspoon of salt
+  const text = await buildTodaysPlanText("p1", "2026-09-24");
+
+  assert.match(text, /Added salt in this dish: 2,325 mg of sodium/);
+  assert.match(text, /ADDED SALT FOR THE DAY: 2,325 mg/);
+  // And she is told the trap by name, because she fell into it.
+  assert.match(text, /WEIGHS about 6,000 mg but contains about 2,325 mg of sodium/);
+});
+
+test("the per-dish figures sum to the day figure", async () => {
+  const { buildTodaysPlanText } = await modPromise;
+  db.menus = [
+    menu("Breakfast", { ingredients: [{ note: null, quantity: 0.15, unit: "teaspoon", ingredient: { name: "Kosher salt" } }] }),
+    menu("Lunch", { ingredients: [{ note: null, quantity: 0.25, unit: "teaspoon", ingredient: { name: "Salt" } }] }),
+  ];
+  const text = await buildTodaysPlanText("p1", "2026-09-24");
+  // 0.15 tsp = 349 mg — the figure Clara reported as 870.
+  assert.match(text, /Added salt in this dish: 349 mg/);
+  assert.match(text, /Added salt in this dish: 581 mg/);
+  assert.match(text, /ADDED SALT FOR THE DAY: 930 mg/);
+});
