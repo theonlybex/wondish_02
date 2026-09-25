@@ -17,6 +17,8 @@ import {
   stepRinsesRawProtein,
   withoutRawProteinRinse,
   nameFromCookedForm,
+  repairAmount,
+  withReadableProse,
   clampAddedSalt,
   clampCookingFat,
   countUnitFor,
@@ -678,6 +680,28 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
 }
 
 /**
+ * The dish as it should be STORED: every amount measurable, in the rows and in
+ * the sentences, and no instruction to rinse raw meat anywhere a user reads.
+ *
+ * QA cycle 17 found a freshly generated week carrying `0.1 teaspoon` of pepper
+ * on 16 rows beside a correctly rendered `⅛ teaspoon`: repairAmount was called
+ * by the backfill and the audit and never here, so the catalog was clean and
+ * everything new was not — the cycle-13-to-15 shape exactly. The description
+ * is repaired too, because it is what /dishes renders and it repeats the
+ * method on 784 library rows.
+ *
+ * This is the one door every generated dish comes through (catalog top-up,
+ * cook-my-day, Clara swap), so it is the one place the repair has to be.
+ */
+export function repairForStorage(recipe: FridgeRecipe): FridgeRecipe {
+  const amounts = recipe.amounts?.map((a) => {
+    const fixed = typeof a.quantity === "number" ? repairAmount(a.quantity, a.unit, a.name) : null;
+    return fixed ? { ...a, quantity: fixed.quantity, unit: fixed.unit ?? "" } : a;
+  });
+  return { ...withReadableProse(recipe), ...(amounts ? { amounts } : {}) };
+}
+
+/**
  * Persist already-validated generated dishes as public Recipe rows.
  * Shared by the catalog top-up above and the pantry cook-day route.
  * `dishTypeName`, when given, is resolved/created and attached so the dishes
@@ -750,7 +774,9 @@ export async function persistValidatedRecipes(
   }
 
   const createdIds: string[] = [];
-  for (const { recipe, mealTypeId } of accepted) {
+  for (const { recipe: asValidated, mealTypeId } of accepted) {
+    // Repaired BEFORE pricing, so the stored macros are the stored amounts'.
+    const recipe = repairForStorage(asValidated);
     const ingredientIds = Array.from(
       new Set(
         recipe.usesIngredients

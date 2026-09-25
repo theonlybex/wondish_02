@@ -17,7 +17,7 @@
 // minutes) so a Prisma row and a freshly generated recipe both satisfy it.
 import { ingredientTokens } from "@/lib/basket-match";
 import { BASKET_STAPLES } from "@/lib/basket-coverage";
-import { displayDishName } from "@/lib/dish-name";
+import { displayDishName, formatAmount } from "@/lib/dish-name";
 import { macrosContradictAmounts, macrosDisagreeWithPricing, gramsOf } from "@/lib/staple-density";
 
 export const BREAKFAST_MAX_MINUTES = 30;
@@ -407,6 +407,73 @@ export function repairAmount(
   // A count. Quarter of a lemon is a knife cut; 0.37 of one is not.
   const snapped = snapToKitchenFraction(quantity);
   return { quantity: Math.max(0.25, snapped), unit: unit ?? null };
+}
+
+// ── Amounts written into prose ───────────────────────────────────────────────
+//
+// The amount repair of 2026-09-25 fixed the ingredient ROWS and nothing else,
+// and a cook reads the steps: QA cycle 17 found 185 unmeasurable amounts in the
+// method text of 115 dishes — "Season with 0.0625 teaspoon kosher salt", "Pour
+// 0.33 cup of mung bean plant-based egg", "Spray with 0.25 gr of avocado oil".
+// The same rule the rows use, applied to the sentence.
+//
+// Only DECIMAL amounts are touched. "2 cups" and "400 g" are what a person
+// writes; a decimal point in a recipe sentence is always a scaled float that
+// nobody rounded.
+const PROSE_AMOUNT =
+  /(?<![\d.])(\d*\.\d+)\s*(teaspoons?|tsp|tablespoons?|tbsp|cups?|grams?|gr|g|ml|ounces?|oz|pounds?|lbs?)\b((?:\s+of)?\s+[A-Za-z][\w-]*(?:\s+[A-Za-z][\w-]*){0,2})?/gi;
+const SINGULAR_UNIT: Record<string, string> = {
+  teaspoons: "teaspoon", tablespoons: "tablespoon", cups: "cup", grams: "gram", ounces: "ounce", pounds: "pound",
+};
+
+/**
+ * The sentence with every decimal amount written as a cook would measure it,
+ * or null when there was nothing to change.
+ */
+export function repairProseAmounts(text: string): string | null {
+  const out = text.replace(PROSE_AMOUNT, (whole, num: string, rawUnit: string, tail: string | undefined) => {
+    const q = Number(num);
+    if (!(q > 0)) return whole;
+    const unit = SINGULAR_UNIT[rawUnit.toLowerCase()] ?? rawUnit;
+    const repaired = repairAmount(q, unit, tail ?? "") ?? { quantity: q, unit };
+    const amount =
+      repaired.unit === "pinch" && repaired.quantity === 1
+        ? "a pinch"
+        : formatAmount(repaired.quantity, repaired.unit);
+    // "a pinch kosher salt" needs the "of" a unit word did without.
+    const of = repaired.unit === "pinch" && tail && !/^\s+of\b/i.test(tail) ? " of" : "";
+    return `${amount}${of}${tail ?? ""}`;
+  });
+  // "2 medium large eggs": the size of the row and the grade of the egg, both
+  // printed. The grade is the one that describes the egg. Eggs only: "a medium
+  // large skillet" is somebody's pan, and not this function's to edit.
+  const tidy = out.replace(/\b(small|medium|large)\s+(?=(?:large|extra[- ]large|jumbo)\s+eggs?\b)/gi, "");
+  return tidy === text ? null : tidy;
+}
+
+/**
+ * Method text as a user should read it: no instruction to rinse raw meat, and
+ * every amount measurable. The one function the generator, the backfill and the
+ * pages that print steps all use, so they cannot disagree about a sentence.
+ */
+export function readableProse(text: string): string {
+  const rinsed = withoutRawProteinRinse(text) ?? text;
+  return repairProseAmounts(rinsed) ?? rinsed;
+}
+
+/**
+ * A recipe with its steps and description passed through readableProse.
+ *
+ * Applied where a page hands a stored dish to the screen, so a row the
+ * backfill has not reached yet still reads correctly — the stored rows are
+ * repaired by scripts/repair-steps-and-titles.ts, and Clara reads those.
+ */
+export function withReadableProse<T extends { steps?: string[] | null; description?: string | null }>(r: T): T {
+  return {
+    ...r,
+    ...(Array.isArray(r.steps) ? { steps: r.steps.map(readableProse) } : {}),
+    ...(typeof r.description === "string" ? { description: readableProse(r.description) } : {}),
+  };
 }
 
 /**
@@ -1320,27 +1387,47 @@ const EGG_METHODS: { pattern: RegExp; form: string }[] = [
   { pattern: /\bbaked?\b/i, form: "Baked Eggs" },
 ];
 
+/** The grade anywhere in the name — "Spinach and Large Eggs Wrap". */
+const GRADED_EGGS = /\b(?:large|medium|jumbo|extra[- ]large|free[- ]range)\s+(eggs?)\b/gi;
+/** A connector the join left capitalised: "Scrambled Eggs With Tomatoes". */
+const LEADING_CONNECTOR = /^(With|And|In|On|Over)\b/;
+
 /**
  * The dish's name with its grocery grading replaced by what the steps do, or
- * null when the title is fine or the steps do not say.
+ * null when the title is fine.
+ *
+ * When the steps do not name a method, the grade still goes and the method is
+ * not guessed: "Eggs with Spinach" is never wrong, and "Large Eggs with
+ * Spinach" survived the first pass on 21 dishes (QA cycle 17) because the
+ * steps said "whisk … cook undisturbed" and this function would say nothing
+ * at all rather than say less.
  */
 export function nameFromCookedForm(name: string, steps: readonly string[] | null | undefined): string | null {
-  if (!steps || steps.length === 0) return null;
-  if (!EGG_LED_TITLE.test(name)) return null;
-  // Only steps that mention the eggs. "Fried Eggs with Bell Peppers and Rolled
-  // Oats" came out of this function's first run, off a step that stir-fried the
-  // PEPPERS, and "Baked Eggs" off a step that baked the bread. A method lifted
-  // from the wrong sentence is exactly the wrong title this is meant to avoid.
-  const prose = steps.filter((s) => /\beggs?\b/i.test(s)).join(" ");
-  if (!prose) return null;
-  const method = EGG_METHODS.find((m) => m.pattern.test(prose));
-  // No method named: the eggs are in there somewhere and this function is not
-  // going to guess. A wrong method is worse than a dull title.
-  if (!method) return null;
-  const rest = name.replace(EGG_LED_TITLE, "").trim();
-  // "Omelette with Spinach", "Scrambled Eggs with Spinach"; and with nothing
-  // after it, just the dish.
-  return rest ? `${method.form} ${rest}`.replace(/\s+/g, " ").trim() : method.form;
+  const led = EGG_LED_TITLE.test(name);
+  if (!led && !new RegExp(GRADED_EGGS.source, "i").test(name)) return null;
+
+  let out = name;
+  if (led) {
+    // Only steps that mention the eggs. "Fried Eggs with Bell Peppers and
+    // Rolled Oats" came out of this function's first run, off a step that
+    // stir-fried the PEPPERS, and "Baked Eggs" off a step that baked the
+    // bread. A method lifted from the wrong sentence is exactly the wrong
+    // title this is meant to avoid.
+    const prose = (steps ?? []).filter((s) => /\beggs?\b/i.test(s)).join(" ");
+    const method = prose ? EGG_METHODS.find((m) => m.pattern.test(prose)) : undefined;
+    // The join puts a method before whatever followed the grade, and that
+    // remainder often opens with a connector that was never meant to start a
+    // word: "Scrambled Eggs With Sautéed Tomatoes" (QA cycle 17).
+    const rest = name.replace(EGG_LED_TITLE, "").trim().replace(LEADING_CONNECTOR, (c) => c.toLowerCase());
+    const head = method ? method.form : "Eggs";
+    // "Omelette with Spinach", "Scrambled Eggs with Spinach"; and with nothing
+    // after it, just the dish.
+    out = rest ? `${head} ${rest}` : head;
+  }
+  // The grade mid-name, where there is no method to put in its place.
+  out = out.replace(GRADED_EGGS, (_m, eggs: string) => eggs.charAt(0).toUpperCase() + eggs.slice(1));
+  out = out.replace(/\s+/g, " ").trim();
+  return out === name ? null : out;
 }
 
 // ── Rinsing raw meat ─────────────────────────────────────────────────────────

@@ -27,6 +27,9 @@ export function displayDishName(name: string): string {
  */
 const NEVER_PLURAL = /^(g|gr|gram|grams|kg|ml|l|oz|lb|lbs|tsp|tbsp)$/i;
 const DROP_ENTIRELY = /^(whole|each|unit|units|item|items)$/i;
+// A size is an adjective standing where a unit would go — "2 medium" is two
+// medium somethings, and "2 mediums" (QA cycle 17) is not English.
+const SIZE_WORD = /^(small|medium|large|extra[- ]large|jumbo)$/i;
 
 /**
  * A quantity as a cook writes it: ⅓, not 0.3333.
@@ -75,7 +78,7 @@ export function formatAmount(quantity: number | null | undefined, unit: string |
   if (!u || DROP_ENTIRELY.test(u)) return q;
   // Pluralise on the NUMBER, not on its printed form: "½ cup" is singular and
   // so is "1 cup", while "1½ cups" is not.
-  if (NEVER_PLURAL.test(u) || quantity <= 1) return `${q} ${u}`;
+  if (NEVER_PLURAL.test(u) || SIZE_WORD.test(u) || quantity <= 1) return `${q} ${u}`;
   // Already plural, or a word ending that pluralises irregularly enough to
   // leave alone.
   if (/s$/i.test(u)) return `${q} ${u}`;

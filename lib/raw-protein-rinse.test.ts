@@ -111,10 +111,22 @@ test("a grading word becomes the method the steps describe", () => {
 });
 
 test("it leaves alone what it cannot name", () => {
-  // Steps that never say what happens to the eggs: a dull title beats a wrong
-  // one.
-  assert.equal(nameFromCookedForm("Large Eggs with Spinach", ["Cook everything together and serve."]), null);
+  // Steps that never say what happens to the eggs: the method is not guessed —
+  // a dull title beats a wrong one — but the grading word still goes, because
+  // "Eggs with Spinach" is never wrong (21 dishes kept "Large Eggs…" in cycle
+  // 17 because this returned null here).
+  assert.equal(nameFromCookedForm("Large Eggs with Spinach", ["Cook everything together and serve."]), "Eggs with Spinach");
+  assert.equal(nameFromCookedForm("Large Eggs with Bell Peppers and Carrots", null), "Eggs with Bell Peppers and Carrots");
   // And titles that were never a grocery line.
   assert.equal(nameFromCookedForm("Ground Beef with Rice and Broccoli", ["Brown the beef."]), null);
   assert.equal(nameFromCookedForm("Spinach and Feta Scramble", ["Scramble the eggs."]), null);
+  assert.equal(nameFromCookedForm("Whole Wheat Toast with Egg Whites", ["Toast."]), null);
+});
+
+test("the grade goes mid-name too, and a joined connector is not capitalised", () => {
+  assert.equal(nameFromCookedForm("Spinach and Large Eggs Wrap", ["Wrap it."]), "Spinach and Eggs Wrap");
+  assert.equal(
+    nameFromCookedForm("Large Eggs With Sautéed Tomatoes", ["Scramble the eggs in the pan."]),
+    "Scrambled Eggs with Sautéed Tomatoes"
+  );
 });

@@ -51,6 +51,9 @@ test("an amount reads the way a person would write it", () => {
   // "whole" stands in for the food and reads better as a bare count.
   assert.equal(formatAmount(2, "whole"), "2");
   assert.equal(formatAmount(1, "unit"), "1");
+  // A size is an adjective: "2 medium", never "2 mediums" (QA cycle 17).
+  assert.equal(formatAmount(2, "medium"), "2 medium");
+  assert.equal(formatAmount(3, "large"), "3 large");
   // Already plural, and no unit at all.
   assert.equal(formatAmount(2, "slices"), "2 slices");
   assert.equal(formatAmount(2, null), "2");

@@ -142,3 +142,34 @@ test("the unit agrees with the number, not with its printed form", () => {
   assert.equal(formatAmount(150, "g"), "150 g");
   assert.equal(formatAmount(0.5, "teaspoon"), "½ teaspoon");
 });
+
+// ── The same rule, in the sentence ───────────────────────────────────────────
+//
+// QA cycle 17: the row repair never reached the method text, and 185 amounts
+// like these were still printed in 115 dishes' steps.
+import { repairProseAmounts } from "./dish-plausibility";
+
+test("decimal amounts in a step are written as a cook measures them", () => {
+  assert.equal(
+    repairProseAmounts("Season with 0.0625 teaspoon kosher salt and pepper."),
+    "Season with a pinch of kosher salt and pepper."
+  );
+  assert.equal(
+    repairProseAmounts("Pour 0.33 cup of mung bean plant-based egg into the pan."),
+    "Pour ⅓ cup of mung bean plant-based egg into the pan."
+  );
+  assert.equal(repairProseAmounts("Spray with 0.25 gr of avocado oil."), "Spray with a pinch of avocado oil.");
+  assert.equal(repairProseAmounts("Add 1.5 cups of broth."), "Add 1½ cups of broth.");
+  assert.equal(repairProseAmounts("Stir in 0.37 tablespoons olive oil."), "Stir in ⅓ tablespoon olive oil.");
+});
+
+test("what a person wrote is left alone", () => {
+  assert.equal(repairProseAmounts("Add 2 cups of broth and 400 g of rice."), null);
+  assert.equal(repairProseAmounts("Bake at 375°F for 12.5 minutes."), null);
+  assert.equal(repairProseAmounts("Heat 1 tablespoon olive oil over medium heat."), null);
+  assert.equal(repairProseAmounts("Use a medium large skillet."), null);
+});
+
+test("a size and a grade are not both printed", () => {
+  assert.equal(repairProseAmounts("Pour 2 medium large eggs into a bowl."), "Pour 2 large eggs into a bowl.");
+});

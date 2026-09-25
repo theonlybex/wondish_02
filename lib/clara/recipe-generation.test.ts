@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { passesSanity, chunkTopUpRequests, freeStaplesFor, proteinOptionsFor, titlePromisesMissingFood, breakfastIsQuickEnough, repairProse } from "./recipe-generation";
+import { passesSanity, chunkTopUpRequests, freeStaplesFor, proteinOptionsFor, titlePromisesMissingFood, breakfastIsQuickEnough, repairProse, repairForStorage } from "./recipe-generation";
 import { buildDietMatchers, derivePatientBans } from "../diet-match";
 import { validateFridgeRecipeSnapshot, type FridgeRecipe } from "../fridge";
 
@@ -368,4 +368,27 @@ test("repairProse lengthens the name rather than colliding with one already take
 
 test("repairProse gives up when the dish has no nameable ingredient", () => {
   assert.equal(repairProse(prosed("Lemon Salt Bowl", ["salt", "water"]), FOOD_VOCAB, new Set()), null);
+});
+
+// QA cycle 17: a freshly generated week carried `0.1 teaspoon` of pepper on 16
+// rows. The amount rule existed and the write path never called it.
+test("what is stored is measurable in the rows, the steps and the description", () => {
+  const stored = repairForStorage(
+    dish({
+      amounts: [
+        { name: "black pepper", quantity: 0.1, unit: "teaspoon" },
+        { name: "salt", quantity: 0.0625, unit: "teaspoon" },
+        { name: "brown rice", quantity: 0.33, unit: "cup" },
+      ],
+      steps: ["Rinse the chicken breast and pat dry.", "Season with 0.0625 teaspoon salt and 0.1 teaspoon black pepper."],
+      description: "Rinse the chicken breast, then cook with 0.33 cup brown rice.",
+    })
+  );
+  assert.deepEqual(stored.amounts, [
+    { name: "black pepper", quantity: 2, unit: "pinch" }, // under the smallest spoon
+    { name: "salt", quantity: 1, unit: "pinch" },
+    { name: "brown rice", quantity: 0.33, unit: "cup" }, // already ⅓ — untouched
+  ]);
+  assert.deepEqual(stored.steps, ["Pat the chicken breast dry.", "Season with a pinch of salt and 2 pinches of black pepper."]);
+  assert.equal(stored.description, "Pat the chicken breast dry, then cook with ⅓ cup brown rice.");
 });

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/queries";
 import { computeAllMetrics, computeDailyMacros, gradualDailyCals, maxDailyDeficit, resolveMacroProfile, resolvePlanDirection, resolveSex, type CaloricProfileInput } from "@/lib/caloric-engine";
 import DailyMealPlanView from "@/components/meal-plan/DailyMealPlanView";
+import { withReadableProse } from "@/lib/dish-plausibility";
 // import Link from "next/link"; // only used by the hidden Weekly view link
 
 export const metadata = { title: "Meal Plan" };
@@ -75,7 +76,10 @@ export default async function MealPlanPage({
   // Show only the active plan version. First-time generation is triggered
   // client-side by DailyMealPlanView (Strategy B) — the page never generates.
   const activeVersion = patient?.activePlanVersion ?? 0;
-  const finalMenus = menus.filter((m) => m.planVersion === activeVersion);
+  const finalMenus = menus
+    .filter((m) => m.planVersion === activeVersion)
+    // Method text as the user should read it (see withReadableProse).
+    .map((m) => (m.recipe ? { ...m, recipe: withReadableProse(m.recipe) } : m));
 
   const activeMeals = (dayJournal?.meals ?? []).filter((m) => !m.skipped && m.recipeId);
   const loggedRecipeIds = activeMeals.map((m) => m.recipeId as string);

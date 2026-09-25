@@ -12,6 +12,7 @@ import { normalizeCuisine } from "@/lib/clara/recipe-generation";
 import { guardAiSpend, tierFor } from "@/lib/ai-budget";
 import { getExchangesForRange, splitByStatus } from "@/lib/plan-exchanges";
 import { addDays } from "date-fns";
+import { withReadableProse } from "@/lib/dish-plausibility";
 
 // 300s (Vercel's current default ceiling) not 60: a real week generation was
 // measured at 55-73s, so the old cap killed it mid-build — and it had also
@@ -172,7 +173,9 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    menus,
+    // Method text as the user should read it, whether or not the stored row
+    // has been repaired yet (see withReadableProse).
+    menus: menus.map((m) => (m.recipe ? { ...m, recipe: withReadableProse(m.recipe) } : m)),
     mealPlanStartDate: patient.mealPlanStartDate,
     loggedRecipeIds,
     mealRatings,
