@@ -331,7 +331,7 @@ export default function PantryClient({
         type="button"
         aria-pressed={active}
         onClick={() => toggle(ing)}
-        className={`inline-flex items-center min-h-[44px] sm:min-h-0 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+        className={`inline-flex items-center min-h-[44px] px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
           active
             ? "bg-primary text-white shadow-sm shadow-primary/30"
             : "bg-[#F3F2FF] text-[#848181] hover:bg-primary/10 hover:text-primary"
@@ -385,7 +385,7 @@ export default function PantryClient({
           type="button"
           onClick={() => setView(v)}
           aria-pressed={view === v}
-          className={`inline-flex items-center justify-center min-h-[44px] sm:min-h-0 px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+          className={`inline-flex items-center justify-center min-h-[44px] px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
             view === v ? "bg-white text-primary shadow-sm" : "text-[#848181] hover:text-primary"
           }`}
         >
@@ -740,7 +740,7 @@ export default function PantryClient({
                             onClick={() => toggle({ id: it.id, name: it.name })}
                             aria-pressed={sel}
                             // ≥44px tap target on phones; desktop keeps the denser pill.
-                            className={`min-h-[44px] sm:min-h-0 px-3.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${sel ? "text-white" : "text-[#5F1C35] bg-white hover:bg-[#812549]/10"}`}
+                            className={`min-h-[44px] px-3.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${sel ? "text-white" : "text-[#5F1C35] bg-white hover:bg-[#812549]/10"}`}
                             style={sel ? { background: "#812549", borderColor: "#812549" } : { borderColor: "rgba(129,37,73,0.3)" }}
                           >
                             {sel ? "✓ " : ""}{it.favorite ? "★ " : ""}{it.name}

@@ -839,7 +839,7 @@ export default function DailyMealPlanView({
                     type="button"
                     onClick={() => void setCuisineForDay(c)}
                     disabled={cuisineDayLoading}
-                    className="min-h-[44px] sm:min-h-0 px-3.5 sm:px-3 py-1 rounded-full text-xs font-semibold border border-[#812549]/30 text-[#5F1C35] bg-white hover:bg-[#812549] hover:text-white transition-colors disabled:opacity-50"
+                    className="min-h-[44px] px-3.5 sm:px-3 py-1 rounded-full text-xs font-semibold border border-[#812549]/30 text-[#5F1C35] bg-white hover:bg-[#812549] hover:text-white transition-colors disabled:opacity-50"
                   >
                     {c}
                   </button>

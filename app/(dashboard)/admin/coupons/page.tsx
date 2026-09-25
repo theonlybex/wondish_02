@@ -382,7 +382,7 @@ export default function AdminCouponsPage() {
                               onClick={() => setOpenId(redeemersOpen ? null : c.id)}
                               aria-expanded={redeemersOpen}
                               aria-controls={`redeemers-${c.id}`}
-                              className="underline underline-offset-2 min-h-[44px] sm:min-h-0 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded"
+                              className="underline underline-offset-2 min-h-[44px] py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded"
                               style={{ color: "#812549" }}
                             >
                               {redeemersOpen ? "Hide who used it" : `Who used it (${c.redemptions.length})`}

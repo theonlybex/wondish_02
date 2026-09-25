@@ -109,7 +109,19 @@
  * VISUAL size is untouched and nothing moves on the page — the alternative,
  * making every control physically bigger, would redesign five screens.
  */
-@media (max-width: 480px) {
+/* Any pointer that is not precise, at any width.
+ *
+ * This was `max-width: 480px`, and QA measured the exact boundary: at 481px
+ * every expander switches off. A phone in LANDSCAPE is 844x390 — the same
+ * finger, the same buttons, none of the hit area — so the toggle went back to
+ * 28x26 and "New week" to 84x28, the two sizes this rule was written for. A
+ * tablet lost it too.
+ *
+ * `pointer: coarse` asks the real question (is this a finger?) instead of
+ * guessing from width, and the width query stays as the fallback for browsers
+ * that report no pointer at all. A mouse keeps the compact hit areas, which is
+ * what the visual design was drawn for. */
+@media (pointer: coarse), (max-width: 480px) {
   .touch-target {
     position: relative;
   }

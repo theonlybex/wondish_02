@@ -15,12 +15,18 @@ const variants = {
 };
 
 const sizes = {
-  // min-h-11 (44px) on phones only. QA measured "New week" at 84x28 and
-  // /overview's four "+ Add" buttons at 37x19 — under the 44px minimum a finger
-  // can reliably hit. The desktop sizes are unchanged: a mouse does not need it,
-  // and growing every small button everywhere would redesign five screens.
-  sm: "px-3 py-1.5 text-xs rounded-lg min-h-11 sm:min-h-0",
-  md: "px-4 py-2 text-sm rounded-xl min-h-11 sm:min-h-0",
+  // min-h-11 (44px) wherever the pointer is a FINGER. QA measured "New week" at
+  // 84x28 and /overview's four "+ Add" buttons at 37x19 — under the minimum a
+  // finger can reliably hit. A mouse does not need it, and growing every small
+  // button everywhere would redesign five screens.
+  //
+  // This was `sm:min-h-0`, which asks about WIDTH. A phone in landscape is
+  // 844px wide holding the same finger, so the floor switched off exactly when
+  // the screen got shorter and the buttons got no easier to hit: QA measured
+  // "Generate a new week" back at 780x28 there. `(pointer: coarse)` asks the
+  // question that actually matters.
+  sm: "px-3 py-1.5 text-xs rounded-lg [@media(pointer:coarse)]:min-h-11",
+  md: "px-4 py-2 text-sm rounded-xl [@media(pointer:coarse)]:min-h-11",
   lg: "px-6 py-3 text-sm rounded-xl",
 };
 

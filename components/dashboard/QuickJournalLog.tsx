@@ -184,11 +184,25 @@ export default function QuickJournalLog() {
        *
        * Five 6x6px buttons with no accessible name, no role and their state
        * carried only by colour and width (QA 2026-09-25). Now a real tablist:
-       * each tab says which step it is and whether it is current, and the hit
-       * area is padded out to 44px while the dot stays 6px on screen — the
-       * visual design is the same, the target is not.
+       * each tab says which step it is and whether it is current, and the dot
+       * stays small on screen while the button around it is a real target.
+       *
+       * The negative-margin trick that grew the hit area HORIZONTALLY was
+       * removed the same day it shipped. `-mx-[13px] px-[13px]` inside a 6px
+       * gap made each target 26px wider than its slot, so consecutive targets
+       * overlapped by 20px and later siblings painted over earlier ones: QA
+       * tapped the centre of the second visible dot and landed on step THREE,
+       * and the fourth landed on step five. A target that grows into its
+       * neighbour is worse than a small one — it moves the user somewhere they
+       * did not ask to go, and the pixels look fine in a report.
+       *
+       * So the width is real and the gap is real: 32px buttons, 8px apart
+       * (5x32 + 4x8 = 192px, comfortable at 390px). Still under 44 wide — five
+       * 44px targets need 220px plus gaps — and that is recorded in BACKLOG
+       * §0b rather than faked with padding. Height is a true 44 via the
+       * vertical padding, which has no neighbour to collide with.
        */}
-      <div className="flex items-center gap-1.5 mb-5" role="tablist" aria-label="Journal steps">
+      <div className="flex items-center gap-2 mb-5" role="tablist" aria-label="Journal steps">
         {STEPS.map((s, i) => (
           <button
             key={s}
@@ -197,7 +211,7 @@ export default function QuickJournalLog() {
             aria-selected={i === stepIndex}
             aria-label={`Step ${i + 1} of ${STEPS.length}${i === stepIndex ? " (current)" : i < stepIndex ? " (done)" : ""}`}
             onClick={() => { setDirection(i > stepIndex ? 1 : -1); setStepIndex(i); }}
-            className="relative grid place-items-center -my-[19px] py-[19px] -mx-[13px] px-[13px] transition-all duration-300"
+            className="relative grid place-items-center w-8 -my-[19px] py-[19px] transition-all duration-300"
           >
             <span
               aria-hidden="true"
