@@ -16,6 +16,34 @@ mine were wrong in the direction that deletes good food. And re-test the fix
 itself: three separate cycles found a previous cycle's fix had never taken
 effect.
 
+## How a cycle runs
+
+Fixed order, every time. The point of steps 1 and 2 is that the defect list is
+edited at the START of a cycle, not written at the end of one: a list nobody
+opens stops being true, and that is how a fix gets reported as done twice while
+it is still on screen.
+
+1. **Edit the list** — tick off what the last cycle actually SOLVED. Verified,
+   not claimed: re-run the thing, or read the row back out of the database.
+2. **Add** what the last cycle's bots found. Every finding, including the ones
+   being refused by design — those go under "Refused by design" with the
+   measurement that settled them, so nobody re-opens them as bugs.
+3. **Write the plan** for solving them: what changes, what proves it, in order.
+4. **Solve them.**
+5. **Deploy bots against each FIXED feature by name.** Every fix is a candidate
+   defect. Three separate cycles found a previous cycle's fix had never taken
+   effect, and cycle 15 found the headline fix of the commit it was testing
+   broken by the half of the wire the test did not watch.
+6. **Continue with user-experience testing** — the whole journey, the misinputs,
+   the sections above.
+7. Repeat until a cycle finds nothing.
+
+The list is `BACKLOG.md` §0b. Two standing conditions on step 5: each bot gets
+its OWN fixture account (a shared one arrives with the allowances already spent
+and can only verify refusals), and HEAD is frozen for the whole window
+**including the working tree** — the dev server hot-reloads uncommitted edits
+into a bot's later measurements.
+
 ## A. Cold start (fresh account, no Account row)
 
 1. First sign-in routes into onboarding, not a dashboard.
