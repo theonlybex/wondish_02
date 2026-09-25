@@ -397,6 +397,11 @@ or reproduced; where a bot could not pin something down, it says so.
       ~250 kcal smaller than the slot. Next lever, if wanted: let a lunch or
       dinner take a lean side when the slot is under 85% (today's filler waits
       for 70%). Not done blind — it adds a row to many profiles' days.
+      **Tried and measured in cycle 21: no effect** (2 weeks, still 74-84%) —
+      every filler candidate breaks the day's fat ceiling, so a lower threshold
+      finds nothing to add; reverted. What is left is a nutrition decision:
+      for a high-protein target on a fatty basket, is 80% of calories at
+      ~113-122% of fat the right trade, or should the fat ceiling give way?
 - [x] **Generated dishes were briefed "~0% protein"** (fixed in cycle 19);
       re-measured here: Clara's lean dishes come back at 23-31% protein.
 - Development responses now carry what the top-up asked for and kept
