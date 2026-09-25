@@ -178,6 +178,22 @@ export function quotaExceededBody(kind: AiGuardKind, tier: AiTier): QuotaExceede
   return { error, code: "quota", kind, tier, limit, window: cfg.window, upgrade };
 }
 
+/**
+ * An allowance as a frequency: "Once a day", "Twice a day", "3 times a day".
+ *
+ * /pantry's cook-my-day card said "Once a day" in hardcoded text. Free gets 1,
+ * beta 2 and Plus 3, so the line was wrong for two thirds of the tiers — and
+ * wrong in the direction that hides what somebody already paid for. The number
+ * has to come from the same table the guard enforces.
+ */
+export function allowanceFrequency(kind: AiGuardKind, tier: AiTier): string {
+  const { max, window } = limitFor(kind, tier);
+  const per = window === "week" ? "a week" : "a day";
+  if (max === 1) return `Once ${per}`;
+  if (max === 2) return `Twice ${per}`;
+  return `${max} times ${per}`;
+}
+
 export type AiGuardResult =
   | { ok: true; tier: AiTier }
   | { ok: false; status: number; error: string; body: QuotaExceededBody | { error: string } };

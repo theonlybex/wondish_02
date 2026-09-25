@@ -28,14 +28,57 @@ export function displayDishName(name: string): string {
 const NEVER_PLURAL = /^(g|gr|gram|grams|kg|ml|l|oz|lb|lbs|tsp|tbsp)$/i;
 const DROP_ENTIRELY = /^(whole|each|unit|units|item|items)$/i;
 
+/**
+ * A quantity as a cook writes it: ⅓, not 0.3333.
+ *
+ * Recipe amounts are stored as floats because they are scaled by arithmetic,
+ * and a third of a cup has no exact float. The catalog holds 0.33, 0.3333 and
+ * 0.666666, all meaning the mark on the measuring cup — and the card printed
+ * them literally. The amount backfill of 2026-09-25 made this urgent rather
+ * than cosmetic: snapping to real kitchen fractions writes MORE thirds, so a
+ * repair aimed at "0.37 tablespoon" would have shipped "0.3333 tablespoon" if
+ * the display had stayed as it was.
+ *
+ * Only the fractions a measuring set has (see KITCHEN_FRACTIONS in
+ * lib/dish-plausibility.ts), and only within a tolerance wide enough to catch
+ * the short forms already stored. Anything else prints as the number it is —
+ * a made-up fraction would be a lie about an amount, which is the whole thing
+ * this is trying to stop.
+ */
+const VULGAR: [number, string][] = [
+  [1 / 8, "⅛"],
+  [1 / 4, "¼"],
+  [1 / 3, "⅓"],
+  [1 / 2, "½"],
+  [2 / 3, "⅔"],
+  [3 / 4, "¾"],
+];
+
+export function formatQuantity(quantity: number): string {
+  if (!Number.isFinite(quantity) || quantity <= 0) return `${quantity}`;
+  const whole = Math.floor(quantity + 1e-9);
+  const frac = quantity - whole;
+  if (frac < 0.011) return `${whole}`;
+  const match = VULGAR.find(([v]) => Math.abs(frac - v) < 0.011);
+  if (!match) {
+    // Not a kitchen fraction: print at most two decimals, and without the
+    // trailing zeros a raw float carries.
+    return `${Math.round(quantity * 100) / 100}`;
+  }
+  return whole > 0 ? `${whole}${match[1]}` : match[1];
+}
+
 export function formatAmount(quantity: number | null | undefined, unit: string | null | undefined): string {
   if (quantity == null || !Number.isFinite(quantity)) return "";
   const u = (unit ?? "").trim();
-  if (!u || DROP_ENTIRELY.test(u)) return `${quantity}`;
-  if (NEVER_PLURAL.test(u) || quantity === 1) return `${quantity} ${u}`;
+  const q = formatQuantity(quantity);
+  if (!u || DROP_ENTIRELY.test(u)) return q;
+  // Pluralise on the NUMBER, not on its printed form: "½ cup" is singular and
+  // so is "1 cup", while "1½ cups" is not.
+  if (NEVER_PLURAL.test(u) || quantity <= 1) return `${q} ${u}`;
   // Already plural, or a word ending that pluralises irregularly enough to
   // leave alone.
-  if (/s$/i.test(u)) return `${quantity} ${u}`;
-  if (/(ch|sh|x|z)$/i.test(u)) return `${quantity} ${u}es`; // pinch → pinches
-  return `${quantity} ${u}s`;
+  if (/s$/i.test(u)) return `${q} ${u}`;
+  if (/(ch|sh|x|z)$/i.test(u)) return `${q} ${u}es`; // pinch → pinches
+  return `${q} ${u}s`;
 }

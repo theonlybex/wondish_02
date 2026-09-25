@@ -57,9 +57,17 @@ interface CookDayResult {
 export default function PantryClient({
   isOnboarding,
   initialTab = "have",
+  cookDayFrequency,
 }: {
   isOnboarding: boolean;
   initialTab?: "have" | "buy";
+  /**
+   * How often THIS user may cook a day — "Once a day" on free, "Twice a day"
+   * on a coupon, "3 times a day" on Plus. It was the string "Once a day" for
+   * everybody, which is wrong for two tiers out of three and hides an
+   * allowance somebody is paying for. Server-resolved; see lib/ai-budget.ts.
+   */
+  cookDayFrequency: string;
 }) {
   // Top switch: "What I have" (pick ingredients → suggestions) vs "What to buy"
   // (this week's shopping list from the plan — the former standalone screen).
@@ -847,7 +855,7 @@ export default function PantryClient({
               to say yes, while three other surfaces offered the link. */}
           <QuotaError message={cookError} upgrade={cookUpgrade} tone="onDark" className="mt-3" />
           <p className="text-[10px] mt-3" style={{ color: "rgba(255,255,255,0.38)" }}>
-            Once a day · uses only your ingredients · allergies always respected
+            {cookDayFrequency} · uses only your ingredients · allergies always respected
           </p>
         </section>
       )}

@@ -483,9 +483,22 @@ export default function DailyMealPlanView({
   const [newWeekError, setNewWeekError] = useState("");
   // Set when the 429 body says the premium tier has a higher weekly limit.
   const [newWeekUpgrade, setNewWeekUpgrade] = useState(false);
-  const generateNewWeek = async () => {
+  const [newWeekFrom, setNewWeekFrom] = useState<"banner" | "empty" | "sidebar">("sidebar");
+  /**
+   * Which control asked for the week — the refusal renders beside that one and
+   * nowhere else.
+   *
+   * There are three "generate a new week" controls on this screen (the amber
+   * profile-changed banner, the empty-state card, the sidebar) and all three
+   * rendered the same `newWeekError`. A weekly-limit refusal therefore appeared
+   * twice at once, and the amber banner — whose own sentence is about a stale
+   * profile — carried a quota error about something else. A screen reader
+   * announced it twice, both times with role="alert" (QA 2026-09-25).
+   */
+  const generateNewWeek = async (from: "banner" | "empty" | "sidebar" = "sidebar") => {
     if (newWeekLoading) return;
     setNewWeekLoading(true);
+    setNewWeekFrom(from);
     setNewWeekError("");
     setNewWeekUpgrade(false);
     selectCard(null);
@@ -752,12 +765,36 @@ export default function DailyMealPlanView({
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-4 text-sm">
           <div className="flex items-center gap-3">
             <span className="flex-1 text-amber-800">Your profile changed — generate a new week to apply it to your meal plan.</span>
-            <Button size="sm" loading={newWeekLoading} onClick={() => void generateNewWeek()}>New week</Button>
+            {/* The same guard the sidebar's button has. This one was left
+                enabled, so the identical click did nothing here and explained
+                itself there — two buttons for one action must refuse the same
+                way or the disabled one reads as broken. */}
+            <Button
+              size="sm"
+              loading={newWeekLoading}
+              aria-disabled={basketStatus ? !basketStatus.ready : false}
+              aria-describedby={basketStatus && !basketStatus.ready ? "new-week-blocker-banner" : undefined}
+              onClick={() => {
+                if (basketStatus && !basketStatus.ready) return;
+                void generateNewWeek("banner");
+              }}
+              className={basketStatus && !basketStatus.ready ? "opacity-50 cursor-not-allowed" : undefined}
+            >
+              New week
+            </Button>
           </div>
+          {basketStatus && !basketStatus.ready && (
+            <p id="new-week-blocker-banner" className="text-[11px] mt-2 leading-snug text-amber-800">
+              {basketBlockerText(basketStatus)}{" "}
+              <Link href="/pantry" className="underline font-semibold">open Ingredients</Link>
+            </p>
+          )}
           {/* The error used to render only next to the bottom "Generate a new
               week" button — off-screen from this banner on a phone, so a
               weekly-limit 429 looked like a dead tap (mobile QA 2026-09-11). */}
-          <QuotaError message={newWeekError} upgrade={newWeekUpgrade} className="mt-2" />
+          {newWeekFrom === "banner" && (
+            <QuotaError message={newWeekError} upgrade={newWeekUpgrade} className="mt-2" />
+          )}
         </div>
       )}
 
@@ -929,10 +966,12 @@ export default function DailyMealPlanView({
                 <a href="/pantry" className="font-semibold underline" style={{ color: "#812549" }}>edit the list</a> — then
                 generate your whole week.
               </p>
-              <QuotaError message={newWeekError} upgrade={newWeekUpgrade} className="mb-2" />
+              {newWeekFrom === "empty" && (
+                <QuotaError message={newWeekError} upgrade={newWeekUpgrade} className="mb-2" />
+              )}
               <button
                 type="button"
-                onClick={() => void generateNewWeek()}
+                onClick={() => void generateNewWeek("empty")}
                 className="px-4 py-2 rounded-full text-xs font-semibold text-white"
                 style={{ background: "#812549" }}
               >
@@ -1400,7 +1439,7 @@ export default function DailyMealPlanView({
                 aria-describedby={basketStatus && !basketStatus.ready ? "new-week-blocker" : undefined}
                 onClick={() => {
                   if (basketStatus && !basketStatus.ready) return;
-                  void generateNewWeek();
+                  void generateNewWeek("sidebar");
                 }}
                 className={`w-full${basketStatus && !basketStatus.ready ? " opacity-50 cursor-not-allowed" : ""}`}
               >
@@ -1414,7 +1453,9 @@ export default function DailyMealPlanView({
                   </Link>
                 </p>
               ) : (
-                <QuotaError message={newWeekError} upgrade={newWeekUpgrade} className="mt-1.5" />
+                newWeekFrom === "sidebar" && (
+                  <QuotaError message={newWeekError} upgrade={newWeekUpgrade} className="mt-1.5" />
+                )
               )}
             </div>
           )}

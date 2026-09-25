@@ -102,3 +102,43 @@ test("snapping down never exceeds the input — the salt and fat caps depend on 
   // …while "near" may round up to the whole: 0.95 cup is a cup.
   assert.equal(snapToKitchenFraction(0.95), 1);
 });
+
+// ── How the repaired amounts READ ────────────────────────────────────────────
+//
+// Snapping to kitchen fractions stores more thirds, and a third has no exact
+// float: the rows now hold 0.3333 and 0.6667. Printed literally that is worse
+// than the "0.37 tablespoon" the backfill was written to remove, so the repair
+// is only finished when the card shows ⅓.
+
+import { formatAmount, formatQuantity } from "./dish-name";
+
+test("kitchen fractions print as fractions", () => {
+  assert.equal(formatQuantity(0.3333), "⅓");
+  assert.equal(formatQuantity(0.33), "⅓");
+  assert.equal(formatQuantity(0.6667), "⅔");
+  assert.equal(formatQuantity(0.66), "⅔");
+  assert.equal(formatQuantity(0.125), "⅛");
+  assert.equal(formatQuantity(0.25), "¼");
+  assert.equal(formatQuantity(0.5), "½");
+  assert.equal(formatQuantity(0.75), "¾");
+  assert.equal(formatQuantity(1.5), "1½");
+  assert.equal(formatQuantity(2), "2");
+});
+
+test("a number that is not a kitchen fraction stays a number", () => {
+  // Inventing a fraction would be a lie about an amount.
+  assert.equal(formatQuantity(0.45), "0.45");
+  assert.equal(formatQuantity(150), "150");
+  assert.equal(formatQuantity(2.4), "2.4");
+});
+
+test("the unit agrees with the number, not with its printed form", () => {
+  assert.equal(formatAmount(0.3333, "cup"), "⅓ cup");
+  assert.equal(formatAmount(1, "cup"), "1 cup");
+  assert.equal(formatAmount(1.5, "cup"), "1½ cups");
+  assert.equal(formatAmount(2, "tablespoon"), "2 tablespoons");
+  assert.equal(formatAmount(1, "pinch"), "1 pinch");
+  assert.equal(formatAmount(2, "pinch"), "2 pinches");
+  assert.equal(formatAmount(150, "g"), "150 g");
+  assert.equal(formatAmount(0.5, "teaspoon"), "½ teaspoon");
+});

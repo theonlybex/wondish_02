@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import PantryClient from "@/components/pantry/PantryClient";
+import { allowanceFrequency, resolveAiTier } from "@/lib/ai-budget";
 
 export const metadata = { title: "Ingredients" };
 
@@ -18,6 +19,11 @@ export default async function PantryPage({
     select: { id: true },
   });
   if (!patient) redirect("/profile?onboarding=true");
+
+  // The cook-my-day card states how often the feature can be used, and the
+  // number differs by tier (free 1, beta 2, Plus 3). Read from the same table
+  // the guard enforces rather than written into the copy.
+  const cookDayFrequency = allowanceFrequency("cookDay", await resolveAiTier(userId));
 
   const isOnboarding = searchParams.onboarding === "1";
   const initialTab = searchParams.tab === "buy" ? "buy" : "have";
@@ -52,7 +58,7 @@ export default async function PantryPage({
       </div>
 
       <div className="ov" style={{ animationDelay: "80ms" }}>
-        <PantryClient isOnboarding={isOnboarding} initialTab={initialTab} />
+        <PantryClient isOnboarding={isOnboarding} initialTab={initialTab} cookDayFrequency={cookDayFrequency} />
       </div>
     </div>
   );

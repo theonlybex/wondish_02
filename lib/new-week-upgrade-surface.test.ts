@@ -45,6 +45,7 @@ const SURFACE_REL = relative(REPO_ROOT, SURFACE_FILE);
 // The names this test is keyed on. Renaming any of them in the component is
 // fine — update these constants in the same change.
 const ERROR_STATE = "newWeekError";
+const SOURCE_STATE = "newWeekFrom";
 const UPGRADE_STATE = "newWeekUpgrade";
 const UPGRADE_SETTER = "setNewWeekUpgrade";
 const SURFACE = "QuotaError";
@@ -276,5 +277,53 @@ test(`${UPGRADE_STATE} is fed from the 429 body's upgrade flag`, () => {
     `no ${UPGRADE_SETTER}(…) call reads the response body's \`upgrade\` field. ` +
       `quotaExceededBody() sets upgrade: true exactly when premium would grant more (lib/ai-budget.ts); ` +
       `generateNewWeek must store it: ${UPGRADE_SETTER}(data?.code === "quota" && data?.upgrade === true).`
+  );
+});
+
+// ── One refusal, beside the control that was pressed ─────────────────────────
+//
+// The tests above prove every surface offers the upgrade. They were green
+// while the SAME refusal rendered on three surfaces at once: a weekly-limit
+// 429 appeared in the sidebar and again inside the amber "Your profile
+// changed" banner, which then carried a quota error about something else
+// entirely. Two role="alert" elements with identical text announce twice (QA
+// 2026-09-25).
+//
+// The invariant: every render site is gated on `newWeekFrom`, the state that
+// records which button asked. A new fourth surface that forgets the gate shows
+// its error alongside everyone else's, which is the bug.
+test("each newWeekError surface is gated on which control asked for the week", () => {
+  const sf = parse();
+  const sites = collect(sf, (n): n is ts.JsxSelfClosingElement | ts.JsxOpeningElement =>
+    (ts.isJsxSelfClosingElement(n) || ts.isJsxOpeningElement(n)) &&
+    n.tagName.getText() === SURFACE &&
+    n.attributes.properties.some(
+      (a) => ts.isJsxAttribute(a) && a.name.getText() === "message" && a.initializer?.getText().includes(ERROR_STATE)
+    )
+  );
+  assert.ok(sites.length >= 2, `expected several <${SURFACE}> sites in ${REL}, found ${sites.length}`);
+
+  const ungated: string[] = [];
+  for (const site of sites) {
+    // Walk outwards looking for a condition that mentions the source state.
+    let node: ts.Node | undefined = site;
+    let gated = false;
+    while (node && !gated) {
+      if (ts.isBinaryExpression(node) || ts.isConditionalExpression(node) || ts.isJsxExpression(node)) {
+        if (node.getText().includes(SOURCE_STATE)) gated = true;
+      }
+      node = node.parent;
+    }
+    if (!gated) ungated.push(at(sf, site));
+  }
+
+  assert.deepEqual(
+    ungated,
+    [],
+    `These <${SURFACE}> sites render the new-week refusal without checking which control asked:\n` +
+      ungated.map((l) => `  ${l}`).join("\n") +
+      `\n\nThree buttons on this screen generate a week. Gate each site on \`${SOURCE_STATE}\` so the ` +
+      `sentence appears beside the button the user actually pressed — once. Two identical role="alert" ` +
+      `elements announce the same refusal twice, and an unrelated banner ends up carrying a quota error.`
   );
 });
