@@ -799,3 +799,42 @@ test("heat that describes another food does not cook the fish", () => {
     true
   );
 });
+
+test("a breakfast of nothing but starch is not a meal", () => {
+  // QA's day-1 breakfast: 60 g oats, one slice of bread, cinnamon — plus a
+  // second slice served beside it. 14 g of protein for the whole meal, and the
+  // rule passed it because "no dinner protein" was the only question asked.
+  assert.equal(
+    breakfastIsBuiltOnBreakfastFood(bfast("Rolled Oats with Cinnamon and Sliced Bread Toast", ["Rolled oats", "Sliced bread", "ground cinnamon"])),
+    false
+  );
+  // Fruit on porridge is a real breakfast and stays.
+  assert.equal(breakfastIsBuiltOnBreakfastFood(bfast("Oatmeal with Blueberries and Honey", ["Rolled oats", "blueberries", "honey"])), true);
+  // So does anything carrying actual protein.
+  assert.equal(breakfastIsBuiltOnBreakfastFood(bfast("Peanut Butter Toast", ["Sliced bread", "Peanut butter"])), true);
+  assert.equal(breakfastIsBuiltOnBreakfastFood(bfast("Oatmeal with Almonds", ["Rolled oats", "Almonds"])), true);
+});
+
+test("a chicken breast on porridge is refused, not only a chicken thigh", () => {
+  // QA found this served at 8am; the rule listed only thighs.
+  assert.equal(
+    breakfastIsBuiltOnBreakfastFood(bfast("Chicken Breast with Carrots and Rolled Oats", ["Boneless chicken breasts", "carrots", "Rolled oats"])),
+    false
+  );
+});
+
+test("a category word is satisfied by any member, and refused when there is none", () => {
+  // The precise reason these words were exempt: a title saying "cheese" over
+  // listed feta is accurate, and must stay accepted.
+  assert.equal(phrasePromisesMissingFood("Cheese and Spinach Omelette", ["Feta cheese", "spinach", "Large eggs"], CATALOG), null);
+  assert.equal(phrasePromisesMissingFood("Berry Yogurt Bowl", ["Strawberries", "Plain Greek yogurt"], CATALOG), null);
+  assert.equal(phrasePromisesMissingFood("Nut Butter Toast", ["Almonds", "Sliced bread"], CATALOG), null);
+  // And the reason exempting them outright was wrong. QA's dish: oats, bell
+  // pepper, tomato, oil, salt, pepper — and a title and a step promising cheese.
+  assert.equal(
+    phrasePromisesMissingFood("Cheese and Bell Pepper Oat Bowl", ["Rolled oats", "Bell peppers", "Roma tomatoes"], CATALOG),
+    "cheese"
+  );
+  assert.equal(phrasePromisesMissingFood("Berry Oatmeal", ["Rolled oats", "bananas"], CATALOG), "berry");
+  assert.equal(phrasePromisesMissingFood("Seafood Rice Bowl", ["jasmine rice", "broccoli"], CATALOG), "seafood");
+});

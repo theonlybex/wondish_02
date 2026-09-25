@@ -492,8 +492,12 @@ export function breakfastLooksLikeBreakfast(d: PlausibleDish): boolean {
 // so a dish carrying one of those is fine whatever else is in it — this refuses
 // only a breakfast whose ONLY protein is a dinner protein. On the live catalog
 // that is 28 of 378 usable breakfasts, which the slot can afford.
+// "chicken", not "chicken thighs": QA found "Chicken Breast with Carrots and
+// Rolled Oats" served at 8am, and the rule let it through because only thighs
+// were listed. A chicken breast on porridge is the same dish shape with a
+// leaner cut.
 const DINNER_PROTEIN =
-  /\b(ground beef|beef|steaks?|sirloin|lamb|pork|salmon|tuna|cod|tilapia|halibut|shrimps?|prawns?|chicken thighs?|turkey|mince)\b/i;
+  /\b(ground beef|beef|steaks?|sirloin|lamb|veal|pork|salmon|tuna|cod|tilapia|halibut|shrimps?|prawns?|chickens?|turkeys?|mince|mackerel|sardines?)\b/i;
 const BREAKFAST_PROTEIN =
   /\b(eggs?|yogh?urt|cottage|cheese|bacon|sausages?|milk|peanut butter|almond butter|almonds?|walnuts?|pecans?|tofu|beans?|lentils?|smoked salmon)\b/i;
 
@@ -502,7 +506,28 @@ export function breakfastIsBuiltOnBreakfastFood(d: PlausibleDish): boolean {
   if (d.mealTypeName.toLowerCase() !== "breakfast") return true;
   const text = `${displayDishName(d.name)} ${d.ingredients.map((i) => i.name).join(" ")}`;
   if (BREAKFAST_PROTEIN.test(text)) return true;
-  return !DINNER_PROTEIN.test(text);
+  // No breakfast protein AND a dinner protein: a dinner at 8am.
+  if (DINNER_PROTEIN.test(text)) return false;
+  // No protein of any kind. QA found a breakfast that was 60 g of oats, one
+  // slice of bread and cinnamon, served alongside a second slice of bread — 14 g
+  // of protein for the whole meal, and the rule passed it because "a dinner
+  // protein is absent" was the only question being asked. A breakfast of nothing
+  // but starch is not a meal, and the day's protein target has to come from
+  // somewhere.
+  return STARCH_ONLY_EXEMPT.test(text) || !isStarchOnly(text);
+}
+
+// Starches, and the foods that make a starch into a breakfast.
+const STARCH = /\b(oats?|oatmeal|porridge|granola|breads?|toast|muffins?|bagels?|tortillas?|rice|pasta|noodles?|quinoa|potato(es)?|crackers?|buns?)\b/i;
+// Fruit and juice do not carry protein, but fruit on porridge is a real
+// breakfast and refusing it would leave the slot thinner for no gain.
+const STARCH_ONLY_EXEMPT =
+  /\b(bananas?|apples?|(?:straw|blue|rasp|black|cran)?berr(?:y|ies)|peach(es)?|oranges?|mangos?|raisins?|honey|jam|maple syrup|smoothies?)\b/i;
+const ANY_PROTEIN_FOOD =
+  /\b(eggs?|yogh?urt|cottage|cheese|milks?|bacon|sausages?|hams?|nuts?|almonds?|walnuts?|pecans?|peanut butter|almond butter|seeds?|tofu|tempeh|beans?|lentils?|chickpeas?|protein powder|chickens?|turkeys?|beef|salmon|tuna|fish)\b/i;
+
+function isStarchOnly(text: string): boolean {
+  return STARCH.test(text) && !ANY_PROTEIN_FOOD.test(text);
 }
 
 export function snackIsQuickEnough(d: PlausibleDish): boolean {
@@ -554,12 +579,10 @@ export const TITLE_NON_FOOD = new Set([
   // shopping item. Each of these was a false rejection of a correct dish.
   "juice", "zest", "peel", "slice", "stick", "strip", "wedge", "cube", "chunk",
   "spear", "ribbon", "round", "crumb", "meal", "green", "sliver", "shred",
-  // CATEGORY words. A description saying "cheese" over listed feta, or
-  // "berries" over listed strawberries, is accurate — the catalog just names
-  // the specific thing. Requiring the hypernym itself to be an ingredient
-  // rejects the dish for being MORE precise than its own description.
-  "cheese", "berry", "nut", "citrus", "fish", "seafood", "poultry", "melon",
-  "pasta", "noodle", "legume", "squash", "grain", "meat",
+  // CATEGORY words are handled separately, in CATEGORY_MEMBERS below — a name
+  // saying "cheese" over listed feta is accurate, but a name saying "cheese"
+  // over no cheese at all is not, and exempting the word outright allowed the
+  // second. They are NOT listed here.
   // connectors
   "with", "and", "on", "in", "over", "of", "a", "an", "the", "plus", "topped", "served", "side",
   // methods
@@ -588,6 +611,56 @@ export const TITLE_NON_FOOD = new Set([
  * must appear in the dish. Only what the dish LISTS satisfies the promise —
  * staples are free to use, but a name is a claim about the recipe.
  */
+/**
+ * A category word, and the foods that satisfy it.
+ *
+ * These used to sit in TITLE_NON_FOOD, exempt outright, for a good reason: a
+ * name saying "cheese" over listed feta is accurate, and requiring the hypernym
+ * itself to be an ingredient rejects a dish for being MORE precise than its own
+ * title.
+ *
+ * But exempting the word entirely allowed the opposite. QA found "Cheese and
+ * Bell Pepper Oat Bowl" whose ingredients are oats, bell pepper, tomato, oil,
+ * salt and pepper — no cheese of any kind — with step 6 reading "top with the
+ * diced bell pepper, tomato, and crumbled cheese". The declared 245 kcal
+ * excludes the cheese, so the numbers describe a dish the title and the steps do
+ * not. Naming a whole category the dish has no member of is the same lie as
+ * naming a specific food it lacks.
+ *
+ * So the word is satisfied by ANY member, and refused when there is none.
+ */
+const CATEGORY_MEMBERS: { word: string; members: RegExp }[] = [
+  { word: "cheese", members: /\b(cheese|cheddar|parmesan|feta|mozzarella|ricotta|cottage|halloumi|gouda|brie|goat|paneer|queso)\b/i },
+  { word: "berry", members: /\b(berr(y|ies)|strawberr(y|ies)|blueberr(y|ies)|raspberr(y|ies)|blackberr(y|ies)|cranberr(y|ies))\b/i },
+  { word: "nut", members: /\b(nuts?|almonds?|walnuts?|pecans?|cashews?|pistachios?|hazelnuts?|peanuts?|macadamias?)\b/i },
+  { word: "citrus", members: /\b(lemons?|limes?|oranges?|grapefruits?|citrus|clementines?|mandarins?)\b/i },
+  { word: "fish", members: /\b(fish|salmon|tuna|cod|tilapia|halibut|haddock|catfish|trout|sardines?|mackerel|anchov(y|ies)|pollock|sole)\b/i },
+  { word: "seafood", members: /\b(fish|salmon|tuna|cod|shrimps?|prawns?|scallops?|mussels?|clams?|crab|lobster|squid|calamari|seafood)\b/i },
+  { word: "poultry", members: /\b(chickens?|turkeys?|ducks?|poultry)\b/i },
+  { word: "melon", members: /\b(melons?|watermelons?|cantaloupes?|honeydew)\b/i },
+  { word: "pasta", members: /\b(pasta|spaghetti|macaroni|penne|orzo|fusilli|rigatoni|linguine|tagliatelle|noodles?|couscous)\b/i },
+  { word: "noodle", members: /\b(noodles?|pasta|spaghetti|ramen|udon|soba|vermicelli)\b/i },
+  { word: "legume", members: /\b(beans?|lentils?|chickpeas?|garbanzos?|peas?|legumes?|edamame)\b/i },
+  { word: "squash", members: /\b(squash|zucchini|courgettes?|pumpkins?|butternut|marrow)\b/i },
+  { word: "grain", members: /\b(grains?|rice|quinoa|oats?|barley|bulgur|farro|millet|wheat|couscous)\b/i },
+  { word: "meat", members: /\b(meat|beef|pork|lamb|veal|chickens?|turkeys?|steaks?|mince|bacon|sausages?|hams?)\b/i },
+];
+
+/** A category the phrase names that the dish has no member of, or null. */
+export function categoryWithNoMember(
+  phrase: string,
+  ingredientNames: readonly string[]
+): string | null {
+  const said = displayDishName(phrase).toLowerCase();
+  const listed = ingredientNames.join(" | ");
+  for (const { word, members } of CATEGORY_MEMBERS) {
+    if (!new RegExp(`\\b${word}s?\\b`, "i").test(said)) continue;
+    if (members.test(listed)) continue;
+    return word;
+  }
+  return null;
+}
+
 export function phrasePromisesMissingFood(
   phrase: string,
   ingredientNames: readonly string[],
@@ -595,6 +668,8 @@ export function phrasePromisesMissingFood(
 ): string | null {
   const claim = healthClaimNotListed(phrase, ingredientNames);
   if (claim) return claim;
+  const category = categoryWithNoMember(phrase, ingredientNames);
+  if (category) return category;
 
   const have = new Set<string>();
   for (const n of ingredientNames) for (const t of ingredientTokens(n)) have.add(t);
