@@ -108,3 +108,34 @@ effect.
 | 5 | Declared numbers self-consistent but wrong against the FOOD (+750 kcal/day); swaps all failed; the server, not Clara, asserted "your profile avoids white rice" | nutrition COMPUTED from the amounts (`lib/staple-density.ts`); two swap candidates; goal foods attributed to the goal |
 | 6 | Cup-measured grain still understated ~30%; offsetting macro errors passed a calorie check; bare counts (`Sliced bread 2`) unpriceable; condition bans announced as the user's own | volume grains default to dry; per-MACRO check; per-item weights; condition list attributed to the app |
 | 7 | Daily sodium 3,000-4,100 mg; rice 21 of 26 dishes; chicken-and-rice at 8am; `?date=notadate` → 500 | day-level sodium ceiling; per-day starch cap; breakfast-food anchor; 400 JSON |
+| 8 | 30 slots / 18 dishes with two of them filling 14; `"cooked rice"` read as a pre-cooked shortcut, the mechanism behind the worst macro gaps; `\begg\b` never matched "eggs", so egg dishes were rejected as "not breakfast food" | week-level variety penalty; `grainIsMeasuredDry`; explicit plurals; actionable refusal when the basket is unready |
+| 9 | 209 rows filed under a slot their own timing contradicts — invisible to the slot they fit AND refused by the one they carried (the `/pantry` defect from the other end); 8 of 16 generation rejections were prose-only, on dishes that were otherwise sound; the calorie top-up enforced family and reuse and nothing else | slot labels read off the dish; `truthfulDishName` rebuilds a lying name from the ingredient list (253 stored rows too); the day's sodium, protein and starch limits apply to padding and do not relax |
+| 10 | The cycle-8 variety penalty never bound — the line after it picked at random among the top three, so on a thin pool the penalty decided nothing (a flaky test caught it; QA saw one snack three times); the plan missed its own displayed fat target on 7 of 7 days, 173-241%, because the macro rule scored each dish's own ratios and 59% of the catalog's fat is added cooking oil; 983 of 1,040 salt rows above an eighth of a teaspoon | the random window is the least-used dishes only; scoring asks where the DAY lands (weight set by 18 measured weeks); salt clamped to a seasoning; 169 bare counts given their unit; an `<h1>` on two pages that had none |
+
+## What the cycles taught
+
+A green test suite proves nothing about content: 1,284 tests passed while a week
+served seven identical lunches.
+
+Three lessons kept repeating, and each one cost a cycle before it was learnt:
+
+**A rule that judges one dish cannot see a day.** Salt, oil, starch, protein and
+repeats all failed the same way: every dish individually legal, the day wrong.
+Three of four dishes at half a teaspoon of salt is a day's sodium; four at a
+tablespoon and a half of oil is a day that is half fat. Every fix in cycles 7-10
+was some version of making the day the unit.
+
+**A gate is the wrong instrument for a model's mistake.** Refusing a dish over
+its name threw away 8 of 16 generated dishes that were otherwise sound, and the
+thin pool that caused was the top blocker in two QA reports. Where the model's
+prose contradicts its own ingredient list, the list is the truth and the prose
+gets rewritten. Where a stored amount is implausible, it gets clamped. Rejection
+is for what cannot be repaired: an allergen, a missing amount, a lying macro.
+
+**Measure the fix, on the real database, before shipping it.** Four fixes were
+written and then abandoned because the measurement said they would do harm: a
+produce-in-teaspoons rule that would have deleted hundreds of correct rows, a
+calorie rewrite that mispriced egg whites threefold, a per-week dish cap that
+made slots unfillable, and an oil clamp that would have contradicted the step
+text of 379 recipes. Two prompt changes backfired and were reverted. A fix that
+has not been measured is a guess with a commit message.
