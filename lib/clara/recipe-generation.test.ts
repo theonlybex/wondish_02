@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { passesSanity, chunkTopUpRequests, freeStaplesFor, proteinOptionsFor, titlePromisesMissingFood, breakfastIsQuickEnough, repairProse, repairForStorage } from "./recipe-generation";
+import { passesSanity, chunkTopUpRequests, freeStaplesFor, proteinOptionsFor, titlePromisesMissingFood, breakfastIsQuickEnough, repairProse, repairForStorage, macroSplitLine } from "./recipe-generation";
 import { buildDietMatchers, derivePatientBans } from "../diet-match";
 import { validateFridgeRecipeSnapshot, type FridgeRecipe } from "../fridge";
 
@@ -391,4 +391,10 @@ test("what is stored is measurable in the rows, the steps and the description", 
   ]);
   assert.deepEqual(stored.steps, ["Pat the chicken breast dry.", "Season with a pinch of salt and 2 pinches of black pepper."]);
   assert.equal(stored.description, "Pat the chicken breast dry, then cook with ⅓ cup brown rice.");
+});
+
+test("the macro split reaches the prompt as percentages, not rounded fractions", () => {
+  // Both prompts printed Math.round(0.30) — "~0% protein" — until cycle 19.
+  assert.equal(macroSplitLine({ protein: 0.3, carbs: 0.45, fat: 0.25 }), "~30% protein, ~45% carbs, ~25% fat");
+  assert.equal(macroSplitLine({ protein: 30, carbs: 45, fat: 25 }), "~30% protein, ~45% carbs, ~25% fat");
 });

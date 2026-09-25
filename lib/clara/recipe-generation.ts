@@ -138,6 +138,19 @@ export function proteinOptionsFor(matchers: DietMatchers): string[] {
   return PROTEIN_OPTIONS.filter((p) => evaluateDishAgainstProfile([p], matchers).passed);
 }
 
+/**
+ * "~30% protein, ~45% carbs, ~25% fat" for a prompt.
+ *
+ * The macro profile is stored as FRACTIONS (0.30), and both prompts that
+ * printed it wrote `Math.round(0.30)%` — every generated dish and every Clara
+ * swap was asked for "~0% protein, ~0% carbs, ~0% fat" until cycle 19. Takes
+ * either form, so a caller cannot make that mistake twice.
+ */
+export function macroSplitLine(m: { protein: number; carbs: number; fat: number }): string {
+  const pct = (v: number) => Math.round(v <= 1 ? v * 100 : v);
+  return `~${pct(m.protein)}% protein, ~${pct(m.carbs)}% carbs, ~${pct(m.fat)}% fat`;
+}
+
 function systemPrompt(args: TopUpArgs, total: number): string {
   const perType = args.requests
     .map((r) => `- ${r.count} × ${r.mealTypeName} (target ≈${Math.round(r.targetCalories)} kcal per serving)`)
@@ -147,7 +160,7 @@ function systemPrompt(args: TopUpArgs, total: number): string {
       ? `\nNEVER include these ingredients or anything containing them: ${args.bannedNames.join(", ")}.`
       : "";
   const macro = args.macroTarget
-    ? `\n- Aim each dish near this macro split by calories: ~${Math.round(args.macroTarget.protein)}% protein, ~${Math.round(args.macroTarget.carbs)}% carbs, ~${Math.round(args.macroTarget.fat)}% fat.`
+    ? `\n- Aim each dish near this macro split by calories: ${macroSplitLine(args.macroTarget)}.`
     : "";
   const cuisine = args.cuisine
     ? `\n- EVERY dish must be authentic ${args.cuisine} cuisine.`

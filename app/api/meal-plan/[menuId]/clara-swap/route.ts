@@ -18,6 +18,7 @@ import {
 import {
   passesSanity,
   persistValidatedRecipes,
+  macroSplitLine,
   normalizeCuisine,
   CLARA_RECIPE_TAG,
   toPlausibleDish,
@@ -256,7 +257,16 @@ export async function POST(
     `Rules:`,
     `- mealType must be exactly "${mealTypeName}".`,
     `- Target ≈${targetCalories} kcal per serving (within ±20%).`,
-    `- Aim near this macro split by calories: ~${Math.round(macro.protein)}% protein, ~${Math.round(macro.carbs)}% carbs, ~${Math.round(macro.fat)}% fat.`,
+    // macro.* are FRACTIONS (0.30). This printed Math.round(0.30) — "~0%
+    // protein, ~0% carbs, ~0% fat" — on every swap until cycle 19.
+    `- Aim near this macro split by calories: ${macroSplitLine(macro)}.`,
+    // The fat room the day has left, as a number. The rule below refuses a
+    // candidate that takes the day past it; without telling Clara, a request
+    // for "something rich and creamy" came back four-for-four over and spent a
+    // swap on a 422 (cycle 19).
+    ...(dayFatBudgetG > 0
+      ? [`- The rest of today already has ${Math.round(otherFatG)} g of fat; keep this dish at or under ${Math.max(5, Math.round(dayFatBudgetG * DAY_FAT_TOLERANCE - otherFatG))} g of fat per serving, even if the request asks for something rich — make it rich in flavour instead.`]
+      : []),
     `- Everyday home-cookable dish; usesIngredients lists EVERY ingredient (common, individually named); leave missingIngredients empty.`,
     `- perServing macros must be realistic and self-consistent (protein*4 + carbs*4 + fat*9 must explain the calories).`,
     `- If a step sears, fries, sautés or browns anything, the fat used must appear in usesIngredients with its amount.`,
@@ -377,10 +387,12 @@ export async function POST(
     // was told its basket couldn't make a chicken dish while holding two kinds
     // of chicken — and said nothing about the allowance it had just spent.
     const blamesBasket = rejections.some((r) => r.includes("out-of-basket"));
+    const blamesFat = rejections.length > 0 && rejections.every((r) => r.includes("takes-the-day-past-its-fat-target"));
     return NextResponse.json(
       {
-        error:
-          basket.length > 0 && blamesBasket
+        error: blamesFat
+          ? "Everything Clara came up with would take today past your fat target. That used one of today's swaps — try asking for something lighter."
+          : basket.length > 0 && blamesBasket
             ? "Clara could only think of dishes that need something you don't have. That used one of today's swaps — add an ingredient or two under Ingredients and the next one has more to work with."
             : "Clara couldn't find an alternative that fits this slot. That used one of today's swaps — try again with a different request, or pick a cuisine to point her somewhere new.",
       },
