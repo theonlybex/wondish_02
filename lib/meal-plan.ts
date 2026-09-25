@@ -986,6 +986,15 @@ export async function buildMealPlanMenus(
           (relax.weekReuse || (!weekUsedIds.has(r.id) && !weekUsedSignatures.has(dishSignature(r.ingredients)))) &&
           (relax.sameDay || !todayUsedIds.has(r.id));
         for (const [ti, relax] of tiers.entries()) {
+          // The last tier relaxes the day's fat, sodium and starch limits
+          // because "the alternative is an empty slot". That is true of the
+          // slot's FIRST dish only. Sides, the lunch dessert and the generic
+          // filler are added to a slot that already holds food, so for them
+          // the alternative is a slightly smaller meal — and they were taking
+          // the relaxation anyway: a fresh week in cycle 19's measurement
+          // carried extra 97-266 kcal rows on the days that broke the fat
+          // ceiling, 128-170% of target.
+          if (relax.sameDay && mealCalories > 0) break;
           const pool = selectionPool.filter((r) => matches(r, relax));
           if (pool.length > 0) {
             if (process.env.WONDISH_DEBUG_POOL) {
