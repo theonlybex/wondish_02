@@ -10,11 +10,13 @@ import { apiFetch } from "@/lib/client-fetch";
 import {
   computeAllMetrics,
   feetInchesToCm,
+  resolvePlanDirection,
   type Sex,
   type CaloricProfileInput,
   type CaloricProfile,
 } from "@/lib/caloric-engine";
 import { kgToLbs } from "@/lib/prediction-data";
+import { defaultWeightUnit, readWeightUnitPref, writeWeightUnitPref } from "@/lib/weight-unit-pref";
 import { CM_PER_IN, checkBodyMetrics, firstBodyMetricsError } from "@/lib/body-bounds";
 
 interface RefData {
@@ -106,17 +108,13 @@ export default function ProfileForm({
   // the user's unit. Metric height ⇒ kg by default, with a toggle. The text
   // fields are separate state so typing isn't fought by round-trip rounding.
   const LBS_PER_KG = 2.20462;
-  // The diner's own weightUnit, not their heightUnit. Reading heightUnit meant
-  // storing weight in lbs and height in cm displayed "Weight (kg)" with a
-  // pounds figure in the box — the number was converted correctly on save, so
-  // nothing corrupted, but the stored preference was simply ignored and the
-  // label lied (QA 2026-09-25). heightUnit is the fallback only when no weight
-  // preference exists, since a metric height implies a metric diner.
-  const [weightUnitShown, setWeightUnitShown] = useState<"kg" | "lbs">(() => {
-    const stored = (patient?.weightUnit as string | undefined)?.toLowerCase();
-    if (stored === "kg" || stored === "lbs") return stored;
-    return (patient?.heightUnit as string) === "cm" ? "kg" : "lbs";
-  });
+  // One rule with /overview (lib/weight-unit-pref): metric height ⇒ kg, unless
+  // toggled on this device. It used to read Patient.weightUnit, which is the
+  // STORAGE unit and always "lbs" — so this page said lbs while /overview,
+  // reading the height, said kg, for the same account (cycle 19).
+  const [weightUnitShown, setWeightUnitShown] = useState<"kg" | "lbs">(() =>
+    defaultWeightUnit(patient?.heightUnit as string | undefined)
+  );
   const fmtWeight = (lbs: string, unit: "kg" | "lbs") => {
     const v = parseFloat(lbs);
     if (!Number.isFinite(v) || v <= 0) return "";
@@ -134,19 +132,23 @@ export default function ProfileForm({
     setWeightUnitShown(unit);
     setWeightText(fmtWeight(form.weight, unit));
     setGoalText(fmtWeight(form.goalWeight, unit));
-    // …and the CHOICE, not just the display. This set the shown unit and the
-    // two text fields and never touched form.weightUnit, which is what the
-    // submit sends — so picking kg converted the numbers correctly on screen,
-    // PATCHed `"weightUnit":"lbs"`, returned 200, said "Profile saved
-    // successfully", and reverted to lbs on reload. A metric user could not
-    // store their unit and was told they had (QA 2026-09-25).
-    //
-    // Third defect of this exact shape: weight 0 (cycle 4) and a blank name
-    // (cycle 14) also returned 200 for a change that never happened. The
-    // pattern is a form whose display state and submitted state are separate
-    // variables, and only one of them moves.
-    setForm((f) => ({ ...f, weightUnit: unit, goalWeightUnit: unit }));
+    // …and the CHOICE. It was sent as form.weightUnit, which the server
+    // overwrites with "lbs" on every save (it is the storage unit), so the
+    // choice reverted on reload while the save said it had worked. Kept on the
+    // device until the account has a preference column; see weight-unit-pref.
+    writeWeightUnitPref(unit);
   };
+  // After mount: localStorage does not exist on the server, and reading it in
+  // the initialiser would render a different unit on each side of hydration.
+  useEffect(() => {
+    const pref = readWeightUnitPref();
+    if (pref && pref !== weightUnitShown) {
+      setWeightUnitShown(pref);
+      setWeightText(fmtWeight(form.weight, pref));
+      setGoalText(fmtWeight(form.goalWeight, pref));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Live caloric preview
   const liveProfile: CaloricProfile | null = useMemo(() => {
@@ -194,6 +196,7 @@ export default function ProfileForm({
     form.physicalActivityId, form.goalWeight, form.goalWeightUnit,
     refData.physicalActivities,
   ]);
+  const planDir = liveProfile ? resolvePlanDirection(liveProfile) : null;
 
   const [motivationIds, setMotivationIds] = useState<string[]>(
     (patient?.motivations as { motivationId: string }[])?.map((m) => m.motivationId) ?? []
@@ -480,7 +483,7 @@ export default function ProfileForm({
                   placeholder={weightUnitShown === "kg" ? "68" : "150"}
                 />
               </div>
-              <div role="radiogroup" aria-label="Weight unit" className="flex rounded-xl border border-[#EAE4CA] overflow-hidden mb-[1px]">
+              <div role="radiogroup" aria-label="Weight unit (remembered on this device)" title="Remembered on this device" className="flex rounded-xl border border-[#EAE4CA] overflow-hidden mb-[1px]">
                 {(["lbs", "kg"] as const).map((u) => (
                   <button
                     key={u}
@@ -538,14 +541,30 @@ export default function ProfileForm({
                   {Math.round(liveProfile.dailyCalories)} kcal
                 </p>
                 <p className="text-[10px] text-[#ABA6A6] mt-0.5 leading-snug">
-                  what you burn now — your plan targets less
+                  {/* "your plan targets less" was printed to every user,
+                      including one whose plan maintains (cycle 19). */}
+                  what you burn now —{" "}
+                  {planDir === "lose" ? "your plan targets less" : planDir === "gain" ? "your plan targets more" : "your plan keeps you here"}
                 </p>
               </div>
               <div>
+                {/* With no goal set and a healthy BMI the plan MAINTAINS, and
+                    this tile showed the ideal-weight default as a "target" the
+                    plan was not pursuing — "Maintain" and "Target 75 kg" on
+                    one screen (cycle 18). The target of a maintain plan is the
+                    weight you are. And in the unit the form is showing. */}
                 <span className="text-[#848181] text-xs">Target Weight</span>
                 <p className="font-bold text-[#1E1A1A]">
-                  {kgToLbs(liveProfile.tbwKg).toFixed(1)} lbs
+                  {(() => {
+                    const kg = planDir === "maintain" ? liveProfile.cbwKg : liveProfile.tbwKg;
+                    return weightUnitShown === "kg" ? `${kg.toFixed(1)} kg` : `${kgToLbs(kg).toFixed(1)} lbs`;
+                  })()}
                 </p>
+                {planDir === "maintain" && (
+                  <p className="text-[10px] text-[#ABA6A6] mt-0.5 leading-snug">
+                    keep steady — set a goal weight below to change it
+                  </p>
+                )}
               </div>
             </div>
           </div>

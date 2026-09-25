@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CaloricProfileDTO } from "@/types";
 import type { WeeklyTargetDTO } from "@/types";
 import { kgToLbs } from "@/lib/prediction-data";
+import { readWeightUnitPref } from "@/lib/weight-unit-pref";
 import { resolveDailyCalorieTarget } from "@/lib/caloric-engine";
 import { apiFetch } from "@/lib/client-fetch";
 import {
@@ -33,6 +34,10 @@ export default function CaloricProfileCard() {
   // for the actual-intake arc. Non-fatal — the arc is simply absent on error.
   const [today] = useState(() => formatLocalDate(new Date()));
   const [intake, setIntake] = useState<DayEnvelopeDTO | null>(null);
+  // A weight unit chosen on this device (see lib/weight-unit-pref). Read after
+  // mount: localStorage does not exist during server rendering.
+  const [unitPref, setUnitPref] = useState<"kg" | "lbs" | null>(null);
+  useEffect(() => setUnitPref(readWeightUnitPref()), []);
 
   // `silent` refetches (e.g. after a journal weigh-in) update the numbers in
   // place without flashing the loading skeleton or replaying the animations.
@@ -140,7 +145,9 @@ export default function CaloricProfileCard() {
   const calRatio = profile.tdeeCBW > 0
     ? Math.min(1, headlineTarget / profile.tdeeCBW)
     : 1;
-  const weightUnit: "kg" | "lbs" = profile.displayUnit ?? "lbs";
+  // Same rule as /profile (lib/weight-unit-pref): the server's height-based
+  // default, overridden by a choice made on this device.
+  const weightUnit: "kg" | "lbs" = unitPref ?? profile.displayUnit ?? "lbs";
   const showWeight = (kg: number) => `${fmt(weightUnit === "kg" ? kg : kgToLbs(kg))} ${weightUnit}`;
   const circumference = 2 * Math.PI * 54;
   const dashOffset = circumference * (1 - calRatio);
@@ -292,9 +299,13 @@ export default function CaloricProfileCard() {
           value={showWeight(profile.cbwKg)}
           delay="180ms"
         />
+        {/* A maintain plan's target is the current weight. This tile showed
+            the ideal-weight default beside "Maintain — you're at a healthy
+            weight", two statements that cannot both be the plan (cycle 18). */}
         <MetricTile
           label="Target Weight"
-          value={showWeight(profile.tbwKg)}
+          value={showWeight(profile.weeklyTarget?.direction === "maintain" ? profile.cbwKg : profile.tbwKg)}
+          sub={profile.weeklyTarget?.direction === "maintain" ? "keep steady" : undefined}
           accent
           delay="220ms"
         />
