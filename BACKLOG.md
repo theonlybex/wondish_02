@@ -264,11 +264,13 @@ or reproduced; where a bot could not pin something down, it says so.
 - [ ] **~89 library dishes have visibly broken prose** — "Add Tofu , cook 8-10
       minutes until done, flipping half wathroughou, remove from heat." Import
       noise, on a public page.
+      **Cycle 21:** the mechanical part (a space before punctuation) is repaired everywhere prose is shown or written — /dishes now has 0. The garbled words ("wathroughou") need a person: `node --import tsx scripts/audit-library.ts` lists every flagged row (report only, CSV to /tmp).
 - [ ] **84 of 2,440 dishes declare under 60 kcal and 5 over 1,200**, including
       `Beef Pot Roast` at 0 kcal and `Air fryer French Fries` at 11. A
       25 kcal condiment ("Homemade Cashew parmesan cheese") was served as a
       SNACK slot. Library data, not the repriced macros — all 28 freshly priced
       dishes were within ±0.3% of 4P+4C+9F.
+      **Cycle 21:** no longer servable (a slot's first dish, a snack and the day's top-up need 60 kcal; 0 kcal never chosen — test verified by reintroducing the bug) and no longer on /dishes. The stored numbers still need correcting; the audit script lists them.
 - [x] **A stray second click on "New week" spends a real allowance** with no
       confirmation step. The bot burned two of three weekly generations on one
       script click.
