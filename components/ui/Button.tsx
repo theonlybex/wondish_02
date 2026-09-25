@@ -15,8 +15,12 @@ const variants = {
 };
 
 const sizes = {
-  sm: "px-3 py-1.5 text-xs rounded-lg",
-  md: "px-4 py-2 text-sm rounded-xl",
+  // min-h-11 (44px) on phones only. QA measured "New week" at 84x28 and
+  // /overview's four "+ Add" buttons at 37x19 — under the 44px minimum a finger
+  // can reliably hit. The desktop sizes are unchanged: a mouse does not need it,
+  // and growing every small button everywhere would redesign five screens.
+  sm: "px-3 py-1.5 text-xs rounded-lg min-h-11 sm:min-h-0",
+  md: "px-4 py-2 text-sm rounded-xl min-h-11 sm:min-h-0",
   lg: "px-6 py-3 text-sm rounded-xl",
 };
 

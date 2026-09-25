@@ -44,8 +44,41 @@ export default function Modal({
   // it — a QA pass had to locate it by its <h2> text.
   useEffect(() => {
     if (!open) return;
+    // Escape closes, and Tab is TRAPPED inside the panel. Focus moved in but
+    // could then walk straight out into the page behind — a screen-reader user
+    // tabbing past the last control landed on content the dialog was covering,
+    // with no way to know they had left it (QA 2026-09-25). aria-modal tells an
+    // assistive technology to ignore the background; it does nothing about the
+    // browser's own tab order, which is what this handles.
+    const FOCUSABLE =
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const stops = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (el) => el.offsetParent !== null || el === document.activeElement
+      );
+      if (stops.length === 0) {
+        // Nothing to tab to; keep focus on the panel rather than letting it out.
+        e.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === panel)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     const previous = document.activeElement as HTMLElement | null;

@@ -148,7 +148,15 @@ export async function POST(
       date: menu.date,
       id: { not: menu.id },
     },
-    select: { recipe: { select: { ingredients: { select: { ingredient: { select: { name: true } } } } } } },
+    select: {
+      recipe: {
+        select: {
+          fat: true,
+          calories: true,
+          ingredients: { select: { ingredient: { select: { name: true } } } },
+        },
+      },
+    },
   });
   // Counted, not just listed: the prompt asks Clara for a different protein
   // and she is free to ignore it, which she did — a swap put chicken in 3 of
@@ -185,6 +193,26 @@ export async function POST(
     patient.motivations.map((pm) => pm.motivation.name)
   );
   const macro = getMacroPercentages(macroProfile);
+
+  // How much fat the REST of the day already carries, and what the day's fat
+  // budget is.
+  //
+  // The swap validated each dish on its own. QA swapped dinner, lunch and the
+  // snack and watched the day reach "Fat 87g of 54g · 161%" — every individual
+  // dish reasonable, the day not, which is the lesson the plan builder learnt in
+  // cycle 10 and which went into the BUILDER only. A swap is a slot-filler like
+  // any other and belongs under the same rule.
+  //
+  // The day's fat target is derived from what the day actually plans to eat
+  // (the other dishes plus this slot's target), so it needs no calorie engine
+  // here and cannot drift from the rail: fat is `macro.fat` of those calories.
+  const otherFatG = sameDay.reduce((sum, m) => sum + (m.recipe?.fat ?? 0), 0);
+  const dayCalories = sameDay.reduce((sum, m) => sum + (m.recipe?.calories ?? 0), 0) + targetCalories;
+  const dayFatBudgetG = dayCalories > 0 ? (dayCalories * macro.fat) / 9 : 0;
+  // 1.3x, not 1.0: the catalog's dishes run fat-heavy and a hard equality would
+  // refuse almost everything, which costs the user their swap. This refuses the
+  // candidate that takes a day well past its target, not the one that nudges it.
+  const DAY_FAT_TOLERANCE = 1.3;
   const { allergyNames, exactBanned } = derivePatientBans(patient);
   const matchers = buildDietMatchers({ allergyNames, exactBanned });
   const bannedNames = [...allergyNames, ...exactBanned.map((b) => b.name)];

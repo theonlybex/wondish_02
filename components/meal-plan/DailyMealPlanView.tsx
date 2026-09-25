@@ -592,11 +592,17 @@ export default function DailyMealPlanView({
   // weeks out, but distant days get recomputed as weight drifts; past days
   // live in the Journal calendar, not here.
   const BROWSE_AHEAD_DAYS = 7;
+  // A plan covers seven days from its start. Anything past that is not a day
+  // the user can generate into; it is a day that does not exist yet.
+  const PLAN_WINDOW_DAYS = 7;
   const todayMidnight = new Date();
   todayMidnight.setHours(0, 0, 0, 0);
   const maxBrowseDate = addDays(todayMidnight, BROWSE_AHEAD_DAYS);
   const atForwardLimit = date >= maxBrowseDate;
   const atBackLimit = date <= todayMidnight;
+  // Past the plan's last day. Only meaningful once a plan exists — without one,
+  // every day is a cold start and the generate card is the right thing to show.
+  const beyondPlanWindow = startDate !== null && date >= addDays(startDate, PLAN_WINDOW_DAYS);
 
   const navigate = async (dir: "prev" | "next") => {
     if (dir === "next" && atForwardLimit) return;
@@ -846,7 +852,7 @@ export default function DailyMealPlanView({
           <button
             onClick={() => navigate("prev")}
             aria-label="Previous day"
-            className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#ffffff] transition-colors text-forest shrink-0"
+            className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#ffffff] transition-colors text-forest shrink-0 touch-target"
           >‹</button>
         )}
         <p className="flex-1 text-center font-semibold text-forest text-lg">{format(date, "EEEE, MMMM d")}</p>
@@ -856,7 +862,7 @@ export default function DailyMealPlanView({
           <button
             onClick={() => navigate("next")}
             aria-label="Next day"
-            className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#ffffff] transition-colors text-forest shrink-0"
+            className="w-9 h-9 rounded-xl border border-[#EAE4CA] flex items-center justify-center hover:bg-[#ffffff] transition-colors text-forest shrink-0 touch-target"
           >›</button>
         )}
       </div>
@@ -898,7 +904,21 @@ export default function DailyMealPlanView({
           </p>
         </div>
       )}
-      {menus.length === 0 && !profileIncomplete && date >= todayMidnight && (
+      {/* …and a day BEYOND the plan is not an invitation either. The condition
+          below was "dishless and not in the past", so ?date=2027-12-31 rendered
+          "Your selected ingredients are the base of your plan… Generate my
+          whole week" to somebody who already has one (QA 2026-09-25). The past
+          case was handled and its mirror image was not. */}
+      {menus.length === 0 && !profileIncomplete && date >= todayMidnight && beyondPlanWindow && (
+        <div className="rounded-2xl px-4 py-4 mb-4 border border-dashed" style={{ borderColor: "#EAE4CA", background: "#FBFAF5" }}>
+          <p className="text-sm" style={{ color: "#848181" }}>
+            That day is beyond your current week. Your plan covers{" "}
+            {startDate ? format(startDate, "MMM d") : ""} to{" "}
+            {startDate ? format(addDays(startDate, PLAN_WINDOW_DAYS - 1), "MMM d") : ""}.
+          </p>
+        </div>
+      )}
+      {menus.length === 0 && !profileIncomplete && date >= todayMidnight && !beyondPlanWindow && (
         <div className="rounded-2xl px-4 py-4 mb-4 border border-dashed" style={{ borderColor: "#812549", background: "rgba(129,37,73,0.04)" }}>
           {newWeekLoading ? (
             <p className="text-sm font-semibold flex items-center gap-2" style={{ color: "#5F1C35" }}>
