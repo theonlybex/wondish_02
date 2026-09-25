@@ -1227,3 +1227,14 @@ test("…and a protein-light main is still served when it is all there is", () =
     assert.ok(res.rows.some((r: MenuRow) => r.recipeId === "starch"));
   });
 });
+
+test("porridge is never a lunch or dinner side (cycle 19: oatmeal padded a 7pm chicken dish)", async () => {
+  // Same shape as the generic-filler test, with the only filler an oat dish.
+  setDb(makePatient(), [MT_L], [
+    makeRecipe({ id: "lu-small", mealTypeId: MT_L.id, calories: 400, family: "A", subFamily: "sA" }),
+    makeRecipe({ id: "oats", mealTypeId: MT_L.id, calories: 200, dishType: "Solid Dish", family: "B", subFamily: "sB", ingredients: ["Rolled oats", "Carrots"] }),
+  ]);
+  const { rows } = await build("p1", START);
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((r) => r.recipeId !== "oats"), "an oat dish was added to lunch as filler");
+});

@@ -1052,7 +1052,9 @@ export default function DailyMealPlanView({
               <span className="font-semibold">All meals done for today — great job!</span>
             ) : (
               <span>
-                {completedCount}/{menus.length} meals logged
+                {/* Dishes, not meals: a dinner with a side is two of them, and
+                    "0/5 meals logged" over four meals did not add up. */}
+                {completedCount}/{menus.length} dishes logged
                 {completedCount === 0 ? " — log your meals to mark this day complete" : " — almost there!"}
               </span>
             )}

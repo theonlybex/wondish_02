@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { kgToLbs } from "@/lib/prediction-data";
+import { formatBmi } from "@/lib/caloric-engine";
 
 /* ─── Types ─────────────────────────────────────────────────────────────────── */
 
@@ -549,7 +550,7 @@ function CaloricSection({
                 BMI
               </p>
               <p className="font-bold" style={{ color: "#1E1A1A" }}>
-                {profile.cbmi.toFixed(1)}
+                {formatBmi(profile.cbmi)}
               </p>
             </div>
           )}

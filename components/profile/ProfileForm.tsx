@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import MultiSelectChips from "@/components/profile/MultiSelectChips";
 import { apiFetch } from "@/lib/client-fetch";
 import {
+  formatBmi,
   computeAllMetrics,
   feetInchesToCm,
   resolvePlanDirection,
@@ -523,7 +524,7 @@ export default function ProfileForm({
               <div>
                 <span className="text-[#848181] text-xs">BMI</span>
                 <p className="font-bold text-[#1E1A1A]">
-                  {liveProfile.cbmi.toFixed(1)}{" "}
+                  {formatBmi(liveProfile.cbmi)}{" "}
                   <span className="text-xs font-normal capitalize text-[#848181]">
                     ({liveProfile.cbmiClass})
                   </span>

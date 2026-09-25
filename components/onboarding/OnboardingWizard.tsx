@@ -6,6 +6,7 @@ import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import MultiSelectChips from "@/components/profile/MultiSelectChips";
 import {
+  formatBmi,
   computeAllMetrics,
   feetInchesToCm,
   type Sex,
@@ -239,6 +240,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
     weightUnit, weight, physicalActivityId, goalWeight, refData.physicalActivities,
   ]);
 
+  const heightTyped = () => (heightUnit === "cm" ? heightCm.trim() !== "" : heightFt.trim() !== "" || heightIn.trim() !== "");
   const validateStep = (): Record<string, string> => {
     const errs: Record<string, string> = {};
     if (step.id === "about") {
@@ -257,8 +259,12 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
     if (step.id === "body") {
       const h = heightCmValue();
       const w = weightLbs();
-      if (h <= 0) errs.height = "Please enter your height.";
-      if (w <= 0) errs.weight = "Please enter your weight.";
+      // "Please enter your weight" to someone who entered -60 is untrue; a
+      // number that was typed gets the range it has to be in.
+      // The range text is the shared one: ask the bounds about an impossible value.
+      const units = { weight: weightUnit, height: heightUnit } as const;
+      if (h <= 0) errs.height = heightTyped() ? (checkBodyMetrics({ heightCm: 1 }, units).height ?? "Please enter your height.") : "Please enter your height.";
+      if (w <= 0) errs.weight = weight.trim() ? (checkBodyMetrics({ weightLbs: 1 }, units).weight ?? "Please enter your weight.") : "Please enter your weight.";
       // Shared plausibility bounds (lib/body-bounds), same as the server.
       const bounds = checkBodyMetrics({ weightLbs: w || null, heightCm: h || null }, { weight: weightUnit, height: heightUnit });
       if (bounds.height) errs.height = bounds.height;
@@ -283,7 +289,16 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
     const errs = validateStep();
     if (step.id === "welcome" && !agreedTerms) errs.agreedTerms = "Please accept the Terms and Privacy Policy to continue.";
     setFieldErrors(errs);
-    if (Object.keys(errs).length > 0) return;
+    if (Object.keys(errs).length > 0) {
+      // Take the user to the problem. The fields were marked invalid and
+      // described, but focus stayed on Continue, so a keyboard or
+      // screen-reader user heard nothing new (cycle 19 cold-start pass).
+      requestAnimationFrame(() => {
+        const first = document.querySelector<HTMLElement>('main [aria-invalid="true"]');
+        (first ?? document.querySelector<HTMLElement>('main input[type="checkbox"]'))?.focus();
+      });
+      return;
+    }
     if (stepIndex === STEPS.length - 1) {
       void submit();
     } else {
@@ -467,6 +482,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
                 checked={agreedTerms}
                 onChange={(e) => { setAgreedTerms(e.target.checked); if (e.target.checked) setFieldErrors((f) => ({ ...f, agreedTerms: "" })); }}
                 aria-describedby={fieldErrors.agreedTerms ? "terms-error" : undefined}
+                aria-invalid={fieldErrors.agreedTerms ? true : undefined}
                 className="mt-0.5 h-4 w-4 shrink-0 accent-[#812549]"
               />
               <span>
@@ -566,13 +582,19 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
                       type="number" min="0" max="8" step="1" placeholder="5"
                       value={heightFt}
                       onChange={(e) => setHeightFt(e.target.value)}
+                      id="onb-height-ft"
                       aria-label="Height in feet"
+                      aria-invalid={fieldErrors.height ? true : undefined}
+                      aria-describedby={fieldErrors.height ? "onb-height-error" : undefined}
                     />
                     <Input
                       type="number" min="0" max="11" step="1" placeholder="9"
                       value={heightIn}
                       onChange={(e) => setHeightIn(e.target.value)}
+                      id="onb-height-in"
                       aria-label="Additional inches"
+                      aria-invalid={fieldErrors.height ? true : undefined}
+                      aria-describedby={fieldErrors.height ? "onb-height-error" : undefined}
                     />
                   </div>
                 ) : (
@@ -580,10 +602,13 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
                     type="number" min="90" max="250" step="0.1" placeholder="170"
                     value={heightCm}
                     onChange={(e) => setHeightCm(e.target.value)}
+                    id="onb-height-cm"
                     aria-label="Height in centimeters"
+                    aria-invalid={fieldErrors.height ? true : undefined}
+                    aria-describedby={fieldErrors.height ? "onb-height-error" : undefined}
                   />
                 )}
-                {fieldErrors.height && <p className="text-error text-xs mt-1.5">{fieldErrors.height}</p>}
+                {fieldErrors.height && <p id="onb-height-error" className="text-error text-xs mt-1.5">{fieldErrors.height}</p>}
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -603,6 +628,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
                   value={weight}
                   onChange={(e) => setWeight(e.target.value)}
                   error={fieldErrors.weight}
+                  id="onb-weight"
                   aria-label={`Weight in ${weightUnit === "kg" ? "kilograms" : "pounds"}`}
                 />
               </div>
@@ -657,7 +683,7 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
                   <div className="rounded-xl px-4 py-3" style={{ background: "#F9F7ED" }}>
                     <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-1" style={{ color: "#ABA6A6" }}>BMI</p>
                     <p className="font-bold text-[#1E1A1A]">
-                      {liveProfile.cbmi.toFixed(1)}{" "}
+                      {formatBmi(liveProfile.cbmi)}{" "}
                       <span className="text-xs font-normal capitalize" style={{ color: "#848181" }}>
                         ({liveProfile.cbmiClass})
                       </span>
@@ -925,7 +951,10 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
               onChange={(e) => setGoalWeight(e.target.value)}
               error={fieldErrors.goalWeight}
             />
-            {liveProfile && goalWeightLbs() != null && (
+            {/* Not beside a refusal: "never crash-dieting" under "a safe goal
+                is between 93 and 373 lbs" promised a plan the form had just
+                declined to build (cycle 19). */}
+            {liveProfile && goalWeightLbs() != null && !fieldErrors.goalWeight && (
               <p className="text-xs mt-3" style={{ color: "#848181" }}>
                 From {Math.round(weightLbs())} lbs today toward {Math.round(goalWeightLbs()!)} lbs —
                 your daily target adjusts gradually, never crash-dieting.

@@ -39,6 +39,15 @@ export function resolveSex(
 
 export type CBMIClass = "underweight" | "healthy" | "overweight" | "obese";
 
+/**
+ * BMI to one decimal, TRUNCATED. The class is decided on the exact value, and
+ * rounding printed "25.0 (Healthy)" for a BMI of 24.99 — a number that reads
+ * as the overweight line beside the word "Healthy" (cycle 19 cold start).
+ */
+export function formatBmi(bmi: number): string {
+  return (Math.floor(bmi * 10 + 1e-9) / 10).toFixed(1);
+}
+
 // ─── Height Conversions ──────────────────────────────────────────────────────
 
 export interface HeightMetrics {

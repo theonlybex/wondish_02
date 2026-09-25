@@ -986,3 +986,11 @@ test("computeAllMetrics: 'unspecified' sex averages the male and female profiles
   assert.equal(resolveSexForCalories("", null), null);
   assert.equal(resolveSexForCalories(null, "Female"), "female");
 });
+
+import { formatBmi } from "./caloric-engine";
+test("BMI prints truncated, so the number never crosses its class line (cycle 19: '25.0 (Healthy)')", () => {
+  assert.equal(formatBmi(24.99), "24.9");
+  assert.equal(formatBmi(25), "25.0");
+  assert.equal(formatBmi(18.46), "18.4");
+  assert.equal(formatBmi(22.3), "22.3");
+});

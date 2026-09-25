@@ -52,6 +52,9 @@ const DAY_MACRO_WEIGHT = 90;
  */
 const DAY_FAT_CEILING = 1.15;
 
+/** Breakfast grains that make a dish porridge, not a side (see queryRecipes). */
+const PORRIDGE_GRAIN = /\b(rolled oats|oats|oatmeal|porridge|granola|muesli)\b/i;
+
 /** How far above its slot's calorie target a single dish may sit. */
 export const MEAL_CAL_CEILING = 1.25;
 
@@ -916,7 +919,15 @@ export async function buildMealPlanMenus(
           (dishNames === null ||
             (r.dishType !== null && dishNames.has(r.dishType.name.toLowerCase()))) &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
-          (r.subFamily === null || !mealSubFamilies.has(r.subFamily));
+          (r.subFamily === null || !mealSubFamilies.has(r.subFamily)) &&
+          // Porridge is not a side for dinner. The free-tier cold start in
+          // cycle 19 padded a 7pm chicken dish with "Oatmeal with Sliced
+          // Carrots and Cinnamon": every rule about breakfast food guarded the
+          // 8am slot against savoury dishes, none guarded lunch and dinner
+          // against breakfast ones. Secondary picks only — a side or filler
+          // can always be skipped, and the slot's main is judged elsewhere.
+          !(mealCalories > 0 && (mealNameLower === "lunch" || mealNameLower === "dinner") &&
+            r.ingredients.some((i) => PORRIDGE_GRAIN.test(i.ingredient.name)));
         // Variety rules relax in order of how much a repeat would hurt: first
         // the "not the same protein as yesterday" rule, then last week's
         // dishes, then this week's dishes — and only when NOTHING else fits
