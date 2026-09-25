@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood, snackIsQuickEnough, statedOrImpliedMinutes, nameWithoutFalseMethod, dishStyleMissingIngredient } from "./dish-plausibility";
+import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood, snackIsQuickEnough, statedOrImpliedMinutes, nameWithoutFalseMethod, dishStyleMissingIngredient, fatStatedInSteps, measurableAmount, rawProteinNeverCooked } from "./dish-plausibility";
 
 // The catalog vocabulary, as lib/meal-plan.ts builds it from Ingredient.name.
 const CATALOG = new Set([
@@ -516,10 +516,14 @@ test("clampCookingFat keeps the ratio between two fats and each row's unit", () 
   assert.equal(ingredients[0].unit, "teaspoon");
   assert.equal(ingredients[1].unit, "g");
   assert.equal(ingredients[2].quantity, 150, "a non-fat row is never touched");
-  assert.ok(
-    Math.abs(ingredients[0].quantity / 2 - ingredients[1].quantity / 10) < 0.01,
-    "both fats scale by the same factor"
-  );
+  // Both fats come down, and each lands on an amount its own unit can express —
+  // spoons on an eighth, grams whole. Rounding to something measurable means the
+  // two no longer scale by an identical factor, which is the right trade: a
+  // 0.37-tablespoon row is exact and unusable.
+  assert.ok(ingredients[0].quantity! < 2, `oil should come down, got ${ingredients[0].quantity}`);
+  assert.ok(ingredients[1].quantity! < 10, `butter should come down, got ${ingredients[1].quantity}`);
+  const spoons = ingredients[0].quantity! * 8;
+  assert.ok(Math.abs(spoons - Math.round(spoons)) < 1e-9, `${ingredients[0].quantity} tsp is not an eighth`);
 });
 
 test("clampCookingFat is a no-op on a dish with no fat at all", () => {
@@ -650,4 +654,148 @@ test("a style rule still catches a dish that really lacks what it claims", () =>
   assert.equal(dishStyleMissingIngredient("Vegetable Scramble", ["broccoli", "carrots"]), "egg");
   // A tofu scramble is a real dish and must not be refused for having no egg.
   assert.equal(dishStyleMissingIngredient("Tofu Scramble with Peppers", ["tofu", "Bell peppers"]), null);
+});
+
+test("a step's oil amount counts whether written 0.5, 1/2 or ½", () => {
+  // Requiring a digit made "½ tablespoon" look like no amount at all, so the
+  // clamp rewrote the row and left the card contradicting its own steps — the
+  // exact harm it was written narrow to avoid. QA found it in two weeks.
+  for (const written of ["0.5 tablespoon", "1/2 tablespoon", "½ tablespoon"]) {
+    assert.equal(
+      Math.round(fatStatedInSteps([`Lightly oil a baking dish with ${written} olive oil.`]) ?? 0),
+      7,
+      written
+    );
+  }
+  const rows = [{ name: "Extra virgin olive oil", quantity: 0.5, unit: "tablespoon" }];
+  const steps = ["Lightly oil a baking dish with ½ tablespoon olive oil.", "Drizzle the remaining oil over the top."];
+  // The steps commit to what the row holds, so a small dish is NOT clamped below it.
+  assert.equal(clampCookingFat(rows, steps, 164).changed, false);
+});
+
+test("a clamped amount is one a person can measure", () => {
+  // QA read "0.37 tablespoon", "1.03 teaspoon" and "1.1 teaspoon" off the
+  // rendered cards. Nobody owns a 0.37-tablespoon spoon.
+  assert.equal(measurableAmount(0.37, "tablespoon"), 0.25, "rounds DOWN, so the clamp's ceiling still holds");
+  assert.equal(measurableAmount(1.03, "teaspoon"), 1);
+  assert.equal(measurableAmount(1.1, "teaspoon"), 1);
+  assert.equal(measurableAmount(0.7, "tablespoon"), 0.625);
+  assert.equal(measurableAmount(0.02, "teaspoon"), 0.125, "never rounded away to nothing");
+  // Mass and volume round to whole units, not eighths.
+  assert.equal(measurableAmount(8.4, "g"), 8);
+  assert.equal(measurableAmount(0.4, "g"), 0.4);
+});
+
+test("the clamp leaves a spoonable number behind", () => {
+  const { ingredients } = clampCookingFat(
+    [{ name: "Extra virgin olive oil", quantity: 1.5, unit: "tablespoon" }],
+    ["Sauté in olive oil."],
+    620
+  );
+  const q = ingredients[0].quantity!;
+  assert.ok(Math.abs(q * 8 - Math.round(q * 8)) < 1e-9, `${q} is not a measurable eighth`);
+});
+
+// ── The one rule here that is about safety rather than plausibility ──────────
+//
+// QA found "Oats with Salmon and Broccoli" in a live plan: 70 g of raw salmon
+// fillet, and the only step touching the fish says to "pat the salmon fillet dry
+// and flake it into bite-sized pieces with a fork". The oats are simmered, the
+// broccoli steamed, the salmon served raw — and the card declares a 12-minute
+// cook time, so nothing on screen warns anybody.
+const rawDish = (name: string, ings: string[], steps: string[], generated = true) =>
+  ({ name, mealTypeName: "Snack", generated, steps, ingredients: ings.map((n) => ({ name: n })) }) as never;
+
+test("a raw fish the steps never cook is refused", () => {
+  assert.equal(
+    rawProteinNeverCooked(
+      rawDish(
+        "Oats with Salmon and Broccoli",
+        ["Rolled oats", "Salmon fillets", "broccoli"],
+        [
+          "Measure 40 g of rolled oats.",
+          "Bring to a boil and simmer for 5 minutes.",
+          "Steam the broccoli for 4 minutes.",
+          "Pat the salmon fillet dry and flake it into bite-sized pieces with a fork.",
+          "Top the oats with the steamed broccoli and flaked salmon.",
+        ]
+      )
+    ),
+    true
+  );
+  // Never mentioned in the steps at all is worse, not better.
+  assert.equal(
+    rawProteinNeverCooked(rawDish("Chicken Bowl", ["Boneless chicken breasts", "Brown rice"], ["Cook the rice.", "Serve."])),
+    true
+  );
+});
+
+test("heat anywhere in a step that names the protein satisfies the rule", () => {
+  for (const step of [
+    "Add the salmon and simmer for 6 minutes until opaque.",
+    "Sear the salmon 4 minutes a side.",
+    "Bake the salmon at 200C for 12 minutes.",
+    "Poach the salmon gently until cooked through.",
+  ]) {
+    assert.equal(
+      rawProteinNeverCooked(rawDish("Salmon with Broccoli", ["Salmon fillets", "broccoli"], ["Prep the broccoli.", step])),
+      false,
+      step
+    );
+  }
+});
+
+test("food that arrives safe to eat is exempt, and so is a curated recipe", () => {
+  assert.equal(rawProteinNeverCooked(rawDish("Smoked Salmon on Toast", ["smoked salmon", "Sliced bread"], ["Toast the bread.", "Top with the salmon."])), false);
+  assert.equal(rawProteinNeverCooked(rawDish("Tuna Salad", ["Canned tuna", "celery"], ["Drain the tuna.", "Mix with the celery."])), false);
+  assert.equal(rawProteinNeverCooked(rawDish("Chickpea Bowl", ["Garbanzo beans", "spinach"], ["Rinse the beans.", "Toss with spinach."])), false);
+  // A raw egg in a dressing is a normal recipe, so eggs are not in the list.
+  assert.equal(rawProteinNeverCooked(rawDish("Caesar Dressing", ["Large eggs", "parmesan"], ["Whisk the egg with the parmesan."])), false);
+  // A person wrote the curated steps.
+  assert.equal(rawProteinNeverCooked(rawDish("Salmon Plate", ["Salmon fillets"], ["Flake the salmon over the salad."], false)), false);
+});
+
+test("a protein cooked in a step that does not repeat its name still counts", () => {
+  // Every one of these was flagged by an earlier version of the rule and is
+  // perfectly cooked. They are the reason it is written on step ORDER and on
+  // heat-as-instruction rather than on proximity.
+  const cooked: [string, string[], string[]][] = [
+    // Cooked in a later step that names the sheet, not the fish.
+    ["Salmon Fillet with Roasted Carrots", ["Salmon fillets", "carrots"], [
+      "Pat the salmon fillet dry and place it on the baking sheet among the vegetables.",
+      "Return the baking sheet to the oven and roast for another 10 minutes until the salmon is opaque.",
+    ]],
+    // "and cook for" is an instruction, not an adjective.
+    ["Ground Turkey and Carrot Hash", ["Ground turkey", "carrots"], [
+      "Heat olive oil in a large skillet.",
+      "Add ground turkey and cook for 5 minutes, breaking it apart until no pink remains.",
+    ]],
+    // Cooked under a derived name.
+    ["Ground Beef Meatballs with Zucchini", ["ground beef", "zucchini"], [
+      "Form the ground beef into 8-10 small meatballs.",
+      "Heat a skillet and cook meatballs for 8-10 minutes until browned and cooked through.",
+    ]],
+    // Breaded and baked without the noun in the baking step.
+    ["Baked Chicken with Rolled Oats Crust", ["Boneless chicken breasts", "Rolled oats"], [
+      "Dip the chicken in beaten egg, then coat evenly with the oat mixture.",
+      "Place on a parchment-lined baking sheet and bake for 18-20 minutes until golden and cooked through.",
+    ]],
+  ];
+  for (const [name, ings, steps] of cooked) {
+    assert.equal(rawProteinNeverCooked(rawDish(name, ings, steps)), false, name);
+  }
+});
+
+test("heat that describes another food does not cook the fish", () => {
+  // The exact sentence that defeated the first two versions of this rule.
+  assert.equal(
+    rawProteinNeverCooked(
+      rawDish("Quinoa Bowl with Salmon", ["Salmon fillets", "Quinoa", "zucchini"], [
+        "Simmer the quinoa for 12 minutes.",
+        "Roast the vegetables at 400F for 15 minutes.",
+        "Top with roasted vegetables and flaked salmon.",
+      ])
+    ),
+    true
+  );
 });

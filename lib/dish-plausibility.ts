@@ -137,8 +137,26 @@ export function cookingFatCapG(calories?: number | null): number {
 
 const FAT_ROW = /\b(oils?|butters?|ghee|margarine|lard|tallow)\b/i;
 // "1.5 tablespoons extra virgin olive oil", "2 tbsp butter", "10 g of ghee".
+// Unicode fractions and "1/2" count as amounts. They did not, and that turned a
+// safety margin into a defect I shipped: a step reading "lightly oil a baking
+// dish with ½ tablespoon olive oil" looked SILENT to this pattern, so
+// clampCookingFat treated the dish as safe to rewrite and set the row to 0.37
+// tablespoon — leaving the card contradicting its own instructions, which is the
+// exact harm the clamp was written narrow to avoid. QA found it in two weeks.
+const FRACTION_WORDS: Record<string, number> = {
+  "½": 0.5, "⅓": 1 / 3, "⅔": 2 / 3, "¼": 0.25, "¾": 0.75, "⅛": 0.125, "⅜": 0.375, "⅝": 0.625, "⅞": 0.875,
+};
 const FAT_IN_STEP =
-  /(\d+(?:\.\d+)?)\s*(tsp|teaspoons?|tbsp|tablespoons?|g|grams?|ml)\b(?:\s+[\w-]+){0,3}?\s*(oils?|butters?|ghee|margarine)\b/gi;
+  /(\d+(?:\.\d+)?|\d+\s*\/\s*\d+|[½⅓⅔¼¾⅛⅜⅝⅞])\s*(tsp|teaspoons?|tbsp|tablespoons?|g|grams?|ml)\b(?:\s+[\w-]+){0,3}?\s*(oils?|butters?|ghee|margarine)\b/gi;
+
+/** A step's amount as a number, accepting "0.5", "1/2" and "½". */
+function amountToNumber(raw: string): number {
+  const t = raw.trim();
+  if (FRACTION_WORDS[t] != null) return FRACTION_WORDS[t];
+  const frac = t.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (frac) return Number(frac[1]) / Number(frac[2]);
+  return Number(t);
+}
 
 /**
  * How many grams of cooking fat the STEPS commit to, or null when they name no
@@ -151,7 +169,7 @@ export function fatStatedInSteps(steps?: readonly string[] | null): number | nul
   let found = false;
   for (const s of steps) {
     for (const m of s.matchAll(FAT_IN_STEP)) {
-      const q = Number(m[1]);
+      const q = amountToNumber(m[1]);
       const u = m[2];
       if (!Number.isFinite(q) || q <= 0) continue;
       total += /tsp|teaspoon/i.test(u) ? q * 4.7 : /tbsp|tablespoon/i.test(u) ? q * 14 : /ml/i.test(u) ? q * 0.92 : q;
@@ -208,13 +226,34 @@ export function clampCookingFat<T extends { name: string; quantity?: number | nu
   return {
     ingredients: ingredients.map((i) =>
       FAT_ROW.test(i.name) && i.quantity != null
-        ? // Rounded DOWN, so the result is always at or under the target rather
-          // than sometimes a touch over it.
-          { ...i, quantity: Math.max(0.01, Math.floor(i.quantity * factor * 100) / 100) }
+        ? { ...i, quantity: measurableAmount(i.quantity * factor, i.unit) }
         : i
     ),
     changed: true,
   };
+}
+
+/**
+ * The nearest amount a person can actually measure, at or below `raw`.
+ *
+ * Scaling a quantity by an arbitrary factor produces arbitrary numbers, and QA
+ * read them off the rendered card: "0.37 tablespoon" on five dishes, "Cooking
+ * oil 1.03 teaspoon", "Extra virgin olive oil 1.1 teaspoon". Nobody owns a
+ * 0.37-tablespoon spoon. A clamp that makes the number unusable has traded one
+ * defect for another.
+ *
+ * Spoons round to the eighths a measuring set actually has; grams and millilitres
+ * round to whole units. Always DOWN, so the clamp's ceiling still holds.
+ */
+export function measurableAmount(raw: number, unit?: string | null): number {
+  const u = (unit ?? "").trim();
+  if (/^\s*(tsp|teaspoons?|tbsp|tablespoons?|cups?)\s*$/i.test(u)) {
+    const eighths = Math.floor(raw * 8) / 8;
+    // Never round a real amount away to nothing.
+    return eighths >= 0.125 ? eighths : 0.125;
+  }
+  const whole = Math.floor(raw);
+  return whole >= 1 ? whole : Math.round(raw * 10) / 10;
 }
 
 export interface PlausibleIngredient {
@@ -270,7 +309,8 @@ export type DishProblem =
   | "missing-macros"
   | "macros-contradict-amounts"
   | "cooks-without-listing-fat"
-  | "step-outlasts-stated-time";
+  | "step-outlasts-stated-time"
+  | "raw-protein-never-cooked";
 
 const SEASONING_UNIT = /\b(tsp|teaspoons?|pinch|pinches|dash(es)?)\b/i;
 const TABLESPOON = /\b(tbsp|tablespoons?)\b/i;
@@ -848,6 +888,109 @@ export function methodNotUsed(name: string, steps: readonly string[] | null | un
 }
 
 /**
+ * A protein that has to be cooked, in a dish whose steps never cook it.
+ *
+ * QA found "Oats with Salmon and Broccoli" in a live plan: 70 g of raw salmon
+ * fillet, eight steps, and the only one touching the fish reads "pat the salmon
+ * fillet dry and flake it into bite-sized pieces with a fork". The oats are
+ * simmered and the broccoli steamed; the salmon is served raw, and the card
+ * declares a 12-minute cook time so nothing on screen warns anybody. Nothing in
+ * this module caught it, because every rule here was about whether a dish was
+ * PLAUSIBLE, and none was about whether it was safe to eat.
+ *
+ * Deliberately narrow, because a false refusal here is cheap and a false pass is
+ * not:
+ *   - only the proteins that genuinely must be cooked. Smoked salmon, canned
+ *     tuna, cured ham, sushi-grade fish and every plant protein are exempt, as
+ *     are eggs (raw yolk in a dressing is a normal recipe).
+ *   - satisfied by ANY heat word anywhere in the steps near that protein, or by
+ *     a heat word in a step that does not name another food. Recipes say "add
+ *     the fish and simmer 6 minutes" as often as "cook the salmon", so the rule
+ *     asks whether heat is applied at all in a step that mentions it.
+ *   - generated dishes only. A curated recipe's steps were written by a person.
+ */
+const MUST_BE_COOKED =
+  /\b(chicken|turkey|duck|pork|bacon|sausages?|lamb|veal|beef|steaks?|mince|salmon|tuna|cod|tilapia|halibut|haddock|catfish|trout|pollock|shrimps?|prawns?|scallops?|mussels?|clams?|fish)\b/i;
+// Forms that arrive already cooked, cured or safe to eat as they are.
+const ALREADY_SAFE =
+  /\b(smoked|cured|canned|tinned|cooked|pre-?cooked|deli|jerky|deli-sliced|deli meat|prosciutto|salami|pepperoni|deli turkey|rotisserie|leftover|sushi|sashimi|ceviche)\b/i;
+const HEAT_WORD =
+  /\b(cook|cooks|cooked|cooking|sear|sears|seared|searing|fry|fries|fried|frying|saut[ée]|saut[ée]s|saut[ée]ed|grill|grills|grilled|grilling|roast|roasts|roasted|roasting|bake|bakes|baked|baking|broil|broils|broiled|boil|boils|boiled|boiling|simmer|simmers|simmered|simmering|poach|poaches|poached|poaching|steam|steams|steamed|steaming|braise|braises|braised|braising|brown|browns|browned|browning|heat|heats|heated|heating|air fryer|oven|skillet|pan|until opaque|until cooked through|internal temperature)\b/i;
+
+/**
+ * Does any heat reach this protein after it first appears?
+ *
+ * Three heuristics were tried and measured against the live catalog before this
+ * one, and the first two would have done real harm:
+ *
+ *   1. "a heat word somewhere in a step that names the protein" passed the very
+ *      dish that prompted the rule — "Top the oats with the steamed broccoli and
+ *      flaked salmon" has a heat word and the salmon, and the heat is the
+ *      broccoli's.
+ *   2. "a heat word NEAREST to the protein" fixed that and flagged 38 dishes, of
+ *      which the first three inspected were all wrong: a salmon seared in step 6,
+ *      a chicken baked in step 7, and beef cooked as "meatballs" in step 4. Two
+ *      failed because the cooking step does not repeat the noun, and one because
+ *      the word "pepper" sat between the salmon and its verb.
+ *
+ * What actually separates the raw dish from those three is ORDER. A recipe
+ * introduces an ingredient and then cooks it, in that step or a later one; the
+ * raw dish introduces the salmon in step 4 and every remaining step is assembly.
+ * So: find where the protein first appears, and ask whether any heat happens
+ * from there on. It cannot tell which food the heat is for, and deliberately does
+ * not try — a dish that heats something after adding raw fish is given the
+ * benefit of the doubt, because a false refusal costs the pool a real dish and
+ * this rule exists for the unambiguous case.
+ */
+// "the steamed broccoli" is a DESCRIPTION of food already cooked; "Steam the
+// broccoli" is an instruction to cook it. Only the second means heat is being
+// applied here. Told apart by the determiner in front: an imperative opens a
+// clause, an adjective follows "the", "with", "of" or "and".
+//
+// This is the difference between catching the dish that started this rule and
+// not: its last steps read "Top the oats with the steamed broccoli and flaked
+// salmon", and read naively that sentence applies heat to the salmon.
+// The heat word must be followed by a FOOD to be an adjective. Requiring only a
+// determiner in front was not enough: "Add ground turkey and cook for 5 minutes"
+// has "and" before "cook", and stripping it read a properly cooked turkey hash as
+// raw. "and cook FOR" is an instruction; "with the steamed BROCCOLI" is not.
+const HEAT_FOOD =
+  /\b(chicken|turkey|pork|bacon|lamb|beef|steaks?|salmon|tuna|cod|shrimps?|prawns?|fish|eggs?|tofu|rice|pasta|spaghetti|noodles?|quinoa|oats?|lentils?|beans?|chickpeas?|potato(es)?|broccoli|cauliflower|zucchini|spinach|carrots?|peppers?|tomato(es)?|onions?|celery|mushrooms?|kale|asparagus|cabbages?|vegetables?|veg|greens?|bread|toast)\b/;
+const HEAT_AS_ADJECTIVE = new RegExp(
+  `\\b(?:the|with|of|and|plus|some)\\s+(?:${HEAT_WORD.source.slice(2, -2)})\\s+(?:${HEAT_FOOD.source.slice(2, -2)})`,
+  "gi"
+);
+
+function appliesHeat(step: string): boolean {
+  return HEAT_WORD.test(step.replace(HEAT_AS_ADJECTIVE, " "));
+}
+
+function heatReachesProtein(steps: readonly string[], head: string): boolean {
+  const named = new RegExp(`\\b${head}\\b`, "i");
+  const first = steps.findIndex((s) => named.test(s));
+  if (first < 0) return false;
+  return steps.slice(first).some(appliesHeat);
+}
+
+export function rawProteinNeverCooked(d: PlausibleDish): boolean {
+  if (!d.generated) return false;
+  const steps = d.steps ?? [];
+  if (steps.length === 0) return false;
+  for (const ing of d.ingredients) {
+    if (!MUST_BE_COOKED.test(ing.name)) continue;
+    if (ALREADY_SAFE.test(ing.name)) continue;
+    // Which token of this ingredient the steps would name — "Salmon fillets"
+    // is referred to as "the salmon".
+    const head = ing.name.match(MUST_BE_COOKED)?.[0] ?? "";
+    if (!head) continue;
+    const named = new RegExp(`\\b${head}\\b`, "i");
+    if (!steps.some((s) => named.test(s))) return true; // never mentioned, let alone cooked
+    if (!heatReachesProtein(steps, head)) return true;
+  }
+  return false;
+}
+
+/**
  * The name with a method it does not use taken out, or null if that is not
  * possible.
  *
@@ -959,6 +1102,7 @@ export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): D
   if (!snackIsQuickEnough(d)) return "snack-too-slow";
   if (!breakfastLooksLikeBreakfast(d)) return "not-breakfast-food";
   if (!breakfastIsBuiltOnBreakfastFood(d)) return "dinner-protein-at-breakfast";
+  if (rawProteinNeverCooked(d)) return "raw-protein-never-cooked";
 
   for (const ing of d.ingredients) {
     if (/\bsalt\b/i.test(ing.name)) {

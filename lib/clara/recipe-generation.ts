@@ -178,6 +178,10 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     // which is how a week ends up serving one dish seven times.
     `- The DESCRIPTION may only mention food that is in usesIngredients. Do not describe bread as "whole grain" unless the listed bread is whole grain, and do not mention a herb, citrus or sauce you did not list.`,
     `- If any step sears, fries, sautés or browns something, the fat used MUST be in usesIngredients with its amount. A dry pan is not a recipe.`,
+    // A live plan served 70 g of raw salmon: the only step touching it said to
+    // "pat the salmon fillet dry and flake it into bite-sized pieces". The oats
+    // were simmered and the broccoli steamed.
+    `- EVERY meat, poultry and fish must be COOKED by a step that names it — "sear the salmon 4 minutes a side", not "flake the salmon over the oats". Raw chicken or fish in a finished dish is unsafe to eat, not a recipe. Smoked, cured and canned fish are already safe and need no cooking step.`,
     // Deliberately does NOT suggest "season with herbs and citrus instead":
     // that wording tripled title rejections, because Clara started naming
     // dishes "Lemon Herb …" and listing neither. Say the number only.

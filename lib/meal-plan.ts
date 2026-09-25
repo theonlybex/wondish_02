@@ -89,16 +89,31 @@ function dishSignature(ings: { ingredient: { name: string } }[]): string {
 
 // Primary-protein detection, so the week doesn't serve the same protein type
 // over and over ("grilled chicken every day"). Returns a coarse protein family.
-const PROTEIN_TYPES: [string, string[]][] = [
-  ["chicken", ["chicken"]],
-  ["beef", ["beef", "steak"]],
-  ["pork", ["pork", "bacon", "ham", "sausage"]],
-  ["turkey", ["turkey"]],
-  ["lamb", ["lamb"]],
-  ["seafood", ["fish", "salmon", "tuna", "cod", "tilapia", "shrimp", "prawn"]],
-  ["egg", ["egg"]],
-  ["tofu", ["tofu", "tempeh", "seitan"]],
-  ["legume", ["bean", "lentil", "chickpea"]],
+// The dish's primary protein, by WORD rather than by substring.
+//
+// This matched with String.includes, and the catalog punished it twice:
+// "caribbean citrus seasoning" was classed as a legume protein because
+// "caribbean".includes("bean"), and "fish sauce" as seafood. Both then counted
+// against the two-per-day protein cap, so a day could be refused a dish over a
+// spice blend. Word boundaries fix that — and each pattern takes an explicit
+// plural, because switching to \b is exactly how the trap on the other side gets
+// reintroduced (\begg\b never matches the catalog's "Large eggs").
+//
+// A condiment is never a dish's protein however much of the animal is in its
+// name: fish sauce, oyster sauce, anchovy paste and beef stock season a dish,
+// they do not make it a fish dish.
+const CONDIMENT = /\b(sauces?|pastes?|seasonings?|powders?|broths?|stocks?|bouillon|extracts?|marinades?|dressings?|vinegars?)\b/i;
+
+const PROTEIN_TYPES: [string, RegExp][] = [
+  ["chicken", /\bchickens?\b/i],
+  ["beef", /\b(beef|steaks?|sirloins?|mince)\b/i],
+  ["pork", /\b(pork|bacon|hams?|sausages?|chorizo|prosciutto)\b/i],
+  ["turkey", /\bturkeys?\b/i],
+  ["lamb", /\blambs?\b/i],
+  ["seafood", /\b(fish|salmon|tuna|cod|tilapia|halibut|haddock|catfish|trout|sardines?|mackerel|shrimps?|prawns?|scallops?|mussels?|clams?)\b/i],
+  ["egg", /\beggs?\b/i],
+  ["tofu", /\b(tofu|tempeh|seitan)\b/i],
+  ["legume", /\b(beans?|lentils?|chickpeas?|garbanzos?|peas?)\b/i],
 ];
 /** Slots on one day that may share a primary protein. */
 export const MAX_SAME_PROTEIN_PER_DAY = 2;
@@ -155,7 +170,7 @@ export function dishSodiumMg(
 const CARB_BASES: [string, RegExp][] = [
   ["rice", /\brice\b/i],
   ["pasta", /\b(pasta|spaghetti|noodles?|macaroni|penne|orzo|couscous)\b/i],
-  ["bread", /\b(bread|toast|muffin|bagel|pita|tortilla|wrap)\b/i],
+  ["bread", /\b(breads?|toast|muffins?|bagels?|pitas?|tortillas?|wraps?|buns?|rolls?|crackers?|crumbs?|naan|baguettes?)\b/i],
   ["oats", /\b(oats?|oatmeal|porridge|granola)\b/i],
   ["potato", /\bpotato(es)?\b/i],
   ["grain", /\b(quinoa|bulgur|farro|barley|millet)\b/i],
@@ -170,7 +185,8 @@ export function dishCarbBase(ings: readonly { ingredient: { name: string } }[]):
 
 function proteinType(name: string): string | null {
   const n = name.toLowerCase();
-  for (const [type, kws] of PROTEIN_TYPES) if (kws.some((k) => n.includes(k))) return type;
+  if (CONDIMENT.test(n)) return null;
+  for (const [type, re] of PROTEIN_TYPES) if (re.test(n)) return type;
   return null;
 }
 /** The same detection over bare ingredient NAMES (a generated dish's list). */
