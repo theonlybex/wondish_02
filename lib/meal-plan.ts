@@ -52,6 +52,9 @@ const DAY_MACRO_WEIGHT = 90;
  */
 const DAY_FAT_CEILING = 1.15;
 
+/** The smallest a slot's first dish, or a snack, may be (see queryRecipes). */
+const MIN_MEAL_KCAL = 60;
+
 /** Breakfast grains that make a dish porridge, not a side (see queryRecipes). */
 const PORRIDGE_GRAIN = /\b(rolled oats|oats|oatmeal|porridge|granola|muesli)\b/i;
 
@@ -969,7 +972,14 @@ export async function buildMealPlanMenus(
           // against breakfast ones. Secondary picks only — a side or filler
           // can always be skipped, and the slot's main is judged elsewhere.
           !(mealCalories > 0 && (mealNameLower === "lunch" || mealNameLower === "dinner") &&
-            r.ingredients.some((i) => PORRIDGE_GRAIN.test(i.ingredient.name)));
+            r.ingredients.some((i) => PORRIDGE_GRAIN.test(i.ingredient.name))) &&
+          // A condiment is not a meal. "Homemade Cashew parmesan cheese", 25
+          // kcal, was served as a whole snack slot, and 84 library rows declare
+          // under 60 kcal — "Beef Pot Roast" declares 0. A slot's FIRST dish
+          // and a snack need MIN_MEAL_KCAL; a small side may be small. A 0 kcal
+          // row is never chosen: it would count as nothing in the day's ring.
+          (r.calories ?? 0) > 0 &&
+          ((mealCalories > 0 && !isSnack) || (r.calories ?? 0) >= MIN_MEAL_KCAL);
         // Variety rules relax in order of how much a repeat would hurt: first
         // the "not the same protein as yesterday" rule, then last week's
         // dishes, then this week's dishes — and only when NOTHING else fits
@@ -1237,7 +1247,9 @@ export async function buildMealPlanMenus(
         const matchesExtra = (r: PoolRecipe, excludeUsed: boolean): boolean =>
           r.mealTypeId === snackMealType.id &&
           r.ingredients.length > 0 && r.description !== null &&
-          r.calories !== null && r.calories >= minCals && r.calories <= maxCals &&
+          // MIN_MEAL_KCAL here too: a quarter of a small calorie gap is ~20 kcal,
+          // which is how a 25 kcal condiment got served as the snack.
+          r.calories !== null && r.calories >= Math.max(minCals, MIN_MEAL_KCAL) && r.calories <= maxCals &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
           todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG &&
           // The day's fat ceiling applies to padding too. Snacks are the

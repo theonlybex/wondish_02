@@ -1238,3 +1238,22 @@ test("porridge is never a lunch or dinner side (cycle 19: oatmeal padded a 7pm c
   assert.ok(rows.length > 0);
   assert.ok(rows.every((r) => r.recipeId !== "oats"), "an oat dish was added to lunch as filler");
 });
+
+test("a condiment is not a meal: never a snack, never the day's top-up, and 0 kcal is never chosen", async () => {
+  // A 25 kcal "Homemade Cashew parmesan cheese" was served as the snack:
+  // the day's calorie top-up takes anything above a quarter of the remaining
+  // gap, which on a nearly-full day is ~20 kcal. "Beef Pot Roast" declares 0.
+  const ladder = (mt: { id: string }, p: string) => {
+    const out: any[] = [];
+    for (let cal = 150; cal <= 700; cal += 25) out.push(makeRecipe({ id: `${p}-${cal}`, mealTypeId: mt.id, calories: cal }));
+    return out;
+  };
+  setDb(overweightPatient(), ALL_MT, [
+    ...ladder(MT_B, "b"), ...ladder(MT_L, "l"), ...ladder(MT_D, "d"),
+    makeRecipe({ id: "condiment", mealTypeId: MT_S.id, calories: 25, family: "A", subFamily: "sA" }),
+    makeRecipe({ id: "zero", mealTypeId: MT_S.id, calories: 0, family: "B", subFamily: "sB" }),
+  ]);
+  const { rows } = await build("p1", START);
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((r) => r.recipeId !== "condiment" && r.recipeId !== "zero"), "a condiment or a 0 kcal row was served");
+});
