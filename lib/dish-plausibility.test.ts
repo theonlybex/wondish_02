@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood, snackIsQuickEnough, statedOrImpliedMinutes } from "./dish-plausibility";
+import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood, snackIsQuickEnough, statedOrImpliedMinutes, nameWithoutFalseMethod } from "./dish-plausibility";
 
 // The catalog vocabulary, as lib/meal-plan.ts builds it from Ingredient.name.
 const CATALOG = new Set([
@@ -598,4 +598,25 @@ test("stated timings still win over the steps when they exist", () => {
     steps: ["Simmer for 90 minutes."], ingredients: [{ name: "rice" }],
   } as never;
   assert.equal(statedOrImpliedMinutes(d), 15);
+});
+
+test("a name claiming a method the steps never use loses the method, not the dish", () => {
+  const seared = ["Heat a skillet over medium-high.", "Sear the salmon 4 minutes a side."];
+  assert.equal(
+    nameWithoutFalseMethod("Grilled Salmon with Quinoa and Herbs", seared),
+    "Salmon with Quinoa and Herbs"
+  );
+  // Both adjectives are checked, and only the false one goes.
+  const roastedNotGrilled = ["Roast the vegetables in the oven at 200C.", "Sear the chicken in a pan."];
+  assert.equal(
+    nameWithoutFalseMethod("Grilled Chicken with Roasted Vegetables", roastedNotGrilled),
+    "Chicken with Roasted Vegetables"
+  );
+});
+
+test("an honest method name is left alone, and a name that is only a method is refused", () => {
+  const grilled = ["Grill the salmon over high heat for 8 minutes."];
+  assert.equal(nameWithoutFalseMethod("Grilled Salmon", grilled), null, "the steps do grill it");
+  // Nothing survives removing the method, so there is no honest name to use.
+  assert.equal(nameWithoutFalseMethod("Grilled", ["Sear it in a pan."]), null);
 });

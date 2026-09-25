@@ -37,7 +37,7 @@ import { BASKET_STAPLES } from "../lib/basket-coverage";
 import {
   SNACK_MAX_MINUTES, BREAKFAST_MAX_MINUTES, SMALL_DISH_KCAL, breakfastLooksLikeBreakfast,
   catalogFoodVocabulary, phrasePromisesMissingFood, truthfulDishName,
-  saltRowTsp, addedSaltCapTsp, countUnitFor, clampCookingFat, dishProblem, longestStepMinutes,
+  saltRowTsp, addedSaltCapTsp, countUnitFor, clampCookingFat, dishProblem, longestStepMinutes, nameWithoutFalseMethod, methodNotUsed,
 } from "../lib/dish-plausibility";
 import { displayDishName } from "../lib/dish-name";
 
@@ -416,7 +416,7 @@ async function main() {
   const proseRows = await prisma.recipe.findMany({
     where: { isPublic: true, tags: { hasSome: ["clara", "Clara", "clara-generated"] } },
     select: {
-      id: true, name: true, description: true,
+      id: true, name: true, description: true, steps: true,
       ingredients: { select: { ingredient: { select: { name: true } } } },
     },
   });
@@ -425,16 +425,26 @@ async function main() {
     const names = r.ingredients.map((ri) => ri.ingredient.name);
     const nameLie = phrasePromisesMissingFood(displayDishName(r.name), names, vocabulary);
     const descLie = r.description ? phrasePromisesMissingFood(r.description, names, vocabulary) : null;
-    if (!nameLie && !descLie) continue;
+    // A name claiming a technique the steps never perform is the same kind of
+    // untrue claim as one naming absent food, and takes the same repair: the
+    // adjective goes rather than the dish (see nameWithoutFalseMethod).
+    const methodLie = methodNotUsed(displayDishName(r.name), r.steps);
+    if (!nameLie && !descLie && !methodLie) continue;
     let to = r.name;
     if (nameLie) {
       const honest = truthfulDishName(names, vocabulary, takenNames);
       if (!honest) continue;
       to = honest;
-      takenNames.delete(r.name.trim().toLowerCase());
-      takenNames.add(honest.trim().toLowerCase());
+    } else if (methodLie) {
+      const trimmed = nameWithoutFalseMethod(displayDishName(r.name), r.steps);
+      if (!trimmed || takenNames.has(trimmed.trim().toLowerCase())) continue;
+      to = trimmed;
     }
-    renames.push({ id: r.id, from: r.name, to, lied: nameLie ?? descLie ?? "", description: to });
+    if (to !== r.name) {
+      takenNames.delete(r.name.trim().toLowerCase());
+      takenNames.add(to.trim().toLowerCase());
+    }
+    renames.push({ id: r.id, from: r.name, to, lied: nameLie ?? methodLie ?? descLie ?? "", description: to });
   }
   const titleFixes = renames.filter((r) => r.to !== r.from);
   console.log(

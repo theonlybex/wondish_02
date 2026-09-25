@@ -783,6 +783,51 @@ export function methodNotUsed(name: string, steps: readonly string[] | null | un
   return null;
 }
 
+/**
+ * The name with a method it does not use taken out, or null if that is not
+ * possible.
+ *
+ * 48 dishes are named for a technique their own steps never perform — "Grilled
+ * Salmon" that is pan-seared, "Baked Chicken" with no oven. Selection refuses
+ * them, which is right: the name is a claim, and a reader choosing the dish
+ * because it is grilled has been told something untrue.
+ *
+ * But refusing is not the only answer available, any more than it was for a
+ * title promising absent food. The dish is fine; one adjective is wrong, so the
+ * adjective goes. "Grilled Salmon with Broccoli" becomes "Salmon with Broccoli"
+ * — which is what the recipe actually is.
+ *
+ * Re-checked by the predicate that condemned it, and refused rather than forced:
+ * a name that is nothing BUT the method ("Grilled") has nothing left once the
+ * method is removed.
+ */
+export function nameWithoutFalseMethod(
+  name: string,
+  steps: readonly string[] | null | undefined
+): string | null {
+  if (!steps || steps.length === 0) return null;
+  const text = steps.join(" ");
+  let out = name;
+  for (const rule of METHOD_REQUIRES) {
+    if (!rule.method.test(out)) continue;
+    if (rule.needs.test(text)) continue; // the steps do it; the name is honest
+    out = out.replace(new RegExp(rule.method.source, "gi"), " ");
+  }
+  if (out === name) return null;
+  // Tidy what removing a word leaves behind: doubled spaces, a dangling
+  // connector, a leading comma.
+  out = out
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s,\-–]+/, "")
+    .replace(/[\s,\-–]+$/, "")
+    .replace(/^(with|and|in|on)\s+/i, "")
+    .replace(/\s+(with|and|in|on)$/i, "")
+    .trim();
+  if (out.length < 3) return null;
+  if (methodNotUsed(out, steps)) return null;
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
 /** The dish-defining ingredient a name promises but the dish lacks, or null. */
 export function dishStyleMissingIngredient(name: string, ingredientNames: readonly string[]): string | null {
   const listed = ingredientNames.join(" | ");
