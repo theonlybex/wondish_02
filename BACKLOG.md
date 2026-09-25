@@ -335,13 +335,14 @@ or reproduced; where a bot could not pin something down, it says so.
 - [ ] **A per-account weight-unit preference needs a column** (a migration on
       the production DB, so not the agent's to run). Until then the choice is
       per device.
-- [ ] **A Clara swap that finds nothing still costs a swap.** Asked for
+- [x] **A Clara swap that finds nothing still costs a swap.** Asked for
       "something rich and creamy" on a day with 27 g of fat left, Clara returned
       four dishes over it — even once the prompt states the room in grams. The
       422 now says so ("would take today past your fat target — try asking for
       something lighter") instead of blaming the slot. Refunding the allowance
       needs a decrement the sliding-window limiter does not have.
-- [ ] **A high-target, narrow basket cannot reach its macros.** qa.variant:
+      **Cycle 21:** refunded (user decision). The swap allowance is charged only when a dish is saved; every model call is metered by a new `swapAttempt` cap (allowance + 3; beta + 2), finishing a two-phase design an earlier session left unused. Paid for by Plus Clara chat 25 → 20, keeping the $30 ceiling (test). Measured: two refused swaps spent 2 attempts and 0 swaps and said so; three delivered swaps spent one each.
+- [x] **A high-target, narrow basket cannot reach its macros.** qa.variant:
       pescatarian, shellfish-free, 16 ingredients, 2,959 kcal with 222 g
       protein. Over 4 generated weeks protein landed at 49-62% of target and fat
       at 113-134%, calories 80-93%. The 1,000+ kcal lunches that basket allows
@@ -351,6 +352,7 @@ or reproduced; where a bot could not pin something down, it says so.
       dinner when tofu exists). What is left is the pool, and the honest
       options are product ones: fewer grams asked of a narrow basket, or Clara
       writing lean high-protein dishes to order.
+      **Cycle 21:** Clara now writes lean, protein-forward dishes (user decision) when a slot has fewer than 4 lean dishes big enough for it, and mains prefer the diner's own protein share. qa.variant over 2 weeks: protein 52-65% → 57-77% of target, fat 118-138% → 106-124%, but calories 84-93% → 74-85%: Clara's lean lunches still come in at 700-840 kcal for a 1,035 kcal slot, and the fat ceiling then blocks the padding. The other two profiles are unharmed (fat 91-117%, calories 89-105%, protein 74-109%). The remainder is a real three-way conflict in that basket, recorded below rather than tuned against one account.
 - [x] **Oatmeal padded a 7pm chicken dinner** (first free-tier week). Porridge
       is never a lunch/dinner side or filler now; test verified by
       reintroducing the bug.
@@ -385,6 +387,19 @@ or reproduced; where a bot could not pin something down, it says so.
   free account, 1,725-1,931 kcal): fat 25-28% of calories on 7 of 7 days,
   88-106% of the gram target; calories 85-102%; no oat dish at lunch or
   dinner.
+
+**Cycle 21**
+- [ ] **qa.variant eats 74-85% of its calories** since the lean-protein change:
+      protein and fat both improved, and the lean lunches Clara writes are
+      ~250 kcal smaller than the slot. Next lever, if wanted: let a lunch or
+      dinner take a lean side when the slot is under 85% (today's filler waits
+      for 70%). Not done blind — it adds a row to many profiles' days.
+- [x] **Generated dishes were briefed "~0% protein"** (fixed in cycle 19);
+      re-measured here: Clara's lean dishes come back at 23-31% protein.
+- Development responses now carry what the top-up asked for and kept
+  (`debug` on /api/meal-plan/new-week, rejection reasons on a swap 422). A
+  quarter of every generated batch is rejected as out-of-basket (7 of 28) —
+  the next place to win acceptance.
 
 **Still open from before**
 - [x] **The journal's five step dots are 32px wide** (44 tall). Five 44px
