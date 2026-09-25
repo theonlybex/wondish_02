@@ -649,7 +649,19 @@ function titleCase(s: string): string {
 export function truthfulDishName(
   ingredientNames: readonly string[],
   catalogFoodTokens: Set<string>,
-  taken: Set<string> = new Set()
+  taken: Set<string> = new Set(),
+  /**
+   * A word describing the FORM of the dish — "Bowl", "Hash", "Salad", "Skillet"
+   * — used only to break a collision when every ingredient-shaped name is
+   * already taken. It must be a word TITLE_NON_FOOD already treats as making no
+   * food claim, so appending it cannot reintroduce the lie being repaired.
+   *
+   * Without this, 53 dishes stayed out of the pool not because no honest name
+   * existed but because another dish had already been given it: with a
+   * 15-ingredient basket, many dishes really are "Large Eggs with Sliced Bread
+   * and Spinach", and only the first could have the name.
+   */
+  formWord?: string | null
 ): string | null {
   const heads = ingredientNames.map((n) => n.trim()).filter((n) => n && !notAHeadline(n));
   if (heads.length === 0) return null;
@@ -672,11 +684,46 @@ export function truthfulDishName(
       rest.length <= 1 ? rest.join("") : `${rest.slice(0, -1).join(", ")} and ${rest[rest.length - 1]}`;
     const name = titleCase(rest.length === 0 ? parts[0] : `${parts[0]} with ${tail}`);
     if (phrasePromisesMissingFood(name, ingredientNames, catalogFoodTokens)) continue;
-    if (taken.has(name.trim().toLowerCase())) continue;
-    return name;
+    if (!taken.has(name.trim().toLowerCase())) return name;
+    // Taken. Before giving up on this shape, try it with the dish's own form
+    // word — honest by construction, since TITLE_NON_FOOD holds these exact
+    // words precisely because they promise no ingredient.
+    const form = (formWord ?? "").trim();
+    if (form && TITLE_NON_FOOD.has(form.toLowerCase())) {
+      const withForm = `${name} ${form.charAt(0).toUpperCase() + form.slice(1).toLowerCase()}`;
+      if (
+        !phrasePromisesMissingFood(withForm, ingredientNames, catalogFoodTokens) &&
+        !taken.has(withForm.trim().toLowerCase())
+      ) {
+        return withForm;
+      }
+    }
   }
   return null;
 }
+
+/**
+ * The word in a name that describes the dish's FORM rather than its food.
+ * Used only to break a name collision; see truthfulDishName's formWord.
+ */
+export function formWordOf(name: string): string | null {
+  for (const w of displayDishName(name).split(/[\s,]+/)) {
+    const lower = w.toLowerCase().replace(/[^a-z]/g, "");
+    if (!lower) continue;
+    if (FORM_WORDS.has(lower)) return lower;
+  }
+  return null;
+}
+
+// A subset of TITLE_NON_FOOD: the words that name a dish's shape, as opposed to
+// a cooking method or a flourish. "Bowl" distinguishes two dishes; "Simple" does
+// not.
+const FORM_WORDS = new Set([
+  "bowl", "salad", "hash", "skillet", "patty", "patties", "meatball", "meatballs",
+  "stew", "soup", "wrap", "taco", "tacos", "plate", "medley", "casserole",
+  "bake", "burger", "sandwich", "omelette", "omelet", "porridge", "scramble",
+  "frittata", "toast", "parfait", "smoothie", "stirfry", "skewers",
+]);
 
 /** Countable foods whose bare count IS the measurement (see staple-density). */
 const COUNTABLE = /\b(eggs?|bread|toast|muffin|bagel|tortilla|pita|apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|carrots?|avocados?|lemons?|limes?)\b/i;
@@ -738,7 +785,22 @@ export function healthClaimNotListed(phrase: string, ingredientNames: readonly s
  * Each entry lists alternatives — any one satisfies the name.
  */
 const DISH_REQUIRES: { dish: RegExp; needs: RegExp; label: string }[] = [
-  { dish: /\b(bolognese|ragu|ragù|marinara|arrabbiata)\b/i, needs: /\b(tomato|passata|marinara|tomato sauce|tomato paste)\b/i, label: "tomato" },
+  // EVERY `needs` pattern takes a plural. They did not, and the consequence was
+  // the opposite of the rule's purpose: /\b(egg)\b/ does not match the
+  // catalog's "Large eggs", so "Egg Scramble with Carrots and Broccoli" — a dish
+  // made of eggs, named for its eggs — was refused for having no egg, along with
+  // 80 others. The same hole sat in `tomato` against "Roma tomatoes",
+  // `chickpea` against "chickpeas", `avocado` against "Avocados", `bean`
+  // against "Black beans" and `mushroom` against "Mushrooms".
+  //
+  // That is the FIFTH time in this project that a singular-only pattern has
+  // silently not matched the catalog's own spelling (\begg\b vs "eggs",
+  // \bberries\b vs "strawberries", \bpeppers?\b vs "Bell peppers",
+  // \bcucumber\b vs "Cucumbers"), and the first time it was caught BEFORE
+  // shipping — by a repair step offering to strip "Scramble" from 81 dishes
+  // whose names were perfectly honest. lib/staple-density.test.ts holds the
+  // regression net for the other half of this class.
+  { dish: /\b(bolognese|ragu|ragù|marinara|arrabbiata)\b/i, needs: /\b(tomato(es)?|passata|marinara|tomato sauce|tomato paste)\b/i, label: "tomato" },
   { dish: /\b(curry|curried|masala|tikka|korma|vindaloo)\b/i, needs: /\b(curry|masala|turmeric|cumin|coriander|garam|paprika|chili powder|cayenne|ginger)\b/i, label: "curry spice" },
   { dish: /\b(pesto)\b/i, needs: /\b(basil|pesto)\b/i, label: "basil" },
   // "Oatmeal with Poached Chicken Breast and Carrots" — described as oatmeal,
@@ -748,14 +810,16 @@ const DISH_REQUIRES: { dish: RegExp; needs: RegExp; label: string }[] = [
   { dish: /\boatmeal\b/i, needs: /\boats?\b|\boatmeal\b/i, label: "oats" },
   { dish: /\b(risotto)\b/i, needs: /\brice\b/i, label: "rice" },
   { dish: /\b(polenta)\b/i, needs: /\b(polenta|cornmeal)\b/i, label: "cornmeal" },
-  { dish: /\b(scramble|scrambled|omelette|omelet|frittata|shakshuka)\b/i, needs: /\b(egg)\b/i, label: "egg" },
-  { dish: /\b(hummus)\b/i, needs: /\b(chickpea|garbanzo|tahini|hummus)\b/i, label: "chickpeas" },
-  { dish: /\b(guacamole)\b/i, needs: /\b(avocado)\b/i, label: "avocado" },
-  { dish: /\b(carbonara)\b/i, needs: /\b(egg)\b/i, label: "egg" },
-  { dish: /\b(chili|chilli)\s*(con carne)?\b/i, needs: /\b(bean|chili|chilli|cayenne|paprika|cumin)\b/i, label: "chilli or beans" },
-  { dish: /\b(caesar)\b/i, needs: /\b(parmesan|anchovy|caesar)\b/i, label: "parmesan" },
+  // Tofu and chickpea scrambles are real dishes, so the egg rules accept the
+  // thing being scrambled rather than only eggs.
+  { dish: /\b(scramble|scrambled|omelette|omelet|frittata|shakshuka)\b/i, needs: /\b(eggs?|tofu|chickpea flour|besan)\b/i, label: "egg" },
+  { dish: /\b(hummus)\b/i, needs: /\b(chickpeas?|garbanzos?|tahini|hummus)\b/i, label: "chickpeas" },
+  { dish: /\b(guacamole)\b/i, needs: /\b(avocados?)\b/i, label: "avocado" },
+  { dish: /\b(carbonara)\b/i, needs: /\b(eggs?)\b/i, label: "egg" },
+  { dish: /\b(chili|chilli)\s*(con carne)?\b/i, needs: /\b(beans?|chili|chilli|cayenne|paprika|cumin)\b/i, label: "chilli or beans" },
+  { dish: /\b(caesar)\b/i, needs: /\b(parmesan|anchov(y|ies)|caesar)\b/i, label: "parmesan" },
   { dish: /\b(teriyaki)\b/i, needs: /\b(soy|teriyaki|mirin)\b/i, label: "soy" },
-  { dish: /\b(stroganoff)\b/i, needs: /\b(sour cream|cream|yogurt|mushroom)\b/i, label: "cream or mushroom" },
+  { dish: /\b(stroganoff)\b/i, needs: /\b(sour cream|cream|yogh?urt|mushrooms?)\b/i, label: "cream or mushroom" },
 ];
 
 /**
@@ -825,6 +889,44 @@ export function nameWithoutFalseMethod(
     .trim();
   if (out.length < 3) return null;
   if (methodNotUsed(out, steps)) return null;
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
+/**
+ * The name with a STYLE the dish cannot deliver taken out, or null.
+ *
+ * The twin of nameWithoutFalseMethod, for the other half of the same drop code:
+ * "title-promises-missing-food" is returned both by the token rule (a name
+ * promising absent food) and by dishStyleMissingIngredient (an "Oatmeal" made of
+ * rice, a "curry" with no spices, a "scramble" with no egg). The rename step
+ * repaired only the first half for a while, and reported nothing repairable
+ * while selection was dropping 53 dishes — the two halves share a code and did
+ * not share a fix.
+ *
+ * A style word is a claim like any other, so it goes the same way. Refused where
+ * nothing honest remains.
+ */
+export function nameWithoutFalseStyle(
+  name: string,
+  ingredientNames: readonly string[]
+): string | null {
+  const listed = ingredientNames.join(" | ");
+  let out = name;
+  for (const rule of DISH_REQUIRES) {
+    if (!rule.dish.test(out)) continue;
+    if (rule.needs.test(listed)) continue; // the dish has what the style needs
+    out = out.replace(new RegExp(rule.dish.source, "gi"), " ");
+  }
+  if (out === name) return null;
+  out = out
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s,\-–]+/, "")
+    .replace(/[\s,\-–]+$/, "")
+    .replace(/^(with|and|in|on|of)\s+/i, "")
+    .replace(/\s+(with|and|in|on|of)$/i, "")
+    .trim();
+  if (out.length < 3) return null;
+  if (dishStyleMissingIngredient(out, ingredientNames)) return null;
   return out.charAt(0).toUpperCase() + out.slice(1);
 }
 

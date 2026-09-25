@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood, snackIsQuickEnough, statedOrImpliedMinutes, nameWithoutFalseMethod } from "./dish-plausibility";
+import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood, snackIsQuickEnough, statedOrImpliedMinutes, nameWithoutFalseMethod, dishStyleMissingIngredient } from "./dish-plausibility";
 
 // The catalog vocabulary, as lib/meal-plan.ts builds it from Ingredient.name.
 const CATALOG = new Set([
@@ -619,4 +619,35 @@ test("an honest method name is left alone, and a name that is only a method is r
   assert.equal(nameWithoutFalseMethod("Grilled Salmon", grilled), null, "the steps do grill it");
   // Nothing survives removing the method, so there is no honest name to use.
   assert.equal(nameWithoutFalseMethod("Grilled", ["Sear it in a pan."]), null);
+});
+
+// The fifth instance of the plural trap, and the first caught before shipping:
+// /\b(egg)\b/ does not match the catalog's "Large eggs", so a dish made of eggs
+// and named for its eggs was refused for having no egg — 81 of them.
+test("a style rule sees the catalog's own plural spellings", () => {
+  const cases: [string, string[]][] = [
+    ["Egg Scramble with Carrots", ["Large eggs", "carrots"]],
+    ["Spinach Frittata", ["Large eggs", "spinach"]],
+    ["Ground Beef Bolognese", ["Roma tomatoes", "ground beef"]],
+    ["Hummus and Carrot Sticks", ["Garbanzo beans", "carrots"]],
+    ["Guacamole with Tortilla", ["Avocados", "flour tortillas"]],
+    ["Beef Chili", ["Black beans", "ground beef"]],
+    ["Beef Stroganoff", ["Mushrooms", "ground beef"]],
+    ["Chicken Caesar Salad", ["anchovies", "Boneless chicken breasts"]],
+  ];
+  for (const [name, ings] of cases) {
+    assert.equal(
+      dishStyleMissingIngredient(name, ings),
+      null,
+      `${name} has what it claims: ${ings.join(", ")}`
+    );
+  }
+});
+
+test("a style rule still catches a dish that really lacks what it claims", () => {
+  assert.equal(dishStyleMissingIngredient("Oatmeal with Chicken", ["Boneless chicken breasts", "Brown rice"]), "oats");
+  assert.equal(dishStyleMissingIngredient("Ground Beef Bolognese", ["ground beef", "Spaghetti"]), "tomato");
+  assert.equal(dishStyleMissingIngredient("Vegetable Scramble", ["broccoli", "carrots"]), "egg");
+  // A tofu scramble is a real dish and must not be refused for having no egg.
+  assert.equal(dishStyleMissingIngredient("Tofu Scramble with Peppers", ["tofu", "Bell peppers"]), null);
 });

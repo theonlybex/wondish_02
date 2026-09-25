@@ -36,8 +36,8 @@ import { priceDish, PRICING_COVERAGE_MIN, macrosDisagreeWithPricing, gramsOf } f
 import { BASKET_STAPLES } from "../lib/basket-coverage";
 import {
   SNACK_MAX_MINUTES, BREAKFAST_MAX_MINUTES, SMALL_DISH_KCAL, breakfastLooksLikeBreakfast,
-  catalogFoodVocabulary, phrasePromisesMissingFood, truthfulDishName,
-  saltRowTsp, addedSaltCapTsp, countUnitFor, clampCookingFat, dishProblem, longestStepMinutes, nameWithoutFalseMethod, methodNotUsed,
+  catalogFoodVocabulary, phrasePromisesMissingFood, truthfulDishName, formWordOf,
+  saltRowTsp, addedSaltCapTsp, countUnitFor, clampCookingFat, dishProblem, longestStepMinutes, nameWithoutFalseMethod, methodNotUsed, nameWithoutFalseStyle, dishStyleMissingIngredient,
 } from "../lib/dish-plausibility";
 import { displayDishName } from "../lib/dish-name";
 
@@ -345,7 +345,11 @@ async function main() {
     // and Ground Turkey Hash with Brown Rice" — and 67 of them pass every rule
     // as a Lunch. Same defect as the timing one and the same repair: the label
     // is wrong, the dish is not.
-    const notBreakfastFood =
+    // Both breakfast-shape rules, not just one: 30 rows are refused as
+    // dinner-protein-at-breakfast ("Oatmeal with Ground Beef") and are perfectly
+    // good lunches. Leaving them behind would have been the same oversight as
+    // leaving the timing rows behind in cycle 9.
+    const breakfastShapeProblem =
       from.toLowerCase() === "breakfast" &&
       dishProblem(
         {
@@ -359,8 +363,11 @@ async function main() {
           })),
         },
         vocabulary
-      ) === "not-breakfast-food";
-    if (!tooSlowForSnack && !tooSlowForBreakfast && !notBreakfastFood) continue;
+      );
+    const wrongShapeForBreakfast =
+      breakfastShapeProblem === "not-breakfast-food" ||
+      breakfastShapeProblem === "dinner-protein-at-breakfast";
+    if (!tooSlowForSnack && !tooSlowForBreakfast && !wrongShapeForBreakfast) continue;
     const asBreakfast = {
       name: r.name,
       description: r.description,
@@ -429,22 +436,30 @@ async function main() {
     // untrue claim as one naming absent food, and takes the same repair: the
     // adjective goes rather than the dish (see nameWithoutFalseMethod).
     const methodLie = methodNotUsed(displayDishName(r.name), r.steps);
-    if (!nameLie && !descLie && !methodLie) continue;
+    // The OTHER half of the title-promises code: a style the dish cannot deliver
+    // ("Oatmeal" made of rice, a scramble with no egg). Repairing only the token
+    // half left this one reporting nothing while selection dropped 53 dishes.
+    const styleLie = dishStyleMissingIngredient(displayDishName(r.name), names);
+    if (!nameLie && !descLie && !methodLie && !styleLie) continue;
     let to = r.name;
     if (nameLie) {
-      const honest = truthfulDishName(names, vocabulary, takenNames);
+      const honest = truthfulDishName(names, vocabulary, takenNames, formWordOf(r.name));
       if (!honest) continue;
       to = honest;
-    } else if (methodLie) {
-      const trimmed = nameWithoutFalseMethod(displayDishName(r.name), r.steps);
-      if (!trimmed || takenNames.has(trimmed.trim().toLowerCase())) continue;
-      to = trimmed;
+    } else if (methodLie || styleLie) {
+      const base = displayDishName(r.name);
+      const trimmed = methodLie
+        ? nameWithoutFalseMethod(base, r.steps)
+        : nameWithoutFalseStyle(base, names);
+      const both = trimmed && styleLie && methodLie ? nameWithoutFalseStyle(trimmed, names) : trimmed;
+      if (!both || takenNames.has(both.trim().toLowerCase())) continue;
+      to = both;
     }
     if (to !== r.name) {
       takenNames.delete(r.name.trim().toLowerCase());
       takenNames.add(to.trim().toLowerCase());
     }
-    renames.push({ id: r.id, from: r.name, to, lied: nameLie ?? methodLie ?? descLie ?? "", description: to });
+    renames.push({ id: r.id, from: r.name, to, lied: nameLie ?? methodLie ?? styleLie ?? descLie ?? "", description: to });
   }
   const titleFixes = renames.filter((r) => r.to !== r.from);
   console.log(
