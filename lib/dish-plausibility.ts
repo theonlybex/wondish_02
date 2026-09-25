@@ -495,7 +495,15 @@ export function withReadableProse<
     ? r.ingredients.map((ri) => {
         const fixed =
           typeof ri.quantity === "number" ? repairAmount(ri.quantity, ri.unit, ri.ingredient?.name ?? "") : null;
-        return fixed ? { ...ri, quantity: fixed.quantity, unit: fixed.unit } : ri;
+        const out = fixed ? { ...ri, quantity: fixed.quantity, unit: fixed.unit } : ri;
+        // A bare count of a thing that is counted in a known unit: "2 eggs",
+        // "2 slices", not "2" (QA cycle 17). An unknowable unit stays blank —
+        // "½" beside rice cannot be repaired without inventing a measure.
+        if (typeof out.quantity === "number" && !(out.unit ?? "").trim()) {
+          const u = countUnitFor(ri.ingredient?.name ?? "");
+          if (u && u !== "whole") return { ...out, unit: u };
+        }
+        return out;
       })
     : undefined;
   // The title too: a grading word off the egg box is not a dish name, and the

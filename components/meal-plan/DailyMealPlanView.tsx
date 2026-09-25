@@ -838,7 +838,10 @@ export default function DailyMealPlanView({
 
       {/* Cuisine-for-today + full-week entry — only when a day exists. */}
       {menus.length > 0 && (
-        <div className="mb-3">
+        // mb-5, not mb-3: this row's 44px tap areas reach 14px below the text
+        // and the Next-day button's reach 4px above it, so a 12px gap left the
+        // two overlapping by 6px (measured in cycle 17). 20px clears it.
+        <div className="mb-5">
           <div className="flex items-center justify-between gap-3">
             <button
               type="button"
@@ -1188,7 +1191,7 @@ export default function DailyMealPlanView({
                                 role="button"
                                 tabIndex={0}
                                 aria-expanded={isSelected}
-                                className={`flex items-center justify-between gap-2 cursor-pointer rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 ${
+                                className={`flex items-center justify-between gap-2 cursor-pointer rounded-lg transition-colors outline-none [@media(pointer:coarse)]:min-h-11 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 ${
                                   isSelected ? "-mx-1.5 px-1.5 py-0.5 bg-[#ffffff]" : ""
                                 }`}
                                 onClick={() => selectCard(isSelected ? null : menu.id)}

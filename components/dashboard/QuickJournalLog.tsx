@@ -196,10 +196,11 @@ export default function QuickJournalLog() {
        * neighbour is worse than a small one — it moves the user somewhere they
        * did not ask to go, and the pixels look fine in a report.
        *
-       * So the width is real and the gap is real: 32px buttons, 8px apart
-       * (5x32 + 4x8 = 192px, comfortable at 390px). Still under 44 wide — five
-       * 44px targets need 220px plus gaps — and that is recorded in BACKLOG
-       * §0b rather than faked with padding. Height is a true 44 via the
+       * So the width is real and the gap is real: 32px buttons 8px apart for a
+       * mouse, 44px for a finger (pointer: coarse). Cycle 17 recorded that five
+       * 44px targets would not fit; measured in cycle 19 they do — 5x44 + 4x8
+       * = 252px — at phone, landscape and tablet widths, with no overlap and
+       * every tap landing on the dot tapped. Height is a true 44 via the
        * vertical padding, which has no neighbour to collide with.
        */}
       <div className="flex items-center gap-2 mb-5" role="tablist" aria-label="Journal steps">
@@ -211,7 +212,7 @@ export default function QuickJournalLog() {
             aria-selected={i === stepIndex}
             aria-label={`Step ${i + 1} of ${STEPS.length}${i === stepIndex ? " (current)" : i < stepIndex ? " (done)" : ""}`}
             onClick={() => { setDirection(i > stepIndex ? 1 : -1); setStepIndex(i); }}
-            className="relative grid place-items-center w-8 -my-[19px] py-[19px] transition-all duration-300"
+            className="relative grid place-items-center w-8 [@media(pointer:coarse)]:w-11 -my-[19px] py-[19px] transition-all duration-300"
           >
             <span
               aria-hidden="true"

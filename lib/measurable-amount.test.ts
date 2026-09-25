@@ -184,9 +184,11 @@ test("a stored dish reaches the screen measurable, whatever the row still says",
     ingredients: [
       { quantity: 0.05, unit: "teaspoon", ingredient: { name: "pepper" } },
       { quantity: 2, unit: "large", ingredient: { name: "Large eggs" } },
+      { quantity: 2, unit: null, ingredient: { name: "Sliced bread" } },
+      { quantity: 0.5, unit: null, ingredient: { name: "Brown rice" } },
     ],
   });
   assert.equal(shown.name, "Eggs with Spinach");
   assert.deepEqual(shown.steps, ["Season with a pinch of salt."]);
-  assert.deepEqual(shown.ingredients?.map((i) => [i.quantity, i.unit]), [[1, "pinch"], [2, "large"]]);
+  assert.deepEqual(shown.ingredients?.map((i) => [i.quantity, i.unit]), [[1, "pinch"], [2, "large"], [2, "slice"], [0.5, null]]);
 });
