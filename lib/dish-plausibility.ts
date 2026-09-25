@@ -458,7 +458,10 @@ export function repairProseAmounts(text: string): string | null {
  */
 export function readableProse(text: string): string {
   const rinsed = withoutRawProteinRinse(text) ?? text;
-  return repairProseAmounts(rinsed) ?? rinsed;
+  const measured = repairProseAmounts(rinsed) ?? rinsed;
+  // Import noise: "Add Tofu , cook 8-10 minutes". Mechanical, so repaired;
+  // a garbled word is not, and scripts/audit-library.ts lists those.
+  return measured.replace(/\s+([,.;:!?])(?=\s|$)/g, "$1").replace(/ {2,}/g, " ");
 }
 
 /**

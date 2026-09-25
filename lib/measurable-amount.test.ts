@@ -193,3 +193,10 @@ test("a stored dish reaches the screen measurable, whatever the row still says",
   assert.deepEqual(shown.steps, ["Season with a pinch of salt."]);
   assert.deepEqual(shown.ingredients?.map((i) => [i.quantity, i.unit]), [[1, "pinch"], [2, "large"], [2, "slice"], [0.5, null]]);
 });
+
+import { readableProse } from "./dish-plausibility";
+test("import spacing is repaired: 'Add Tofu , cook' reads 'Add Tofu, cook'", () => {
+  assert.equal(readableProse("Add Tofu , cook 8-10 minutes until done ."), "Add Tofu, cook 8-10 minutes until done.");
+  assert.equal(readableProse("Mix well; serve."), "Mix well; serve.");
+  assert.equal(readableProse("Ratio 1 : 2 is fine"), "Ratio 1: 2 is fine");
+});

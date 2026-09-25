@@ -18,6 +18,7 @@ test("the variant shapes /dishes still showed in cycle 18", () => {
   assert.equal(displayDishName("Latte, V4,6,7 Decaf with low-fat milk"), "Latte");
   assert.equal(displayDishName("Milk Chocolate , V7, 11"), "Milk Chocolate");
   assert.equal(displayDishName("Mushroom Steak Fajitas , V4 M- 4 oz beef"), "Mushroom Steak Fajitas");
+  assert.equal(displayDishName("Crunchy Strawberries Parfait , VL3b- With chia seeds"), "Crunchy Strawberries Parfait");
 });
 
 test("the egg grade is dropped on every screen, not two of them", () => {

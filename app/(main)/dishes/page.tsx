@@ -14,7 +14,14 @@ export const metadata: Metadata = {
 
 export default async function DishesPage() {
   const recipes = await prisma.recipe.findMany({
-    where: { isPublic: true },
+    // Not the rows no plan can serve: a declared 0-59 kcal "meal" or one over
+    // 1,200 kcal is import noise on the public menu (84 + 5 rows in QA cycle
+    // 17, "Beef Pot Roast" at 0 kcal). Sides can be small.
+    where: {
+      isPublic: true,
+      calories: { gte: 1, lte: 1200 },
+      OR: [{ calories: { gte: 60 } }, { dishType: { name: { contains: "side", mode: "insensitive" } } }],
+    },
     include: { mealType: true },
     orderBy: { name: "asc" },
   });

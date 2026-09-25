@@ -12,7 +12,8 @@
 // …and five more found on /dishes in cycle 18: a space before the size letter
 // (", V1 S- 1/2 cup"), a list of variants (", V2,3,4", ", V7, 11"), and a label
 // after a space (", V4,6,7 Decaf with low-fat milk").
-const VARIANT_SUFFIX = /\s*,\s*V\d+(?:\s*[,.]\s*\d+)*[A-Za-z]*(?:[\s.\-].*)?$/;
+// And (cycle 21) letters between the V and the number: ", VL3b- With chia seeds".
+const VARIANT_SUFFIX = /\s*,\s*V[A-Z]{0,2}\d+(?:\s*[,.]\s*\d+)*[A-Za-z]*(?:[\s.\-].*)?$/;
 
 // A grading word off the egg box is not part of a dish's name: "Large Eggs with
 // Spinach" is the grocery row. Dropping it needs nothing but the name, so it
