@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeBasketReadiness, MIN_BASKET } from "./basket-readiness";
+import { computeBasketReadiness, MIN_BASKET, basketBlockerText } from "./basket-readiness";
 
 const enough = [
   "chicken", "beef", "salmon", "rice", "oats", "bread",
@@ -50,4 +50,32 @@ test("a savoury-dinner basket is not ready, however big it is", () => {
   for (const item of ["Rolled oats", "Sliced bread", "Plain Greek yogurt", "Apples"]) {
     assert.equal(computeBasketReadiness([...savouryOnly, item]).ready, true, item);
   }
+});
+
+// One composer, three screens. /pantry built the compound message correctly
+// while /meal-plan and the new-week route both tested missingBreakfast FIRST,
+// so an EMPTY basket was told to add breakfast and nothing about the eleven
+// other things it needed — and the two screens contradicted each other about
+// the same basket. QA needed two rounds to get unblocked.
+test("the blocker names the biggest gap first, and every gap", () => {
+  const s = (count: number, missingCategories: string[], missingBreakfast: boolean) => ({
+    count, min: 12, missingCategories, missingBreakfast,
+    ready: count >= 12 && missingCategories.length === 0 && !missingBreakfast,
+  });
+  // An empty basket: the count leads, the groups and breakfast follow.
+  assert.equal(
+    basketBlockerText(s(0, ["protein", "carb", "vegetable"], true)),
+    "Add 12 more ingredients (including a protein, a carb, a vegetable) — and something for breakfast (eggs, oats, bread, yoghurt)."
+  );
+  // One short, and singular.
+  assert.equal(basketBlockerText(s(11, [], false)), "Add 1 more ingredient.");
+  // Plenty of food, none of it breakfast — the case where breakfast IS the answer.
+  assert.equal(
+    basketBlockerText(s(16, [], true)),
+    "Add something for breakfast — eggs, oats, bread, yoghurt or fruit."
+  );
+  // Count fine, a group missing ("Add 0 more" used to read as done).
+  assert.equal(basketBlockerText(s(16, ["carb"], false)), "Add a carb to cover a full week.");
+  // A ready basket has nothing to say.
+  assert.equal(basketBlockerText(s(16, [], false)), null);
 });

@@ -118,6 +118,19 @@ export async function PATCH(req: NextRequest) {
     if (value != null && (typeof value !== "string" || value.trim().length > MAX_NAME_CHARS)) {
       return NextResponse.json({ error: `Name must be ${MAX_NAME_CHARS} characters or fewer.`, field }, { status: 422 });
     }
+    // An EMPTY name is refused rather than ignored. The write below falls back
+    // to the stored value when a name is blank (`|| account.firstName`), so
+    // clearing the field returned 200 and the client said "Profile saved
+    // successfully." while the name reverted on reload — QA 2026-09-25, and the
+    // same shape as the weight-0 defect from cycle 4, where the client and the
+    // server disagreed about whether an empty value was a value. Both ends now
+    // refuse it.
+    if (typeof value === "string" && value.trim().length === 0) {
+      return NextResponse.json(
+        { error: `${field === "firstName" ? "First" : "Last"} name cannot be empty.`, field },
+        { status: 422 }
+      );
+    }
   }
 
   // Snapshot existing patient state before update — used to detect meal-plan-affecting changes

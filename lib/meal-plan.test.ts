@@ -594,21 +594,34 @@ test("snack slot accepts bare items (no ingredients/description); other slots do
     "only the snack slot may serve content-incomplete recipes");
 });
 
-test("day top-up pads with snack recipes until ≥90% of the day target, max 4 extras", async () => {
-  // Breakfast 400 → shortfall vs 2000; four 400 kcal snacks close it to 2000.
+test("the top-up fills the snack slot to its ceiling and then stops, under target", async () => {
+  // This test used to assert the opposite: four 400 kcal top-ups closing a
+  // 1,600 kcal gap. That put 1,600 kcal in a slot whose target is 15% of the
+  // day (300), and QA found the consequence in a live week — a 556 kcal "snack"
+  // on a day whose dinner was 480, and another at 609 kcal, larger than that
+  // day's breakfast AND its dinner. The top-up is a slot-filler and has to obey
+  // the slot's ceiling like the graded pass does.
+  //
+  // So a day whose core slots cannot be filled now lands UNDER target and says
+  // so on the flex card, rather than turning 3pm into a second dinner. Closing
+  // a 1,600 kcal gap is not a top-up's job; it is an unfillable core, which the
+  // thin-plan gate surfaces.
+  const { MEAL_CAL_CEILING } = await modPromise;
   const pool = [makeRecipe({ id: "bf", mealTypeId: MT_B.id, calories: 400 })];
   for (let i = 1; i <= 6; i++) {
     pool.push(makeRecipe({ id: `s${i}`, mealTypeId: MT_S.id, calories: 400, dishType: "Snack" }));
   }
   setDb(makePatient(), ALL_MT, pool);
   const { rows } = await build("p1", START);
+  const snackTarget = 2000 * 0.15; // MEAL_CALORIE_FRACTIONS.snack
   for (const [, dayRows] of groupByDay(rows)) {
-    assert.equal(dayRows.length, 5, "1 breakfast + exactly 4 top-up snacks");
-    assert.equal(dayRows[0].recipeId, "bf");
-    const extras = dayRows.slice(1);
-    assert.ok(extras.every((r) => r.mealTypeId === MT_S.id && r.recipeId.startsWith("s")));
-    const total = 400 + extras.length * 400;
-    assert.equal(total, 2000, "top-up stops once the 90% threshold (1800) is crossed");
+    const extras = dayRows.filter((r) => r.mealTypeId === MT_S.id);
+    const snackKcal = extras.length * 400;
+    assert.ok(
+      snackKcal <= snackTarget * MEAL_CAL_CEILING,
+      `snack slot ${snackKcal} kcal must stay within ${snackTarget * MEAL_CAL_CEILING}`
+    );
+    assert.equal(dayRows[0].recipeId, "bf", "the graded slot still fills first");
   }
 });
 

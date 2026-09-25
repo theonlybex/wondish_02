@@ -5,7 +5,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError, ThinPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
 import { internalError } from "@/lib/api-error";
 import { guardAiSpend } from "@/lib/ai-budget";
-import { computeBasketReadiness } from "@/lib/basket-readiness";
+import { computeBasketReadiness, basketBlockerText } from "@/lib/basket-readiness";
 import { parseRecentDishes, recentDishIds, mergeRecentDishes } from "@/lib/recent-dishes";
 
 // 300s (Vercel's current default ceiling) not 60: a real week generation was
@@ -41,13 +41,11 @@ export async function POST() {
   if (!status.ready) {
     return NextResponse.json(
       {
-        // Name the gap. "Add more ingredients" to someone holding fifteen
-        // savoury items and no breakfast food is not actionable (QA cycle 8).
-        error: status.missingBreakfast
-          ? "Add something for breakfast first — eggs, oats, bread or yoghurt. A week needs one."
-          : status.count < status.min
-            ? `Add ${status.min - status.count} more ingredient${status.min - status.count === 1 ? "" : "s"} before generating a week.`
-            : `Add a ${status.missingCategories.join(" and a ")} before generating a week.`,
+        // Name the gap, through the one composer every screen uses. Testing
+        // missingBreakfast first told an EMPTY basket to add breakfast and
+        // nothing about the eleven other things it needed, while /pantry said
+        // the right thing about the same basket (QA 2026-09-25).
+        error: basketBlockerText(status) ?? "Your ingredients can't fill a week yet.",
         ...status,
       },
       { status: 422 }

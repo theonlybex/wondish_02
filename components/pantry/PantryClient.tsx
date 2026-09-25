@@ -4,7 +4,7 @@ import { apiFetch } from "@/lib/client-fetch";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CUISINES } from "@/lib/cuisines";
-import { computeBasketReadiness } from "@/lib/basket-readiness";
+import { basketBlockerText, computeBasketReadiness } from "@/lib/basket-readiness";
 import { buildCuisineChecklists } from "@/lib/cuisine-ingredients";
 import { displayDishName } from "@/lib/dish-name";
 // Old "What to buy" design (reused the standalone GroceryListView). Replaced
@@ -927,19 +927,13 @@ export default function PantryClient({
                 {status.count} / {status.min} ingredients{status.ready ? " ✓" : ""}
               </span>
               <span className="text-xs text-right" style={{ color: "#848181" }}>
-                {status.ready
-                  ? "Enough to fill a full week"
-                  : status.missingBreakfast && status.count >= status.min && !status.missingCategories.length
-                    // The specific, actionable case: plenty of food, none of it
-                    // breakfast. Naming it beats "add a carb" when the basket
-                    // already holds four kinds of rice.
-                    ? "Add something for breakfast — eggs, oats, bread, yoghurt or fruit"
-                    : status.count >= status.min
-                      // Count is fine, a food group is missing ("Add 0 more (a carb)" read as done).
-                      ? `Add a ${status.missingCategories.join(" and a ")}${status.missingBreakfast ? ", and something for breakfast," : ""} to cover a full week`
-                      : `Add ${status.min - status.count} more${
-                          status.missingCategories.length ? ` (including a ${status.missingCategories.join(", a ")})` : ""
-                        }${status.missingBreakfast ? " — and something for breakfast (eggs, oats, bread, yoghurt)" : ""}`}
+                {/* One composer for all three screens. This one was right and
+                    the other two were not: /meal-plan and the new-week route
+                    both tested missingBreakfast first, so an EMPTY basket was
+                    told to add breakfast and nothing about the eleven other
+                    things it needed, and the two screens contradicted each
+                    other about the same basket (QA 2026-09-25). */}
+                {status.ready ? "Enough to fill a full week" : basketBlockerText(status)}
               </span>
             </div>
             <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "#F0EFF5" }}>

@@ -37,6 +37,26 @@ export const BREAKFAST_MAX_MINUTES = 30;
 export const SNACK_MAX_MINUTES = 20;
 
 /**
+ * A snack is also SMALL, which the timing rule cannot express.
+ *
+ * Twenty minutes was the only thing asked of a snack, and QA measured what got
+ * through: 104 of 143 generated snack rows at 250 kcal or more, the worst
+ * "Broccoli and Salmon Fried Rice" at 876 — and every offender sits at 17-20
+ * minutes, just inside the ceiling. /pantry offered "Turkey and Bell Pepper
+ * Stir-Fry with Jasmine Rice — Snack · 516 kcal" as something to make.
+ *
+ * The plan builder never served those, because it caps a dish at 1.25x its
+ * slot's calorie target — so this was invisible in a built week and plainly
+ * visible on the screen that lists dishes by their stored meal type. A rule
+ * about a dish has to live where the dish does, not only in the builder.
+ *
+ * 400 kcal is that same arithmetic rather than a new opinion: a snack slot is
+ * 15% of a ~2,100 kcal day, and 1.25x of 315 is 394. Costs 15 of 112 usable
+ * snacks and refuses every one of the plated dinners.
+ */
+export const SNACK_MAX_KCAL = 400;
+
+/**
  * Max salt per serving: 1 teaspoon, and half that for a small dish.
  *
  * 1 tsp is ~2,325 mg of sodium — essentially a whole day's guideline. The flat
@@ -310,7 +330,9 @@ export type DishProblem =
   | "macros-contradict-amounts"
   | "cooks-without-listing-fat"
   | "step-outlasts-stated-time"
-  | "raw-protein-never-cooked";
+  | "raw-protein-never-cooked"
+  | "breakfast-starch-with-savoury-protein"
+  | "snack-too-large";
 
 const SEASONING_UNIT = /\b(tsp|teaspoons?|pinch|pinches|dash(es)?)\b/i;
 const TABLESPOON = /\b(tbsp|tablespoons?)\b/i;
@@ -530,6 +552,12 @@ function isStarchOnly(text: string): boolean {
   return STARCH.test(text) && !ANY_PROTEIN_FOOD.test(text);
 }
 
+export function snackIsSmallEnough(d: PlausibleDish): boolean {
+  if (d.mealTypeName.toLowerCase() !== "snack") return true;
+  if (d.calories == null || d.calories <= 0) return true; // nothing on file to judge
+  return d.calories <= SNACK_MAX_KCAL;
+}
+
 export function snackIsQuickEnough(d: PlausibleDish): boolean {
   if (d.mealTypeName.toLowerCase() !== "snack") return true;
   const total = statedOrImpliedMinutes(d);
@@ -629,34 +657,51 @@ export const TITLE_NON_FOOD = new Set([
  *
  * So the word is satisfied by ANY member, and refused when there is none.
  */
-const CATEGORY_MEMBERS: { word: string; members: RegExp }[] = [
-  { word: "cheese", members: /\b(cheese|cheddar|parmesan|feta|mozzarella|ricotta|cottage|halloumi|gouda|brie|goat|paneer|queso)\b/i },
-  { word: "berry", members: /\b(berr(y|ies)|strawberr(y|ies)|blueberr(y|ies)|raspberr(y|ies)|blackberr(y|ies)|cranberr(y|ies))\b/i },
-  { word: "nut", members: /\b(nuts?|almonds?|walnuts?|pecans?|cashews?|pistachios?|hazelnuts?|peanuts?|macadamias?)\b/i },
-  { word: "citrus", members: /\b(lemons?|limes?|oranges?|grapefruits?|citrus|clementines?|mandarins?)\b/i },
-  { word: "fish", members: /\b(fish|salmon|tuna|cod|tilapia|halibut|haddock|catfish|trout|sardines?|mackerel|anchov(y|ies)|pollock|sole)\b/i },
-  { word: "seafood", members: /\b(fish|salmon|tuna|cod|shrimps?|prawns?|scallops?|mussels?|clams?|crab|lobster|squid|calamari|seafood)\b/i },
-  { word: "poultry", members: /\b(chickens?|turkeys?|ducks?|poultry)\b/i },
-  { word: "melon", members: /\b(melons?|watermelons?|cantaloupes?|honeydew)\b/i },
-  { word: "pasta", members: /\b(pasta|spaghetti|macaroni|penne|orzo|fusilli|rigatoni|linguine|tagliatelle|noodles?|couscous)\b/i },
-  { word: "noodle", members: /\b(noodles?|pasta|spaghetti|ramen|udon|soba|vermicelli)\b/i },
-  { word: "legume", members: /\b(beans?|lentils?|chickpeas?|garbanzos?|peas?|legumes?|edamame)\b/i },
-  { word: "squash", members: /\b(squash|zucchini|courgettes?|pumpkins?|butternut|marrow)\b/i },
-  { word: "grain", members: /\b(grains?|rice|quinoa|oats?|barley|bulgur|farro|millet|wheat|couscous)\b/i },
-  { word: "meat", members: /\b(meat|beef|pork|lamb|veal|chickens?|turkeys?|steaks?|mince|bacon|sausages?|hams?)\b/i },
+// `word` is written out rather than derived, and `token` is what
+// ingredientTokens reduces the category to.
+//
+// Deriving the title pattern as `\b${word}s?\b` was wrong twice over, and QA
+// caught both within hours of it shipping:
+//   - `\bberrys?\b` cannot match "berries", so "Oatmeal with Berries and
+//     Cinnamon" — no berry of any kind — passed the very check written for it.
+//     The plural trap, for the sixth time in this file.
+//   - and because the word was no longer exempt, the token loop below then
+//     refused "Oatmeal with Berries" over listed BLUEBERRIES, whose token is
+//     "blueberry", not "berry" — rejecting a dish for being more precise than
+//     its own title, the exact regression the old exemption existed to prevent.
+//
+// So the category check is the sole authority on these words: it decides, and
+// the token loop skips them entirely rather than getting a second vote.
+const CATEGORY_MEMBERS: { word: RegExp; token: string; members: RegExp }[] = [
+  { word: /\bcheeses?\b/i, token: "cheese", members: /\b(cheeses?|cheddar|parmesan|feta|mozzarella|ricotta|cottage|halloumi|gouda|brie|goat|paneer|queso)\b/i },
+  { word: /\bberr(y|ies)\b/i, token: "berry", members: /\b(berr(y|ies)|strawberr(y|ies)|blueberr(y|ies)|raspberr(y|ies)|blackberr(y|ies)|cranberr(y|ies))\b/i },
+  { word: /\bnuts?\b/i, token: "nut", members: /\b(nuts?|almonds?|walnuts?|pecans?|cashews?|pistachios?|hazelnuts?|peanuts?|macadamias?)\b/i },
+  { word: /\bcitrus\b/i, token: "citrus", members: /\b(lemons?|limes?|oranges?|grapefruits?|citrus|clementines?|mandarins?)\b/i },
+  { word: /\bfish\b/i, token: "fish", members: /\b(fish|salmon|tuna|cod|tilapia|halibut|haddock|catfish|trout|sardines?|mackerel|anchov(y|ies)|pollock|sole)\b/i },
+  { word: /\bseafood\b/i, token: "seafood", members: /\b(fish|salmon|tuna|cod|shrimps?|prawns?|scallops?|mussels?|clams?|crab|lobster|squid|calamari|seafood)\b/i },
+  { word: /\bpoultry\b/i, token: "poultry", members: /\b(chickens?|turkeys?|ducks?|poultry)\b/i },
+  { word: /\bmelons?\b/i, token: "melon", members: /\b(melons?|watermelons?|cantaloupes?|honeydew)\b/i },
+  { word: /\bpastas?\b/i, token: "pasta", members: /\b(pasta|spaghetti|macaroni|penne|orzo|fusilli|rigatoni|linguine|tagliatelle|noodles?|couscous)\b/i },
+  { word: /\bnoodles?\b/i, token: "noodle", members: /\b(noodles?|pasta|spaghetti|ramen|udon|soba|vermicelli)\b/i },
+  { word: /\blegumes?\b/i, token: "legume", members: /\b(beans?|lentils?|chickpeas?|garbanzos?|peas?|legumes?|edamame)\b/i },
+  { word: /\bsquash(es)?\b/i, token: "squash", members: /\b(squash(es)?|zucchini|courgettes?|pumpkins?|butternut|marrow)\b/i },
+  { word: /\bgrains?\b/i, token: "grain", members: /\b(grains?|rice|quinoa|oats?|barley|bulgur|farro|millet|wheat|couscous)\b/i },
+  { word: /\bmeats?\b/i, token: "meat", members: /\b(meats?|beef|pork|lamb|veal|chickens?|turkeys?|steaks?|mince|bacon|sausages?|hams?)\b/i },
 ];
+/** The tokens the category check owns; the token loop must not re-judge them. */
+const CATEGORY_TOKENS = new Set(CATEGORY_MEMBERS.map((c) => c.token));
 
 /** A category the phrase names that the dish has no member of, or null. */
 export function categoryWithNoMember(
   phrase: string,
   ingredientNames: readonly string[]
 ): string | null {
-  const said = displayDishName(phrase).toLowerCase();
+  const said = displayDishName(phrase);
   const listed = ingredientNames.join(" | ");
-  for (const { word, members } of CATEGORY_MEMBERS) {
-    if (!new RegExp(`\\b${word}s?\\b`, "i").test(said)) continue;
+  for (const { word, token, members } of CATEGORY_MEMBERS) {
+    if (!word.test(said)) continue;
     if (members.test(listed)) continue;
-    return word;
+    return token;
   }
   return null;
 }
@@ -675,6 +720,10 @@ export function phrasePromisesMissingFood(
   for (const n of ingredientNames) for (const t of ingredientTokens(n)) have.add(t);
   for (const t of ingredientTokens(phrase)) {
     if (TITLE_NON_FOOD.has(t)) continue;
+    // A category word was already adjudicated above, against every food that
+    // could satisfy it. Letting the token rule vote again refuses "Berries" over
+    // listed Blueberries, because their tokens differ.
+    if (CATEGORY_TOKENS.has(t)) continue;
     if (!catalogFoodTokens.has(t)) continue;
     if (!have.has(t)) return t;
   }
@@ -1047,6 +1096,33 @@ function heatReachesProtein(steps: readonly string[], head: string): boolean {
   return steps.slice(first).some(appliesHeat);
 }
 
+/**
+ * Oats and a dinner protein, in any slot.
+ *
+ * "Oatmeal with Carrots and Ground Beef" was reported by QA in three
+ * consecutive cycles as a breakfast, so cycle 13 moved it — and QA's next pass
+ * found it filed as a 373 kcal LUNCH, where no rule could see it, along with 26
+ * others across Lunch, Dinner and Snack. That is a fair criticism: relabelling
+ * repairs a dish whose SLOT was wrong, and this dish's slot was never the
+ * problem. Nobody wants ground beef in their porridge at any hour.
+ *
+ * So the shape is refused everywhere rather than shuffled between slots. Oats,
+ * porridge, granola and muesli are breakfast starches; beef, pork, lamb, chicken
+ * and fish are not things you put in them. 27 dishes of 1,461.
+ *
+ * Eggs, bacon and sausage are NOT in the savoury list — a full breakfast is a
+ * real dish — and neither are nuts, seeds, yoghurt or fruit.
+ */
+const BREAKFAST_STARCH = /\b(oats?|oatmeal|porridge|granola|muesli)\b/i;
+const SAVOURY_PROTEIN =
+  /\b(ground beef|beef|steaks?|sirloin|lamb|veal|pork|salmon|tuna|cod|tilapia|halibut|shrimps?|prawns?|chickens?|turkeys?|mince)\b/i;
+
+export function breakfastStarchWithSavouryProtein(d: PlausibleDish): boolean {
+  if (!d.generated) return false;
+  const listed = d.ingredients.map((i) => i.name).join(" | ");
+  return BREAKFAST_STARCH.test(listed) && SAVOURY_PROTEIN.test(listed);
+}
+
 export function rawProteinNeverCooked(d: PlausibleDish): boolean {
   if (!d.generated) return false;
   const steps = d.steps ?? [];
@@ -1175,9 +1251,11 @@ const HERB_NAMES = [
 export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): DishProblem | null {
   if (!breakfastIsQuickEnough(d)) return "breakfast-too-slow";
   if (!snackIsQuickEnough(d)) return "snack-too-slow";
+  if (!snackIsSmallEnough(d)) return "snack-too-large";
   if (!breakfastLooksLikeBreakfast(d)) return "not-breakfast-food";
   if (!breakfastIsBuiltOnBreakfastFood(d)) return "dinner-protein-at-breakfast";
   if (rawProteinNeverCooked(d)) return "raw-protein-never-cooked";
+  if (breakfastStarchWithSavouryProtein(d)) return "breakfast-starch-with-savoury-protein";
 
   for (const ing of d.ingredients) {
     if (/\bsalt\b/i.test(ing.name)) {

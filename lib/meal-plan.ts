@@ -789,6 +789,9 @@ export async function buildMealPlanMenus(
     // dishes at half a teaspoon each add up — a QA run measured exactly that.
     // Sodium is a DAY-level quantity, so this is where it belongs.
     let todaySodiumMg = 0;
+    // What the snack slot already holds, so the top-up below cannot exceed the
+    // slot ceiling the graded pass respects.
+    let snackSlotCalories = 0;
     // The day's macros so far, so scoring can ask where the DAY lands rather
     // than only what a dish looks like on its own.
     const todayMacroG = { protein: 0, carbs: 0, fat: 0 };
@@ -1020,6 +1023,7 @@ export async function buildMealPlanMenus(
       }
 
       if (isBiggestMeal) lunchTotalCalories = mealCalories;
+      if (isSnack) snackSlotCalories = mealCalories;
     }
 
     // ── Calorie top-up ─────────────────────────────────────────────────────
@@ -1027,10 +1031,19 @@ export async function buildMealPlanMenus(
     if (snackMealType && dayCalories < weekCals * 0.9) {
       let extraCount = 0;
       const MAX_EXTRA = 4;
+      // The snack slot's own ceiling applies here too. Adding the cap to
+      // queryRecipes fixed the graded slots and left this path alone, so a snack
+      // slot still came to 1.41x its cap (556 kcal) — the top-up has its own
+      // calorie window and had never heard of the slot. Third time a fix to the
+      // graded pass has had to be repeated here (sodium, the day's macros, now
+      // this); the top-up is a slot-filler and belongs under the slot's rules.
+      const snackSlotCap = (caloriePlan["snack"] ?? 0) * MEAL_CAL_CEILING;
       while (dayCalories < weekCals * 0.9 && extraCount < MAX_EXTRA) {
+        const roomInSlot = snackSlotCap > 0 ? snackSlotCap - snackSlotCalories : Number.POSITIVE_INFINITY;
+        if (roomInSlot <= 0) break;
         const calGap  = weekCals - dayCalories;
         const minCals = Math.round(calGap * 0.25);
-        const maxCals = Math.round(calGap);
+        const maxCals = Math.round(Math.min(calGap, roomInSlot));
         // The day's own limits apply here too, and they do NOT relax.
         //
         // This block enforced family and reuse and nothing else, and it updated
@@ -1075,6 +1088,7 @@ export async function buildMealPlanMenus(
         const extraCals = extra.calories ?? 0;
         if (extraCals <= 0) break; // no useful calorie contribution; further picks won't help
         dayCalories += extraCals;
+        snackSlotCalories += extraCals;
         extraCount++;
         weekUsedIds.add(extra.id);
         todayUsedIds.add(extra.id);
@@ -1104,6 +1118,7 @@ export async function buildMealPlanMenus(
     todayProteinCounts.clear();
     todayCarbBaseCounts.clear();
     todaySodiumMg = 0;
+    snackSlotCalories = 0;
     todayMacroG.protein = 0;
     todayMacroG.carbs = 0;
     todayMacroG.fat = 0;

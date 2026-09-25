@@ -51,3 +51,50 @@ export function computeBasketReadiness(names: string[]): {
     missingBreakfast,
   };
 }
+
+/**
+ * What the user has to do next, in one sentence.
+ *
+ * One composer, three screens. /pantry built the compound message correctly —
+ * "Add 12 more (including a protein, a carb, a vegetable) — and something for
+ * breakfast" — while /meal-plan and the new-week route both tested
+ * missingBreakfast FIRST, so an empty basket was told to add breakfast and
+ * nothing about the eleven other things it needed. QA hit it: two screens
+ * contradicted each other about the same basket, and getting unblocked took two
+ * rounds instead of one.
+ *
+ * Ordered by the size of the gap, not by which flag reads most specific: the
+ * count, then the food groups, then breakfast — except the one case where
+ * naming breakfast really is the whole answer, which is a basket that has
+ * everything else.
+ */
+export function basketBlockerText(status: {
+  count: number;
+  min: number;
+  ready: boolean;
+  missingCategories: readonly string[];
+  missingBreakfast?: boolean;
+}): string | null {
+  if (status.ready) return null;
+  const breakfast = status.missingBreakfast === true;
+  const groups = status.missingCategories;
+  const short = status.min - status.count;
+
+  // Plenty of food, none of it breakfast — the case that IS just breakfast.
+  if (breakfast && short <= 0 && groups.length === 0) {
+    return "Add something for breakfast — eggs, oats, bread, yoghurt or fruit.";
+  }
+  if (short > 0) {
+    return (
+      `Add ${short} more ingredient${short === 1 ? "" : "s"}` +
+      (groups.length ? ` (including a ${groups.join(", a ")})` : "") +
+      (breakfast ? " — and something for breakfast (eggs, oats, bread, yoghurt)" : "") +
+      "."
+    );
+  }
+  return (
+    `Add a ${groups.join(" and a ")}` +
+    (breakfast ? ", and something for breakfast," : "") +
+    " to cover a full week."
+  );
+}

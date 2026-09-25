@@ -182,15 +182,29 @@ export default function ProfileForm({
     // caloric summary silently vanished from the page, which is the only
     // reason the user could tell anything was wrong.
     {
+      // Name is checked here too. The guard was written for the measurements and
+      // QA found the identical bug one field over: clearing First and Last Name
+      // and pressing Save returned 200 and "Profile saved successfully." while
+      // the name reverted on reload, because the client drops empty fields from
+      // the PATCH body. The comment above already described the failure; only
+      // weight and height had been added to the fix.
       const missing =
-        !form.weight?.trim()
-          ? "Weight"
-          : form.heightUnit === "ftin"
-            ? !form.heightFt?.trim() ? "Height" : null
-            : !form.height?.trim() ? "Height" : null;
+        !form.firstName?.trim()
+          ? { field: "First name", why: "it is how the app addresses you" }
+          : !form.lastName?.trim()
+            ? { field: "Last name", why: "it is how the app addresses you" }
+            : !form.weight?.trim()
+              ? { field: "Weight", why: "your calorie targets are calculated from it" }
+              : form.heightUnit === "ftin"
+                ? !form.heightFt?.trim()
+                  ? { field: "Height", why: "your calorie targets are calculated from it" }
+                  : null
+                : !form.height?.trim()
+                  ? { field: "Height", why: "your calorie targets are calculated from it" }
+                  : null;
       if (missing) {
         e.preventDefault();
-        setError(`${missing} is required — your calorie targets are calculated from it.`);
+        setError(`${missing.field} is required — ${missing.why}.`);
         return;
       }
     }

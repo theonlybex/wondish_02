@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/client-fetch";
 import Link from "next/link";
 import React, { useState, useEffect, useRef } from "react";
 import { displayDishName } from "@/lib/dish-name";
+import { basketBlockerText } from "@/lib/basket-readiness";
 import { CUISINES } from "@/lib/cuisines";
 import { format, addDays, subDays } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1077,7 +1078,7 @@ export default function DailyMealPlanView({
                                 {dIdx > 0 && <div className="h-px bg-[#F5F1DD] my-2" />}
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex-1 min-w-0">
-                                    <p className={`text-forest truncate ${isMainDish ? "text-[11px] font-semibold" : "text-[10px] font-medium"}`}>
+                                    <p className={`text-forest truncate ${isMainDish ? "text-[15px] sm:text-[11px] font-semibold" : "text-[13px] sm:text-[10px] font-medium"}`}>
                                       {exchange.emoji ? `${exchange.emoji} ` : ""}{exchange.name}
                                       {exchange.eaten && <span className="ml-1.5 text-primary text-[9px] font-bold">✓</span>}
                                     </p>
@@ -1113,7 +1114,7 @@ export default function DailyMealPlanView({
                                 onClick={() => selectCard(isSelected ? null : menu.id)}
                               >
                                 <div className="flex-1 min-w-0">
-                                  <p className={`text-forest truncate ${isMainDish ? "text-[11px] font-semibold" : "text-[10px] font-medium"}`}>
+                                  <p className={`text-forest truncate ${isMainDish ? "text-[15px] sm:text-[11px] font-semibold" : "text-[13px] sm:text-[10px] font-medium"}`}>
                                     {displayDishName(menu.recipe.name)}
                                     {isCompleted && <span className="ml-1.5 text-primary text-[9px] font-bold">✓</span>}
                                   </p>
@@ -1365,24 +1366,33 @@ export default function DailyMealPlanView({
                   a week. QA clicked an enabled button with an unready basket and
                   got nothing at all — the server's 422 is correct and the dead
                   click is the defect. A reason the user can read before clicking
-                  beats an error afterwards. */}
+                  beats an error afterwards.
+
+                  aria-describedby, and aria-disabled rather than disabled: a
+                  `disabled` button is removed from the tab order, so a keyboard
+                  or screen-reader user could neither reach the control nor hear
+                  the unassociated <p> explaining it (QA 2026-09-25). It stays
+                  focusable, announces its reason, and the handler refuses.
+                  The message itself comes from basketBlockerText, the one
+                  composer /pantry and the server also use — they used to
+                  disagree about the same basket. */}
               <Button
                 variant="secondary"
                 size="sm"
                 loading={newWeekLoading}
-                disabled={basketStatus ? !basketStatus.ready : false}
-                onClick={() => void generateNewWeek()}
-                className="w-full"
+                aria-disabled={basketStatus ? !basketStatus.ready : false}
+                aria-describedby={basketStatus && !basketStatus.ready ? "new-week-blocker" : undefined}
+                onClick={() => {
+                  if (basketStatus && !basketStatus.ready) return;
+                  void generateNewWeek();
+                }}
+                className={`w-full${basketStatus && !basketStatus.ready ? " opacity-50 cursor-not-allowed" : ""}`}
               >
                 Generate a new week
               </Button>
               {basketStatus && !basketStatus.ready ? (
-                <p className="text-[11px] mt-1.5 leading-snug" style={{ color: "#848181" }}>
-                  {basketStatus.missingBreakfast
-                    ? "Add something for breakfast — eggs, oats, bread or yoghurt — "
-                    : basketStatus.count < basketStatus.min
-                      ? `Add ${basketStatus.min - basketStatus.count} more ingredient${basketStatus.min - basketStatus.count === 1 ? "" : "s"} `
-                      : "Your ingredients can't fill a week yet — "}
+                <p id="new-week-blocker" className="text-[11px] mt-1.5 leading-snug" style={{ color: "#848181" }}>
+                  {basketBlockerText(basketStatus)}{" "}
                   <Link href="/pantry" className="underline font-semibold" style={{ color: "#812549" }}>
                     open Ingredients
                   </Link>

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood, snackIsQuickEnough, statedOrImpliedMinutes, nameWithoutFalseMethod, dishStyleMissingIngredient, fatStatedInSteps, measurableAmount, rawProteinNeverCooked } from "./dish-plausibility";
+import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood, snackIsQuickEnough, statedOrImpliedMinutes, nameWithoutFalseMethod, dishStyleMissingIngredient, fatStatedInSteps, measurableAmount, rawProteinNeverCooked, categoryWithNoMember, breakfastStarchWithSavouryProtein, snackIsSmallEnough } from "./dish-plausibility";
 
 // The catalog vocabulary, as lib/meal-plan.ts builds it from Ingredient.name.
 const CATALOG = new Set([
@@ -837,4 +837,61 @@ test("a category word is satisfied by any member, and refused when there is none
   );
   assert.equal(phrasePromisesMissingFood("Berry Oatmeal", ["Rolled oats", "bananas"], CATALOG), "berry");
   assert.equal(phrasePromisesMissingFood("Seafood Rice Bowl", ["jasmine rice", "broccoli"], CATALOG), "seafood");
+});
+
+// QA caught this within hours of the category rule shipping, wrong in BOTH
+// directions. The pattern was derived as `\b${word}s?\b`, so:
+//   - \bberrys?\b could not match "berries", and "Oatmeal with Berries and
+//     Cinnamon" — no berry of any kind — passed the very check written for it;
+//   - and because the word was no longer exempt, the token rule then refused
+//     "Oatmeal with Berries" over listed BLUEBERRIES, whose token is
+//     "blueberry", not "berry".
+test("a plural category word is detected, and a specific member still satisfies it", () => {
+  // Direction 1: the lie must be caught however the title spells the category.
+  assert.equal(categoryWithNoMember("Oatmeal with Berries and Cinnamon", ["Rolled oats", "carrots", "ground cinnamon"]), "berry");
+  assert.equal(categoryWithNoMember("Berry Bowl", ["Rolled oats"]), "berry");
+  assert.equal(categoryWithNoMember("Cheeses and Peppers", ["Bell peppers"]), "cheese");
+  assert.equal(categoryWithNoMember("Mixed Nuts Bowl", ["Rolled oats"]), "nut");
+  // Direction 2: a dish MORE precise than its title is not a lie.
+  assert.equal(phrasePromisesMissingFood("Oatmeal with Berries", ["Rolled oats", "Blueberries"], CATALOG), null);
+  assert.equal(phrasePromisesMissingFood("Berries and Yogurt", ["Strawberries", "Plain Greek yogurt"], CATALOG), null);
+  assert.equal(phrasePromisesMissingFood("Cheese Omelette", ["Feta cheese", "Large eggs"], CATALOG), null);
+  assert.equal(phrasePromisesMissingFood("Nuts and Banana", ["Almonds", "bananas"], CATALOG), null);
+});
+
+test("oats with a dinner protein is refused in every slot, not moved to another one", () => {
+  const anySlot = (slot: string) =>
+    ({ name: "Oatmeal with Carrots and Ground Beef", mealTypeName: slot, generated: true,
+       steps: ["Simmer the oats.", "Brown the beef."],
+       ingredients: [{ name: "Rolled oats" }, { name: "carrots" }, { name: "ground beef" }] }) as never;
+  for (const slot of ["Breakfast", "Lunch", "Dinner", "Snack"]) {
+    assert.equal(breakfastStarchWithSavouryProtein(anySlot(slot)), true, slot);
+  }
+  // A full breakfast is a real dish: eggs, bacon and sausage are not on the list.
+  const fullBreakfast = { name: "Oats with Bacon and Eggs", mealTypeName: "Breakfast", generated: true, steps: [],
+    ingredients: [{ name: "Rolled oats" }, { name: "bacon" }, { name: "Large eggs" }] } as never;
+  assert.equal(breakfastStarchWithSavouryProtein(fullBreakfast), false);
+  // And so is porridge with nuts or yoghurt.
+  const sweet = { name: "Oatmeal with Almonds and Yogurt", mealTypeName: "Breakfast", generated: true, steps: [],
+    ingredients: [{ name: "Rolled oats" }, { name: "Almonds" }, { name: "Plain Greek yogurt" }] } as never;
+  assert.equal(breakfastStarchWithSavouryProtein(sweet), false);
+});
+
+test("a snack is small as well as quick", () => {
+  // QA on /pantry: "Turkey and Bell Pepper Stir-Fry with Jasmine Rice — Snack ·
+  // 516 kcal", 20 minutes — inside the only rule a snack had. 104 of 143
+  // generated snack rows were 250 kcal or more, the worst 876.
+  const snack = (kcal: number) =>
+    ({ name: "Broccoli and Salmon Fried Rice", mealTypeName: "Snack", generated: true,
+       calories: kcal, prepMinutes: 5, cookMinutes: 15, steps: ["Fry it."],
+       ingredients: [{ name: "jasmine rice" }, { name: "Salmon fillets" }] }) as never;
+  assert.equal(snackIsSmallEnough(snack(876)), false);
+  assert.equal(snackIsSmallEnough(snack(516)), false);
+  assert.equal(snackIsSmallEnough(snack(400)), true, "the ceiling itself is allowed");
+  assert.equal(snackIsSmallEnough(snack(286)), true, "the median snack is untouched");
+  // Only the snack slot, and only where there is a figure to judge.
+  const asLunch = { ...(snack(876) as object), mealTypeName: "Lunch" } as never;
+  assert.equal(snackIsSmallEnough(asLunch), true);
+  const noCalories = { ...(snack(876) as object), calories: null } as never;
+  assert.equal(snackIsSmallEnough(noCalories), true);
 });

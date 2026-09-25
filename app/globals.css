@@ -74,3 +74,54 @@
 .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
   background-color: #f3f2ff;
 }
+
+/* ── A legibility floor on phones ────────────────────────────────────────────
+ *
+ * QA read the app at 375px and found the headline feature illegible: the dish
+ * name at 11px, its time, slot and calories at 9px, "Biggest meal" at 8px,
+ * /pantry section headings at 9px, /journal's date range at 9px. 271 sub-12px
+ * utilities exist across 40 components — a dense desktop layout applied
+ * unchanged to a phone.
+ *
+ * Raised here rather than at 271 call sites, and only below 480px, for two
+ * reasons: the desktop density is deliberate and still works at its own size,
+ * and re-typing 271 arbitrary values is 271 chances to break a badge's layout.
+ * 12px is the floor the design guidance sets for any body text; primary content
+ * gets more than that, set on the element itself.
+ */
+@media (max-width: 480px) {
+  .text-\[8px\],
+  .text-\[9px\],
+  .text-\[10px\],
+  .text-\[11px\] {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+}
+
+/* ── Touch targets ──────────────────────────────────────────────────────────
+ *
+ * 44x44 is the minimum a finger can hit reliably (Apple HIG; Material says
+ * 48dp). QA measured the mobile menu toggle at 28x26, the day-paging chevrons
+ * at 36x36, "New week" at 84x28, and /overview's four "+ Add" buttons at 37x19.
+ *
+ * The hit area is grown with padding and a negative margin, so the button's
+ * VISUAL size is untouched and nothing moves on the page — the alternative,
+ * making every control physically bigger, would redesign five screens.
+ */
+@media (max-width: 480px) {
+  .touch-target {
+    position: relative;
+  }
+  .touch-target::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    min-width: 44px;
+    min-height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}

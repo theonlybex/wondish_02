@@ -37,7 +37,7 @@ import { BASKET_STAPLES } from "../lib/basket-coverage";
 import {
   SNACK_MAX_MINUTES, BREAKFAST_MAX_MINUTES, SMALL_DISH_KCAL, breakfastLooksLikeBreakfast,
   catalogFoodVocabulary, phrasePromisesMissingFood, truthfulDishName, formWordOf,
-  saltRowTsp, addedSaltCapTsp, countUnitFor, clampCookingFat, dishProblem, longestStepMinutes, nameWithoutFalseMethod, methodNotUsed, nameWithoutFalseStyle, dishStyleMissingIngredient,
+  saltRowTsp, addedSaltCapTsp, countUnitFor, clampCookingFat, dishProblem, longestStepMinutes, breakfastStarchWithSavouryProtein, nameWithoutFalseMethod, methodNotUsed, nameWithoutFalseStyle, dishStyleMissingIngredient,
 } from "../lib/dish-plausibility";
 import { displayDishName } from "../lib/dish-name";
 
@@ -368,6 +368,11 @@ async function main() {
       breakfastShapeProblem === "not-breakfast-food" ||
       breakfastShapeProblem === "dinner-protein-at-breakfast";
     if (!tooSlowForSnack && !tooSlowForBreakfast && !wrongShapeForBreakfast) continue;
+    // A dish refused in EVERY slot has no slot to be moved to. QA's next pass
+    // found cycle 13's relabelling had filed "Oatmeal with Carrots and Ground
+    // Beef" as a 373 kcal Lunch — hiding it rather than repairing it — so the
+    // shapes that are wrong everywhere are left where they are and stay refused.
+    if (breakfastStarchWithSavouryProtein(asBreakfast)) continue;
     const asBreakfast = {
       name: r.name,
       description: r.description,

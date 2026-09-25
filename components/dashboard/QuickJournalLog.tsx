@@ -180,19 +180,35 @@ export default function QuickJournalLog() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Progress dots */}
-      <div className="flex items-center gap-1.5 mb-5">
+      {/* Progress dots.
+       *
+       * Five 6x6px buttons with no accessible name, no role and their state
+       * carried only by colour and width (QA 2026-09-25). Now a real tablist:
+       * each tab says which step it is and whether it is current, and the hit
+       * area is padded out to 44px while the dot stays 6px on screen — the
+       * visual design is the same, the target is not.
+       */}
+      <div className="flex items-center gap-1.5 mb-5" role="tablist" aria-label="Journal steps">
         {STEPS.map((s, i) => (
           <button
             key={s}
+            type="button"
+            role="tab"
+            aria-selected={i === stepIndex}
+            aria-label={`Step ${i + 1} of ${STEPS.length}${i === stepIndex ? " (current)" : i < stepIndex ? " (done)" : ""}`}
             onClick={() => { setDirection(i > stepIndex ? 1 : -1); setStepIndex(i); }}
-            className="transition-all duration-300 rounded-full"
-            style={{
-              width: i === stepIndex ? 18 : 6,
-              height: 6,
-              background: i < stepIndex ? "#812549" : i === stepIndex ? "#1E1A1A" : "#EAE4CA",
-            }}
-          />
+            className="relative grid place-items-center -my-[19px] py-[19px] transition-all duration-300"
+          >
+            <span
+              aria-hidden="true"
+              className="block rounded-full transition-all duration-300"
+              style={{
+                width: i === stepIndex ? 18 : 6,
+                height: 6,
+                background: i < stepIndex ? "#812549" : i === stepIndex ? "#1E1A1A" : "#EAE4CA",
+              }}
+            />
+          </button>
         ))}
         <span
           className="ml-auto text-[9px] tracking-[0.2em] uppercase font-bold"
