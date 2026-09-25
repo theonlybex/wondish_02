@@ -737,14 +737,18 @@ export async function buildMealPlanMenus(
     const LEAN_MIN = 4;
     const minProteinShare = macroTarget.protein * 0.8;
     const maxFatShare = macroTarget.fat * 1.3;
-    const isLean = (r: PoolRecipe) =>
-      (r.calories ?? 0) > 0 &&
+    // …and big enough for the slot. Counting any lean dish found four ~600 kcal
+    // lunches for a 1,035 kcal lunch slot, so the brief never reached lunch and
+    // the builder kept choosing the 1,100 kcal, 36%-fat bowls (cycle 21 debug).
+    const slotCals = (mtName: string) => baseMealCals[mtName.toLowerCase()] ?? Math.round(baseTDEE * 0.25);
+    const isLean = (r: PoolRecipe, mtName: string) =>
+      (r.calories ?? 0) >= slotCals(mtName) * 0.8 &&
       ((r.protein ?? 0) * 4) / (r.calories as number) >= minProteinShare &&
       ((r.fat ?? 0) * 9) / (r.calories as number) <= maxFatShare;
     const leanPool = opts.basket ? selectionPool : recipePool;
     for (const mt of mealTypes) {
       if (mt.name.toLowerCase() === "snack") continue;
-      const lean = leanPool.filter((r) => r.mealTypeId === mt.id && isLean(r)).length;
+      const lean = leanPool.filter((r) => r.mealTypeId === mt.id && isLean(r, mt.name)).length;
       if (lean >= LEAN_MIN) continue;
       const want = CLARA_PER_TYPE - lean;
       const leanProtein = { minProteinPct: Math.round(macroTarget.protein * 100), maxFatPct: Math.round(macroTarget.fat * 100) };
@@ -1040,8 +1044,15 @@ export async function buildMealPlanMenus(
         // it pushed every thin pool to the last tier, which drops the
         // variety, sodium and fat rules — four builder tests caught that.
         const needsProteinMain = mealCalories === 0 && (mealNameLower === "lunch" || mealNameLower === "dinner");
+        const proteinShareOf = (r: PoolRecipe) => ((r.protein ?? 0) * 4) / Math.max(1, r.calories ?? 0);
         const proteinDense = (r: PoolRecipe): boolean =>
-          !needsProteinMain || (r.calories ?? 0) <= 0 || (r.protein ?? 0) * 4 >= 0.15 * (r.calories ?? 0);
+          !needsProteinMain || (r.calories ?? 0) <= 0 || proteinShareOf(r) >= 0.15;
+        // Stronger, where the pool allows it: a main that reaches most of the
+        // diner's OWN protein share. For a 30% target a 17%-protein, 1,137 kcal
+        // tofu bowl met the 15% floor and was chosen over lean dishes on every
+        // day of five weeks (cycle 21).
+        const proteinOnTarget = (r: PoolRecipe): boolean =>
+          (r.calories ?? 0) > 0 && proteinShareOf(r) >= macroTarget.protein * 0.8;
         const matches = (r: PoolRecipe, relax: (typeof tiers)[number]): boolean =>
           base(r) &&
           proteinRoomLeft(r) &&
@@ -1066,8 +1077,9 @@ export async function buildMealPlanMenus(
           // ceiling, 128-170% of target.
           if (relax.sameDay && mealCalories > 0) break;
           const matched = selectionPool.filter((r) => matches(r, relax));
+          const onTarget = needsProteinMain ? matched.filter(proteinOnTarget) : [];
           const dense = needsProteinMain ? matched.filter(proteinDense) : matched;
-          const pool = dense.length > 0 ? dense : matched;
+          const pool = onTarget.length > 0 ? onTarget : dense.length > 0 ? dense : matched;
           if (pool.length > 0 && relax.sameDay && dayMacroTargetG.fat) {
             // The last tier relaxed the fat ceiling — and then chose as if fat
             // did not matter at all. Every day in cycle 19's measurement that

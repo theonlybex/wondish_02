@@ -162,7 +162,7 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     .map((r) =>
       `- ${r.count} × ${r.mealTypeName} (target ≈${Math.round(r.targetCalories)} kcal per serving)` +
       (r.leanProtein
-        ? ` — LEAN AND PROTEIN-FORWARD: at least ${r.leanProtein.minProteinPct}% of calories from protein and no more than ${r.leanProtein.maxFatPct}% from fat. Build each around a generous portion of the leanest protein available, a measured starch, plenty of vegetables, and at most 1 teaspoon of oil.`
+        ? ` — LEAN AND PROTEIN-FORWARD: at least ${r.leanProtein.minProteinPct}% of calories from protein and no more than ${r.leanProtein.maxFatPct}% from fat. Build each around a generous portion of the leanest protein available, a measured starch, plenty of vegetables, and at most 1 teaspoon of oil. Reach the calorie target with LARGER portions of protein and starch, never with more oil — a lean dish that comes in hundreds of calories short is not what was asked for.`
         : "")
     )
     .join("\n");
