@@ -1,3 +1,4 @@
+import { ingredientTokens } from "@/lib/basket-match";
 // A dish is "covered" by a basket when every one of its ingredients is either
 // in the basket or a free staple. This is the eligibility test that turns the
 // recipe library into a cache-first source for basket-constrained weeks — the
@@ -60,10 +61,36 @@ export function isCoveredByBasket(
   staples: Set<string> = BASKET_STAPLES
 ): boolean {
   const have = new Set<string>();
-  for (const b of basket) have.add(b.trim().toLowerCase());
+  const haveTokens: Set<string>[] = [];
+  for (const b of basket) {
+    const n = b.trim().toLowerCase();
+    have.add(n);
+    haveTokens.push(ingredientTokens(n));
+  }
   for (const raw of ingredientNames) {
     const n = raw.trim().toLowerCase();
-    if (!have.has(n) && !staples.has(n)) return false;
+    if (have.has(n) || staples.has(n)) continue;
+    // Exact equality is not the right relation between a pantry entry and an
+    // ingredient row, because the catalog spells the same food more than one
+    // way. Measured 2026-09-25: 34 groups of rows are the same food under
+    // different spellings AND have more than one spelling in live use — "eggs"
+    // on 14 recipes beside "Large eggs" on 288, "bell pepper" on 1 beside "Bell
+    // peppers" on 617, "Cucumber" beside "Cucumbers", "Lemon" beside "Lemons".
+    // A diner who stocked eggs could not cook any of the 288, and nothing said
+    // why: the dish simply never appeared.
+    //
+    // EQUAL token sets, not subset — the discipline lib/dish-plausibility.ts
+    // isStapleName already settled for the same reason. ingredientTokens drops
+    // descriptors and singularises, so {egg} == {egg} and {bell,pepper} ==
+    // {bell,pepper}, while a basket holding only "pepper" ({pepper}) still does
+    // NOT cover "Bell peppers" ({bell,pepper}). Subset matching there would
+    // claim a vegetable on the strength of owning the seasoning.
+    const want = ingredientTokens(n);
+    if (want.size === 0) return false;
+    const matched = haveTokens.some(
+      (t) => t.size === want.size && [...want].every((w) => t.has(w))
+    );
+    if (!matched) return false;
   }
   return true;
 }
