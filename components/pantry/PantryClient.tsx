@@ -323,7 +323,7 @@ export default function PantryClient({
         type="button"
         aria-pressed={active}
         onClick={() => toggle(ing)}
-        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+        className={`inline-flex items-center min-h-[44px] sm:min-h-0 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
           active
             ? "bg-primary text-white shadow-sm shadow-primary/30"
             : "bg-[#F3F2FF] text-[#848181] hover:bg-primary/10 hover:text-primary"
@@ -377,7 +377,7 @@ export default function PantryClient({
           type="button"
           onClick={() => setView(v)}
           aria-pressed={view === v}
-          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+          className={`inline-flex items-center justify-center min-h-[44px] sm:min-h-0 px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
             view === v ? "bg-white text-primary shadow-sm" : "text-[#848181] hover:text-primary"
           }`}
         >
@@ -456,7 +456,7 @@ export default function PantryClient({
                         {sorted.map((it) => {
                           const have = selected.has(it.id);
                           return (
-                            <button key={it.id} type="button" onClick={() => toggle({ id: it.id, name: it.name })} aria-pressed={have} className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#FBFAF5]">
+                            <button key={it.id} type="button" onClick={() => toggle({ id: it.id, name: it.name })} aria-pressed={have} className="w-full min-h-[44px] flex items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#FBFAF5]">
                               <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${have ? "bg-primary border-primary" : "border-[#EAE4CA]"}`}>
                                 {have && (
                                   <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
@@ -714,7 +714,7 @@ export default function PantryClient({
               const have = cat.items.filter((it) => selected.has(it.id)).length;
               return (
                 <div key={cat.key} className="rounded-2xl overflow-hidden border border-[#EAE4CA]">
-                  <button type="button" onClick={() => setOpenCat(open ? null : cat.key)} aria-expanded={open} className="w-full flex items-center gap-3 px-4 py-2.5 text-left bg-[#F9F7ED]">
+                  <button type="button" onClick={() => setOpenCat(open ? null : cat.key)} aria-expanded={open} className="w-full min-h-[44px] flex items-center gap-3 px-4 py-2.5 text-left bg-[#F9F7ED]">
                     <span className="flex-1 text-sm font-semibold text-[#1E1A1A]">{cat.title}</span>
                     <span className="text-[10px] tabular-nums" style={{ color: "#848181" }}>{have}/{cat.items.length}</span>
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>

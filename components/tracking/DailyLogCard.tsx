@@ -202,7 +202,7 @@ export default function DailyLogCard() {
         <button
           type="button"
           onClick={() => openCreate()}
-          className="text-[9px] tracking-[0.2em] uppercase font-bold transition-colors cursor-pointer hover:opacity-70"
+          className="touch-target inline-flex items-center text-[9px] tracking-[0.2em] uppercase font-bold transition-colors cursor-pointer hover:opacity-70"
           style={{ color: "#812549" }}
         >
           + Add Meal
@@ -316,7 +316,7 @@ export default function DailyLogCard() {
                       type="button"
                       onClick={() => openCreate(mt)}
                       aria-label={`Add a ${MEAL_TYPE_LABELS[mt].toLowerCase()} entry`}
-                      className="text-[10px] font-bold text-[#B75E78] hover:text-primary transition-colors cursor-pointer px-1 py-0.5"
+                      className="touch-target inline-flex items-center text-[10px] font-bold text-[#B75E78] hover:text-primary transition-colors cursor-pointer px-1 py-0.5"
                     >
                       + Add
                     </button>

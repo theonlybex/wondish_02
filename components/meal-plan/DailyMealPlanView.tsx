@@ -773,7 +773,7 @@ export default function DailyMealPlanView({
               type="button"
               onClick={() => setShowCuisines((v) => !v)}
               aria-expanded={showCuisines}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold hover:opacity-80 transition-opacity"
+              className="touch-target inline-flex items-center gap-1.5 text-xs font-semibold hover:opacity-80 transition-opacity"
               style={{ color: "#812549" }}
             >
               Cuisine for today
@@ -783,7 +783,7 @@ export default function DailyMealPlanView({
             </button>
             <a
               href="/meal-plan/weekly"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold hover:opacity-80 transition-opacity"
+              className="touch-target inline-flex items-center gap-1.5 text-xs font-semibold hover:opacity-80 transition-opacity"
               style={{ color: "#812549" }}
             >
               View full week

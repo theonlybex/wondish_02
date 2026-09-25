@@ -456,7 +456,7 @@ export default function ProfileForm({
                     role="radio"
                     aria-checked={weightUnitShown === u}
                     onClick={() => switchWeightUnit(u)}
-                    className="min-h-[44px] px-3 text-xs font-semibold transition-colors"
+                    className="min-h-[44px] min-w-[44px] px-3 text-xs font-semibold transition-colors"
                     style={weightUnitShown === u ? { background: "#812549", color: "#fff" } : { background: "#F9F7ED", color: "#5F1C35" }}
                   >
                     {u}

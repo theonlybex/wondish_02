@@ -163,7 +163,7 @@ export default function QuickJournalLog() {
         <p className="text-sm font-bold text-[#1E1A1A]">Entry saved!</p>
         <Link
           href="/journal"
-          className="text-[10px] tracking-[0.2em] uppercase font-bold transition-colors"
+          className="touch-target inline-flex items-center text-[10px] tracking-[0.2em] uppercase font-bold transition-colors"
           style={{ color: "#812549" }}
         >
           Full Journal →
@@ -197,7 +197,7 @@ export default function QuickJournalLog() {
             aria-selected={i === stepIndex}
             aria-label={`Step ${i + 1} of ${STEPS.length}${i === stepIndex ? " (current)" : i < stepIndex ? " (done)" : ""}`}
             onClick={() => { setDirection(i > stepIndex ? 1 : -1); setStepIndex(i); }}
-            className="relative grid place-items-center -my-[19px] py-[19px] transition-all duration-300"
+            className="relative grid place-items-center -my-[19px] py-[19px] -mx-[13px] px-[13px] transition-all duration-300"
           >
             <span
               aria-hidden="true"
@@ -399,7 +399,7 @@ export default function QuickJournalLog() {
             <button
               type="button"
               onClick={() => advance(1)}
-              className="px-4 py-2 rounded-xl text-xs font-bold transition-all"
+              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold transition-all"
               style={{ background: "#F5F1DD", color: "#848181", cursor: "pointer" }}
             >
               Skip →
@@ -408,7 +408,7 @@ export default function QuickJournalLog() {
               type="button"
               onClick={() => advance(1)}
               disabled={!currentFilled}
-              className="px-4 py-2 rounded-xl text-xs font-bold transition-all"
+              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold transition-all"
               style={
                 currentFilled
                   ? { background: "#812549", color: "#fff", cursor: "pointer" }

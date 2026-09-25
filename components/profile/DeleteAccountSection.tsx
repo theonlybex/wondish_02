@@ -56,7 +56,7 @@ export default function DeleteAccountSection() {
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="px-4 py-2.5 rounded-xl border border-error/40 text-error text-sm font-semibold hover:bg-error/10 transition-colors"
+          className="inline-flex items-center min-h-[44px] px-4 py-2.5 rounded-xl border border-error/40 text-error text-sm font-semibold hover:bg-error/10 transition-colors"
         >
           Delete my account…
         </button>

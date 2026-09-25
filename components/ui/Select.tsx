@@ -35,7 +35,12 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
           aria-describedby={errorId}
           aria-label={!label && placeholder ? placeholder : undefined}
           className={twMerge(
-            "w-full px-3.5 py-2.5 rounded-xl border bg-white text-[#1E1A1A] text-sm outline-none transition-all appearance-none",
+            // min-h-[44px]: py-2.5 on 14px text renders 42px, and a QA hit-test
+            // measured all three /profile selects at exactly that. Two pixels
+            // under the floor is still under the floor, and a select is one of
+            // the hardest controls to hit — it opens a picker, so a miss costs
+            // the user a scroll position as well as a tap.
+            "w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border bg-white text-[#1E1A1A] text-sm outline-none transition-all appearance-none",
             error
               ? "border-error focus:ring-2 focus:ring-error/20"
               : "border-[#EAE4CA] focus:border-primary focus:ring-2 focus:ring-primary/20",

@@ -66,22 +66,22 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle, isNew
 
       <div className="flex items-center gap-3">
         {plan === "ADMIN" ? (
-          <Link href="/membership" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200/80 text-amber-700 hover:bg-amber-100 transition-colors">
+          <Link href="/membership" className="touch-target inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200/80 text-amber-700 hover:bg-amber-100 transition-colors">
             <span className="text-[10px]">★</span>{t("adminBadge")}
           </Link>
         ) : plan === "PREMIUM" ? (
-          <Link href="/membership" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-[#ffffff] border border-primary/20 text-primary hover:bg-primary/10 transition-colors">
+          <Link href="/membership" className="touch-target inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-[#ffffff] border border-primary/20 text-primary hover:bg-primary/10 transition-colors">
             <span className="text-[10px]">✦</span>{t("premiumBadge")}
           </Link>
         ) : plan === "BETA" ? (
           // A coupon tester: its own pill — neither the muted Free outline nor
           // the Plus star — and it points at /pricing because the useful next
           // step for a tester is subscribing, not managing billing.
-          <Link href="/pricing" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-[#F9F7ED] border border-[#5F1C35]/25 text-[#5F1C35] hover:bg-[#F5F1DD] hover:border-[#5F1C35]/45 transition-colors">
+          <Link href="/pricing" className="touch-target inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full bg-[#F9F7ED] border border-[#5F1C35]/25 text-[#5F1C35] hover:bg-[#F5F1DD] hover:border-[#5F1C35]/45 transition-colors">
             {t("betaBadge")}
           </Link>
         ) : (
-          <Link href="/pricing" className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full border border-[#EAE4CA] text-[#848181] hover:border-primary/30 hover:text-primary hover:bg-primary/5 transition-colors">
+          <Link href="/pricing" className="touch-target inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-full border border-[#EAE4CA] text-[#848181] hover:border-primary/30 hover:text-primary hover:bg-primary/5 transition-colors">
             {t("upgrade")}
           </Link>
         )}
@@ -89,7 +89,7 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle, isNew
         <div ref={dropdownRef} className="relative">
           <button
             onClick={() => { setOpen((v) => !v); setShowCoupon(false); }}
-            className="px-3 py-1.5 rounded-xl bg-[#ffffff] border border-primary/20 text-primary font-semibold text-xs hover:border-primary/40 hover:bg-primary/10 transition-all"
+            className="touch-target px-3 py-1.5 rounded-xl bg-[#ffffff] border border-primary/20 text-primary font-semibold text-xs hover:border-primary/40 hover:bg-primary/10 transition-all"
           >
             Settings
           </button>

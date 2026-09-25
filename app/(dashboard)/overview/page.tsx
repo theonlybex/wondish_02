@@ -212,7 +212,7 @@ export default async function OverviewPage() {
             </div>
             <Link
               href="/journal"
-              className="text-[9px] tracking-[0.2em] uppercase font-bold transition-colors"
+              className="touch-target inline-flex items-center text-[9px] tracking-[0.2em] uppercase font-bold transition-colors"
               style={{ color: "#a78bfa" }}
             >
               Full Journal →

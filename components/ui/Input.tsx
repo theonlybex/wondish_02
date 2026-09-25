@@ -36,7 +36,10 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           aria-describedby={errorId}
           aria-label={!label && typeof props.placeholder === "string" ? props.placeholder : undefined}
           className={twMerge(
-            "w-full px-3.5 py-2.5 rounded-xl border bg-white text-[#1E1A1A] text-sm placeholder:text-[#A8A4B5] outline-none transition-all",
+            // Same 44px floor as the sibling Select: these two render the same
+            // padding and sit in the same forms, so they have to be the same
+            // height or the form looks assembled from parts.
+            "w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border bg-white text-[#1E1A1A] text-sm placeholder:text-[#A8A4B5] outline-none transition-all",
             error
               ? "border-error focus:ring-2 focus:ring-error/20"
               : "border-[#EAE4CA] focus:border-primary focus:ring-2 focus:ring-primary/20",
