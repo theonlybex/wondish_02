@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood, snackIsQuickEnough, statedOrImpliedMinutes, nameWithoutFalseMethod, dishStyleMissingIngredient, fatStatedInSteps, measurableAmount, rawProteinNeverCooked, categoryWithNoMember, breakfastStarchWithSavouryProtein, snackIsSmallEnough } from "./dish-plausibility";
+import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood, snackIsQuickEnough, statedOrImpliedMinutes, nameWithoutFalseMethod, dishStyleMissingIngredient, fatStatedInSteps, measurableAmount, isMeasurableAmount, rawProteinNeverCooked, categoryWithNoMember, breakfastStarchWithSavouryProtein, snackIsSmallEnough } from "./dish-plausibility";
 
 // The catalog vocabulary, as lib/meal-plan.ts builds it from Ingredient.name.
 const CATALOG = new Set([
@@ -676,10 +676,18 @@ test("a step's oil amount counts whether written 0.5, 1/2 or ½", () => {
 test("a clamped amount is one a person can measure", () => {
   // QA read "0.37 tablespoon", "1.03 teaspoon" and "1.1 teaspoon" off the
   // rendered cards. Nobody owns a 0.37-tablespoon spoon.
-  assert.equal(measurableAmount(0.37, "tablespoon"), 0.25, "rounds DOWN, so the clamp's ceiling still holds");
+  // A third of a tablespoon is one teaspoon, which is why thirds belong in the
+  // set: snapping 0.37 to a quarter (this test's first answer) threw away a
+  // measure the drawer actually has.
+  // Stored to four decimals — 0.3333, not 0.33333333 — because the amount ends
+  // up in a database column and on a card.
+  assert.ok(Math.abs(measurableAmount(0.37, "tablespoon") - 1 / 3) < 1e-3, "rounds DOWN to the third");
   assert.equal(measurableAmount(1.03, "teaspoon"), 1);
   assert.equal(measurableAmount(1.1, "teaspoon"), 1);
-  assert.equal(measurableAmount(0.7, "tablespoon"), 0.625);
+  assert.ok(Math.abs(measurableAmount(0.7, "tablespoon") - 2 / 3) < 1e-3);
+  for (const raw of [0.37, 1.03, 1.1, 0.7, 2.9]) {
+    assert.ok(measurableAmount(raw, "tablespoon") <= raw, `${raw} was rounded UP, past the clamp's ceiling`);
+  }
   assert.equal(measurableAmount(0.02, "teaspoon"), 0.125, "never rounded away to nothing");
   // Mass and volume round to whole units, not eighths.
   assert.equal(measurableAmount(8.4, "g"), 8);
@@ -693,7 +701,7 @@ test("the clamp leaves a spoonable number behind", () => {
     620
   );
   const q = ingredients[0].quantity!;
-  assert.ok(Math.abs(q * 8 - Math.round(q * 8)) < 1e-9, `${q} is not a measurable eighth`);
+  assert.ok(isMeasurableAmount(q, "tablespoon"), `${q} tablespoons is not an amount anybody can measure`);
 });
 
 // ── The one rule here that is about safety rather than plausibility ──────────

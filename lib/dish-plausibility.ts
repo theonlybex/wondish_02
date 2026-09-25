@@ -267,14 +267,154 @@ export function clampCookingFat<T extends { name: string; quantity?: number | nu
  */
 export function measurableAmount(raw: number, unit?: string | null): number {
   const u = (unit ?? "").trim();
-  if (/^\s*(tsp|teaspoons?|tbsp|tablespoons?|cups?)\s*$/i.test(u)) {
-    const eighths = Math.floor(raw * 8) / 8;
+  if (VOLUME_UNIT.test(u)) {
+    const snapped = snapToKitchenFraction(raw, "down");
     // Never round a real amount away to nothing.
-    return eighths >= 0.125 ? eighths : 0.125;
+    return snapped >= 0.125 ? snapped : 0.125;
   }
   const whole = Math.floor(raw);
   return whole >= 1 ? whole : Math.round(raw * 10) / 10;
 }
+
+// ── What a kitchen can measure ───────────────────────────────────────────────
+//
+// The eighths this used to snap to were too coarse in one direction and too
+// generous in the other. A measuring set has a THIRD-cup and a two-thirds cup,
+// so 0.33 and 0.66 were being condemned as unusable and rounded to 0.25 — the
+// commonest fraction in the catalog, quietly shrunk. And below an eighth of a
+// teaspoon there is no spoon at all: 1,340 stored rows ask for 0.0625 tsp of
+// pepper, which is a pinch, and rounding it UP to an eighth doubles the salt.
+//
+// So: the set below is what exists in a drawer, a pinch is its own unit, and
+// nothing between them gets invented.
+export const VOLUME_UNIT = /^\s*(tsp|teaspoons?|tbsp|tablespoons?|cups?)\s*$/i;
+
+/**
+ * Fractions a measuring set can produce. Thirds in, odd eighths out: a drawer
+ * has a 1/8 tsp and a 1/3 cup, and nothing anywhere measures three-eighths of a
+ * tablespoon. Leaving 0.375 in the set made `0.37 tablespoon` — the exact
+ * amount QA reported three cycles running — read as already fine.
+ */
+const KITCHEN_FRACTIONS = [0.125, 0.25, 1 / 3, 0.5, 2 / 3, 0.75] as const;
+
+/**
+ * True when `q` is already something a person can measure out in `unit`.
+ *
+ * 0.66 is two-thirds written short, and the tolerance has to reach it: a
+ * stricter one rewrites 525 correct rows.
+ */
+export function isMeasurableAmount(q: number, unit?: string | null): boolean {
+  if (!(q > 0)) return false;
+  const u = (unit ?? "").trim();
+  if (VOLUME_UNIT.test(u)) return q >= 0.125 && isKitchenFraction(q);
+  if (/^\s*(g|gr|gram|grams)\s*$/i.test(u)) return q >= 1 && Math.abs(q * 10 - Math.round(q * 10)) < 1e-9;
+  if (/^\s*ml\s*$/i.test(u)) return q >= 5 && Math.abs(q * 10 - Math.round(q * 10)) < 1e-9;
+  if (/^\s*(kg|l|oz|ounces?|lbs?)\s*$/i.test(u)) return Math.abs(q * 100 - Math.round(q * 100)) < 1e-9;
+  // Counts — medium, large, whole, stalk, head, slice. Knife cuts.
+  return q >= 0.125 && isKitchenFraction(q);
+}
+
+function isKitchenFraction(q: number): boolean {
+  const frac = q - Math.floor(q);
+  if (frac < 1e-9) return true;
+  return KITCHEN_FRACTIONS.some((k) => Math.abs(frac - k) < 0.011);
+}
+
+/**
+ * Snap to the nearest fraction a measuring set has.
+ *
+ * `"down"` keeps a ceiling honest (the salt and fat clamps must never round a
+ * capped amount back up above the cap); `"near"` is for repairing a stored row,
+ * where the truest value wins and there is no cap to respect.
+ */
+export function snapToKitchenFraction(raw: number, dir: "down" | "near" = "near"): number {
+  const whole = Math.floor(raw);
+  const frac = raw - whole;
+  if (frac < 1e-9) return raw;
+  if (dir === "down") {
+    const usable = KITCHEN_FRACTIONS.filter((k) => k <= frac + 1e-9);
+    if (usable.length === 0) return whole;
+    let best = usable[0];
+    for (const k of usable) if (Math.abs(k - frac) < Math.abs(best - frac)) best = k;
+    return Number((whole + best).toFixed(4));
+  }
+  // "near" competes the fractions against BOTH whole numbers around them:
+  // 0.95 cup is a cup, and 1.03 tablespoons is a tablespoon. Without the lower
+  // whole in the running, 1.03 snapped to 1.125 — a worse number than the one
+  // it repaired, and exactly the trade this function exists to avoid.
+  const candidates: number[] = [...KITCHEN_FRACTIONS.map((k) => whole + k), whole + 1];
+  if (whole >= 1) candidates.push(whole);
+  let best = candidates[0];
+  for (const c of candidates) if (Math.abs(c - raw) < Math.abs(best - raw)) best = c;
+  return Number(best.toFixed(4));
+}
+
+/** Teaspoons in one of `unit`, or null when the unit is not a spoon measure. */
+export function teaspoonsPer(unit?: string | null): number | null {
+  const u = (unit ?? "").trim();
+  if (/^\s*(tsp|teaspoons?)\s*$/i.test(u)) return 1;
+  if (/^\s*(tbsp|tablespoons?)\s*$/i.test(u)) return 3;
+  if (/^\s*cups?\s*$/i.test(u)) return 48;
+  if (/^\s*ml\s*$/i.test(u)) return 1 / 4.929;
+  return null;
+}
+
+/**
+ * The measurable amount nearest `quantity` `unit`, possibly in a DIFFERENT
+ * unit — the only honest repair for an amount smaller than the smallest spoon.
+ *
+ * A pinch is 1/16 tsp, which is how lib/staple-density.ts already prices it, so
+ * 0.0625 tsp of salt becomes 1 pinch with the sodium unchanged. Rounding it up
+ * to the eighth-teaspoon the old code produced would have doubled it across
+ * 1,340 rows.
+ *
+ * Returns null when the row is already measurable, so a caller can count
+ * changes cheaply.
+ */
+export function repairAmount(
+  quantity: number,
+  unit: string | null | undefined,
+  name = ""
+): { quantity: number; unit: string | null } | null {
+  if (!(quantity > 0)) return null;
+  const u = (unit ?? "").trim();
+  if (isMeasurableAmount(quantity, u)) return null;
+
+  const tspPer = teaspoonsPer(u);
+  if (tspPer !== null) {
+    const tsp = quantity * tspPer;
+    // Smaller than the smallest spoon: it is a pinch, and says so.
+    if (tsp < 0.125) return { quantity: Math.max(1, Math.round(tsp * 16)), unit: "pinch" };
+    // A millilitre amount under a tablespoon reads as a spoon measure to a
+    // cook; over it, millilitres are what the jug shows.
+    if (/^\s*ml\s*$/i.test(u)) {
+      if (quantity < 15) return { quantity: snapToKitchenFraction(tsp), unit: "teaspoon" };
+      return { quantity: Math.round(quantity), unit: u };
+    }
+    return { quantity: snapToKitchenFraction(quantity), unit: u };
+  }
+
+  if (/^\s*(g|gr|gram|grams)\s*$/i.test(u) && quantity < 1) {
+    // Sub-gram weights are scaled-down spice lines and cooking-spray oil. Both
+    // are pinches by weight — lib/staple-density.ts prices a pinch at 0.3 g.
+    if (SUB_GRAM_IS_A_PINCH.test(name)) return { quantity: Math.max(1, Math.round(quantity / 0.3)), unit: "pinch" };
+    return { quantity: 1, unit: "g" };
+  }
+
+  if (/^\s*(g|gr|gram|grams|ml)\s*$/i.test(u)) return { quantity: Math.round(quantity * 10) / 10, unit: u };
+  if (/^\s*(kg|l|oz|ounces?|lbs?)\s*$/i.test(u)) return { quantity: Math.round(quantity * 100) / 100, unit: u };
+
+  // A count. Quarter of a lemon is a knife cut; 0.37 of one is not.
+  const snapped = snapToKitchenFraction(quantity);
+  return { quantity: Math.max(0.25, snapped), unit: unit ?? null };
+}
+
+/**
+ * Names whose sub-gram amount means "a pinch" rather than "a rounding error".
+ * Spices, herbs and the oil a step spreads with a spray.
+ */
+const SUB_GRAM_IS_A_PINCH =
+  /\b(salt|pepper|peppercorns?|spice|seasoning|powder|paprika|cumin|oregano|thyme|basil|rosemary|parsley|cilantro|cinnamon|nutmeg|turmeric|ginger|cayenne|chili|chilli|flakes?|herbs?|dill|mint|sage|tarragon|zest|oil)\b/i;
 
 export interface PlausibleIngredient {
   name: string;
