@@ -34,27 +34,38 @@ import ts from "typescript";
 // class of regression impossible to land silently.
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+// The render sites, and — since 2026-09-25 — the component itself, which moved
+// out of DailyMealPlanView into components/ui so /pantry could share it. The
+// two are parsed separately because they are now two files.
 const COMPONENT = join(REPO_ROOT, "components", "meal-plan", "DailyMealPlanView.tsx");
+const SURFACE_FILE = join(REPO_ROOT, "components", "ui", "QuotaError.tsx");
 const REL = relative(REPO_ROOT, COMPONENT);
+const SURFACE_REL = relative(REPO_ROOT, SURFACE_FILE);
 
 // The names this test is keyed on. Renaming any of them in the component is
 // fine — update these constants in the same change.
 const ERROR_STATE = "newWeekError";
 const UPGRADE_STATE = "newWeekUpgrade";
 const UPGRADE_SETTER = "setNewWeekUpgrade";
-const SURFACE = "NewWeekError";
+const SURFACE = "QuotaError";
 const UPGRADE_HREF = "/pricing";
 // Tags accepted for the upgrade link inside NewWeekError.
 const LINK_TAGS = new Set(["a", "Link"]);
 
-const FIX = `Render it as <${SURFACE} message={${ERROR_STATE}} upgrade={${UPGRADE_STATE}} className="…" /> — that component owns the "Upgrade for more →" link (see the comment above ${SURFACE} in ${REL}).`;
+const FIX = `Render it as <${SURFACE} message={${ERROR_STATE}} upgrade={${UPGRADE_STATE}} className="…" /> — that component owns the "Upgrade for more →" link (see components/ui/QuotaError.tsx).`;
 
-function parse(): ts.SourceFile {
-  const src = readFileSync(COMPONENT, "utf8");
-  const sf = ts.createSourceFile(COMPONENT, src, ts.ScriptTarget.Latest, /* setParentNodes */ true, ts.ScriptKind.TSX);
+function parseFile(path: string, rel: string): ts.SourceFile {
+  const src = readFileSync(path, "utf8");
+  const sf = ts.createSourceFile(path, src, ts.ScriptTarget.Latest, /* setParentNodes */ true, ts.ScriptKind.TSX);
   const diags = (sf as unknown as { parseDiagnostics: ts.Diagnostic[] }).parseDiagnostics;
-  assert.equal(diags.length, 0, `${REL} does not parse: ${diags.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n")).join("; ")}`);
+  assert.equal(diags.length, 0, `${rel} does not parse: ${diags.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n")).join("; ")}`);
   return sf;
+}
+function parse(): ts.SourceFile {
+  return parseFile(COMPONENT, REL);
+}
+function parseSurface(): ts.SourceFile {
+  return parseFile(SURFACE_FILE, SURFACE_REL);
 }
 
 function at(sf: ts.SourceFile, node: ts.Node): string {
@@ -188,15 +199,20 @@ test(`every <${SURFACE}> forwards upgrade={${UPGRADE_STATE}} (a site cannot sile
 });
 
 test(`${SURFACE} renders the message and an ${UPGRADE_HREF} link gated on its upgrade prop`, () => {
-  const sf = parse();
+  const sf = parseSurface();
 
   // Accept `function NewWeekError(…)` or `const NewWeekError = (…) => …`.
-  const fnDecl = collect(sf, ts.isFunctionDeclaration).find((f) => f.name?.text === SURFACE);
+  // Accept the default export, however it is named in the file.
+  const fnDecl =
+    collect(sf, ts.isFunctionDeclaration).find((f) => f.name?.text === SURFACE) ??
+    collect(sf, ts.isFunctionDeclaration).find((f) =>
+      f.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)
+    );
   const varDecl = collect(sf, ts.isVariableDeclaration).find(
     (v) => ts.isIdentifier(v.name) && v.name.text === SURFACE && v.initializer && (ts.isArrowFunction(v.initializer) || ts.isFunctionExpression(v.initializer))
   );
   const fn: ts.Node | undefined = fnDecl ?? varDecl?.initializer;
-  assert.ok(fn, `no component named ${SURFACE} found in ${REL} — it must exist and own the upgrade link`);
+  assert.ok(fn, `no component named ${SURFACE} found in ${SURFACE_REL} — it must exist and own the upgrade link`);
 
   // (a) `message` is rendered as JSX content somewhere inside the component.
   const messageRendered = collect(fn, ts.isJsxExpression).some((e) => e.expression && mentions(e.expression, "message"));

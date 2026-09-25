@@ -43,7 +43,17 @@ already applied to the shared Neon DB, so landing is code-only. **[verified]**
       §1). Dev instance = "login every time" churn and the sign-in-ticket
       redirect loop. Re-add the `io.wondish.clara` azp allowlist; update
       Vercel env and the Clara iOS configs.
-- [ ] `PREMIUM_GATES=on` in the beta env (decided yes 2026-09-12).
+- [x] ~~`PREMIUM_GATES=on` in the beta env (decided yes 2026-09-12).~~
+      **REVERSED 2026-09-25 — leave it off, and do not turn it on.** The
+      decision is no paywall: signing in gets you the whole app, and free users
+      meet a per-feature allowance instead (`lib/ai-budget.ts` — 5 Clara
+      messages a day, 1 new week a week, 2 swaps a day…). A spent allowance is
+      the ONLY moment the app mentions Plus, and it does so with
+      `<QuotaError>`'s "Upgrade for more →". Blocking whole screens is
+      explicitly not wanted. Held by `lib/no-paywall.test.ts`: nothing may wrap
+      the dashboard's children in a gate, and every metered surface must offer
+      the upgrade. `components/PremiumGuard.tsx` stays as parked code with no
+      callers.
 - [ ] Upstash variables in Vercel — without them the AI spend and in-flight
       locks degrade to per-instance memory and the double-tap guards weaken.
 - [ ] Create the cohort coupon codes at `/admin/coupons`

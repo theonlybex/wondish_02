@@ -10,6 +10,7 @@ import { format, addDays, subDays } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import SwapMealModal from "@/components/meal-plan/SwapMealModal";
 import Button from "@/components/ui/Button";
+import QuotaError from "@/components/ui/QuotaError";
 import type { MealType } from "@/lib/local-date";
 import { MenuEntry, RecipeDTO, PlanExchangeDTO } from "@/types";
 
@@ -111,29 +112,6 @@ function CaloriePill({ total, completed }: { total: number; completed: number })
 // plan, which is what /pricing does and where the header's own upgrade link
 // goes. /membership renders the billing panel, which for an account carrying a
 // FREE Stripe row shows the lapsed-subscriber view rather than a plan picker.
-function NewWeekError({
-  message,
-  upgrade,
-  className = "",
-}: {
-  message: string;
-  upgrade: boolean;
-  className?: string;
-}) {
-  if (!message) return null;
-  return (
-    <p role="alert" className={`text-xs text-error ${className}`}>
-      {message}
-      {upgrade && (
-        <>
-          {" "}
-          <a href="/pricing" className="underline font-semibold whitespace-nowrap">Upgrade for more →</a>
-        </>
-      )}
-    </p>
-  );
-}
-
 // ── Inline expanded dish ──────────────────────────────────────────────────────
 function InlineDishExpand({
   menu,
@@ -779,7 +757,7 @@ export default function DailyMealPlanView({
           {/* The error used to render only next to the bottom "Generate a new
               week" button — off-screen from this banner on a phone, so a
               weekly-limit 429 looked like a dead tap (mobile QA 2026-09-11). */}
-          <NewWeekError message={newWeekError} upgrade={newWeekUpgrade} className="mt-2" />
+          <QuotaError message={newWeekError} upgrade={newWeekUpgrade} className="mt-2" />
         </div>
       )}
 
@@ -951,7 +929,7 @@ export default function DailyMealPlanView({
                 <a href="/pantry" className="font-semibold underline" style={{ color: "#812549" }}>edit the list</a> — then
                 generate your whole week.
               </p>
-              <NewWeekError message={newWeekError} upgrade={newWeekUpgrade} className="mb-2" />
+              <QuotaError message={newWeekError} upgrade={newWeekUpgrade} className="mb-2" />
               <button
                 type="button"
                 onClick={() => void generateNewWeek()}
@@ -1418,7 +1396,7 @@ export default function DailyMealPlanView({
                   </Link>
                 </p>
               ) : (
-                <NewWeekError message={newWeekError} upgrade={newWeekUpgrade} className="mt-1.5" />
+                <QuotaError message={newWeekError} upgrade={newWeekUpgrade} className="mt-1.5" />
               )}
             </div>
           )}

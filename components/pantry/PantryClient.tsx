@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CUISINES } from "@/lib/cuisines";
 import { basketBlockerText, computeBasketReadiness } from "@/lib/basket-readiness";
+import QuotaError from "@/components/ui/QuotaError";
 import { buildCuisineChecklists } from "@/lib/cuisine-ingredients";
 import { displayDishName } from "@/lib/dish-name";
 // Old "What to buy" design (reused the standalone GroceryListView). Replaced
@@ -77,6 +78,9 @@ export default function PantryClient({
   const [cookDay, setCookDay] = useState<CookDayResult | null>(null);
   const [cooking, setCooking] = useState(false);
   const [cookError, setCookError] = useState("");
+  // The API says whether Plus would actually buy more (lib/ai-budget.ts sets it
+  // only when the premium limit is higher). Never inferred here.
+  const [cookUpgrade, setCookUpgrade] = useState(false);
   // Nothing generates until the user picks a cuisine (no auto-fire).
   const [cookingCuisine, setCookingCuisine] = useState<string | null>(null);
   // "What to buy" — smart stocking list: ingredients that unlock the most
@@ -287,6 +291,7 @@ export default function PantryClient({
     setCooking(true);
     setCookingCuisine(cuisine);
     setCookError("");
+      setCookUpgrade(false);
     try {
       const res = await apiFetch("/api/pantry/cook-day", {
         method: "POST",
@@ -298,6 +303,7 @@ export default function PantryClient({
         setCookError(
           data?.error ?? "Clara couldn't cook right now — nothing was used up. Try again."
         );
+        setCookUpgrade(data?.upgrade === true);
         return;
       }
       setCookDay(data);
@@ -835,11 +841,11 @@ export default function PantryClient({
             </div>
           )}
 
-          {cookError && (
-            <div role="alert" className="bg-white/10 border border-white/20 text-white rounded-xl px-4 py-2.5 text-xs mt-3">
-              {cookError}
-            </div>
-          )}
+          {/* Through the shared component, so the upgrade offer cannot be
+              missing here again. This card had rendered the refusal alone: a
+              free user spending their one cook-my-day was told "no" with no way
+              to say yes, while three other surfaces offered the link. */}
+          <QuotaError message={cookError} upgrade={cookUpgrade} tone="onDark" className="mt-3" />
           <p className="text-[10px] mt-3" style={{ color: "rgba(255,255,255,0.38)" }}>
             Once a day · uses only your ingredients · allergies always respected
           </p>
