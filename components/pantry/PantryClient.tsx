@@ -852,7 +852,7 @@ export default function PantryClient({
                   key={c}
                   type="button"
                   onClick={() => void cookMyDay(c)}
-                  className="px-3.5 py-1.5 rounded-full text-sm font-semibold bg-white/10 text-white border border-white/20 hover:bg-white hover:text-[#812549] transition-colors"
+                  className="px-3.5 py-1.5 [@media(pointer:coarse)]:min-h-11 rounded-full text-sm font-semibold bg-white/10 text-white border border-white/20 hover:bg-white hover:text-[#812549] transition-colors"
                 >
                   {c}
                 </button>

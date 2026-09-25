@@ -481,13 +481,29 @@ export function readableDescription(text: string, steps?: readonly string[] | nu
  * repaired by scripts/repair-steps-and-titles.ts, and Clara reads those.
  */
 export function withReadableProse<
-  T extends { name?: string; steps?: string[] | null; description?: string | null },
+  T extends {
+    name?: string;
+    steps?: string[] | null;
+    description?: string | null;
+    ingredients?: { quantity?: number | null; unit?: string | null; ingredient?: { name?: string } | null }[];
+  },
 >(r: T): T {
+  // The amounts as well. Dishes stored between the cycle-16 backfill and the
+  // write-path fix still hold "0.05 teaspoon pepper" (measured on a fresh week
+  // in cycle 18), and a plan can pick them up at any time.
+  const ingredients = Array.isArray(r.ingredients)
+    ? r.ingredients.map((ri) => {
+        const fixed =
+          typeof ri.quantity === "number" ? repairAmount(ri.quantity, ri.unit, ri.ingredient?.name ?? "") : null;
+        return fixed ? { ...ri, quantity: fixed.quantity, unit: fixed.unit } : ri;
+      })
+    : undefined;
   // The title too: a grading word off the egg box is not a dish name, and the
   // stored rows wait on the same backfill as the prose.
   const renamed = typeof r.name === "string" ? nameFromCookedForm(r.name, r.steps) : null;
   return {
     ...r,
+    ...(ingredients ? { ingredients } : {}),
     ...(renamed ? { name: renamed } : {}),
     ...(Array.isArray(r.steps) ? { steps: r.steps.map(readableProse) } : {}),
     ...(typeof r.description === "string" ? { description: readableDescription(r.description, r.steps) } : {}),

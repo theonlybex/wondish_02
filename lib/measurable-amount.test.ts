@@ -173,3 +173,20 @@ test("what a person wrote is left alone", () => {
 test("a size and a grade are not both printed", () => {
   assert.equal(repairProseAmounts("Pour 2 medium large eggs into a bowl."), "Pour 2 large eggs into a bowl.");
 });
+
+import { withReadableProse } from "./dish-plausibility";
+
+test("a stored dish reaches the screen measurable, whatever the row still says", () => {
+  const shown = withReadableProse({
+    name: "Large Eggs with Spinach",
+    steps: ["Season with 0.0625 teaspoon salt."],
+    description: null,
+    ingredients: [
+      { quantity: 0.05, unit: "teaspoon", ingredient: { name: "pepper" } },
+      { quantity: 2, unit: "large", ingredient: { name: "Large eggs" } },
+    ],
+  });
+  assert.equal(shown.name, "Eggs with Spinach");
+  assert.deepEqual(shown.steps, ["Season with a pinch of salt."]);
+  assert.deepEqual(shown.ingredients?.map((i) => [i.quantity, i.unit]), [[1, "pinch"], [2, "large"]]);
+});

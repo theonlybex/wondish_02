@@ -181,7 +181,7 @@ function InlineDishExpand({
             </div>
           ))}
           <button
-            className="ml-auto text-[10px] font-semibold px-3 py-1.5 rounded-lg border border-[#EAE4CA] text-[#848181] hover:bg-[#ffffff] transition-colors"
+            className="ml-auto text-[10px] font-semibold px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 rounded-lg border border-[#EAE4CA] text-[#848181] hover:bg-[#ffffff] transition-colors"
             onClick={(e) => { e.stopPropagation(); onSwap(menu.id, menu.mealTypeId ?? "", r.id, r.calories ?? 0); }}
           >
             Swap ↔
@@ -266,20 +266,22 @@ function InlineDishExpand({
           <button
             onClick={(e) => { e.stopPropagation(); onRate(r.id, menu.mealType?.name ?? "Meal", -1); }}
             disabled={ratingBusy}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl font-semibold text-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+            aria-pressed={rating === -1}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 [@media(pointer:coarse)]:min-h-11 rounded-xl font-semibold text-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
               rating === -1 ? "bg-red-500 text-white" : "bg-red-50 border border-red-200 text-red-600 hover:bg-red-100"
             }`}
           >
-            <span>👎</span> {rating === -1 ? "Not for me!" : "Not for me"}
+            <span aria-hidden="true">👎</span> {rating === -1 ? "Not for me!" : "Not for me"}
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onRate(r.id, menu.mealType?.name ?? "Meal", 1); }}
             disabled={ratingBusy}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl font-semibold text-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+            aria-pressed={rating === 1}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 [@media(pointer:coarse)]:min-h-11 rounded-xl font-semibold text-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
               rating === 1 ? "bg-emerald-500 text-white" : "bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100"
             }`}
           >
-            <span>👍</span> {rating === 1 ? "Loved it!" : "Loved it"}
+            <span aria-hidden="true">👍</span> {rating === 1 ? "Loved it!" : "Loved it"}
           </button>
         </div>
         {rateError && (
@@ -606,7 +608,15 @@ export default function DailyMealPlanView({
   const atBackLimit = date <= todayMidnight;
   // Past the plan's last day. Only meaningful once a plan exists — without one,
   // every day is a cold start and the generate card is the right thing to show.
-  const beyondPlanWindow = startDate !== null && date >= addDays(startDate, PLAN_WINDOW_DAYS);
+  //
+  // …and only while that plan is still RUNNING. Once its last day is behind
+  // today the week is over, and "that day is beyond your current week" on
+  // today itself — with no generate control anywhere on the page — left a
+  // returning user with no way to build the next one (cycle 18 bot pass: a
+  // plan for Sep 11-17, opened on Sep 25). Paging past a running plan is the
+  // case this guard was written for; an ended plan is a cold start.
+  const planEnd = startDate !== null ? addDays(startDate, PLAN_WINDOW_DAYS) : null;
+  const beyondPlanWindow = planEnd !== null && planEnd > todayMidnight && date >= planEnd;
 
   const navigate = async (dir: "prev" | "next") => {
     if (dir === "next" && atForwardLimit) return;
