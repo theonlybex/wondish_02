@@ -77,7 +77,9 @@ export interface AiLimit {
 // has been re-derived rather than carried forward.)
 export const AI_LIMITS: Record<string, AiLimit> = {
   // Conversations with Clara (dish-checker).
-  claraChat: { bucket: "ai-chat", window: "day", free: 5, premium: 25, label: "Clara messages" },
+  // Premium 20, not 25 (2026-09-25, user-directed): the $0.06/day it frees
+  // pays for up to three refunded swap attempts a day inside the $30 ceiling.
+  claraChat: { bucket: "ai-chat", window: "day", free: 5, premium: 20, label: "Clara messages" },
   // Fridge recipe generation.
   fridge: { bucket: "ai-fridge", window: "day", free: 2, premium: 6, label: "fridge suggestions" },
   // Pantry "cook my day" full-day generation.
@@ -91,8 +93,15 @@ export const AI_LIMITS: Record<string, AiLimit> = {
   planInit: { bucket: "ai-planinit", window: "day", free: 2, premium: 3, label: "plan setups" },
   // Rolling-week generation (New week, regenerate): the headline free limit.
   planGen: { bucket: "ai-plangen", window: "week", free: 1, premium: 5, label: "new weeks" },
-  // Clara single-dish swaps and "cuisine for today".
+  // Clara single-dish swaps and "cuisine for today" — charged only when one
+  // DELIVERS (chargeAiSpend after the dish is saved). Costs nothing by itself;
+  // the model's tokens are metered by swapAttempt below.
   swap: { bucket: "ai-swap", window: "day", free: 2, premium: 5, label: "dish swaps" },
+  // Every swap/cuisine model call, successful or not: the allowance above plus
+  // up to three that came back empty (a refusal is not the user's fault, so it
+  // does not spend a swap). This is the bucket that bounds the bill. Beta,
+  // being half of premium, gets two refunds rather than three.
+  swapAttempt: { bucket: "ai-swapattempt", window: "day", free: 5, premium: 8, label: "swap attempts" },
 
 } as const;
 
@@ -224,6 +233,25 @@ type Limiter = (name: string, identifier: string, limit: number, windowSec: numb
  * model has produced something usable. The swap route needs both halves — see
  * AI_LIMITS.swapAttempt for why.
  */
+/**
+ * Spend one unit of `kind` for a request that has ALREADY been paid for in
+ * model tokens (see swapAttempt) and has now delivered. User bucket only: the
+ * global ceiling counted the model call when the attempt was guarded.
+ *
+ * Never refuses the delivered result. A lost race (two swaps finishing on the
+ * last unit) lets one extra through, which is cheaper than throwing away a
+ * dish the user has already paid for in waiting.
+ */
+export async function chargeAiSpend(
+  userId: string,
+  kind: AiGuardKind,
+  tier: AiTier,
+  limiter: Limiter = rateLimit
+): Promise<void> {
+  const { max, windowSec } = limitFor(kind, tier);
+  await limiter(`${AI_LIMITS[kind].bucket}-${tier}`, userId, max, windowSec);
+}
+
 export async function remainingAiSpend(
   userId: string,
   kind: AiGuardKind,

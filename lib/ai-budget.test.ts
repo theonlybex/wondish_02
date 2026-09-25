@@ -16,11 +16,11 @@ function fakeLimiter() {
   return { limiter, calls };
 }
 
-test("tiers: free 1 new week/week + 5 Clara messages/day; premium 5/week + 25/day", () => {
+test("tiers: free 1 new week/week + 5 Clara messages/day; premium 5/week + 20/day", () => {
   assert.deepEqual(limitFor("planGen", "free"), { max: 1, windowSec: 7 * 86_400, window: "week" });
   assert.deepEqual(limitFor("planGen", "premium"), { max: 5, windowSec: 7 * 86_400, window: "week" });
   assert.equal(limitFor("claraChat", "free").max, 5);
-  assert.equal(limitFor("claraChat", "premium").max, 25);
+  assert.equal(limitFor("claraChat", "premium").max, 20);
   assert.equal(limitFor("claraChat", "free").window, "day");
   assert.equal(limitFor("swap", "premium").max, 5);
   assert.equal(limitFor("fridge", "premium").max, 6);
@@ -38,7 +38,10 @@ const COST_USD: Record<string, number> = {
   cookDay: 0.05,
   planInit: 0.08,
   planGen: 0.08,
-  swap: 0.02,
+  // A swap costs its tokens when ATTEMPTED; charging the swap bucket on
+  // delivery spends no more model time. The attempt cap is what bounds it.
+  swap: 0,
+  swapAttempt: 0.02,
 };
 const DAYS_PER_MONTH = 365 / 12;
 
@@ -69,7 +72,7 @@ test("beta is half of premium, floored at free, and never exceeds premium", () =
     assert.ok(beta <= premium, `${k}: beta ${beta} exceeded premium ${premium}`);
     assert.equal(beta, Math.max(free, Math.ceil(premium / 2)), k);
   }
-  assert.equal(limitFor("claraChat", "beta").max, 13);
+  assert.equal(limitFor("claraChat", "beta").max, 10);
   assert.equal(limitFor("fridge", "beta").max, 3);
   // Beta beats free on every ongoing feature, and ties on exactly one:
   // plan setups, where ceil(3/2) lands back on free's 2. That is fine — plan
@@ -79,7 +82,10 @@ test("beta is half of premium, floored at free, and never exceeds premium", () =
   const ties = (Object.keys(AI_LIMITS) as Array<keyof typeof AI_LIMITS>).filter(
     (k) => limitFor(k, "beta").max === limitFor(k, "free").max
   );
-  assert.deepEqual(ties, ["planInit"], `beta/free ties changed: ${ties.join(", ")}`);
+  // swapAttempt ties too, and that is not a lost benefit: it is a model-call
+  // cap, not an allowance. Beta's 5 attempts carry 3 swaps + 2 refunds, free's
+  // carry 2 + 3; the swaps themselves are still 3 against 2.
+  assert.deepEqual(ties, ["planInit", "swapAttempt"], `beta/free ties changed: ${ties.join(", ")}`);
 });
 
 test("every spend bucket carries the ai- prefix the rate limiter keys its fallback on", () => {
@@ -120,11 +126,11 @@ test("tierFor: paid is premium, a coupon alone is beta, admin always premium", (
 test("a beta tester who runs out is still offered the upgrade; their allowance is not called 'free'", () => {
   const b = quotaExceededBody("claraChat", "beta");
   assert.equal(b.upgrade, true);
-  assert.match(b.error, /13 Clara messages for today/);
+  assert.match(b.error, /10 Clara messages for today/);
   assert.doesNotMatch(b.error, /free/);
   // "Plus" is the on-screen name of the paid tier (Wondish Plus / Chef); the
   // code keeps "premium". The sentence must never say "Premium".
-  assert.match(b.error, /Plus gives you 25 a day\.$/);
+  assert.match(b.error, /Plus gives you 20 a day\.$/);
   assert.doesNotMatch(b.error, /premium/i);
   // Since the free column was tightened (2026-09-17) EVERY bucket has headroom
   // above free and beta, so every non-premium refusal can offer the upgrade.
@@ -142,7 +148,7 @@ test("free user: 6th Clara message today is refused with an upgrade hint; the gl
   if (!r.ok) {
     assert.equal(r.status, 429);
     assert.match(r.error, /5 free Clara messages for today/);
-    assert.match(r.error, /Plus gives you 25 a day\.$/);
+    assert.match(r.error, /Plus gives you 20 a day\.$/);
     assert.doesNotMatch(r.error, /premium/i);
     assert.equal((r.body as { upgrade?: boolean }).upgrade, true);
   }
@@ -162,7 +168,7 @@ test("free user: second new week in the same week is refused; premium gets five"
 test("premium at its cap gets a plain reset message, no upgrade hint", () => {
   const b = quotaExceededBody("claraChat", "premium");
   assert.equal(b.upgrade, false);
-  assert.match(b.error, /today's limit for Clara messages \(25\)/);
+  assert.match(b.error, /today's limit for Clara messages \(20\)/);
 });
 
 // ── The quota → UI contract ──────────────────────────────────────────────────
@@ -303,4 +309,22 @@ test("global ceiling is sized for a 50-tester beta", () => {
   // 50 testers x ~40 requests/day worst case = 2000. Below that the 51st
   // request of a busy evening read as an outage ("Clara is at capacity").
   assert.equal(GLOBAL_AI_DAILY_MAX, 2000);
+});
+
+test("a swap that finds nothing spends an attempt, not a swap; a delivered one spends both", async () => {
+  const { chargeAiSpend, guardAiSpend } = await import("./ai-budget");
+  const counts = new Map<string, number>();
+  const limiter = async (name: string, id: string, limit: number) => {
+    const k = `${name}:${id}`; const n = (counts.get(k) ?? 0) + 1; counts.set(k, n); return { success: n <= limit };
+  };
+  // Three refusals: three attempts, no swaps.
+  for (let i = 0; i < 3; i++) assert.equal((await guardAiSpend("u1", "swapAttempt", "free", limiter)).ok, true);
+  assert.equal(counts.get("ai-swap-free:u1") ?? 0, 0);
+  // Then a delivered one charges the swap.
+  assert.equal((await guardAiSpend("u1", "swapAttempt", "free", limiter)).ok, true);
+  await chargeAiSpend("u1", "swap", "free", limiter);
+  assert.equal(counts.get("ai-swap-free:u1"), 1);
+  // The attempt cap still stops a sixth model call: free is 2 swaps + 3 refunds.
+  assert.equal((await guardAiSpend("u1", "swapAttempt", "free", limiter)).ok, true);
+  assert.equal((await guardAiSpend("u1", "swapAttempt", "free", limiter)).ok, false);
 });

@@ -101,7 +101,7 @@ into a bot's later measurements.
 
 ## D. Tiers and limits
 
-20. Free: 1 plan/week, 5 Clara/day. Beta: 3 and 13. Refusals name the limit and
+20. Free: 1 plan/week, 5 Clara/day. Beta: 3 and 10. Plus: 5 and 20. Refusals name the limit and
     offer `/pricing`.
 21. A coupon holder reads as **Beta**, never as Plus — and `/membership` says
     beta is lower than paid.

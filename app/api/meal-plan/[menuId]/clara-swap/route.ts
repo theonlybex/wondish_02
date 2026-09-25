@@ -32,7 +32,7 @@ import {
   resolveMacroProfile,
   getMacroPercentages,
 } from "@/lib/caloric-engine";
-import { guardAiSpend } from "@/lib/ai-budget";
+import { guardAiSpend, remainingAiSpend, chargeAiSpend } from "@/lib/ai-budget";
 import { rateLimit } from "@/lib/rate-limit";
 import { buildFoodMapText } from "@/lib/food-map";
 import { fitBasket, freeStaplesFor } from "@/lib/clara/recipe-generation";
@@ -115,19 +115,16 @@ export async function POST(
     );
   }
 
-  // Charge-before-model, still: the allowance is the Anthropic bill cap, and a
-  // failed attempt has already paid for its tokens.
-  //
-  // A QA account lost all three of its daily swaps to three refusals that
-  // changed nothing, and the right answer — bill only on delivery, bound the
-  // token spend with a separate cheap attempt counter — does not fit the $30
-  // per paying user per month ceiling this table is built to (lib/ai-budget.
-  // test.ts): any second bucket, at any useful size, puts premium worst case at
-  // $31-33. So the reliability comes from the model call instead (see the
-  // candidate count in the prompt below), and the refusal now says plainly that
-  // the attempt was spent. If that trade is wrong, the lever is the ceiling or
-  // the swap limit, not a hidden extra bucket.
-  const guard = await guardAiSpend(userId, "swap");
+  // Two phases (2026-09-25, user-directed). A swap that returns no dish does
+  // not spend one of the day's swaps: a QA account lost all three to refusals
+  // that changed nothing. The model call still costs tokens, so it is metered
+  // by swapAttempt — the allowance plus three — and paid for by trimming
+  // premium Clara chat 25 → 20, which keeps the $30 ceiling in
+  // lib/ai-budget.test.ts. Order: is there a swap left (read, not spent)?
+  // then spend an attempt; then, once the dish is saved, spend the swap.
+  const left = await remainingAiSpend(userId, "swap");
+  if (!left.ok) return NextResponse.json(left.body, { status: left.status });
+  const guard = await guardAiSpend(userId, "swapAttempt", left.tier);
   if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
   const targetCalories = menu.recipe.calories && menu.recipe.calories > 0
@@ -391,10 +388,13 @@ export async function POST(
     return NextResponse.json(
       {
         error: blamesFat
-          ? "Everything Clara came up with would take today past your fat target. That used one of today's swaps — try asking for something lighter."
+          ? "Everything Clara came up with would take today past your fat target. It didn't count against today's swaps — try asking for something lighter."
           : basket.length > 0 && blamesBasket
-            ? "Clara could only think of dishes that need something you don't have. That used one of today's swaps — add an ingredient or two under Ingredients and the next one has more to work with."
-            : "Clara couldn't find an alternative that fits this slot. That used one of today's swaps — try again with a different request, or pick a cuisine to point her somewhere new.",
+            ? "Clara could only think of dishes that need something you don't have. It didn't count against today's swaps — add an ingredient or two under Ingredients and the next one has more to work with."
+            : "Clara couldn't find an alternative that fits this slot. It didn't count against today's swaps — try again with a different request, or pick a cuisine to point her somewhere new.",
+        // Development only: which rule refused each candidate, so a QA run can
+        // see WHY without the server console. Never sent in production.
+        ...(process.env.NODE_ENV === "development" ? { rejections } : {}),
       },
       { status: 422 }
     );
@@ -433,6 +433,9 @@ export async function POST(
       { status: 409 }
     );
   }
+
+  // Delivered: now it counts as one of the day's swaps.
+  await chargeAiSpend(userId, "swap", guard.tier);
 
   // Return the new recipe in the shape the client's onSwapped expects.
   const recipe = await prisma.recipe.findUnique({

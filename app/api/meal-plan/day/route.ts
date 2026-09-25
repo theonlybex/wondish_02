@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { guardAiSpend } from "@/lib/ai-budget";
+import { guardAiSpend, remainingAiSpend, chargeAiSpend, type AiTier } from "@/lib/ai-budget";
 import { normalizeCuisine } from "@/lib/clara/recipe-generation";
 import { buildMealPlanMenus } from "@/lib/meal-plan";
 import { withPlanClaim, MealPlanBusyError, EmptyPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
@@ -68,15 +68,21 @@ export async function POST(req: NextRequest) {
   });
   const basket = new Set(pantry.map((p) => p.ingredient.name.trim().toLowerCase()));
   const anchor = patient.mealPlanStartDate ? new Date(patient.mealPlanStartDate) : dayStart;
+  let spendTier: AiTier | null = null;
 
   try {
     // Hold the plan claim for the whole build + write (S10): no regenerate
     // can flip activePlanVersion underneath us, and a double-tap's second
     // request gets 409 instead of inserting a second copy of the day.
     const count = await withPlanClaim(patient.id, async (activePlanVersion) => {
-      // Per-day cuisine changes are cheaper than a full week — own modest quota.
-      const guard = await guardAiSpend(userId, "swap");
+      // Per-day cuisine changes share the swap allowance, and like a swap they
+      // spend it only when they deliver: read what is left, meter the model
+      // call as an attempt, charge the swap after the day is written.
+      const left = await remainingAiSpend(userId, "swap");
+      if (!left.ok) throw new PlanPreflightError(left.status, { ...left.body });
+      const guard = await guardAiSpend(userId, "swapAttempt", left.tier);
       if (!guard.ok) throw new PlanPreflightError(guard.status, { ...guard.body });
+      spendTier = guard.tier;
 
       const { rows } = await buildMealPlanMenus(patient.id, dayStart, activePlanVersion, {
         windowDays: 1,
@@ -98,6 +104,7 @@ export async function POST(req: NextRequest) {
       ]);
       return rows.length;
     });
+    if (spendTier) await chargeAiSpend(userId, "swap", spendTier);
     return NextResponse.json({ ok: true, count });
   } catch (err) {
     if (err instanceof MealPlanBusyError) {
