@@ -23,6 +23,7 @@ import { isCoveredByBasket, BASKET_STAPLES } from "@/lib/basket-coverage";
 import { ingredientTokens } from "@/lib/basket-match";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 import { buildFoodMapText } from "@/lib/food-map";
+import { priceDish } from "@/lib/staple-density";
 // Type-only import (erased at runtime). The implementation is loaded lazily at
 // the call site below via dynamic import — a static import here would create a
 // module cycle (meal-log → meal-plan → recipe-generation → fridge → meal-log)
@@ -38,6 +39,18 @@ import type { TopUpRequest } from "@/lib/clara/recipe-generation";
 // better. Single runs cannot rank these: the pick shuffles among the top few,
 // so run-to-run spread is wider than the effect being measured.
 const DAY_MACRO_WEIGHT = 90;
+
+/** How far past the day's fat target a dish may push it before being refused. */
+/**
+ * How far past the day's fat target a dish may push it before being refused.
+ *
+ * Swept 1.10 / 1.15 / 1.25 over two built weeks each against the live database.
+ * All three held 100% core coverage and landed calories within ~100 kcal of
+ * target, so the tighter ceiling costs nothing measurable — the residual above
+ * it is the last-tier relaxation, where the alternative is an empty slot and an
+ * empty slot is worse than a fatty one.
+ */
+const DAY_FAT_CEILING = 1.15;
 
 /** How far above its slot's calorie target a single dish may sit. */
 export const MEAL_CAL_CEILING = 1.25;
@@ -149,9 +162,32 @@ export const DAILY_SODIUM_MAX_MG = 2300;
 const SODIUM_MG_PER_TSP = 2325;
 
 /** Sodium a dish contributes, from the salt on its ingredient rows. */
+/**
+ * TOTAL dietary sodium a dish contributes, in mg — the added salt plus what the
+ * food itself carries.
+ *
+ * This counted only the salt rows, and the ceiling it feeds is 2,300 mg: the FDA
+ * guideline for total dietary sodium. Numerator and denominator were measuring
+ * different things, and QA caught what that hides — a day priced at ~3,300 mg of
+ * real sodium while the rail printed "2,034/2,300mg" in GREEN, with Clara
+ * repeating the reassurance. Bread is ~490 mg per 100 g, cheese ~700, eggs 142,
+ * a tablespoon of soy sauce over 800; a day of those is most of a guideline
+ * before the salt cellar is touched.
+ *
+ * priceDish carries the food half (see the `sodium` column on DENSITY), so both
+ * halves are now counted here, and the builder's ceiling and the rail finally
+ * mean the same thing as the number they are compared to.
+ */
 export function dishSodiumMg(
-  ings: readonly { quantity?: number | null; unit?: string | null; ingredient: { name: string } }[]
+  ings: readonly { quantity?: number | null; unit?: string | null; note?: string | null; ingredient: { name: string } }[]
 ): number {
+  const priced = priceDish(
+    ings.map((i) => ({ name: i.ingredient.name, quantity: i.quantity, unit: i.unit, note: i.note ?? null })),
+    null
+  );
+  if (priced) return priced.sodiumMg;
+  // Unpriceable dish: fall back to the salt rows alone rather than reporting
+  // zero, which would read as "no sodium" for a dish that plainly has some.
   let mg = 0;
   for (const i of ings) {
     if (!/\bsalt\b/i.test(i.ingredient.name)) continue;
@@ -901,6 +937,31 @@ export async function buildMealPlanMenus(
         // unfilled snack is the honest alternative: the day lands under target
         // and the flex card says so, which is a smaller problem than eating the
         // same thing three times.
+        // Fat gets a CEILING, not only a score.
+        //
+        // Cycle 10 added a day-aware scoring term and cycle 13 tuned it, and QA
+        // measured the result twice: 34.5-46% of calories from fat, then
+        // 29-52%, against a 25% target, with the app's own rail printing
+        // 153-177% in red. Scoring is a preference, and a preference loses to a
+        // pool where the median lunch is 31% fat and the recipes genuinely call
+        // for the oil — QA verified the rows against the step text and they
+        // agree, so there is nothing to clamp away.
+        //
+        // Sodium had the identical shape and was fixed by a ceiling that relaxes
+        // only when the alternative is an empty slot: 6 days of 7 over the
+        // guideline became 0 of 7, and has stayed there for four cycles. This is
+        // that instrument, applied to the macro the plan misses most.
+        //
+        // 1.25x the day's fat target, not 1.0: at parity almost nothing in the
+        // catalog qualifies and every slot would fall through to the last tier,
+        // which refuses nothing — a ceiling nobody can meet is the same as no
+        // ceiling. This one is meetable, and what it refuses is the dish that
+        // takes an already-fatty day further.
+        const dayFatRoomLeft = (r: PoolRecipe): boolean => {
+          const budget = dayMacroTargetG.fat;
+          if (!budget) return true;
+          return todayMacroG.fat + (r.fat ?? 0) <= budget * DAY_FAT_CEILING;
+        };
         const sodiumRoomLeft = (r: PoolRecipe): boolean =>
           todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG;
         const carbBaseRoomLeft = (r: PoolRecipe): boolean => {
@@ -918,6 +979,7 @@ export async function buildMealPlanMenus(
           // alternative is an unfilled slot. Neither is worth an empty day, and
           // both are worth every other kind of compromise first.
           (relax.sameDay || sodiumRoomLeft(r)) &&
+          (relax.sameDay || dayFatRoomLeft(r)) &&
           (relax.sameDay || carbBaseRoomLeft(r)) &&
           (relax.protein || (() => { const dp = dishProtein(r.ingredients); return dp === null || !prevDayProteins.has(dp); })()) &&
           (relax.crossWeek || !excludeRecipeIds.has(r.id)) &&
@@ -1068,6 +1130,13 @@ export async function buildMealPlanMenus(
           r.calories !== null && r.calories >= minCals && r.calories <= maxCals &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
           todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG &&
+          // The day's fat ceiling applies to padding too. Snacks are the
+          // fattiest category in the catalog (median 54% of calories from fat),
+          // so the slot that exists to close a calorie gap is the one most
+          // likely to blow the day's fat — the fourth rule this top-up has had
+          // to be told about after sodium, protein and starch.
+          (dayMacroTargetG.fat === 0 ||
+            todayMacroG.fat + (r.fat ?? 0) <= dayMacroTargetG.fat * DAY_FAT_CEILING) &&
           (() => { const b = dishCarbBase(r.ingredients); return b === null || (todayCarbBaseCounts.get(b) ?? 0) < MAX_SAME_CARB_BASE_PER_DAY; })() &&
           (() => { const p = dishProtein(r.ingredients); return p === null || (todayProteinCounts.get(p) ?? 0) < MAX_SAME_PROTEIN_PER_DAY; })() &&
           !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id) || weekUsedSignatures.has(dishSignature(r.ingredients))));

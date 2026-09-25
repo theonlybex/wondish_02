@@ -178,10 +178,15 @@ export async function GET(req: NextRequest) {
     mealRatings,
     dailyCalorieTarget,
     dailyMacroTarget,
-    // Sodium from the ADDED SALT on the day's ingredient rows — the part the
-    // plan controls and the part that was running 3,000-4,100 mg a day. Named
-    // precisely: it is not a total-diet figure, and calling it one would be the
-    // same kind of overclaim this file has been fixing all week.
+    // TOTAL dietary sodium for the day — the added salt PLUS what the food
+    // itself carries.
+    //
+    // This counted only the salt rows, and was careful to say so… while being
+    // compared on screen to 2,300 mg, the guideline for total sodium. The
+    // caution in the naming did not reach the user: QA priced a day at ~3,300
+    // mg of real sodium and the rail printed "2,034/2,300mg" in GREEN. Being
+    // precise in a comment about a number that is wrong on screen is not
+    // precision. dishSodiumMg now counts both halves.
     daySaltSodiumMg: Math.round(
       menus.reduce((sum, m) => sum + dishSodiumMg(m.recipe?.ingredients ?? []), 0)
     ),

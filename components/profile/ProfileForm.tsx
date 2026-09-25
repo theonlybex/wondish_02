@@ -111,6 +111,18 @@ export default function ProfileForm({
     setWeightUnitShown(unit);
     setWeightText(fmtWeight(form.weight, unit));
     setGoalText(fmtWeight(form.goalWeight, unit));
+    // …and the CHOICE, not just the display. This set the shown unit and the
+    // two text fields and never touched form.weightUnit, which is what the
+    // submit sends — so picking kg converted the numbers correctly on screen,
+    // PATCHed `"weightUnit":"lbs"`, returned 200, said "Profile saved
+    // successfully", and reverted to lbs on reload. A metric user could not
+    // store their unit and was told they had (QA 2026-09-25).
+    //
+    // Third defect of this exact shape: weight 0 (cycle 4) and a blank name
+    // (cycle 14) also returned 200 for a change that never happened. The
+    // pattern is a form whose display state and submitted state are separate
+    // variables, and only one of them moves.
+    setForm((f) => ({ ...f, weightUnit: unit, goalWeightUnit: unit }));
   };
 
   // Live caloric preview

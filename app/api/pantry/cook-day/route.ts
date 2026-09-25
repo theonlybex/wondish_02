@@ -100,26 +100,41 @@ export async function POST(req: Request) {
   // duplicate PUBLIC recipes (and paying Anthropic twice), so it carries the
   // "ai-" prefix that makes lib/rate-limit.ts degrade it to the per-instance
   // counter on a backend error rather than failing open like a burst bucket.
+  // The QUOTA is checked before the in-flight lock, not after.
+  //
+  // It was the other way round, and the lock is a 90-second rate limit: a
+  // request refused for quota had already taken it, so the user's next click
+  // was told "Clara is already cooking your day — give her a moment" when
+  // nothing was cooking. The real reason was hidden behind a false one for a
+  // minute and a half (QA 2026-09-25). Checking the cheap, truthful refusal
+  // first also means a user out of allowance never touches the lock at all.
+  const guard = await guardAiSpend(userId, "cookDay");
+  if (!guard.ok) {
+    // The guard's OWN body, verbatim — not a rewritten sentence.
+    //
+    // This route replaced the message with "Clara already cooked your day
+    // today — update your fridge and come back tomorrow" and returned only
+    // `error`, dropping the `upgrade` flag quotaExceededBody sets. So
+    // PantryClient's `data?.upgrade === true` was always false and QuotaError
+    // correctly hid a link it was never told to show: the component was fixed
+    // and the route feeding it was not, which is why QA found this surface
+    // still a dead end in the very commit named after fixing it.
+    //
+    // The rewritten copy was also wrong twice over: it said "today" for a
+    // weekly-shaped limit and told the user to update their fridge, which
+    // cannot help. The guard's sentence names the limit and what lifts it.
+    return NextResponse.json(guard.body, { status: guard.status });
+  }
+
+  // Only now the in-flight lock: one cook-my-day per 90 seconds, so a
+  // double-tap cannot generate a second set of PUBLIC recipes (and pay
+  // Anthropic twice). Carries the "ai-" prefix so lib/rate-limit.ts degrades it
+  // to the per-instance counter on a backend error rather than failing open.
   const inflight = await rateLimit("ai-cookday-inflight", userId, 1, 90);
   if (!inflight.success) {
     return NextResponse.json(
       { error: "Clara is already cooking your day — give her a moment." },
       { status: 409 }
-    );
-  }
-
-  // Anthropic spend guard (charge-before-model): per-user daily quota + global
-  // daily ceiling.
-  const guard = await guardAiSpend(userId, "cookDay");
-  if (!guard.ok) {
-    return NextResponse.json(
-      {
-        error:
-          guard.status === 429 && guard.error.startsWith("You've")
-            ? "Clara already cooked your day today — update your fridge and come back tomorrow."
-            : guard.error,
-      },
-      { status: guard.status }
     );
   }
 

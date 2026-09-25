@@ -1112,11 +1112,20 @@ export default function DailyMealPlanView({
                                 onClick={() => selectCard(isSelected ? null : menu.id)}
                               >
                                 <div className="flex-1 min-w-0">
-                                  <p className={`text-forest truncate ${isMainDish ? "text-[15px] sm:text-[11px] font-semibold" : "text-[13px] sm:text-[10px] font-medium"}`}>
+                                  {/* 13px on desktop, not 11. The 12px floor in
+                                      globals.css is scoped below 480px, so the
+                                      phone was fixed and the desktop card kept
+                                      the dish name at 11px and its calories at
+                                      9px — QA called that a partial fix and was
+                                      right. The deliberate uppercase
+                                      micro-labels elsewhere stay as designed;
+                                      this is the card's primary content and the
+                                      number a person reads off it. */}
+                                  <p className={`text-forest truncate ${isMainDish ? "text-[15px] sm:text-[13px] font-semibold" : "text-[13px] sm:text-[12px] font-medium"}`}>
                                     {displayDishName(menu.recipe.name)}
                                     {isCompleted && <span className="ml-1.5 text-primary text-[9px] font-bold">✓</span>}
                                   </p>
-                                  <p className="text-[9px] text-[#848181] mt-0.5">
+                                  <p className="text-[12px] text-[#848181] mt-0.5">
                                     {[
                                       menu.recipe.calories ? `${menu.recipe.calories} kcal` : null,
                                       menu.recipe.protein  ? `${menu.recipe.protein}g protein` : null,
@@ -1278,12 +1287,21 @@ export default function DailyMealPlanView({
                   </p>
                 </div>
               ))}
-              {/* Added salt, shown because the plan cannot always get under the
-                  guideline: four dishes at a quarter teaspoon each is already
-                  2,325 mg, so a silently-missed target would be a number the
-                  app knew and did not say. Named "added salt" rather than
-                  sodium — it counts the salt on the ingredient rows, not
-                  everything the diner eats. */}
+              {/* Sodium, shown because the plan cannot always get under the
+                  guideline: four dishes at a quarter teaspoon of salt each is
+                  already 2,325 mg, so a silently-missed target would be a
+                  number the app knew and did not say.
+                  
+                  It said "Added salt" until 2026-09-25 and counted only the
+                  salt rows — while comparing them to 2,300 mg, the FDA
+                  guideline for TOTAL dietary sodium. QA priced a day at ~3,300
+                  mg of real sodium and the rail printed "2,034/2,300mg" in
+                  green, with Clara repeating the reassurance. The numerator and
+                  the denominator were measuring different things, and the gap
+                  is not small: bread is ~490 mg per 100 g, cheese ~700, eggs
+                  142. Both halves are counted now (lib/staple-density.ts, the
+                  `sodium` column), so the label and the line mean the same
+                  thing. */}
               {/* What the DAY'S PLAN holds, against the same targets — not what
                   has been logged. The rings above divide logged intake by the
                   target, so with nothing logged they read 0/43g and a day
@@ -1319,7 +1337,7 @@ export default function DailyMealPlanView({
               {daySalt && daySalt.mg > 0 && (
                 <div className="flex items-center justify-between pt-2.5 border-t" style={{ borderColor: "#F0EFF5" }}>
                   <p className="text-[9px] tracking-[0.18em] uppercase font-bold" style={{ color: "#ABA6A6" }}>
-                    Added salt
+                    Sodium
                   </p>
                   <p className="tabular-nums leading-none" style={{ color: "#1E1A1A" }}>
                     <span

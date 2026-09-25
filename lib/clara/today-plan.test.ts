@@ -112,8 +112,12 @@ test("each dish carries its own sodium, so Clara never converts teaspoons", asyn
   db.menus = [menu("Breakfast")]; // 1 teaspoon of salt
   const text = await buildTodaysPlanText("p1", "2026-09-24");
 
-  assert.match(text, /Added salt in this dish: 2,325 mg of sodium/);
-  assert.match(text, /ADDED SALT FOR THE DAY: 2,325 mg/);
+  // Totals now, not salt alone: the fixture dish is 150 g ground turkey (70 mg)
+  // + 90 g carrots + 1 tsp salt (2,325), so its own food pushes it past the
+  // salt figure. The point of the test is unchanged — she is handed a number
+  // rather than teaspoons to convert.
+  assert.match(text, /Sodium in this dish: [\d,]+ mg, counting both the added salt and the food's own/);
+  assert.match(text, /SODIUM FOR THE DAY: [\d,]+ mg — the added salt AND the sodium in the food itself/);
   // And she is told the trap by name, because she fell into it.
   assert.match(text, /WEIGHS about 6,000 mg but contains about 2,325 mg of sodium/);
 });
@@ -125,10 +129,11 @@ test("the per-dish figures sum to the day figure", async () => {
     menu("Lunch", { ingredients: [{ note: null, quantity: 0.25, unit: "teaspoon", ingredient: { name: "Salt" } }] }),
   ];
   const text = await buildTodaysPlanText("p1", "2026-09-24");
-  // 0.15 tsp = 349 mg — the figure Clara reported as 870.
-  assert.match(text, /Added salt in this dish: 349 mg/);
-  assert.match(text, /Added salt in this dish: 581 mg/);
-  assert.match(text, /ADDED SALT FOR THE DAY: 930 mg/);
+  // Salt-only dishes, so the totals ARE the salt: 0.15 tsp = 349 mg (the figure
+  // Clara once reported as 870) and 0.25 tsp = 581. The day is their sum.
+  assert.match(text, /Sodium in this dish: 349 mg/);
+  assert.match(text, /Sodium in this dish: 581 mg/);
+  assert.match(text, /SODIUM FOR THE DAY: 930 mg/);
 });
 
 // Asked "what's in my plan tomorrow?" Clara said "I can only see today's meal

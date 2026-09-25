@@ -68,6 +68,13 @@ export default async function PricingPage({
 
   return (
     <div className="min-h-screen pt-16">
+      {/* The page's headline is PricingSection's <h2>, and that component is
+          also used on the landing page under Hero's <h1> — so it cannot be
+          promoted without giving the landing page two. A hidden <h1> here
+          instead: /pricing was the one page of nine with none at all, which
+          means a screen reader opened it on a level-2 heading with nothing
+          above it (QA 2026-09-25). */}
+      <h1 className="sr-only">Pricing</h1>
       {showUpgradeBanner && (
         <div className="bg-primary text-white text-center py-3 px-5 text-sm font-medium">
           {/* ?upgrade=1 is linked from a quota refusal, not from a locked

@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 import { displayDishName } from "@/lib/dish-name";
 import { BASKET_STAPLES } from "@/lib/basket-coverage";
+import { SNACK_MAX_KCAL } from "@/lib/dish-plausibility";
 import { getPlanDayCalories } from "@/lib/meal-plan";
 import { rateLimit } from "@/lib/rate-limit";
 import {
@@ -97,6 +98,19 @@ export async function GET() {
     // These rows stay in the planner's pool, where a portion of bread is a
     // legitimate side. They are just not an answer to "what can I cook?".
     if (r.ingredients.length === 1) continue;
+    // The slot's own rules, from the one module that owns them.
+    //
+    // This route never imported lib/dish-plausibility, so SNACK_MAX_KCAL and
+    // the rest applied at generation, selection and swap — and not to the
+    // screen that answers "what can I cook?". QA found "Turkey and Bell Pepper
+    // Stir-Fry with Jasmine Rice — Snack · 516 kcal" offered here while the
+    // builder would never have served it, and noted the improvement since the
+    // last cycle was "the catalog having improved, not a gate holding".
+    //
+    // Only the rules that need no amounts: this query deliberately does not
+    // load quantities, units or steps (it is a whole-catalog scan), so the
+    // pricing and prose rules cannot run. Size and slot shape can.
+    if (r.mealType?.name?.toLowerCase() === "snack" && (r.calories ?? 0) > SNACK_MAX_KCAL) continue;
     // …and a row whose NAME is one of its own ingredients, whatever else it
     // carries. "Brown Rice , V1L- 1 cup, cooked unsalted" holds brown rice plus
     // parsley, so the one-ingredient rule above missed it, and the API was

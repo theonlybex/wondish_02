@@ -37,6 +37,22 @@ const DENSITY: {
   carbs: number;
   fat: number;
   protein?: number;
+  /**
+   * Milligrams of sodium per 100 g, as bought. Optional: absent means "not
+   * enough to matter", which is true of every fresh vegetable, fruit, grain and
+   * unprocessed meat at the amounts a recipe uses.
+   *
+   * Added because the meal plan's sodium rail counted ADDED SALT and compared
+   * it to 2,300 mg — the FDA guideline for TOTAL dietary sodium. QA priced a
+   * day at 3,303 mg of real sodium while the rail printed "2,034/2,300mg" in
+   * green, and Clara repeated the reassurance. The numerator and the
+   * denominator were measuring different things.
+   *
+   * Only the foods that carry enough to move a day are listed: bread, cheese,
+   * cured and canned goods, dairy, eggs, and the condiments. A tomato at 5 mg
+   * per 100 g cannot change a verdict and is not worth a wrong number.
+   */
+  sodium?: number;
   gramsPerCup: number;
   /**
    * True when a volume measure means the same thing however the food is
@@ -76,28 +92,28 @@ const DENSITY: {
   { match: /\b(oats?|oatmeal)\b/i, carbs: 66, fat: 7, protein: 13, gramsPerCup: 90 },
   { match: /\b(quinoa|bulgur|farro|barley|millet)\b/i, carbs: 70, fat: 6, protein: 13, gramsPerCup: 170 },
   { match: /\b(flour|cornmeal|breadcrumbs?)\b/i, carbs: 76, fat: 1, protein: 10, gramsPerCup: 120 },
-  { match: /\b(lentils?|chickpeas?|black beans?|kidney beans?|white beans?)\b/i, carbs: 60, fat: 2, protein: 24, gramsPerCup: 190 },
+  { match: /\b(lentils?|chickpeas?|black beans?|kidney beans?|white beans?)\b/i, carbs: 60, fat: 2, protein: 24, gramsPerCup: 190 , sodium: 240},
   { match: /\b(sugar|honey|maple syrup)\b/i, carbs: 95, fat: 0, protein: 0, gramsPerCup: 200 , volumeUnambiguous: true },
   // Fats. Oil is the one ingredient that is essentially 100% fat.
   { match: /\b(oil)\b/i, carbs: 0, fat: 100, protein: 0, gramsPerCup: 218 , volumeUnambiguous: true },
   { match: /\b(butter|ghee)\b/i, carbs: 0, fat: 81, protein: 1, gramsPerCup: 227 , volumeUnambiguous: true },
   // Proteins, raw. Enough to tell 16 g of protein from a claimed 32 g.
-  { match: /\b(chicken breasts?|turkey breast)\b/i, carbs: 0, fat: 3, protein: 23, gramsPerCup: 140 },
-  { match: /\b(chicken thighs?)\b/i, carbs: 0, fat: 11, protein: 19, gramsPerCup: 140 },
+  { match: /\b(chicken breasts?|turkey breast)\b/i, carbs: 0, fat: 3, protein: 23, gramsPerCup: 140 , sodium: 60},
+  { match: /\b(chicken thighs?)\b/i, carbs: 0, fat: 11, protein: 19, gramsPerCup: 140 , sodium: 75},
   { match: /\b(ground beef|beef|steak|sirloin)\b/i, carbs: 0, fat: 15, protein: 20, gramsPerCup: 225 },
-  { match: /\b(ground turkey|ground chicken)\b/i, carbs: 0, fat: 8, protein: 19, gramsPerCup: 225 },
-  { match: /\b(ground pork|pork|bacon|ham)\b/i, carbs: 0, fat: 14, protein: 20, gramsPerCup: 225 },
-  { match: /\b(salmon)\b/i, carbs: 0, fat: 13, protein: 20, gramsPerCup: 150 },
-  { match: /\b(tuna|cod|tilapia|haddock|catfish|trout|sole|pollock|white fish)\b/i, carbs: 0, fat: 2, protein: 22, gramsPerCup: 150 },
-  { match: /\b(shrimp|prawns?)\b/i, carbs: 1, fat: 1, protein: 20, gramsPerCup: 145 },
-  { match: /\b(eggs?)\b/i, carbs: 1, fat: 10, protein: 13, gramsPerCup: 243, gramsPerItem: 50 },
+  { match: /\b(ground turkey|ground chicken)\b/i, carbs: 0, fat: 8, protein: 19, gramsPerCup: 225 , sodium: 70},
+  { match: /\b(ground pork|pork|bacon|ham)\b/i, carbs: 0, fat: 14, protein: 20, gramsPerCup: 225 , sodium: 700},
+  { match: /\b(salmon)\b/i, carbs: 0, fat: 13, protein: 20, gramsPerCup: 150 , sodium: 60},
+  { match: /\b(tuna|cod|tilapia|haddock|catfish|trout|sole|pollock|white fish)\b/i, carbs: 0, fat: 2, protein: 22, gramsPerCup: 150 , sodium: 200},
+  { match: /\b(shrimp|prawns?)\b/i, carbs: 1, fat: 1, protein: 20, gramsPerCup: 145 , sodium: 300},
+  { match: /\b(eggs?)\b/i, carbs: 1, fat: 10, protein: 13, gramsPerCup: 243, gramsPerItem: 50 , sodium: 142},
   { match: /\b(tofu|tempeh)\b/i, carbs: 4, fat: 8, protein: 17, gramsPerCup: 250 },
   // Bread and dairy.
-  { match: /\b(bread|toast)\b/i, carbs: 49, fat: 3, protein: 9, gramsPerCup: 120, gramsPerItem: 30 },
-  { match: /\b(muffin|bagel|tortilla|pita)\b/i, carbs: 49, fat: 3, protein: 9, gramsPerCup: 120, gramsPerItem: 60 },
-  { match: /\b(greek yogurt)\b/i, carbs: 4, fat: 4, protein: 9, gramsPerCup: 245 , volumeUnambiguous: true },
-  { match: /\b(yogurt|milk)\b/i, carbs: 5, fat: 3, protein: 3, gramsPerCup: 245 , volumeUnambiguous: true },
-  { match: /\b(cheddar|parmesan|feta|mozzarella|cheese)\b/i, carbs: 2, fat: 28, protein: 24, gramsPerCup: 110 },
+  { match: /\b(bread|toast)\b/i, carbs: 49, fat: 3, protein: 9, gramsPerCup: 120, gramsPerItem: 30 , sodium: 490},
+  { match: /\b(muffin|bagel|tortilla|pita)\b/i, carbs: 49, fat: 3, protein: 9, gramsPerCup: 120, gramsPerItem: 60 , sodium: 480},
+  { match: /\b(greek yogurt)\b/i, carbs: 4, fat: 4, protein: 9, gramsPerCup: 245 , volumeUnambiguous: true , sodium: 36},
+  { match: /\b(yogurt|milk)\b/i, carbs: 5, fat: 3, protein: 3, gramsPerCup: 245 , volumeUnambiguous: true , sodium: 45},
+  { match: /\b(cheddar|parmesan|feta|mozzarella|cheese)\b/i, carbs: 2, fat: 28, protein: 24, gramsPerCup: 110 , sodium: 700},
   { match: /\b(almonds?|walnuts?|peanuts?|cashews?|pecans?|pistachios?|hazelnuts?|macadamias?|nuts)\b/i, carbs: 22, fat: 50, protein: 21, gramsPerCup: 140 },
   { match: /\b(peanut butter|almond butter)\b/i, carbs: 20, fat: 50, protein: 25, gramsPerCup: 258 },
   { match: /\b(avocados?)\b/i, carbs: 9, fat: 15, protein: 2, gramsPerCup: 150 },
@@ -174,19 +190,19 @@ const DENSITY: {
   // peppers 0.1 teaspoon", arriving from the opposite direction.
   { match: /\b(peppercorns?|black pepper|white pepper|ground pepper|red pepper flakes?|crushed red pepper|cayenne)\b|^\s*pepper\s*$/i, carbs: 64, fat: 3, protein: 10, gramsPerCup: 110, volumeUnambiguous: true },
   { match: /\b(water)\b/i, carbs: 0, fat: 0, protein: 0, gramsPerCup: 237, volumeUnambiguous: true },
-  { match: /\b(broths?|stocks?|bouillon)\b/i, carbs: 1, fat: 0, protein: 1, gramsPerCup: 240, volumeUnambiguous: true },
+  { match: /\b(broths?|stocks?|bouillon)\b/i, carbs: 1, fat: 0, protein: 1, gramsPerCup: 240, volumeUnambiguous: true , sodium: 300},
   // Dried herbs and ground spices, as a group. Calorie-dense per 100 g and
   // never used by the 100 g — a teaspoon of cinnamon is 6 kcal.
   { match: /\b(basil|cilantro|coriander|parsley|thyme|oregano|rosemary|sage|dill|chives?|mint|tarragon|paprika|cumin|cinnamon|nutmeg|turmeric|ginger|cloves?|cardamom|curry powder|chil(i|li|e)s?|cayenne|bay lea(f|ves)|seasoning|spice)\b/i, carbs: 50, fat: 8, protein: 12, gramsPerCup: 50, volumeUnambiguous: true },
   { match: /\b(garlic|shallots?|scallions?|spring onions?|leeks?|fennel|ginger root)\b/i, carbs: 20, fat: 0, protein: 5, gramsPerCup: 136, gramsPerItem: 5, volumeUnambiguous: true },
   { match: /\b(lemons?|limes?|lemon juice|lime juice)\b/i, carbs: 9, fat: 0, protein: 1, gramsPerCup: 244, gramsPerItem: 85, volumeUnambiguous: true },
   { match: /\b(vinegars?)\b/i, carbs: 5, fat: 0, protein: 0, gramsPerCup: 239, volumeUnambiguous: true },
-  { match: /\b(soy sauce|tamari|fish sauce|worcestershire)\b/i, carbs: 5, fat: 0, protein: 8, gramsPerCup: 255, volumeUnambiguous: true },
-  { match: /\b(mustard|hot sauce|sriracha|salsa|tomato paste|tomato sauce|passata)\b/i, carbs: 10, fat: 2, protein: 3, gramsPerCup: 250, volumeUnambiguous: true },
-  { match: /\b(mayonnaise|mayo|aioli)\b/i, carbs: 1, fat: 75, protein: 1, gramsPerCup: 220, volumeUnambiguous: true },
+  { match: /\b(soy sauce|tamari|fish sauce|worcestershire)\b/i, carbs: 5, fat: 0, protein: 8, gramsPerCup: 255, volumeUnambiguous: true , sodium: 5500},
+  { match: /\b(mustard|hot sauce|sriracha|salsa|tomato paste|tomato sauce|passata)\b/i, carbs: 10, fat: 2, protein: 3, gramsPerCup: 250, volumeUnambiguous: true , sodium: 1100},
+  { match: /\b(mayonnaise|mayo|aioli)\b/i, carbs: 1, fat: 75, protein: 1, gramsPerCup: 220, volumeUnambiguous: true , sodium: 630},
   { match: /\b(cornstarch|corn starch|cornflour|arrowroot)\b/i, carbs: 91, fat: 0, protein: 0, gramsPerCup: 128, volumeUnambiguous: true },
   { match: /\b(flaxseeds?|chia seeds?|sesame seeds?|sunflower seeds?|pumpkin seeds?|seeds?)\b/i, carbs: 29, fat: 42, protein: 18, gramsPerCup: 150, volumeUnambiguous: true },
-  { match: /\b(garbanzos?|hummus)\b/i, carbs: 27, fat: 9, protein: 8, gramsPerCup: 240 },
+  { match: /\b(garbanzos?|hummus)\b/i, carbs: 27, fat: 9, protein: 8, gramsPerCup: 240 , sodium: 320},
   { match: /\b(arugula|rocket|romaine|chard|watercress|radicchio|endive|bok choy|brussels sprouts?|eggplants?|aubergines?|squash|beets?|radish(es)?|turnips?|parsnips?|artichokes?|okra|leeks)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
 
   // ── The last 60 foods the table could not weigh ────────────────────────────
@@ -203,7 +219,7 @@ const DENSITY: {
   // The rest are the long tail of real foods: fruit the table had never listed,
   // the cream and sour cream, the sweeteners, coffee and tea, and the
   // gluten-free products. Textbook values per 100 g as bought.
-  { match: /\b(sour cream|cr[eè]me fra[iî]che)\b/i, carbs: 4, fat: 20, protein: 2, gramsPerCup: 230, volumeUnambiguous: true },
+  { match: /\b(sour cream|cr[eè]me fra[iî]che)\b/i, carbs: 4, fat: 20, protein: 2, gramsPerCup: 230, volumeUnambiguous: true , sodium: 80},
   { match: /\b(heavy cream|double cream|whipping cream|half.and.half)\b/i, carbs: 3, fat: 37, protein: 2, gramsPerCup: 238, volumeUnambiguous: true },
   { match: /\b(soymilks?|soy milk|oat milk|almond milk|coconut milk|rice milk)\b/i, carbs: 2, fat: 2, protein: 2, gramsPerCup: 243, volumeUnambiguous: true },
   { match: /\b(coffees?|espresso|teas?|teabags?|herbal tea)\b/i, carbs: 0, fat: 0, protein: 0, gramsPerCup: 237, volumeUnambiguous: true },
@@ -211,16 +227,16 @@ const DENSITY: {
   { match: /\b(cocoa powder|cacao powder|unsweetened cocoa)\b/i, carbs: 58, fat: 14, protein: 20, gramsPerCup: 86, volumeUnambiguous: true },
   { match: /\b(raisins?|sultanas?|prunes?|dates?|dried apricots?|dried cranberries|dried fruit)\b/i, carbs: 75, fat: 1, protein: 3, gramsPerCup: 165, volumeUnambiguous: true },
   { match: /\b(peach(es)?|nectarines?|apricots?|plums?|mangos?|mangoes|pineapples?|kiwis?|kiwifruit|cherr(y|ies)|papayas?|guavas?|figs?)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 165, gramsPerItem: 140 },
-  { match: /\b(olives?|capers?)\b/i, carbs: 6, fat: 11, protein: 1, gramsPerCup: 135, volumeUnambiguous: true },
+  { match: /\b(olives?|capers?)\b/i, carbs: 6, fat: 11, protein: 1, gramsPerCup: 135, volumeUnambiguous: true , sodium: 1550},
   { match: /\b(lima beans?|edamame|butter beans?|fava beans?|split peas?|pinto beans?|cannellini)\b/i, carbs: 20, fat: 1, protein: 8, gramsPerCup: 170 },
-  { match: /\b(granola|muesli)\b/i, carbs: 64, fat: 15, protein: 10, gramsPerCup: 120 },
+  { match: /\b(granola|muesli)\b/i, carbs: 64, fat: 15, protein: 10, gramsPerCup: 120 , sodium: 60},
   { match: /\b(coconut flakes?|shredded coconut|desiccated coconut)\b/i, carbs: 24, fat: 65, protein: 7, gramsPerCup: 80, volumeUnambiguous: true },
   // Split by SIZE, not by shelf: a cracker is ~12 g and a bun is ~60 g, and
   // listing them together priced a gluten-free bun as a cracker.
-  { match: /\b(crackers?|crispbreads?|rice cakes?)\b/i, carbs: 70, fat: 10, protein: 8, gramsPerCup: 120, gramsPerItem: 12 },
-  { match: /\b(buns?|rolls?|flour tortillas?|wraps?|naan|baguettes?)\b/i, carbs: 52, fat: 4, protein: 9, gramsPerCup: 120, gramsPerItem: 60 },
+  { match: /\b(crackers?|crispbreads?|rice cakes?)\b/i, carbs: 70, fat: 10, protein: 8, gramsPerCup: 120, gramsPerItem: 12 , sodium: 600},
+  { match: /\b(buns?|rolls?|flour tortillas?|wraps?|naan|baguettes?)\b/i, carbs: 52, fat: 4, protein: 9, gramsPerCup: 120, gramsPerItem: 60 , sodium: 490},
   { match: /\b(cooking wine|white wine|red wine|sherry|mirin|rice wine)\b/i, carbs: 3, fat: 0, protein: 0, gramsPerCup: 235, volumeUnambiguous: true },
-  { match: /\b(cream of \w+ soup|condensed soup|canned soup)\b/i, carbs: 9, fat: 6, protein: 3, gramsPerCup: 245, volumeUnambiguous: true },
+  { match: /\b(cream of \w+ soup|condensed soup|canned soup)\b/i, carbs: 9, fat: 6, protein: 3, gramsPerCup: 245, volumeUnambiguous: true , sodium: 700},
   { match: /\b(clam juice|tomato juice|vegetable juice)\b/i, carbs: 4, fat: 0, protein: 1, gramsPerCup: 240, volumeUnambiguous: true },
   { match: /\b(baking powder|baking soda|bicarbonate|cream of tartar|yeast)\b/i, carbs: 28, fat: 0, protein: 0, gramsPerCup: 220, volumeUnambiguous: true },
   { match: /\b(meatless \w+|plant.based \w+|vegan \w+|seitan|quorn)\b/i, carbs: 5, fat: 5, protein: 20, gramsPerCup: 140 },
@@ -432,6 +448,12 @@ export function macrosContradictAmounts(
 // below the bar and her numbers stand, checked by the floor as before.
 
 export interface PricedDish {
+  /**
+   * Total dietary sodium in mg: the added salt PLUS what the food itself
+   * carries. The meal plan's rail showed only the first against a guideline
+   * that means the second — see the `sodium` field on DENSITY.
+   */
+  sodiumMg: number;
   calories: number;
   protein: number;
   carbs: number;
@@ -441,6 +463,20 @@ export interface PricedDish {
 }
 
 /** Ingredients that carry no meaningful macros, so they never count against coverage. */
+/** A teaspoon of table salt, in mg of sodium. Same constant as lib/meal-plan.ts. */
+const SODIUM_MG_PER_TSP_SALT = 2325;
+
+/** Teaspoons of salt a row represents, or null when its unit cannot say. */
+function saltRowTspLocal(quantity?: number | null, unit?: string | null): number | null {
+  if (quantity == null || !(quantity > 0)) return null;
+  const u = unit ?? "";
+  if (/\b(tsp|teaspoons?)\b/i.test(u)) return quantity;
+  if (/\b(tbsp|tablespoons?)\b/i.test(u)) return quantity * 3;
+  if (/\b(pinch|pinches|dash(es)?)\b/i.test(u)) return quantity / 16;
+  if (/^\s*(g|gram|grams|gr)\s*$/i.test(u)) return quantity / 6;
+  return null;
+}
+
 const NEGLIGIBLE =
   /\b(salt|pepper|peppercorns?|water|vinegar|spice|seasoning|powder|paprika|cumin|oregano|thyme|basil|rosemary|parsley|cilantro|cinnamon|turmeric|ginger|bay leaf|chili flakes|cayenne|herbs?|stock|broth|lemon juice|lime juice|zest|extract|baking powder|baking soda|mustard|hot sauce|soy sauce|garlic|shallots?|scallions?|green onions?|chives?|dill|mint|sage|tarragon|lemons?|limes?|capers|olives)\b/i;
 
@@ -471,10 +507,30 @@ export function priceDish(
   let protein = 0;
   let carbs = 0;
   let fat = 0;
+  let sodiumMg = 0;
   const volumeOk = grainIsMeasuredDry(steps);
 
   for (const ing of ingredients) {
-    if (NEGLIGIBLE.test(ing.name)) continue;
+    // Sodium is counted BEFORE the NEGLIGIBLE skip, which exists to keep
+    // seasonings out of the CALORIE arithmetic and would otherwise take the
+    // saltiest things in the kitchen out of the sodium arithmetic with them:
+    // salt itself, soy sauce (~870 mg a tablespoon), stock, mustard, hot sauce,
+    // olives and capers are all on that list. Caught by a test that expected a
+    // tablespoon of soy sauce to register and got null.
+    const skipped = NEGLIGIBLE.test(ing.name);
+    if (skipped) {
+      const saltTsp = /\bsalt\b/i.test(ing.name) ? saltRowTspLocal(ing.quantity, ing.unit) : null;
+      if (saltTsp !== null) {
+        sodiumMg += saltTsp * SODIUM_MG_PER_TSP_SALT;
+      } else {
+        const seasoning = DENSITY.find((d) => d.match.test(ing.name));
+        if (seasoning?.sodium) {
+          const g = gramsOf(ing.name, ing.quantity, ing.unit);
+          if (g != null) sodiumMg += (g * seasoning.sodium) / 100;
+        }
+      }
+      continue;
+    }
     const density = DENSITY.find((d) => d.match.test(ing.name));
     const grams = density ? gramsOf(ing.name, ing.quantity, ing.unit) : null;
     // A volume amount is only usable when the steps show the grain starts dry;
@@ -491,15 +547,20 @@ export function priceDish(
     // A row that declares itself cooked is priced cooked.
     const factor = ROW_SAYS_COOKED.test(`${ing.name} ${ing.note ?? ""}`) ? COOKED_FACTOR : 1;
     priced += grams;
+    sodiumMg += (grams * (density.sodium ?? 0)) / 100;
     protein += (grams * (density.protein ?? 0) * factor) / 100;
     carbs += (grams * density.carbs * factor) / 100;
     fat += (grams * density.fat * factor) / 100;
   }
 
   const total = priced + unpriced;
+  // Unchanged contract: nothing priceable means null, so a salt-only "dish"
+  // can never pass a coverage check. dishSodiumMg (lib/meal-plan.ts) has its
+  // own salt-row fallback for that case.
   if (total === 0) return null;
   const coverage = priced / total;
   return {
+    sodiumMg: Math.round(sodiumMg),
     // A tenth of a gram, not a whole one. Rounding to integers is what made QA's
     // check read "protein +122%" on a plate of tomatoes: the food holds 1.4 g
     // and the table said 2. The table was fine; the rounding was the error, and

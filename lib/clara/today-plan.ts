@@ -1,26 +1,20 @@
 import { prisma } from "@/lib/db";
 import { displayDishName } from "@/lib/dish-name";
+import { dishSodiumMg } from "@/lib/meal-plan";
 
 /**
- * Sodium from a dish's added salt, in mg. One definition for the per-dish line
- * and the day total, so the two cannot disagree with each other or with the
- * rail (lib/meal-plan.ts dishSodiumMg uses the same constants).
+ * TOTAL dietary sodium for a dish, in mg — the added salt plus what the food
+ * carries. Delegates to lib/meal-plan.ts so Clara and the rail cannot disagree.
+ *
+ * She was given per-dish figures last cycle precisely so she would stop doing
+ * this arithmetic herself and contradicting the screen. Leaving her on a
+ * salt-only count while the rail moved to totals would have recreated that bug
+ * from the other direction.
  */
 function dishSodium(
-  ingredients: readonly { quantity: number | null; unit: string | null; ingredient: { name: string } }[]
+  ingredients: readonly { quantity: number | null; unit: string | null; note?: string | null; ingredient: { name: string } }[]
 ): number {
-  let mg = 0;
-  for (const ri of ingredients) {
-    if (!/\bsalt\b/i.test(ri.ingredient.name)) continue;
-    const q = ri.quantity ?? 0;
-    if (q <= 0) continue;
-    const u = ri.unit ?? "";
-    if (/\b(tsp|teaspoons?)\b/i.test(u)) mg += q * 2325;
-    else if (/\b(tbsp|tablespoons?)\b/i.test(u)) mg += q * 6975;
-    else if (/\b(pinch|pinches|dash(es)?)\b/i.test(u)) mg += q * (2325 / 16);
-    else if (/^\s*(g|gram|grams|gr)\s*$/i.test(u)) mg += q * 393;
-  }
-  return mg;
+  return dishSodiumMg(ingredients);
 }
 
 // A text block describing the user's dishes for `localDate`, appended to Clara's
@@ -133,7 +127,7 @@ export async function buildTodaysPlanText(patientId: string, localDate: string):
       //
       // So she is given the number instead of the ingredients to convert.
       const dishMg = Math.round(dishSodium(m.recipe.ingredients ?? []));
-      const sodium = dishMg > 0 ? ` Added salt in this dish: ${dishMg.toLocaleString()} mg of sodium.` : "";
+      const sodium = dishMg > 0 ? ` Sodium in this dish: ${dishMg.toLocaleString()} mg, counting both the added salt and the food's own.` : "";
       return `- ${m.mealType?.name ?? "Meal"}: ${displayDishName(m.recipe.name)}${kcal}${macros}.${time}${sodium} Ingredients (amounts are per serving): ${ings}.${steps}`;
     });
 
@@ -153,7 +147,7 @@ export async function buildTodaysPlanText(patientId: string, localDate: string):
   // arithmetic she should not have to do, and contradicting the screen.
   const sodiumMg = Math.round(menus.reduce((sum, m) => sum + dishSodium(m.recipe.ingredients ?? []), 0));
   const saltLine = sodiumMg > 0
-    ? `\nADDED SALT FOR THE DAY: ${sodiumMg.toLocaleString()} mg of sodium, against a 2,300 mg daily guideline` +
+    ? `\nSODIUM FOR THE DAY: ${sodiumMg.toLocaleString()} mg — the added salt AND the sodium in the food itself, against a 2,300 mg daily guideline` +
       `${sodiumMg > 2300 ? " — that is OVER the guideline, say so plainly" : ""}. Quote this figure, and the per-dish figures above, rather than converting teaspoons yourself — a teaspoon of salt WEIGHS about 6,000 mg but contains about 2,325 mg of sodium, and confusing the two overstates every answer by 2.5x. Never call a number over 2,300 mg "well within" anything.`
     : "";
 

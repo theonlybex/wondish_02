@@ -114,6 +114,85 @@ const METERED_SURFACES: { file: string; why: string }[] = [
   { file: "components/pantry/PantryClient.tsx", why: "cook-my-day" },
 ];
 
+// ── The half the first version of this test missed ───────────────────────────
+//
+// It asserted the CLIENT mentions QuotaError and reads `.upgrade`, and passed
+// green while /pantry's cook-my-day was still a dead end — because the route
+// rewrote the guard's sentence and returned only `error`, dropping the flag.
+// The client was correct and had nothing to render. QA found it in the very
+// commit named after fixing it, and noted the test was "blind to this".
+//
+// So: every route that spends an allowance must hand the guard's own body back.
+const METERED_ROUTES = [
+  "app/api/dish-checker/route.ts",
+  "app/api/fridge/route.ts",
+  "app/api/meal-plan/[menuId]/clara-swap/route.ts",
+  "app/api/meal-plan/day/route.ts",
+  "app/api/meal-plan/new-week/route.ts",
+  "app/api/meal-plan/regenerate/route.ts",
+  "app/api/meal-plan/route.ts",
+  "app/api/meal-plan/start-date/route.ts",
+  "app/api/pantry/cook-day/route.ts",
+];
+
+test("a refused route returns the guard's own body, flag and all", () => {
+  const offenders: string[] = [];
+  for (const file of METERED_ROUTES) {
+    const path = join(REPO_ROOT, file);
+    if (!existsSync(path)) {
+      offenders.push(`  ${file} — gone; update METERED_ROUTES in this test`);
+      continue;
+    }
+    const sf = parse(path);
+
+    // Find what each `if (!guard.ok)` (or equivalent) returns. The shape we
+    // require is NextResponse.json(<something mentioning the guard's body>).
+    // Anything that builds a fresh object literal has dropped the flag.
+    const guardReturns = collect(sf, ts.isCallExpression).filter((c) => {
+      const callee = c.expression.getText();
+      return callee.endsWith("NextResponse.json") || callee === "Response.json";
+    });
+
+    // A route passes when at least one such call forwards a `.body` off the
+    // guard result, and none of the quota branches build a literal `{ error: … }`
+    // that mentions guard.error without the rest.
+    // Does the guard's body reach the response AT ALL? Asserted on the property
+    // access rather than on a NextResponse.json call, because routes forward it
+    // several legitimate ways — directly, spread into `{ ...guard.body }`, or
+    // carried by a PlanPreflightError. Modelling only the direct call flagged
+    // five correct routes on this test's second run.
+    const forwardsBody = collect(sf, ts.isPropertyAccessExpression).some(
+      (pa) => pa.name.text === "body" && /guard/i.test(pa.expression.getText())
+    );
+
+    // Only the FIRST argument of a json() call is the body. The second is
+    // `{ status: … }`, and reading it as a body flagged two correct routes on
+    // this test's first run.
+    const bodyArg = (c: ts.CallExpression): ts.Expression | undefined => c.arguments[0];
+    const rewritesQuota = guardReturns.some((c) => {
+      const a = bodyArg(c);
+      if (a === undefined || !ts.isObjectLiteralExpression(a)) return false;
+      const t = a.getText();
+      return /\bguard\w*\.(error|status)\b/.test(t) && !/\bguard\w*\.body\b/.test(t);
+    });
+
+    if (!forwardsBody || rewritesQuota) {
+      offenders.push(
+        `  ${file} — ${!forwardsBody ? "never returns guard.body" : "rebuilds the quota body as an object literal"}`
+      );
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `Routes whose quota refusal does not carry the guard's body:\n${offenders.join("\n")}\n\n` +
+      "quotaExceededBody (lib/ai-budget.ts) sets `upgrade` exactly when a paid tier would grant " +
+      "more, and the client renders the offer from that flag. A route that rewrites the sentence " +
+      "or returns only `error` leaves the user refused with no way forward — which is the wall " +
+      "this codebase does not have. Return `guard.body` verbatim."
+  );
+});
+
 test("every surface that spends an allowance offers Plus when it runs out", () => {
   const missing: string[] = [];
   for (const { file, why } of METERED_SURFACES) {

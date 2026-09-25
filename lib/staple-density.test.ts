@@ -148,3 +148,62 @@ test("priced macros carry a tenth of a gram, not a whole one", () => {
   assert.ok(p);
   assert.ok(p.protein % 1 !== 0 || p.protein === 0, `expected a fractional gram, got ${p.protein}`);
 });
+
+// ── Sodium ──────────────────────────────────────────────────────────────────
+//
+// The meal plan's rail counted ADDED SALT and compared it to 2,300 mg — the FDA
+// guideline for TOTAL dietary sodium. QA priced a day at ~3,300 mg of real
+// sodium while the rail printed "2,034/2,300mg" in green, and Clara repeated
+// the reassurance. The numerator and the denominator were measuring different
+// things, and the gap is not small: bread is ~490 mg per 100 g, cheese ~700.
+test("a dish's sodium counts the salt AND the food", () => {
+  // Two slices of bread and two eggs, no salt at all.
+  const unsalted = priceDish(
+    [{ name: "Sliced bread", quantity: 2, unit: "slice" }, { name: "Large eggs", quantity: 2, unit: "egg" }],
+    null
+  );
+  assert.ok(unsalted);
+  // 60 g bread at 490 mg/100 g = 294; 100 g egg at 142 = 142. ~436 mg, and
+  // certainly not the zero a salt-only count would report.
+  assert.ok(unsalted.sodiumMg > 350 && unsalted.sodiumMg < 520, `expected ~436 mg, got ${unsalted.sodiumMg}`);
+
+  // And the salt is still counted, on top.
+  const salted = priceDish(
+    [
+      { name: "Sliced bread", quantity: 2, unit: "slice" },
+      { name: "Large eggs", quantity: 2, unit: "egg" },
+      { name: "Kosher salt", quantity: 0.25, unit: "teaspoon" },
+    ],
+    null
+  );
+  assert.ok(salted);
+  assert.equal(salted.sodiumMg - unsalted.sodiumMg, 581, "0.25 tsp of salt is 581 mg of sodium");
+});
+
+test("plain vegetables carry no sodium worth counting", () => {
+  const veg = priceDish(
+    [{ name: "broccoli", quantity: 200, unit: "g" }, { name: "Roma tomatoes", quantity: 150, unit: "g" }],
+    null
+  );
+  assert.ok(veg);
+  assert.equal(veg.sodiumMg, 0, "a tomato at 5 mg/100 g cannot change a verdict; it is not listed");
+});
+
+test("a seasoning's sodium counts even though its calories do not", () => {
+  // soy sauce, stock, mustard, hot sauce, olives and capers are all on the
+  // NEGLIGIBLE list — correctly, for CALORIES. Skipping them for sodium too
+  // would have lost the saltiest things in the kitchen: a tablespoon of soy
+  // sauce is ~870 mg, a third of a day's guideline.
+  const plain = priceDish([{ name: "jasmine rice", quantity: 60, unit: "g" }], null);
+  const withSoy = priceDish(
+    [{ name: "jasmine rice", quantity: 60, unit: "g" }, { name: "soy sauce", quantity: 1, unit: "tablespoon" }],
+    null
+  );
+  assert.ok(plain && withSoy);
+  assert.ok(withSoy.sodiumMg - plain.sodiumMg > 600, `the soy sauce should add ~870 mg, added ${withSoy.sodiumMg - plain.sodiumMg}`);
+  // …and it still contributes no calories, so the macro arithmetic is untouched.
+  assert.equal(withSoy.calories, plain.calories);
+
+  const cheese = priceDish([{ name: "Feta cheese", quantity: 50, unit: "g" }], null);
+  assert.ok(cheese && cheese.sodiumMg > 250, `50 g of cheese is ~350 mg, got ${cheese?.sodiumMg}`);
+});
