@@ -104,7 +104,7 @@ export default async function PricingPage({
             <p className="text-[#848181] text-sm mb-4">Still have questions?</p>
             <Link
               href="mailto:support@wondish.io"
-              className="text-primary hover:text-primary-dark font-semibold text-sm"
+              className="inline-flex items-center [@media(pointer:coarse)]:min-h-11 text-primary hover:text-primary-dark font-semibold text-sm"
             >
               Contact support →
             </Link>

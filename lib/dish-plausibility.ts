@@ -470,7 +470,10 @@ export function readableProse(text: string): string {
 export function readableDescription(text: string, steps?: readonly string[] | null): string {
   const prose = readableProse(text);
   const titleLike = prose.length <= 100 && !/[.!?;:]/.test(prose.trim().replace(/\.$/, ""));
-  return titleLike ? (nameFromCookedForm(prose, steps) ?? prose) : prose;
+  // displayDishName, not the method rename: a title-shaped description has to
+  // agree with the name printed above it.
+  void steps;
+  return titleLike ? displayDishName(prose) : prose;
 }
 
 /**
@@ -506,13 +509,12 @@ export function withReadableProse<
         return out;
       })
     : undefined;
-  // The title too: a grading word off the egg box is not a dish name, and the
-  // stored rows wait on the same backfill as the prose.
-  const renamed = typeof r.name === "string" ? nameFromCookedForm(r.name, r.steps) : null;
+  // NOT the title. Renaming here reached two screens and not the rest, so one
+  // dish had two names (cycle 20). The grade is dropped in displayDishName,
+  // which every screen uses; the method rename waits on the stored rows.
   return {
     ...r,
     ...(ingredients ? { ingredients } : {}),
-    ...(renamed ? { name: renamed } : {}),
     ...(Array.isArray(r.steps) ? { steps: r.steps.map(readableProse) } : {}),
     ...(typeof r.description === "string" ? { description: readableDescription(r.description, r.steps) } : {}),
   };

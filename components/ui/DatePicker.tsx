@@ -41,7 +41,7 @@ export default function DatePicker({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full px-3.5 py-2.5 rounded-xl border border-[#EAE4CA] bg-white text-sm text-left focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+        className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-[#EAE4CA] bg-white text-sm text-left focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
       >
         {value ? (
           <span className="text-[#1E1A1A]">{format(value, "PPP")}</span>

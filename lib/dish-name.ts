@@ -14,9 +14,21 @@
 // after a space (", V4,6,7 Decaf with low-fat milk").
 const VARIANT_SUFFIX = /\s*,\s*V\d+(?:\s*[,.]\s*\d+)*[A-Za-z]*(?:[\s.\-].*)?$/;
 
+// A grading word off the egg box is not part of a dish's name: "Large Eggs with
+// Spinach" is the grocery row. Dropping it needs nothing but the name, so it
+// happens HERE, where every screen already passes — cycle 18 did it at render
+// on two screens only, and the weekly grid then called one dish "Large Eggs
+// with…" while the day view called it "Baked Eggs with…". The method-based
+// rename ("Scrambled Eggs") needs the steps and lives with the stored rows
+// (lib/dish-plausibility nameFromCookedForm: generation and the backfill).
+const EGG_GRADE = /\b(?:large|medium|jumbo|extra[- ]large|free[- ]range)\s+(eggs?)\b/gi;
+const EGG_DISH_THEN_CONNECTOR = /^((?:(?:Scrambled|Poached|Fried|Boiled|Baked|Soft Scrambled) )?Eggs|Omelette) (With|And|In|On|Over)\b/;
+
 export function displayDishName(name: string): string {
-  const cleaned = name.replace(VARIANT_SUFFIX, "").trim();
-  return cleaned || name.trim();
+  const cleaned = name.replace(VARIANT_SUFFIX, "").trim() || name.trim();
+  return cleaned
+    .replace(EGG_GRADE, (_m, eggs: string) => eggs.charAt(0).toUpperCase() + eggs.slice(1))
+    .replace(EGG_DISH_THEN_CONNECTOR, (_m, dish: string, c: string) => `${dish} ${c.toLowerCase()}`);
 }
 
 /**

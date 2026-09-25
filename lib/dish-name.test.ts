@@ -20,6 +20,15 @@ test("the variant shapes /dishes still showed in cycle 18", () => {
   assert.equal(displayDishName("Mushroom Steak Fajitas , V4 M- 4 oz beef"), "Mushroom Steak Fajitas");
 });
 
+test("the egg grade is dropped on every screen, not two of them", () => {
+  assert.equal(displayDishName("Large Eggs with Bell Peppers and Carrots"), "Eggs with Bell Peppers and Carrots");
+  assert.equal(displayDishName("Ground Beef with Large Eggs and Carrots"), "Ground Beef with Eggs and Carrots");
+  assert.equal(displayDishName("Scrambled Eggs With Mushrooms"), "Scrambled Eggs with Mushrooms");
+  assert.equal(displayDishName("Scrambled Eggs, V1S- 1 egg"), "Scrambled Eggs");
+  // A whole egg is not a grade.
+  assert.equal(displayDishName("Whole Eggs with Toast"), "Whole Eggs with Toast");
+});
+
 test("leaves real names alone", () => {
   assert.equal(displayDishName("Chicken and Vegetable Egg Scramble"), "Chicken and Vegetable Egg Scramble");
   assert.equal(displayDishName("Vitamin C Smoothie, Version 2"), "Vitamin C Smoothie, Version 2");

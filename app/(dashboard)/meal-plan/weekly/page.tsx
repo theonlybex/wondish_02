@@ -70,7 +70,7 @@ export default async function WeeklyPlanPage() {
       <div className="wp mb-8" style={{ animationDelay: "0ms" }}>
         <Link
           href="/meal-plan"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold mb-5 hover:text-[#1E1A1A] transition-colors"
+          className="inline-flex items-center gap-1.5 [@media(pointer:coarse)]:min-h-11 text-xs font-semibold mb-5 hover:text-[#1E1A1A] transition-colors"
           style={{ color: "#ABA6A6" }}
         >
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none">

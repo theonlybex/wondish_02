@@ -420,7 +420,7 @@ export default function PantryClient({
                 type="button"
                 onClick={() => { setBuyMode(m); if (m === "cuisine") void loadCuisineIds(); if (m === "category") void loadCatalog(); }}
                 aria-pressed={buyMode === m}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                className={`px-3 py-1 [@media(pointer:coarse)]:min-h-11 rounded-full text-xs font-semibold transition-colors ${
                   buyMode === m ? "bg-white text-primary shadow-sm" : "text-[#848181] hover:text-primary"
                 }`}
               >
@@ -428,7 +428,7 @@ export default function PantryClient({
               </button>
             ))}
           </div>
-          <a href="/taste?edit=1" className="text-xs font-semibold shrink-0 hover:underline" style={{ color: "#812549" }}>
+          <a href="/taste?edit=1" className="inline-flex items-center [@media(pointer:coarse)]:min-h-11 text-xs font-semibold shrink-0 hover:underline" style={{ color: "#812549" }}>
             Edit favorites →
           </a>
         </div>
@@ -692,7 +692,7 @@ export default function PantryClient({
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder="Search ingredients — chicken, rice, tomatoes…"
             aria-label="Search ingredients"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#EAE4CA] bg-white text-[#1E1A1A] text-sm placeholder:text-[#A8A4B5] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+            className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-[#EAE4CA] bg-white text-[#1E1A1A] text-sm placeholder:text-[#A8A4B5] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
           />
           {results.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-3">{results.map((r) => chip(r))}</div>
@@ -921,7 +921,7 @@ export default function PantryClient({
                       </span>
                     )}
                   </div>
-                  <p className="font-semibold text-[#1E1A1A] text-sm mt-0.5">{m.name}</p>
+                  <p className="font-semibold text-[#1E1A1A] text-sm mt-0.5">{displayDishName(m.name)}</p>
                   {m.description && (
                     <p className="text-xs mt-1 leading-relaxed" style={{ color: "#848181" }}>
                       {m.description}

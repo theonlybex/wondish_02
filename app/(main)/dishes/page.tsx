@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import DishesGrid from "@/components/DishesGrid";
 import type { Dish, MealTypeKey } from "@/types";
 import { displayDishName } from "@/lib/dish-name";
-import { readableDescription, nameFromCookedForm } from "@/lib/dish-plausibility";
+import { readableDescription } from "@/lib/dish-plausibility";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,8 @@ export default async function DishesPage() {
   });
 
   const dishes: Dish[] = recipes.map((r, i) => {
-    const name = nameFromCookedForm(displayDishName(r.name), r.steps) ?? displayDishName(r.name);
+    // displayDishName only — the same name every other screen shows.
+    const name = displayDishName(r.name);
     return {
     id: i + 1,
     // The public menu was the one surface still printing raw import rows —

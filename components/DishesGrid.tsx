@@ -42,7 +42,7 @@ export default function DishesGrid({ dishes }: { dishes: Dish[] }) {
             placeholder="Search dishes or tags…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#EAE4CA] rounded-xl text-sm text-[#1E1A1A] placeholder:text-[#BDBDBD] focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
+            className="w-full min-h-[44px] pl-10 pr-4 py-2.5 bg-white border border-[#EAE4CA] rounded-xl text-sm text-[#1E1A1A] placeholder:text-[#BDBDBD] focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
           />
         </div>
 
@@ -51,7 +51,7 @@ export default function DishesGrid({ dishes }: { dishes: Dish[] }) {
             <button
               key={value}
               onClick={() => setActiveFilter(value)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
+              className={`px-4 py-2 [@media(pointer:coarse)]:min-h-11 rounded-xl text-sm font-medium transition-all duration-150 ${
                 activeFilter === value
                   ? "bg-primary text-white shadow-lg shadow-primary/25"
                   : "bg-white text-[#848181] border border-[#EAE4CA] hover:border-primary/20 hover:text-primary"

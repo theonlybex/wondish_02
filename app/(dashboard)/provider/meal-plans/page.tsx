@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
 import { prisma } from "@/lib/db";
+import { displayDishName } from "@/lib/dish-name";
 
 export const metadata = { title: "User Meal Plans" };
 
@@ -69,7 +70,7 @@ export default async function ProviderMealPlansPage() {
                   <div key={menu.id} className="flex items-center gap-2 p-3 bg-surface rounded-xl">
                     <span className="text-xl">{menu.recipe.emoji ?? "🍽"}</span>
                     <div>
-                      <p className="text-navy text-xs font-medium">{menu.recipe.name}</p>
+                      <p className="text-navy text-xs font-medium">{displayDishName(menu.recipe.name)}</p>
                       <p className="text-[#848181] text-xs">{menu.mealType?.name}</p>
                     </div>
                   </div>

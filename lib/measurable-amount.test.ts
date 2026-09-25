@@ -188,7 +188,8 @@ test("a stored dish reaches the screen measurable, whatever the row still says",
       { quantity: 0.5, unit: null, ingredient: { name: "Brown rice" } },
     ],
   });
-  assert.equal(shown.name, "Eggs with Spinach");
+  // The name is left to displayDishName, on every screen alike.
+  assert.equal(shown.name, "Large Eggs with Spinach");
   assert.deepEqual(shown.steps, ["Season with a pinch of salt."]);
   assert.deepEqual(shown.ingredients?.map((i) => [i.quantity, i.unit]), [[1, "pinch"], [2, "large"], [2, "slice"], [0.5, null]]);
 });
