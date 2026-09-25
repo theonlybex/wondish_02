@@ -1088,3 +1088,57 @@ test("one protein may fill two slots in a day, not three", () => {
     assert.ok(chicken <= 2, `one protein took ${chicken} of ${chosen.length} slots`);
   });
 });
+
+test("a day's sodium stays under the guideline, not just each dish", () => {
+  // Every dish passed the per-dish cap and every day still landed 3,000-4,100 mg
+  // against a 2,300 mg guideline, because three or four dishes at half a
+  // teaspoon each add up. Sodium is a day-level quantity.
+  const salty = (id: string) => {
+    const r = makeRecipe({ id, mealTypeId: MT_L.id, calories: 500, ingredients: [`protein ${id}`] });
+    r.ingredients = [
+      { ingredient: { name: `protein ${id}` }, quantity: 150, unit: "g" },
+      { ingredient: { name: "Salt" }, quantity: 0.5, unit: "teaspoon" },
+    ] as never;
+    return { ...r, name: `Salty ${id}`, tags: [] as string[], prepTime: 10, cookTime: 15 };
+  };
+  const light = (id: string) => {
+    const r = makeRecipe({ id, mealTypeId: MT_L.id, calories: 500, ingredients: [`protein ${id}`] });
+    r.ingredients = [
+      { ingredient: { name: `protein ${id}` }, quantity: 150, unit: "g" },
+      { ingredient: { name: "Salt" }, quantity: 0.1, unit: "teaspoon" },
+    ] as never;
+    return { ...r, name: `Light ${id}`, tags: [] as string[], prepTime: 10, cookTime: 15 };
+  };
+  setDb(makePatient(), [MT_L, MT_D], [salty("s1"), salty("s2"), salty("s3"), light("l1"), light("l2"), light("l3")]);
+  return build("p1", new Date("2026-09-24T00:00:00Z"), 1, { windowDays: 1 }).then(async (res) => {
+    const { dishSodiumMg, DAILY_SODIUM_MAX_MG } = await modPromise;
+    const chosen = res.rows.map((r: MenuRow) => r.recipeId);
+    const mg = chosen.reduce((sum: number, id: string) => {
+      const salty = id.startsWith("s");
+      return sum + dishSodiumMg([{ ingredient: { name: "Salt" }, quantity: salty ? 0.5 : 0.1, unit: "teaspoon" }]);
+    }, 0);
+    assert.ok(mg <= DAILY_SODIUM_MAX_MG, `day totalled ${Math.round(mg)}mg against ${DAILY_SODIUM_MAX_MG}`);
+    assert.ok(res.rows.length > 0, "and the day still got filled");
+  });
+});
+
+test("two slots a day may share a starch, not three", () => {
+  // One QA week was rice 21 times out of 26 — every title distinct, every macro
+  // correct, the same plate every day.
+  const riceDish = (id: string) => {
+    const r = makeRecipe({ id, mealTypeId: MT_L.id, calories: 500, ingredients: [`jasmine rice`, `protein ${id}`] });
+    return { ...r, name: `Rice bowl ${id}`, tags: [] as string[], prepTime: 10, cookTime: 15 };
+  };
+  const potatoDish = (id: string) => {
+    const r = makeRecipe({ id, mealTypeId: MT_L.id, calories: 500, ingredients: [`Russet potatoes`, `protein ${id}`] });
+    return { ...r, name: `Potato plate ${id}`, tags: [] as string[], prepTime: 10, cookTime: 15 };
+  };
+  setDb(makePatient(), [MT_L, MT_D], [
+    riceDish("r1"), riceDish("r2"), riceDish("r3"), riceDish("r4"),
+    potatoDish("p1"), potatoDish("p2"), potatoDish("p3"), potatoDish("p4"),
+  ]);
+  return build("p1", new Date("2026-09-24T00:00:00Z"), 1, { windowDays: 1 }).then((res) => {
+    const rice = res.rows.filter((r: MenuRow) => r.recipeId.startsWith("r")).length;
+    assert.ok(rice <= 2, `rice took ${rice} of ${res.rows.length} slots`);
+  });
+});

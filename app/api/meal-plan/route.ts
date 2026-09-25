@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError, ThinPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
 import { internalError } from "@/lib/api-error";
-import { getPlanDayCalories, deriveLoggedRecipeIds } from "@/lib/meal-plan";
+import { getPlanDayCalories, deriveLoggedRecipeIds, dishSodiumMg, DAILY_SODIUM_MAX_MG } from "@/lib/meal-plan";
 import { computeDailyMacros, resolveMacroProfile } from "@/lib/caloric-engine";
 import { normalizeCuisine } from "@/lib/clara/recipe-generation";
 import { guardAiSpend, tierFor } from "@/lib/ai-budget";
@@ -63,6 +63,19 @@ export async function GET(req: NextRequest) {
   function localMidnight(str: string): Date {
     const [y, m, d] = str.split("-").map(Number);
     return new Date(y, m - 1, d);
+  }
+
+  // A date this route cannot parse used to reach Prisma as an Invalid Date and
+  // come back as a 500 with an EMPTY body — the only error on the route that
+  // wasn't JSON, so a client had nothing to show (QA: ?date=notadate,
+  // ?date=9999-99-99). Answer like every other bad input here.
+  const badDate = (v: string | null): boolean => {
+    if (!v) return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return true;
+    return Number.isNaN(localMidnight(v).getTime());
+  };
+  if (badDate(dateParam) || badDate(weekStartParam)) {
+    return NextResponse.json({ error: "Invalid date — expected YYYY-MM-DD." }, { status: 400 });
   }
 
   if (weekStartParam) {
@@ -153,6 +166,14 @@ export async function GET(req: NextRequest) {
     mealRatings,
     dailyCalorieTarget,
     dailyMacroTarget,
+    // Sodium from the ADDED SALT on the day's ingredient rows — the part the
+    // plan controls and the part that was running 3,000-4,100 mg a day. Named
+    // precisely: it is not a total-diet figure, and calling it one would be the
+    // same kind of overclaim this file has been fixing all week.
+    daySaltSodiumMg: Math.round(
+      menus.reduce((sum, m) => sum + dishSodiumMg(m.recipe?.ingredients ?? []), 0)
+    ),
+    dailySodiumGuidelineMg: DAILY_SODIUM_MAX_MG,
     ...(exchanges ? { exchanges } : {}),
   });
 }

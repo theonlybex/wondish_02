@@ -9,6 +9,13 @@ breakfast. None of those break a test; all of them lose a tester.
 week they would actually eat. No P0/P1 — nothing that lies, nothing inedible,
 nothing health-unsafe, no contradictory numbers on one screen.
 
+**What the cycles taught, in one line each.** A green test suite proves nothing
+about content: 1,284 tests passed while a week served seven identical lunches.
+Measure a rule against the live catalog before trusting its threshold — four of
+mine were wrong in the direction that deletes good food. And re-test the fix
+itself: three separate cycles found a previous cycle's fix had never taken
+effect.
+
 ## A. Cold start (fresh account, no Account row)
 
 1. First sign-in routes into onboarding, not a dashboard.
@@ -96,3 +103,8 @@ nothing health-unsafe, no contradictory numbers on one screen.
 |---|---|---|
 | 1 | lunch-only weeks; pool measured against the library; 25s Anthropic timeout under a 60s cap; staples too narrow to cook with | pool measurement, `ThinPlanError`, staples + tolerant matching, `maxDuration` 300 / timeout 90s |
 | 2 | `pepper` → user's bell peppers (10/29 and 16/24 dishes); titles promising absent food; 1.5 tsp salt; breakfast = braised dinner 7/7 | staple/basket precedence by equal tokens; catalog-driven title gate; salt cap; breakfast guidance + 30-min ceiling |
+| 3 | The gates ran at generation only, so the pool's older rows flowed straight into plans; `/restaurants` badge; lying descriptions; dishes with no quantities | one predicate re-checked at SELECTION and in the swap (`lib/dish-plausibility.ts`); description + quantity rules; 505 rows repriced |
+| 4 | Two cycle-3 fixes had never taken effect (macro target set in branches that never run; `?date=` honoured then overwritten by the client); weight `0` saved "successfully"; "Chickpea…" with no chickpeas | SSR macro target + all-or-nothing denominator; `pinnedDate`; `provided()` stopped treating 0 as absent; vocabulary from the catalog |
+| 5 | Declared numbers self-consistent but wrong against the FOOD (+750 kcal/day); swaps all failed; the server, not Clara, asserted "your profile avoids white rice" | nutrition COMPUTED from the amounts (`lib/staple-density.ts`); two swap candidates; goal foods attributed to the goal |
+| 6 | Cup-measured grain still understated ~30%; offsetting macro errors passed a calorie check; bare counts (`Sliced bread 2`) unpriceable; condition bans announced as the user's own | volume grains default to dry; per-MACRO check; per-item weights; condition list attributed to the app |
+| 7 | Daily sodium 3,000-4,100 mg; rice 21 of 26 dishes; chicken-and-rice at 8am; `?date=notadate` → 500 | day-level sodium ceiling; per-day starch cap; breakfast-food anchor; 400 JSON |

@@ -1,5 +1,10 @@
-// Mint a Clerk sign-in ticket so a Playwright run can log in without a password.
-//   node <this> qa.bot1.0924@wondish.io
+// Mint a Clerk sign-in ticket so a QA run can log in without a password.
+//
+//   node scripts/qa-signin-ticket.mjs qa.bot1.0924@wondish.io
+//
+// Reads CLERK_SECRET_KEY from .env.local and asks Clerk for a one-hour sign-in
+// token for that account's clerkId. Test-only: it can log in as any account in
+// the database, so it never belongs in a deployed path.
 // Prints the account's subscription rows, then a URL to navigate to. Tickets
 // last one hour; mint a fresh one rather than reusing a stale URL.
 import { readFileSync } from "node:fs";

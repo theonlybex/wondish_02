@@ -169,11 +169,15 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     // which is how a week ends up serving one dish seven times.
     `- The DESCRIPTION may only mention food that is in usesIngredients. Do not describe bread as "whole grain" unless the listed bread is whole grain, and do not mention a herb, citrus or sauce you did not list.`,
     `- If any step sears, fries, sautés or browns something, the fat used MUST be in usesIngredients with its amount. A dry pan is not a recipe.`,
-    `- Salt must never exceed 1 teaspoon per serving, and under half a teaspoon for anything below 450 kcal.`,
+    // Deliberately does NOT suggest "season with herbs and citrus instead":
+    // that wording tripled title rejections, because Clara started naming
+    // dishes "Lemon Herb …" and listing neither. Say the number only.
+    `- Salt: a quarter teaspoon per serving is plenty and half a teaspoon is the maximum — a day is four of these dishes and has to stay under 2,300 mg of sodium in total.`,
     // Grains in cups are unreadable: three quarters of a cup of rice is ~139 g
     // dry and ~145 g COOKED, a threefold difference in carbohydrate, and one
     // QA week understated itself by ~750 kcal/day because the amounts and the
     // macros had been written on different readings. Grams, dry, always.
+    `- EVERY amount needs a unit. "Brown rice 1" is not an amount — write "Brown rice 60 g". The only exception is something naturally counted (2 eggs, 2 slices of bread).`,
     `- State grains, pasta and pulses in GRAMS of DRY weight (never cups), and count their full dry carbohydrate — about 75 g per 100 g of rice, pasta or flour. One person's portion of dry rice is 45-80 g; 150 g is two servings.`,
     `- No single step may take longer than prepMinutes + cookMinutes. If the rice needs 45 minutes, the dish takes at least 45 minutes.`,
     `- Name the dish by the method you actually use. Do not call it "Grilled" if the steps sear it in a skillet, or "Roasted" if nothing goes in an oven — and never let the description contradict the title.`,
@@ -265,6 +269,15 @@ export const CALORIE_MACRO_TOLERANCE = 0.05;
  * Returns null when the ingredients are not fully known, in which case the
  * model's own figures stand (and dishProblem's floor still checks them).
  */
+/** Countable foods whose bare count IS the measurement (see staple-density). */
+const COUNTABLE = /\b(eggs?|bread|toast|muffin|bagel|tortilla|pita|apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|carrots?|avocados?|lemons?|limes?)\b/i;
+
+export function unitIsUsable(name: string, unit: string | null | undefined): boolean {
+  const u = (unit ?? "").trim();
+  if (u.length > 0) return true;
+  return COUNTABLE.test(name);
+}
+
 export function pricedMacros(r: FridgeRecipe, mealTypeName = ""): PricedDish | null {
   const dish = toPlausibleDish(r, mealTypeName);
   const priced = priceDish(dish.ingredients, r.steps ?? null);
@@ -530,6 +543,14 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     // grocery list that silently under-counts.
     const plausible = toPlausibleDish(r, slot.mealTypeName);
     if (plausible.ingredients.some((i) => i.quantity == null)) { reject("missing-amounts", r); continue; }
+    // …and every amount needs a UNIT. A null unit is what makes a row
+    // unpriceable, and it is the single biggest reason a stored dish keeps the
+    // model's unchecked numbers: 1,337 such rows in the catalog. "Brown rice 1"
+    // could be a cup or a spoonful and nothing downstream can tell, so it is
+    // refused here rather than guessed at later. Naturally-counted foods (an
+    // egg, a slice of bread) are exempt — a bare count is a real measurement
+    // for them, and lib/staple-density.ts prices it.
+    if (plausible.ingredients.some((i) => !unitIsUsable(i.name, i.unit))) { reject("missing-units", r); continue; }
     const nameKey = r.name.trim().toLowerCase();
     if (!nameKey || seen.has(nameKey)) { reject("duplicate-name", r); continue; }
     seen.add(nameKey);

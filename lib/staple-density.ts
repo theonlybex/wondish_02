@@ -283,7 +283,7 @@ export interface PricedDish {
 
 /** Ingredients that carry no meaningful macros, so they never count against coverage. */
 const NEGLIGIBLE =
-  /\b(salt|pepper|peppercorns?|water|vinegar|spice|seasoning|powder|paprika|cumin|oregano|thyme|basil|rosemary|parsley|cilantro|cinnamon|turmeric|ginger|bay leaf|chili flakes|cayenne|herbs?|stock|broth|lemon juice|lime juice|zest|extract|baking powder|baking soda|mustard|hot sauce|soy sauce)\b/i;
+  /\b(salt|pepper|peppercorns?|water|vinegar|spice|seasoning|powder|paprika|cumin|oregano|thyme|basil|rosemary|parsley|cilantro|cinnamon|turmeric|ginger|bay leaf|chili flakes|cayenne|herbs?|stock|broth|lemon juice|lime juice|zest|extract|baking powder|baking soda|mustard|hot sauce|soy sauce|garlic|shallots?|scallions?|green onions?|chives?|dill|mint|sage|tarragon|lemons?|limes?|capers|olives)\b/i;
 
 export function priceDish(
   ingredients: readonly { name: string; quantity?: number | null; unit?: string | null }[],

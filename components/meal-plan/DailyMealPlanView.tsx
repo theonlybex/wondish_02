@@ -348,6 +348,11 @@ export default function DailyMealPlanView({
   // divided by the PLAN's own totals while the calorie ring above them used
   // the target — one widget, two denominators, neither labelled.
   const [dailyMacroTarget, setDailyMacroTarget] = useState<{ protein: number; carbs: number; fat: number } | null>(initialDailyMacroTarget);
+  // Sodium from the day's added salt, and the guideline to read it against.
+  // The builder aims under the guideline and cannot always get there — four
+  // dishes at a quarter teaspoon each is already 2,325 mg — so the number is
+  // shown rather than quietly missed.
+  const [daySalt, setDaySalt] = useState<{ mg: number; guideline: number } | null>(null);
   // Basket readiness for the New-week gate (min ingredients + category
   // coverage). Generation is manual now — no auto-start; when the week runs
   // out the New-week panel below drives it.
@@ -414,6 +419,7 @@ export default function DailyMealPlanView({
         // single-denominator change was meant to fix, still shipping because
         // the number it needed never arrived.
         if (data.dailyMacroTarget) setDailyMacroTarget(data.dailyMacroTarget);
+        if (data.daySaltSodiumMg != null) setDaySalt({ mg: data.daySaltSodiumMg, guideline: data.dailySodiumGuidelineMg ?? 2300 });
         setExchanges(data.exchanges ?? null);
       })
       .catch(() => {});
@@ -441,6 +447,7 @@ export default function DailyMealPlanView({
             if (mData.mealPlanStartDate) setStartDate(new Date(mData.mealPlanStartDate));
             setDailyCalorieTarget(mData.dailyCalorieTarget ?? null);
             if (mData.dailyMacroTarget) setDailyMacroTarget(mData.dailyMacroTarget);
+      if (mData.daySaltSodiumMg != null) setDaySalt({ mg: mData.daySaltSodiumMg, guideline: mData.dailySodiumGuidelineMg ?? 2300 });
             setExchanges(mData.exchanges ?? null);
             setStale(false);
           }
@@ -498,6 +505,7 @@ export default function DailyMealPlanView({
       if (mData.mealPlanStartDate) setStartDate(new Date(mData.mealPlanStartDate));
       setDailyCalorieTarget(mData.dailyCalorieTarget ?? null);
       setDailyMacroTarget(mData.dailyMacroTarget ?? null);
+      if (mData.daySaltSodiumMg != null) setDaySalt({ mg: mData.daySaltSodiumMg, guideline: mData.dailySodiumGuidelineMg ?? 2300 });
       setExchanges(mData.exchanges ?? null);
       setStale(false);
     } catch {
@@ -540,6 +548,7 @@ export default function DailyMealPlanView({
       setMealRatings(mData.mealRatings ?? {});
       setDailyCalorieTarget(mData.dailyCalorieTarget ?? null);
       setDailyMacroTarget(mData.dailyMacroTarget ?? null);
+      if (mData.daySaltSodiumMg != null) setDaySalt({ mg: mData.daySaltSodiumMg, guideline: mData.dailySodiumGuidelineMg ?? 2300 });
       setExchanges(mData.exchanges ?? null);
       setShowCuisines(false);
     } catch {
@@ -832,7 +841,20 @@ export default function DailyMealPlanView({
 
       {/* New-week generation (2026-09-08): manual + basket-gated. Shown whenever
           the current day has no dishes (fresh user or the week ran out). */}
-      {menus.length === 0 && !profileIncomplete && (
+      {/* An empty day the user has PAGED to is not an invitation to rebuild the
+          week. The generate card used to show on any dishless day, so paging
+          back to a date before the plan started offered "Generate my whole
+          week" — one of three weekly generations, spent on a day that is over
+          (QA 2026-09-24). Only today, or a day inside the browsing horizon,
+          gets the offer. */}
+      {menus.length === 0 && !profileIncomplete && date < todayMidnight && (
+        <div className="rounded-2xl px-4 py-4 mb-4 border border-dashed" style={{ borderColor: "#EAE4CA", background: "#FBFAF5" }}>
+          <p className="text-sm" style={{ color: "#848181" }}>
+            No plan was generated for this day — it is before your current week started.
+          </p>
+        </div>
+      )}
+      {menus.length === 0 && !profileIncomplete && date >= todayMidnight && (
         <div className="rounded-2xl px-4 py-4 mb-4 border border-dashed" style={{ borderColor: "#812549", background: "rgba(129,37,73,0.04)" }}>
           {newWeekLoading ? (
             <p className="text-sm font-semibold flex items-center gap-2" style={{ color: "#5F1C35" }}>
@@ -1213,6 +1235,30 @@ export default function DailyMealPlanView({
                   </p>
                 </div>
               ))}
+              {/* Added salt, shown because the plan cannot always get under the
+                  guideline: four dishes at a quarter teaspoon each is already
+                  2,325 mg, so a silently-missed target would be a number the
+                  app knew and did not say. Named "added salt" rather than
+                  sodium — it counts the salt on the ingredient rows, not
+                  everything the diner eats. */}
+              {daySalt && daySalt.mg > 0 && (
+                <div className="flex items-center justify-between pt-2.5 border-t" style={{ borderColor: "#F0EFF5" }}>
+                  <p className="text-[9px] tracking-[0.18em] uppercase font-bold" style={{ color: "#ABA6A6" }}>
+                    Added salt
+                  </p>
+                  <p className="tabular-nums leading-none" style={{ color: "#1E1A1A" }}>
+                    <span
+                      className="text-lg font-bold"
+                      style={{ color: daySalt.mg > daySalt.guideline ? "#B75E78" : "#2E7D5B" }}
+                    >
+                      {daySalt.mg.toLocaleString()}
+                    </span>
+                    <span className="text-xs font-medium mx-0.5" style={{ color: "#CCC6C6" }}>/</span>
+                    <span className="text-base font-bold">{daySalt.guideline.toLocaleString()}</span>
+                    <span className="text-xs font-medium ml-0.5" style={{ color: "#ABA6A6" }}>mg</span>
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2.5">

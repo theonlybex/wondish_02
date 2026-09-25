@@ -106,7 +106,49 @@ test("a 40-minute roast is not breakfast, a 20-minute one is", () => {
 });
 
 test("a dish with no timings is not guessed at", () => {
-  assert.equal(dishProblem(dish({ mealTypeName: "Breakfast", prepMinutes: 0, cookMinutes: 0 }), CATALOG), null);
+  // Breakfast-typed, so it also has to look like breakfast — the fixture's
+  // default ingredients are chicken and rice, which is the point of that rule.
+  const noTimings = dish({
+    mealTypeName: "Breakfast",
+    prepMinutes: 0,
+    cookMinutes: 0,
+    ingredients: [{ name: "Large eggs", quantity: 2, unit: null }, { name: "Sliced bread", quantity: 1, unit: null }],
+  });
+  assert.equal(dishProblem(noTimings, CATALOG), null);
+});
+
+test("a plated dinner is not breakfast, however fast it cooks", () => {
+  // "Baked Chicken Breast with Carrots and Jasmine Rice" cleared the 30-minute
+  // ceiling at 25 minutes and was served at 8am — twice, in two QA weeks.
+  const dinnerAt8am = dish({
+    generated: true,
+    name: "Baked Chicken Breast with Carrots and Jasmine Rice",
+    mealTypeName: "Breakfast",
+    prepMinutes: 5,
+    cookMinutes: 20,
+    ingredients: [
+      { name: "Boneless chicken breasts", quantity: 120, unit: "g" },
+      { name: "carrots", quantity: 80, unit: "g" },
+      { name: "Jasmine rice", quantity: 60, unit: "g" },
+    ],
+  });
+  assert.equal(dishProblem(dinnerAt8am, CATALOG), "not-breakfast-food");
+
+  // A savoury breakfast still passes: one recognisable breakfast food is enough.
+  const savoury = {
+    ...dinnerAt8am,
+    name: "Egg and Spinach Hash",
+    ingredients: [
+      { name: "Large eggs", quantity: 2, unit: null },
+      { name: "spinach", quantity: 60, unit: "g" },
+      { name: "Sliced bread", quantity: 1, unit: null },
+    ],
+  };
+  assert.equal(dishProblem(savoury, CATALOG), null);
+  // Only the breakfast slot, and only Clara's dishes — a curated library row
+  // was put in that slot by a person.
+  assert.equal(dishProblem({ ...dinnerAt8am, mealTypeName: "Dinner" }, CATALOG), null);
+  assert.equal(dishProblem({ ...dinnerAt8am, generated: false }, CATALOG), null);
 });
 
 // ----------------------------------------------------------------- title

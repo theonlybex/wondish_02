@@ -91,6 +91,7 @@ export interface PlausibleDish {
 export type DishProblem =
   | "breakfast-too-slow"
   | "snack-too-slow"
+  | "not-breakfast-food"
   | "method-not-used"
   | "oversalted"
   | "seasoning-quantity-on-food"
@@ -213,6 +214,35 @@ export function breakfastIsQuickEnough(d: PlausibleDish): boolean {
   const total = (d.prepMinutes ?? 0) + (d.cookMinutes ?? 0);
   if (total === 0) return true;
   return total <= BREAKFAST_MAX_MINUTES;
+}
+
+/**
+ * Does a breakfast contain anything anybody eats at breakfast?
+ *
+ * The 30-minute ceiling catches a braise and lets "Baked Chicken Breast with
+ * Carrots and Jasmine Rice" through at 25 minutes — which QA reported twice,
+ * along with "Oatmeal with Carrots and Ground Beef" and a salmon-and-rice bowl
+ * at 8am. Timing was never the property that made those wrong.
+ *
+ * One recognisable breakfast food is enough, and it is a low bar on purpose: a
+ * savoury egg hash, beans on toast and a yoghurt bowl all pass, while a plated
+ * dinner does not.
+ *
+ * Generated dishes only, for the same reason the title rule is: a human put the
+ * curated library's rows in the breakfast slot deliberately, and 31% of them
+ * would fail a keyword test written for Clara's mistakes. The dishes QA caught
+ * at 8am — "Baked Chicken Breast with Carrots and Jasmine Rice", "Oatmeal with
+ * Carrots and Ground Beef", a salmon-and-rice bowl — were all generated. That
+ * leaves 303 anchored breakfasts in the pool, so the slot stays deep either way.
+ */
+const BREAKFAST_FOODS =
+  /\b(egg|omelette|omelet|frittata|oat|oatmeal|porridge|granola|muesli|yogurt|yoghurt|bread|toast|muffin|bagel|croissant|pancake|waffle|crepe|banana|berr|apple|orange|grapefruit|melon|fruit|milk|cheese|cottage|peanut butter|almond butter|honey|jam|smoothie|beans|avocado|bacon|sausage|hash brown|potato)\b/i;
+
+export function breakfastLooksLikeBreakfast(d: PlausibleDish): boolean {
+  if (!d.generated) return true;
+  if (d.mealTypeName.toLowerCase() !== "breakfast") return true;
+  const text = `${displayDishName(d.name)} ${d.ingredients.map((i) => i.name).join(" ")}`;
+  return BREAKFAST_FOODS.test(text);
 }
 
 export function snackIsQuickEnough(d: PlausibleDish): boolean {
@@ -423,6 +453,7 @@ const HERB_NAMES = [
 export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): DishProblem | null {
   if (!breakfastIsQuickEnough(d)) return "breakfast-too-slow";
   if (!snackIsQuickEnough(d)) return "snack-too-slow";
+  if (!breakfastLooksLikeBreakfast(d)) return "not-breakfast-food";
 
   for (const ing of d.ingredients) {
     if (/\bsalt\b/i.test(ing.name)) {
