@@ -379,10 +379,31 @@ export function longestStepMinutes(steps: readonly string[]): number {
  * 33 minutes before work. Dishes with no timings are left alone rather than
  * guessed at.
  */
+/**
+ * The minutes a dish takes, from its fields or — failing those — its own steps.
+ *
+ * `total === 0 → pass` was a silent bypass of both timing ceilings, and it was
+ * not a rare case: 1,083 public rows carry no usable prepTime/cookTime, and 764
+ * of them state a time in their steps. "Baked Chicken With Vegetables" with a
+ * 20-minute step and null timings passed the 20-minute SNACK ceiling, because
+ * the only question asked was of two empty fields.
+ *
+ * The longest single step, not the sum, for the same reason the
+ * step-outlasts-stated-time rule uses it: steps overlap ("while the rice
+ * cooks"), so a sum over-states the dish and would refuse honest quick food. One
+ * step that alone exceeds the ceiling is proof enough — a lower bound that
+ * cannot produce a false refusal.
+ */
+export function statedOrImpliedMinutes(d: PlausibleDish): number {
+  const stated = (d.prepMinutes ?? 0) + (d.cookMinutes ?? 0);
+  if (stated > 0) return stated;
+  return longestStepMinutes(d.steps ?? []);
+}
+
 export function breakfastIsQuickEnough(d: PlausibleDish): boolean {
   if (d.mealTypeName.toLowerCase() !== "breakfast") return true;
-  const total = (d.prepMinutes ?? 0) + (d.cookMinutes ?? 0);
-  if (total === 0) return true;
+  const total = statedOrImpliedMinutes(d);
+  if (total === 0) return true; // nothing on file and nothing in the steps
   return total <= BREAKFAST_MAX_MINUTES;
 }
 
@@ -446,8 +467,8 @@ export function breakfastIsBuiltOnBreakfastFood(d: PlausibleDish): boolean {
 
 export function snackIsQuickEnough(d: PlausibleDish): boolean {
   if (d.mealTypeName.toLowerCase() !== "snack") return true;
-  const total = (d.prepMinutes ?? 0) + (d.cookMinutes ?? 0);
-  if (total === 0) return true;
+  const total = statedOrImpliedMinutes(d);
+  if (total === 0) return true; // nothing on file and nothing in the steps
   return total <= SNACK_MAX_MINUTES;
 }
 

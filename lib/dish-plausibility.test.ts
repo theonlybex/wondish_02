@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood } from "./dish-plausibility";
+import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH, clampCookingFat, breakfastIsBuiltOnBreakfastFood, snackIsQuickEnough, statedOrImpliedMinutes } from "./dish-plausibility";
 
 // The catalog vocabulary, as lib/meal-plan.ts builds it from Ingredient.name.
 const CATALOG = new Set([
@@ -561,4 +561,41 @@ test("clampCookingFat reaches a fixpoint — clamping twice changes nothing", ()
   assert.equal(once.changed, true);
   const twice = clampCookingFat(once.ingredients, steps, 620);
   assert.equal(twice.changed, false, `re-clamped to ${twice.ingredients[0].quantity}`);
+});
+
+// The timing ceilings asked two fields and nothing else, so a row with no
+// prepTime/cookTime passed both unconditionally. 1,083 public rows are in that
+// state and 764 of them state a time in their own steps.
+test("a dish with no timings on file is judged by its steps, not waved through", () => {
+  const slow = (mealTypeName: string) =>
+    ({
+      name: "Baked Chicken With Vegetables", mealTypeName,
+      prepMinutes: null, cookMinutes: null,
+      steps: ["Preheat the oven.", "Bake for 35 minutes until cooked through."],
+      ingredients: [{ name: "Boneless chicken breasts" }],
+    }) as never;
+  assert.equal(snackIsQuickEnough(slow("Snack")), false);
+  assert.equal(breakfastIsQuickEnough(slow("Breakfast")), false);
+});
+
+test("the steps fall back to the LONGEST step, so overlapping steps do not over-count", () => {
+  // Three 8-minute steps sum to 24 and would fail a 20-minute snack ceiling,
+  // but steps overlap ("while the rice cooks") — the longest alone is the only
+  // safe lower bound.
+  const quick = {
+    name: "Egg and Tomato Toast", mealTypeName: "Snack",
+    prepMinutes: null, cookMinutes: null,
+    steps: ["Toast the bread for 8 minutes.", "Fry the egg for 8 minutes.", "Warm the tomato for 8 minutes."],
+    ingredients: [{ name: "Large eggs" }],
+  } as never;
+  assert.equal(statedOrImpliedMinutes(quick), 8);
+  assert.equal(snackIsQuickEnough(quick), true);
+});
+
+test("stated timings still win over the steps when they exist", () => {
+  const d = {
+    name: "Something", mealTypeName: "Snack", prepMinutes: 5, cookMinutes: 10,
+    steps: ["Simmer for 90 minutes."], ingredients: [{ name: "rice" }],
+  } as never;
+  assert.equal(statedOrImpliedMinutes(d), 15);
 });
