@@ -155,6 +155,8 @@ into a bot's later measurements.
 
 | 18 | The fix list from cycle 17, then a bot pass on each fix by name. **The Clara swap's fat budget had been computed, commented and never read** — the fourth fix in this project that never took effect, found by reading the route rather than by a test. The pass on the fixes found their neighbourhood: an ENDED plan read as "beyond your current week" on today and left a returning user no generate control at all (the cycle-17 guard for far-future dates could not tell the two apart); five variant-code shapes the name regex never knew; descriptions still printing the OLD title a rename had fixed; three buttons in the expanded dish at 31px, never measured because the rows could not be reached until this cycle made them keyboard controls. A fresh week measured 30-41% fat, over the band cycle 15 claimed. And the agent was refused live-DB reads, so every data fix was built three ways — write path, render, backfill — with the backfill left for a human to run | `repairForStorage` at the one write door; `readableProse`/`withReadableProse` at render on /meal-plan and /dishes; `swapPushesDayFat`, extracted and tested; rows as role=button; Button loading stays focusable; field-level profile errors with focus; replace-week confirm; header→nav→main tab order and a skip link; 44px on touch for swap, rating, cuisine chips and the modal close. Measured on screen: 0 variant codes, rinses, prose decimals or grade titles on /dishes; 1 PATCH from three clicks; 0 requests from a cancelled replace |
 
+| 19 | Fat from 30-41% to mostly 25-32% of calories, by three fixes in a row, each one measured on generated weeks before the next: sides were taking the relaxation meant for an empty slot, the relaxed tier then ignored fat entirely, and an unpaced ceiling let breakfast and lunch spend dinner's share. Then **two more fixes that never took effect**: the macro split had been sent to Clara as "~0% protein, ~0% carbs, ~0% fat" in both generation prompts (`Math.round` of a fraction), and cycle 15's weight-unit toggle was overwritten to "lbs" by the server on every save. A brand-new FREE account went through the whole cold start for the first time: every misinput refused, focus now on the field, first week built, the 2nd week and the 6th Clara message refused with the right numbers and /pricing — and oatmeal served as a dinner side | fat pacing + least-fat relaxed tier + no relaxation for sides; protein-dense mains preferred; `macroSplitLine`; one weight-unit rule; onboarding focus and linked errors; porridge excluded from lunch/dinner padding; `formatBmi`; journal dots 44px; es/ru/en pricing from AI_LIMITS; a phone hit-test of /meal-plan at 0 overlaps, 0 under 44 |
+
 ## What the cycles taught
 
 A green test suite proves nothing about content: 1,284 tests passed while a week
@@ -268,6 +270,13 @@ day-fat budget had a paragraph of comment explaining why it existed and not one
 line that used it. `tsc` does not warn about an unused `const` inside a
 function body here, and no test can fail on a rule that is never called. When a
 fix adds a threshold, grep for its READ, not its definition.
+
+**A number printed from a fraction is a percentage of nothing.** `macro.fat` is
+0.25, and `${Math.round(macro.fat)}%` is "0%". Two prompts said it to the model
+for their whole lives, and the model's dishes were then judged against the real
+target — so every rejection it caused looked like the model's fault. Anything
+that turns a stored number into text for a reader (a person or a model) needs
+one test that reads the text.
 
 **Relabelling is not repairing.** A dish filed under the wrong slot is repaired
 by moving it. A dish that is wrong in every slot is repaired by retiring it, and

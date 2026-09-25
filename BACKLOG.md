@@ -88,9 +88,9 @@ already applied to the shared Neon DB, so landing is code-only. **[verified]**
 
 ---
 
-## 0b. Open QA defects (cycles 8-18, 2026-09-25)
+## 0b. Open QA defects (cycles 8-19, 2026-09-25)
 
-Eighteen fix→test cycles against the live database. The cycle procedure is
+Nineteen fix→test cycles against the live database. The cycle procedure is
 `docs/qa/beta-test-plan.md` → "How a cycle runs"; this section is the list it
 edits at the START of each one.
 
@@ -300,15 +300,17 @@ or reproduced; where a bot could not pin something down, it says so.
       `--apply`; then `scripts/repair-amounts.ts` the same way (the rows the
       cycle-17 bots stored before the write-path fix, e.g. `0.05 teaspoon
       pepper`). Both write a backup to /tmp first.
-- [ ] **A fresh week's fat is 30-41%**, three of seven days at or above the 38%
+- [x] **A fresh week's fat is 30-41%**, three of seven days at or above the 38%
       top of the band cycle 15 claimed (Sep 29 38%, Sep 30 39%, Oct 1 41%, on
       days of 1401-1748 kcal). One week — per "report the range, not the run",
       two more are needed before tuning anything. Also worth reading: the same
       days sit 150-500 kcal under the 1895 kcal target.
-- [ ] **"Maintain — you're at a healthy weight" beside "TARGET WEIGHT 75 kg"
+      **Cycle 19:** three causes, fixed in turn and measured on 7 generated weeks. (1) sides/dessert/filler took the last tier's fat relaxation, meant only for an EMPTY slot; (2) that tier then chose as if fat did not matter — every day over the ceiling got there that way; (3) the ceiling was whole-day only, so breakfast and lunch spent it and dinner fell to the relaxed tier. Now paced by calories planned so far. qa.desktop: 103-170% of the fat target → 79-134% (mostly 98-119%, 25-32% of kcal), calories 86-105%. qa.variant (pescatarian, 2,959 kcal, 222 g protein) stays 113-134% fat and 49-62% protein: see the pool-bound item below.
+- [x] **"Maintain — you're at a healthy weight" beside "TARGET WEIGHT 75 kg"
       and "CURRENT WEIGHT 80 kg"** on /overview (qa.nocond). Two statements on
       one card that cannot both be the plan. Needs a product answer first: does
       a healthy-BMI user with a lower goal weight get a deficit or not?
+      **Cycle 19:** not a plan defect: with no goal set and a healthy BMI the engine maintains, and the tile labelled the ideal-weight DEFAULT as the target. A maintain plan's target now shows the current weight ("keep steady") on /overview and /profile, and /profile's "your plan targets less" follows the plan's direction. Measured on qa.nocond.
 - [x] **An ENDED plan stranded the user.** Opening /meal-plan on Sep 25 with a
       plan for Sep 11-17 said "That day is beyond your current week" about
       TODAY, with no generate control anywhere on the page. The cycle-17 guard
@@ -320,13 +322,57 @@ or reproduced; where a bot could not pin something down, it says so.
       44px now, measured; the ratings announce aria-pressed.
 - [x] **cook-my-day's cuisine chips were 34px on touch.** 44px, measured.
 
+**Open / found by cycle 19**
+- [x] **The macro split reached Clara as "~0% protein, ~0% carbs, ~0% fat".**
+      Both the catalog top-up and the swap prompt printed `Math.round()` of a
+      FRACTION (0.30). Every generated dish and every swap, for as long as the
+      line existed. `macroSplitLine` takes either form and is tested.
+- [x] **The weight-unit toggle never persisted** — cycle 15's fix was a third
+      fix that never took effect: Patient.weightUnit is the STORAGE unit and the
+      server writes "lbs" on every save. /overview read kg from the height,
+      /profile read lbs. One rule now, the toggle remembered on the device (and
+      the control says so). Measured: both screens agree, both follow a toggle.
+- [ ] **A per-account weight-unit preference needs a column** (a migration on
+      the production DB, so not the agent's to run). Until then the choice is
+      per device.
+- [ ] **A Clara swap that finds nothing still costs a swap.** Asked for
+      "something rich and creamy" on a day with 27 g of fat left, Clara returned
+      four dishes over it — even once the prompt states the room in grams. The
+      422 now says so ("would take today past your fat target — try asking for
+      something lighter") instead of blaming the slot. Refunding the allowance
+      needs a decrement the sliding-window limiter does not have.
+- [ ] **A high-target, narrow basket cannot reach its macros.** qa.variant:
+      pescatarian, shellfish-free, 16 ingredients, 2,959 kcal with 222 g
+      protein. Over 4 generated weeks protein landed at 49-62% of target and fat
+      at 113-134%, calories 80-93%. The 1,000+ kcal lunches that basket allows
+      are ~40% fat and ~50 g protein each; four slots of them cannot reach the
+      target. Fixed what was the builder's (protein-light mains preferred
+      against — "Brown Rice and Roasted Vegetables", 14.7 g, is no longer a
+      dinner when tofu exists). What is left is the pool, and the honest
+      options are product ones: fewer grams asked of a narrow basket, or Clara
+      writing lean high-protein dishes to order.
+- [x] **Oatmeal padded a 7pm chicken dinner** (first free-tier week). Porridge
+      is never a lunch/dinner side or filler now; test verified by
+      reintroducing the bug.
+- [x] **Onboarding left focus on Continue after a refused step**, and the body
+      step's inputs had no ids, so their errors were not linked. Fixed and
+      measured: every misinput in the test plan's list refused, with focus on
+      the field. A typed negative weight said "please enter your weight" and
+      now gives the range; the goal step's "never crash-dieting" line no
+      longer sits under a refusal.
+- [x] **"BMI 25.0 (Healthy)"** for 24.99 — truncated now, so the number and
+      the class agree.
+- [x] **"0/5 meals logged" over four meals** — it counts dishes, and says so.
+
 **Still open from before**
-- [ ] **The journal's five step dots are 32px wide** (44 tall). Five 44px
+- [x] **The journal's five step dots are 32px wide** (44 tall). Five 44px
       targets need 220px inside a 46px control; fixing it properly means
       redesigning that progress row.
-- [ ] **es and ru pricing copy is a different, older feature list.** A Spanish
+      **Cycle 19:** 44x44 on a coarse pointer — they fit after all (5x44 + 4x8 = 252px). Measured at phone, landscape and tablet: no overlap, every tap selects the dot tapped.
+- [x] **es and ru pricing copy is a different, older feature list.** A Spanish
       reader is shown allowances that are not the ones enforced. Needs a real
       translation pass, not a guess.
+      **Cycle 19:** rewritten in both, and all three languages now take the numbers from AI_LIMITS (ICU plurals; Russian one/few/many). A test formats every locale with the enforced limits; /pricing checked with NEXT_LOCALE=en|es|ru.
 - [ ] **A stale plan can read 166% of its fat target** (101 g against 61 g).
       The fat ceiling landed in cycle 15, so weeks built before it keep their
       numbers. A freshly generated week still needs measuring against the
@@ -367,31 +413,35 @@ second person to see it having no idea it was seen before.
       target" above "easing toward 1788 kcal/day". Both are correct (1981 − 1788
       = 193 kcal/day = 0.386 lb/wk) and the card never says why they differ.
       **Cycle 18:** the pill reads "today, moving gradually to 1688 kcal/day". Measured.
-- [ ] **Some ingredient rows lost their unit** and render as a bare `2` or `½`.
-- [ ] **`View full week`'s expander overlaps `Next day` by 40×6px** on
+- [x] **Some ingredient rows lost their unit** and render as a bare `2` or `½`.
+      **Cycle 19:** a counted food (eggs, bread) gets its unit at render. A bare "½" beside rice is REFUSED: the unit is unknowable, and inventing one is the "199 dishes with no quantity" case.
+- [x] **`View full week`'s expander overlaps `Next day` by 40×6px** on
       /meal-plan. `Next day` is later in the DOM and wins that band, so it costs
       `View full week` ~6px of its own hit area and steals nothing — the only
       overlap left after cycle 17, and the reason the measurement now reports
       overlaps rather than just sizes.
+      **Cycle 19:** the row clears it. A phone hit-test of /meal-plan: 8 controls, 0 overlaps, 0 under 44 (the dish rows themselves were 42-43 and are 44 now).
 
 ### Not tested — the coverage gaps this pass leaves behind
 
 The next cycle starts here. None of this is a clean bill of health; it is
 untouched ground.
 
-- [ ] **The FREE tier's own strings were never exercised.** Both fixture
+- [x] **The FREE tier's own strings were never exercised.** Both fixture
       accounts are on coupons, so `tier: "beta"` answered every guard: the
       pantry card was verified as "Twice a day" (correct for beta, and it did
       match what the guard enforced at 2), and "your 1 free cook-my-day plan"
       was never rendered. A genuinely free fixture is needed — see the process
       item below.
+      **Cycle 19:** a genuinely free account (qa.free.20260925@wondish.io, Clerk dev instance, no coupon) went through the whole cold start. "Once a day" on cook-my-day; the 2nd week refused "You've used your 1 free new week for this week. Plus gives you 5 a week." + /pricing; the 6th Clara message refused "…5 free Clara messages for today. Plus gives you 25 a day." + /pricing.
 - [x] **The empty-state "Generate my whole week" control.** Both accounts had an
       active plan, so only two of the three new-week controls were exercised.
       The third is verified by reading the code, not by pressing it.
       **Cycle 18:** pressed by the cycle-18 pass: 200, 32 dishes, 62s.
-- [ ] **/dish-checker in conversation.** Only its 4 resting controls were
+- [x] **/dish-checker in conversation.** Only its 4 resting controls were
       audited; no Clara messages were sent, so its in-conversation surfaces,
       streaming states and refusals are unaudited.
+      **Cycle 19:** a real question answered against the profile; a blank message sends nothing; prompt injection declined ("My instructions are for me to follow, not to share"); Spanish answered in Spanish; first words in 3-5 s once warm (15-19 s was dev compile).
 - [ ] **Fraction rendering on a live card.** `formatQuantity` is covered by
       unit tests and was confirmed on generated dishes by bot 1, but ⅓/⅔ —
       the values the backfill actually wrote — appear on repaired CATALOG rows,
@@ -404,11 +454,12 @@ untouched ground.
       built before the ceiling landed.
       **Cycle 18:** MEASURED, and it does not hold — see the new open item.
 
-- [ ] **Cycle 18's fixes that no bot has exercised live**: a Clara swap under
+- [x] **Cycle 18's fixes that no bot has exercised live**: a Clara swap under
       the new fat rule (the rule is unit-tested, the route is not); a
       cook-my-day that comes in under target (the caveat has never rendered);
       a blocked New week pressed with an unready basket (both fixtures were
       ready). Each costs an allowance, so each wants its own fixture.
+      **Cycle 19:** exercised. Blocked New week (qa.desktop's basket cut to 5 and restored exactly): the live region says "Can't build a week yet. Add 7 more ingredients.", 0 requests. cook-my-day: 4/4, 3008/2817 kcal (over, so the under-target caveat still has not rendered — it is typed and read, not seen). Clara swap: see the new items.
 
 ### Refused by design — listed so nobody re-opens them as bugs
 Each was measured and left deliberately; the reason is the entry.
