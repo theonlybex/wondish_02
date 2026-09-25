@@ -117,6 +117,8 @@ effect.
 
 | 13 | **A plan served 70 g of raw salmon** — flaked onto cooked oats, with a 12-minute cook time on the card and no rule in the codebase able to see it, because every rule was about plausibility and none about safety. Fat 34.5-46% of calories on 7 of 7 days against a 25% target, with the app's own rail printing 133-175% in red. Every vegetable priced through ONE flat row, so a plate of tomatoes declared 3 g of protein over food holding 1.4 and "Spinach 2 cup" weighed 240 g instead of 60. Clara's per-dish sodium wrong by 2.5× and self-contradictory inside one reply ("1 tsp ≈ 5,800 mg of sodium"). A breakfast of oats and two slices of toast. "Cheese and Bell Pepper Oat Bowl" with no cheese. Snack SLOTS at 1.73-1.99× their cap because the ceiling was per-dish. And two defects I had introduced in cycle 11: "½ tablespoon" invisible to a digit-only regex, and clamped amounts like "0.37 tablespoon" | a safety rule (`rawProteinNeverCooked`), reached only after two earlier heuristics were measured and rejected for flagging correctly-cooked dishes; four vegetable groups with real cup weights and macros to a tenth of a gram; per-dish sodium handed to Clara as a number; a breakfast must carry protein of some kind and "chicken" joins the dinner proteins; category words satisfied by any member and refused when there is none; the calorie window subtracts what the slot already holds; unicode fractions counted and clamped amounts rounded to measurable eighths |
 
+| 14 | Two QA bots, run in parallel against a frozen commit, found 35 defects — **three of them created by cycles 12 and 13's own fixes.** A category rule shipped that morning was wrong in BOTH directions (`\bberrys?\b` cannot match "berries", so the lie passed; and the token rule then refused "Oatmeal with Berries" over listed *Blueberries*). Cycle 13's slot moves had **relocated** 27 breakfast-shaped dishes into Lunch and Dinner rather than repairing them — "Oatmeal with Carrots and Ground Beef" became a 373 kcal lunch where no rule could see it. A snack had a clock and no size, so 104 of 143 were plated meals up to 876 kcal. Plus: a swap that returned the dish it replaced, a blank name saving as "success", three screens contradicting each other about one basket, the dish name at 11px and its calories at 9px on a phone, a 28×26px hamburger, and `\btortilla\b` missing "Flour tortillas" | category patterns written out with the check as sole authority; the oats-and-meat shape retired in every slot; `SNACK_MAX_KCAL`; the swap refuses its own predecessor and now sees the day's fat; both ends refuse a blank name; one `basketBlockerText`; a 12px floor below 480px and 44px hit areas; negations and free-from products exempted; units pluralised; Clara given tomorrow |
+
 ## What the cycles taught
 
 A green test suite proves nothing about content: 1,284 tests passed while a week
@@ -168,9 +170,21 @@ and two tests hold the catalog's own spellings.
 **Every fix is a candidate defect.** Three of the changes in cycle 11 had to be
 repaired in cycles 12 and 13: a clamp that never reached a fixpoint, a
 digit-only regex that made "½ tablespoon" invisible and let the clamp contradict
-a recipe's own steps, and clamped amounts no kitchen can measure. All three were
-found by QA or by running the backfill twice — not by the tests written
-alongside them.
+a recipe's own steps, and clamped amounts no kitchen can measure. Cycle 13 then
+shipped a category rule that was wrong in both directions within hours, and
+relocated 27 bad dishes instead of retiring them. All of it was found by QA or by
+running the backfill twice — none of it by the tests written alongside.
+
+The habit that works: after writing a rule, run it over the whole live
+catalog and READ what it flags. Every time that was done, it found something —
+a "Scramble" stripped from 81 correctly-named dishes, three properly-cooked
+dishes condemned as raw, four correct products refused as untrue. Every time it
+was skipped, QA found it instead, a cycle later.
+
+**Relabelling is not repairing.** A dish filed under the wrong slot is repaired
+by moving it. A dish that is wrong in every slot is repaired by retiring it, and
+moving that one just puts it where no rule is looking. The difference is whether
+the SLOT was the problem.
 
 **A predicate that silently returns false for correct input is a bug, even when
 every caller happens to be correct.** isCoveredByBasket cost a day twice over —
