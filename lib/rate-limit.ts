@@ -71,6 +71,39 @@ let warnedMemoryFallbackInProd = false;
  * @param windowSec   window length in seconds
  * @param backendOverride  test seam: replaces the Upstash/memory backend
  */
+/**
+ * How many of a bucket's tokens are left, WITHOUT spending one.
+ *
+ * @upstash/ratelimit's limit() always consumes, which forced the AI guard to
+ * charge a user's allowance before knowing whether the request would produce
+ * anything — so three failed dish swaps cost a QA account all three of its
+ * daily swaps and changed nothing. getRemaining() reads the window instead.
+ *
+ * Returns null when the backend cannot answer (dev memory fallback, Redis
+ * down): the caller then proceeds, because refusing a user over a read we
+ * could not make is worse than letting one extra request through — and the
+ * charge-on-success path still meters it.
+ */
+export async function remainingTokens(
+  name: string,
+  identifier: string,
+  limit: number,
+  windowSec: number
+): Promise<number | null> {
+  if (!redis) {
+    // Dev memory fallback keys by the same JSON shape rateLimit uses.
+    const entry = memStore.get(JSON.stringify([name, identifier]));
+    if (!entry || Date.now() > entry.resetAt) return limit;
+    return Math.max(0, limit - entry.count);
+  }
+  try {
+    const { remaining } = await getUpstashLimiter(name, limit, windowSec).getRemaining(identifier);
+    return remaining;
+  } catch {
+    return null;
+  }
+}
+
 export async function rateLimit(
   name: string,
   identifier: string,

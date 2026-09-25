@@ -135,29 +135,30 @@ export interface MacroFloor {
 const isMassUnit = (unit: string | null | undefined): boolean =>
   /^\s*(g|gram|grams|gr|kg|kilogram|kilograms|oz|ounce|ounces|lb|lbs|pound|pounds)\s*$/i.test(unit ?? "");
 
-// Volume needed evidence, and the steps supply it.
+// A grain measured by volume is DRY unless the recipe says otherwise.
 //
-// A cup of rice is ~185 g dry and ~195 g COOKED — a threefold difference in
-// carbohydrate — so the first version of this module excluded volume
-// altogether and asked the prompt for grams instead. Three generated weeks
-// later the prompt had produced 8 to 11 cup-measured grain rows every time,
-// and those were exactly the understated dishes: ratios of 0.29 to 0.63
-// against the floor, ~200 kcal/day, while every gram-stated dish was clean.
-// Excluding volume did not avoid the ambiguity, it just exempted the defect.
+// This started as the opposite default. A cup of rice is ~185 g dry and ~195 g
+// cooked with a third of the carbohydrate, so volume was excluded entirely and
+// the prompt was asked for grams; then the steps were read as evidence that the
+// grain started dry. Both versions kept the same hole, and four generated weeks
+// measured it: every cup-measured grain row was understated (ratios 0.29-0.63),
+// every gram-measured row was accurate, and no week ever produced a cup row
+// that meant cooked rice. The evidence-matching only moved the boundary around
+// — "Cook 0.25 cup dry brown rice" and "Cook the jasmine rice in a rice cooker"
+// both slipped past it, and both dishes declared less carbohydrate for the
+// whole plate than their rice alone contains.
 //
-// The steps settle it. A recipe that rinses the grain, boils water at roughly
-// two parts to one, simmers it or sends the cook to the package directions is
-// starting from DRY grain, whatever unit the row uses. That is not a guess
-// about the model's intent; it is what the instructions say to do.
-const COOKS_FROM_DRY =
-  /\b(according to package|package directions|rinse[sd]? the|bring .{0,30}water to a boil|add .{0,40}water|simmer|cook the (rice|pasta|grain|quinoa|oats|lentils)|cook (rice|pasta|quinoa|oats|lentils|brown rice|basmati rice|jasmine rice|wild rice))\b/i;
-const ALREADY_COOKED = /\b(pre-?cooked|cooked (rice|pasta|quinoa|grain)|leftover (rice|pasta)|day-old rice)\b/i;
+// So the default inverts to match the data: dry, unless a step actually says
+// the grain is already cooked. That is the reading under which the numbers are
+// right when they are right, and it fails safe — a dish that really did mean
+// cooked rice is rejected as understating itself and regenerated, which costs
+// one dish; the other way round costs a user 250 kcal a day they never see.
+const ALREADY_COOKED =
+  /\b(pre-?cooked|already cooked|cooked (rice|pasta|quinoa|grain|noodles)|leftover (rice|pasta)|day-old rice|from the fridge)\b/i;
 
 export function grainIsMeasuredDry(steps: readonly string[] | null | undefined): boolean {
-  if (!steps || steps.length === 0) return false;
-  const text = steps.join(" ");
-  if (ALREADY_COOKED.test(text)) return false;
-  return COOKS_FROM_DRY.test(text);
+  if (!steps || steps.length === 0) return true; // no steps to contradict it
+  return !ALREADY_COOKED.test(steps.join(" "));
 }
 
 /**
@@ -319,15 +320,42 @@ export const PRICING_TOLERANCE = 0.25;
  * cooked weights, cuts and absorbed oil all move the true figure a little.
  */
 export function macrosDisagreeWithPricing(
-  declared: { calories?: number | null },
+  declared: { calories?: number | null; protein?: number | null; carbs?: number | null; fat?: number | null },
   ingredients: readonly { name: string; quantity?: number | null; unit?: string | null }[],
   steps?: readonly string[] | null
 ): string | null {
-  const kcal = declared.calories ?? 0;
-  if (kcal <= 0) return null;
   const priced = priceDish(ingredients, steps);
   if (!priced || priced.coverage < PRICING_COVERAGE_MIN) return null;
-  const off = Math.abs(priced.calories - kcal) / kcal;
-  if (off <= PRICING_TOLERANCE) return null;
-  return `declared ${Math.round(kcal)} kcal, amounts price at ${priced.calories} kcal (${off > 0 ? "+" : ""}${Math.round(((priced.calories - kcal) / kcal) * 100)}%)`;
+
+  const kcal = declared.calories ?? 0;
+  if (kcal > 0) {
+    const off = Math.abs(priced.calories - kcal) / kcal;
+    if (off > PRICING_TOLERANCE) {
+      return `declared ${Math.round(kcal)} kcal, amounts price at ${priced.calories} kcal (${Math.round(((priced.calories - kcal) / kcal) * 100)}%)`;
+    }
+  }
+
+  // Per MACRO, not just per calorie. Offsetting errors cancel: a lunch
+  // declaring 52 g of protein against 36 g available and 16 g of fat against
+  // 26 g came out within 1% on calories, because +16 g of protein (64 kcal)
+  // and -10 g of fat (90 kcal) very nearly annul each other. Three dishes in
+  // one week did that, and protein is the number this audience watches — the
+  // macro rings are the whole reason they are here.
+  for (const [label, got, want] of [
+    ["protein", declared.protein, priced.protein],
+    ["carbs", declared.carbs, priced.carbs],
+    ["fat", declared.fat, priced.fat],
+  ] as const) {
+    if (got == null) continue;
+    const gap = Math.abs(got - want);
+    // Both a floor in grams and a ratio: 4 g out on 8 g of fat is noise on the
+    // plate, 16 g out on 36 g of protein is a third of a meal's worth.
+    if (gap <= MACRO_GRAM_SLACK) continue;
+    if (want > 0 && gap / want <= PRICING_TOLERANCE) continue;
+    return `declared ${Math.round(got)}g ${label}, amounts price at ${want}g`;
+  }
+  return null;
 }
+
+/** Grams of any single macro that are never worth rejecting a dish over. */
+const MACRO_GRAM_SLACK = 6;

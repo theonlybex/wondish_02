@@ -323,7 +323,7 @@ export function toPlausibleDish(r: FridgeRecipe, mealTypeName: string): Plausibl
     name: r.name,
     description: r.description ?? null,
     steps: r.steps ?? null,
-    macros: r.perServing ? { carbs: r.perServing.carbs, fat: r.perServing.fat } : null,
+    macros: r.perServing ? { protein: r.perServing.protein, carbs: r.perServing.carbs, fat: r.perServing.fat } : null,
     calories: r.perServing?.calories ?? null,
     mealTypeName,
     prepMinutes: r.prepMinutes ?? null,
@@ -506,10 +506,17 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     // gate rejected a dish for a macro/amount contradiction it was about to
     // fix by pricing: acceptance fell to 1 of 29 generated dishes, which
     // starved the pool far worse than the defect being caught.
+    //
+    // A consequence worth naming, because it reads like a bug: for a priceable
+    // dish, macrosDisagreeWithPricing can never fire HERE — the values it would
+    // compare are the ones pricing just produced, so the gap is zero by
+    // construction. That is correct. The declared numbers are not what gets
+    // stored, so grading them would be theatre; the check earns its keep at
+    // SELECTION, where the stored numbers are all there is.
     const candidate = toPlausibleDish(r, slot.mealTypeName);
     const priced = pricedMacros(r);
     if (priced) {
-      candidate.macros = { carbs: priced.carbs, fat: priced.fat };
+      candidate.macros = { protein: priced.protein, carbs: priced.carbs, fat: priced.fat };
       candidate.calories = priced.calories;
     }
     const problem = dishProblem(candidate, args.catalogFoodTokens ?? new Set());

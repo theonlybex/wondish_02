@@ -413,7 +413,7 @@ export async function buildMealPlanMenus(
         name: r.name ?? "",
         description: r.description,
         steps: r.steps,
-        macros: { carbs: r.carbs, fat: r.fat },
+        macros: { protein: r.protein, carbs: r.carbs, fat: r.fat },
         calories: r.calories,
         mealTypeName: (r.mealTypeId && mealTypeNameById.get(r.mealTypeId)) || "",
         prepMinutes: r.prepTime ?? null,

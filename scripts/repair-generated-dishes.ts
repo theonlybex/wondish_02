@@ -18,11 +18,21 @@
 //
 // Every change is dumped to a timestamped JSON file before it is applied, so a
 // bad run can be undone by hand.
+//
+// This is a BACKFILL, not a dependency. Two things make the catalog correct
+// without it: generation prices every dish from its own amounts at the write
+// point, and selection refuses any priceable dish whose stored numbers
+// disagree with the arithmetic (lib/dish-plausibility.ts). So a stale row is
+// never served — it is simply never selected. Running this returns those rows
+// to the pool instead of leaving them stranded, which matters for variety, and
+// it uses the SAME threshold the runtime gate uses so the two cannot drift.
+// QA flagged an earlier version where they differed (gate 25%, script 5%): the
+// dishes in between shipped wrong until someone remembered to type --apply.
 import { writeFileSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import { ingredientTokens } from "../lib/basket-match";
-import { priceDish, PRICING_COVERAGE_MIN, PRICING_TOLERANCE } from "../lib/staple-density";
+import { priceDish, PRICING_COVERAGE_MIN, macrosDisagreeWithPricing } from "../lib/staple-density";
 import { BASKET_STAPLES } from "../lib/basket-coverage";
 
 for (const line of readFileSync(".env.local", "utf8").split("\n")) {
@@ -96,7 +106,16 @@ async function main() {
       priced.calories >= 80 &&
       priced.calories <= 1400 &&
       r.calories &&
-      Math.abs(priced.calories - r.calories) / r.calories > PRICING_TOLERANCE / 5
+      // Same threshold the runtime gate uses, and the same per-macro check —
+      // not a fifth of it. QA named the gap between the two as the defect: the
+      // gate tolerated 25% while this script corrected at 5%, so the dishes in
+      // between were repaired only when a person remembered to run --apply,
+      // and 95 needed it in a single observed run.
+      macrosDisagreeWithPricing(
+        { calories: r.calories, protein: r.protein, carbs: r.carbs, fat: r.fat },
+        r.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity, unit: ri.unit })),
+        r.steps
+      ) !== null
     ) {
       macroFixes.push({
         id: r.id, name: r.name,

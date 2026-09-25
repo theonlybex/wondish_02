@@ -100,8 +100,18 @@ export async function POST(
     );
   }
 
-  // AI spend guard (charge-before-model): per-user daily swap quota + global
-  // ceiling. A rejected request costs zero tokens.
+  // Charge-before-model, still: the allowance is the Anthropic bill cap, and a
+  // failed attempt has already paid for its tokens.
+  //
+  // A QA account lost all three of its daily swaps to three refusals that
+  // changed nothing, and the right answer — bill only on delivery, bound the
+  // token spend with a separate cheap attempt counter — does not fit the $30
+  // per paying user per month ceiling this table is built to (lib/ai-budget.
+  // test.ts): any second bucket, at any useful size, puts premium worst case at
+  // $31-33. So the reliability comes from the model call instead (see the
+  // candidate count in the prompt below), and the refusal now says plainly that
+  // the attempt was spent. If that trade is wrong, the lever is the ceiling or
+  // the swap limit, not a hidden extra bucket.
   const guard = await guardAiSpend(userId, "swap");
   if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
@@ -171,8 +181,9 @@ export async function POST(
     // total failure: a QA account got 422 on three consecutive swaps, each
     // billed against a 3-per-day allowance, with a message blaming the user's
     // ingredients for a chicken dish their basket plainly supported. Asking for
-    // four costs one call and turns "all or nothing" into "best of four".
-    `You are Clara, Wondish's nutrition assistant. Suggest FOUR different ${cuisine ? cuisine + " " : ""}${mealTypeName.toLowerCase()} dishes to replace one the user didn't want. Vary the protein and the method between them; the app picks whichever fits the rest of the day.`,
+    // two costs a little more output on one call and turns "all or nothing"
+    // into "best of two" — four would be better and does not fit the budget.
+    `You are Clara, Wondish's nutrition assistant. Suggest TWO different ${cuisine ? cuisine + " " : ""}${mealTypeName.toLowerCase()} dishes to replace one the user didn't want. Vary the protein and the method between them; the app picks whichever fits the rest of the day.`,
     `Rules:`,
     `- mealType must be exactly "${mealTypeName}".`,
     `- Target ≈${targetCalories} kcal per serving (within ±20%).`,
@@ -203,7 +214,7 @@ export async function POST(
     const anthropic = createAnthropic({ timeout: 20_000, maxRetries: 0 });
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 4096, // four candidate dishes with their steps
+      max_tokens: 3072, // two candidate dishes with their steps
       thinking: { type: "disabled" },
       system,
       tools: [
@@ -248,7 +259,7 @@ export async function POST(
                   const dish = toPlausibleDish(r, mealTypeName);
                   const priced = pricedMacros(r);
                   if (priced) {
-                    dish.macros = { carbs: priced.carbs, fat: priced.fat };
+                    dish.macros = { protein: priced.protein, carbs: priced.carbs, fat: priced.fat };
                     dish.calories = priced.calories;
                   }
                   return dishProblem(dish, catalogFoodTokens);
@@ -271,11 +282,17 @@ export async function POST(
     console.info(
       `[clara-swap] no candidate for ${mealTypeName} (menu ${params.menuId}): ${rejections.join("; ") || "model returned nothing usable"}`
     );
+    // Say what happened, including that it cost one of the day's swaps. The old
+    // copy blamed the user's ingredients for every failure mode — a QA account
+    // was told its basket couldn't make a chicken dish while holding two kinds
+    // of chicken — and said nothing about the allowance it had just spent.
+    const blamesBasket = rejections.some((r) => r.includes("out-of-basket"));
     return NextResponse.json(
       {
-        error: basket.length > 0
-          ? "Clara couldn't make that from your ingredients — add what you need under Ingredients, or try a different request."
-          : "Clara couldn't find a safe alternative — try rewording your request.",
+        error:
+          basket.length > 0 && blamesBasket
+            ? "Clara could only think of dishes that need something you don't have. That used one of today's swaps — add an ingredient or two under Ingredients and the next one has more to work with."
+            : "Clara couldn't find an alternative that fits this slot. That used one of today's swaps — try again with a different request, or pick a cuisine to point her somewhere new.",
       },
       { status: 422 }
     );

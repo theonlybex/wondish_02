@@ -1,4 +1,4 @@
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimit, remainingTokens } from "@/lib/rate-limit";
 import { prisma } from "@/lib/db";
 import { hasActivePremium } from "@/lib/auth";
 
@@ -93,6 +93,7 @@ export const AI_LIMITS: Record<string, AiLimit> = {
   planGen: { bucket: "ai-plangen", window: "week", free: 1, premium: 5, label: "new weeks" },
   // Clara single-dish swaps and "cuisine for today".
   swap: { bucket: "ai-swap", window: "day", free: 2, premium: 5, label: "dish swaps" },
+
 } as const;
 
 export type AiGuardKind = keyof typeof AI_LIMITS;
@@ -200,6 +201,30 @@ type Limiter = (name: string, identifier: string, limit: number, windowSec: numb
  * drain the global bucket), then the global daily ceiling. `tier` may be
  * passed by routes that already know it; otherwise it's looked up.
  */
+/**
+ * Is there allowance left, WITHOUT spending any?
+ *
+ * For the two-phase case: check before calling the model, charge once the
+ * model has produced something usable. The swap route needs both halves — see
+ * AI_LIMITS.swapAttempt for why.
+ */
+export async function remainingAiSpend(
+  userId: string,
+  kind: AiGuardKind,
+  tier?: AiTier
+): Promise<AiGuardResult> {
+  const t = tier ?? (await resolveAiTier(userId));
+  const { max, windowSec } = limitFor(kind, t);
+  const left = await remainingTokens(`${AI_LIMITS[kind].bucket}-${t}`, userId, max, windowSec);
+  // null = the backend could not answer. Proceed rather than refuse on a read
+  // we did not manage to make; the charge on success still meters it.
+  if (left !== null && left <= 0) {
+    const body = quotaExceededBody(kind, t);
+    return { ok: false, status: 429, error: body.error, body };
+  }
+  return { ok: true, tier: t };
+}
+
 export async function guardAiSpend(
   userId: string,
   kind: AiGuardKind,

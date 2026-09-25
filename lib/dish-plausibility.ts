@@ -68,7 +68,7 @@ export interface PlausibleDish {
   /** The cooking steps, when the caller has them. */
   steps?: readonly string[] | null;
   /** Declared per-serving macros, for the arithmetic in lib/staple-density.ts. */
-  macros?: { carbs?: number | null; fat?: number | null } | null;
+  macros?: { protein?: number | null; carbs?: number | null; fat?: number | null } | null;
   /** Declared per-serving calories, which scale the salt cap. */
   calories?: number | null;
   /**
@@ -475,7 +475,14 @@ export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): D
     return "macros-contradict-amounts";
   }
   // And the other direction, for a dish the table can price in full.
-  if (d.generated && macrosDisagreeWithPricing({ calories: d.calories }, d.ingredients, d.steps)) {
+  if (
+    d.generated &&
+    macrosDisagreeWithPricing(
+      { calories: d.calories, protein: d.macros?.protein, carbs: d.macros?.carbs, fat: d.macros?.fat },
+      d.ingredients,
+      d.steps
+    )
+  ) {
     return "macros-contradict-amounts";
   }
 
