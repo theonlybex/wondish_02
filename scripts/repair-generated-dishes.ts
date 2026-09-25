@@ -22,6 +22,7 @@ import { writeFileSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import { ingredientTokens } from "../lib/basket-match";
+import { priceDish, PRICING_COVERAGE_MIN, PRICING_TOLERANCE } from "../lib/staple-density";
 import { BASKET_STAPLES } from "../lib/basket-coverage";
 
 for (const line of readFileSync(".env.local", "utf8").split("\n")) {
@@ -66,14 +67,44 @@ async function main() {
     where: { isPublic: true, tags: { hasSome: ["clara", "clara-swap"] } },
     select: {
       id: true, name: true, calories: true, protein: true, carbs: true, fat: true,
-      ingredients: { select: { ingredientId: true, quantity: true, unit: true, ingredient: { select: { name: true } } } },
+      steps: true,
+    ingredients: { select: { ingredientId: true, quantity: true, unit: true, ingredient: { select: { name: true } } } },
     },
   });
 
   const calorieFixes: { id: string; name: string; from: number; to: number }[] = [];
+  // Whole-dish repricing: where the table can price every macro-bearing
+  // ingredient, the dish's own amounts decide its nutrition. reconcileCalories
+  // (below) only made the numbers agree with EACH OTHER, which is why QA still
+  // found a lunch declaring 82 g of carbohydrate over ~11 g of vegetables and
+  // two oat breakfasts declaring double their oats: consistent, and wrong.
+  const macroFixes: {
+    id: string; name: string;
+    from: { calories: number | null; protein: number | null; carbs: number | null; fat: number | null };
+    to: { calories: number; protein: number; carbs: number; fat: number };
+  }[] = [];
   const linkDrops: { recipeId: string; name: string; ingredientId: string; ingredient: string; quantity: number | null; unit: string | null }[] = [];
 
   for (const r of generated) {
+    const priced = priceDish(
+      r.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity, unit: ri.unit })),
+      r.steps
+    );
+    if (
+      priced &&
+      priced.coverage >= PRICING_COVERAGE_MIN &&
+      priced.calories >= 80 &&
+      priced.calories <= 1400 &&
+      r.calories &&
+      Math.abs(priced.calories - r.calories) / r.calories > PRICING_TOLERANCE / 5
+    ) {
+      macroFixes.push({
+        id: r.id, name: r.name,
+        from: { calories: r.calories, protein: r.protein, carbs: r.carbs, fat: r.fat },
+        to: priced,
+      });
+      continue; // repriced in full; no need to reconcile calories separately
+    }
     const derived = (r.protein ?? 0) * 4 + (r.carbs ?? 0) * 4 + (r.fat ?? 0) * 9;
     if (r.calories && derived > 0 && Math.abs(derived - r.calories) > r.calories * TOLERANCE) {
       const to = Math.round(derived);
@@ -90,7 +121,11 @@ async function main() {
   }
 
   console.log(`generated dishes: ${generated.length}`);
-  console.log(`calories to reconcile: ${calorieFixes.length}`);
+  console.log(`dishes to reprice from their amounts: ${macroFixes.length}`);
+  for (const f of macroFixes.slice(0, 8)) {
+    console.log(`  ${f.from.calories}→${f.to.calories} kcal, C${f.from.carbs}→${f.to.carbs} P${f.from.protein}→${f.to.protein} F${f.from.fat}→${f.to.fat}  ${f.name}`);
+  }
+  console.log(`calories to reconcile (not priceable): ${calorieFixes.length}`);
   for (const f of calorieFixes.slice(0, 8)) {
     console.log(`  ${f.from} → ${f.to}  (${((f.from - f.to) / f.from * 100).toFixed(1)}% over)  ${f.name}`);
   }
@@ -107,9 +142,17 @@ async function main() {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backup = `/tmp/wondish-dish-repair-${stamp}.json`;
-  writeFileSync(backup, JSON.stringify({ calorieFixes, linkDrops }, null, 2));
+  writeFileSync(backup, JSON.stringify({ macroFixes, calorieFixes, linkDrops }, null, 2));
   console.log(`\nbackup written: ${backup}`);
 
+  let repriced = 0;
+  for (const f of macroFixes) {
+    await prisma.recipe.update({
+      where: { id: f.id },
+      data: { calories: f.to.calories, protein: f.to.protein, carbs: f.to.carbs, fat: f.to.fat },
+    });
+    repriced++;
+  }
   let cal = 0;
   for (const f of calorieFixes) {
     await prisma.recipe.update({ where: { id: f.id }, data: { calories: f.to } });
@@ -120,7 +163,7 @@ async function main() {
     await prisma.recipeIngredient.deleteMany({ where: { recipeId: d.recipeId, ingredientId: d.ingredientId } });
     dropped++;
   }
-  console.log(`applied: ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
+  console.log(`applied: ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
   await prisma.$disconnect();
 
 }

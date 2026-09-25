@@ -360,8 +360,8 @@ export default function ProfileForm({
                 placeholder="9"
               />
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-[#1E1A1A]">Unit</label>
                 <Select
+                  label="Height unit"
                   options={[
                     { value: "cm", label: "cm" },
                     { value: "in", label: "in" },
@@ -386,8 +386,8 @@ export default function ProfileForm({
                 placeholder="170"
               />
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-[#1E1A1A]">Unit</label>
                 <Select
+                  label="Height unit"
                   options={[
                     { value: "cm", label: "cm" },
                     { value: "in", label: "in" },

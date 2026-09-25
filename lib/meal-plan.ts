@@ -667,31 +667,27 @@ export async function buildMealPlanMenus(
         // does a dish already on today's plate come back. The old two-tier
         // fallback jumped straight to "anything", so a thin basket pool put
         // the same chicken dish at lunch AND dinner every day.
-        // dayProtein is relaxed LAST of the variety rules (just before
-        // reusing a dish already on today's plate), because a third helping of
-        // the same protein in one day is more conspicuous than repeating
-        // yesterday's protein or last week's dish.
-        const tiers: { protein: boolean; crossWeek: boolean; weekReuse: boolean; dayProtein: boolean; sameDay: boolean }[] = [
-          { protein: false, crossWeek: false, weekReuse: false, dayProtein: false, sameDay: false },
-          { protein: true,  crossWeek: false, weekReuse: false, dayProtein: false, sameDay: false },
-          { protein: true,  crossWeek: true,  weekReuse: false, dayProtein: false, sameDay: false },
-          { protein: true,  crossWeek: true,  weekReuse: true,  dayProtein: false, sameDay: false },
-          { protein: true,  crossWeek: true,  weekReuse: true,  dayProtein: true,  sameDay: false },
-          { protein: true,  crossWeek: true,  weekReuse: true,  dayProtein: true,  sameDay: true },
+        const tiers: { protein: boolean; crossWeek: boolean; weekReuse: boolean; sameDay: boolean }[] = [
+          { protein: false, crossWeek: false, weekReuse: false, sameDay: false },
+          { protein: true,  crossWeek: false, weekReuse: false, sameDay: false },
+          { protein: true,  crossWeek: true,  weekReuse: false, sameDay: false },
+          { protein: true,  crossWeek: true,  weekReuse: true,  sameDay: false },
+          { protein: true,  crossWeek: true,  weekReuse: true,  sameDay: true },
         ];
-        // The per-day protein cap is relaxed for SNACK only. Snack is padding:
-        // a third helping of the day's protein in a 300 kcal top-up is a minor
-        // sameness, and the alternative is a day that misses its calories. In a
-        // real slot it is the thing a tester notices first — QA found turkey in
-        // breakfast, lunch and dinner on one day precisely because the ladder
-        // was allowed to relax its way there (2026-09-24).
-        const canRelaxDayProtein = mealType.name.toLowerCase() === "snack";
+        // The per-day protein cap is NOT one of the relaxable tiers. It was, at
+        // first for every slot and then for snack only, and both versions put
+        // one protein in 3 slots of a day — beef on four days of one week. A
+        // tester counting slots does not care which of them was padding. An
+        // unfilled snack is the honest alternative: the day lands under target
+        // and the flex card says so, which is a smaller problem than eating the
+        // same thing three times.
+        const proteinRoomLeft = (r: PoolRecipe): boolean => {
+          const dp = dishProtein(r.ingredients);
+          return dp === null || (todayProteinCounts.get(dp) ?? 0) < MAX_SAME_PROTEIN_PER_DAY;
+        };
         const matches = (r: PoolRecipe, relax: (typeof tiers)[number]): boolean =>
           base(r) &&
-          ((relax.dayProtein && canRelaxDayProtein) || (() => {
-            const dp = dishProtein(r.ingredients);
-            return dp === null || (todayProteinCounts.get(dp) ?? 0) < MAX_SAME_PROTEIN_PER_DAY;
-          })()) &&
+          proteinRoomLeft(r) &&
           (relax.protein || (() => { const dp = dishProtein(r.ingredients); return dp === null || !prevDayProteins.has(dp); })()) &&
           (relax.crossWeek || !excludeRecipeIds.has(r.id)) &&
           (relax.weekReuse || (!weekUsedIds.has(r.id) && !weekUsedSignatures.has(dishSignature(r.ingredients)))) &&

@@ -18,7 +18,7 @@
 import { ingredientTokens } from "@/lib/basket-match";
 import { BASKET_STAPLES } from "@/lib/basket-coverage";
 import { displayDishName } from "@/lib/dish-name";
-import { macrosContradictAmounts } from "@/lib/staple-density";
+import { macrosContradictAmounts, macrosDisagreeWithPricing } from "@/lib/staple-density";
 
 export const BREAKFAST_MAX_MINUTES = 30;
 
@@ -465,6 +465,10 @@ export function dishProblem(d: PlausibleDish, catalogFoodTokens: Set<string>): D
   // the amounts being written to a dry basis and the curated library's macro
   // columns are measured data we should not argue with.
   if (d.generated && d.macros && macrosContradictAmounts(d.macros, d.ingredients, d.steps)) {
+    return "macros-contradict-amounts";
+  }
+  // And the other direction, for a dish the table can price in full.
+  if (d.generated && macrosDisagreeWithPricing({ calories: d.calories }, d.ingredients, d.steps)) {
     return "macros-contradict-amounts";
   }
 

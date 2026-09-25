@@ -279,3 +279,35 @@ export function priceDish(
 
 /** Coverage at or above which a dish's own amounts decide its nutrition. */
 export const PRICING_COVERAGE_MIN = 0.9;
+
+
+/** How far a priced dish's declared calories may sit from the arithmetic. */
+export const PRICING_TOLERANCE = 0.25;
+
+/**
+ * Do the declared numbers disagree with what the amounts price out at?
+ *
+ * The floor above is one-sided — it catches a dish claiming LESS than its
+ * staples contain — and most of what QA found was the other direction: a lunch
+ * with no starch declaring 82 g of carbohydrate over ~11 g of vegetables, two
+ * oat breakfasts declaring double their oats, a 70 g chicken breast declaring
+ * 32 g of protein. Over-declaring is not the gentler error: a diabetic tester
+ * dosing insulin off 82 g of carbohydrate in an 11 g dish is the reason this
+ * check is two-sided.
+ *
+ * Only for dishes the table can price in full, and 25% wide, because raw-vs-
+ * cooked weights, cuts and absorbed oil all move the true figure a little.
+ */
+export function macrosDisagreeWithPricing(
+  declared: { calories?: number | null },
+  ingredients: readonly { name: string; quantity?: number | null; unit?: string | null }[],
+  steps?: readonly string[] | null
+): string | null {
+  const kcal = declared.calories ?? 0;
+  if (kcal <= 0) return null;
+  const priced = priceDish(ingredients, steps);
+  if (!priced || priced.coverage < PRICING_COVERAGE_MIN) return null;
+  const off = Math.abs(priced.calories - kcal) / kcal;
+  if (off <= PRICING_TOLERANCE) return null;
+  return `declared ${Math.round(kcal)} kcal, amounts price at ${priced.calories} kcal (${off > 0 ? "+" : ""}${Math.round(((priced.calories - kcal) / kcal) * 100)}%)`;
+}

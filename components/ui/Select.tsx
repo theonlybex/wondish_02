@@ -8,18 +8,32 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   placeholder?: string;
 }
 
+// Same defect as components/ui/Input.tsx had, in the sibling: `htmlFor={id}`
+// with no caller passing `id`, so every select shipped with a floating label
+// and no name. A QA pass found three on /profile — "Sex at Birth", "Physical
+// Activity", and the height-unit toggle with no label at all (2026-09-24).
+// Derived from the label to stay a pure component; see Input.tsx.
+const slugify = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
 const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, options, placeholder, className, id, ...props }, ref) => {
+  ({ label, error, options, placeholder, className, id, name, ...props }, ref) => {
+    const fieldId = id ?? (label ? `field-${slugify(label)}` : undefined);
+    const errorId = error && fieldId ? `${fieldId}-error` : undefined;
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
-          <label htmlFor={id} className="text-sm font-medium text-[#1E1A1A]">
+          <label htmlFor={fieldId} className="text-sm font-medium text-[#1E1A1A]">
             {label}
           </label>
         )}
         <select
           ref={ref}
-          id={id}
+          id={fieldId}
+          name={name ?? fieldId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={errorId}
+          aria-label={!label && placeholder ? placeholder : undefined}
           className={twMerge(
             "w-full px-3.5 py-2.5 rounded-xl border bg-white text-[#1E1A1A] text-sm outline-none transition-all appearance-none",
             error
@@ -40,7 +54,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
             </option>
           ))}
         </select>
-        {error && <p className="text-error text-xs">{error}</p>}
+        {error && <p id={errorId} className="text-error text-xs">{error}</p>}
       </div>
     );
   }
