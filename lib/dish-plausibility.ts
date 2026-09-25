@@ -197,13 +197,20 @@ export function clampCookingFat<T extends { name: string; quantity?: number | nu
   } else {
     return { ingredients: [...ingredients], changed: false }; // the prose agrees; leave it
   }
-  if (target >= total) return { ingredients: [...ingredients], changed: false };
+  // A hair over is not over. Without this margin the clamp never reaches a
+  // fixpoint: rounding a scaled quantity to two decimals can leave it a
+  // fraction of a gram above the cap, which re-triggers the clamp on the next
+  // run, and the backfill reported the same 136 dishes every time it was run
+  // (233 g of fat between them — under 2 g each, all of it rounding).
+  if (target >= total * 0.98) return { ingredients: [...ingredients], changed: false };
 
   const factor = target / total;
   return {
     ingredients: ingredients.map((i) =>
       FAT_ROW.test(i.name) && i.quantity != null
-        ? { ...i, quantity: Math.round(i.quantity * factor * 100) / 100 }
+        ? // Rounded DOWN, so the result is always at or under the target rather
+          // than sometimes a touch over it.
+          { ...i, quantity: Math.max(0.01, Math.floor(i.quantity * factor * 100) / 100) }
         : i
     ),
     changed: true,

@@ -107,9 +107,62 @@ const DENSITY: {
   // volumeUnambiguous: a cup of chopped vegetables weighs about a cup of
   // chopped vegetables however it is later cooked, and tying veg rows to the
   // dry-GRAIN test meant one bad step phrase took a whole dish out of pricing.
-  { match: /\b(broccoli|cauliflower|zucchini|spinach|carrots?|bell peppers?|tomato(es)?|onions?|celery|cucumber|lettuce|cabbage|mushrooms?|greens?|kale|asparagus|green beans?)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
+  { match: /\b(broccoli|cauliflower|zucchini|spinach|carrots?|bell peppers?|green peppers?|red peppers?|yellow peppers?|jalape(n|ñ)o peppers?|chipotle peppers?|poblano peppers?|tomato(es)?|onions?|celery|cucumber|lettuce|cabbage|mushrooms?|greens?|kale|asparagus|green beans?)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
   { match: /\b(potato(es)?|sweet potato(es)?|corn|peas)\b/i, carbs: 18, fat: 0, protein: 2, gramsPerCup: 150, gramsPerItem: 170 },
   { match: /\b(apples?|bananas?|berries|strawberries|blueberries|oranges?|grapes?|pears?|melon)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 150, gramsPerItem: 130 },
+
+  // ── The long tail that was keeping 301 dishes out of the pool ──────────────
+  //
+  // Every one of those rows has amounts on every ingredient and still could not
+  // be priced, because ONE ingredient was unknown to this table and coverage
+  // fell under the bar. Measured 2026-09-25, the unknown names in order: Kosher
+  // salt (118 rows), Black peppercorns (82), tap water (69), Garlic (59), Lemons
+  // (51), fresh basil/cilantro/parsley (108 between them), romaine lettuce,
+  // Cornstarch, balsamic vinegar, soy sauce, Dijon mustard, broth, mayonnaise,
+  // flaxseed.
+  //
+  // A correction to my own first reading of that list, because it matters for
+  // anyone extending this table: the seasoning half of it was NOT what refused
+  // those dishes. priceDish already skips salt, pepper, water, garlic, lemons,
+  // vinegar, broth and herbs through NEGLIGIBLE below, so they never counted
+  // against coverage. My diagnostic called gramsOf directly and missed that.
+  //
+  // What actually recovered 126 of the 301 rows was the rest: the vegetables
+  // this table had never heard of (romaine, arugula, cabbage, asparagus,
+  // eggplant, squash), the foods that genuinely carry calories (mayonnaise at
+  // 75% fat, cornstarch at 91% carbs, garbanzos, flaxseed), and above all the
+  // garnish UNITS further down — leaves, sprig, stalk, spear, pinch.
+  //
+  // The seasoning entries stay because gramsOf is called by more than priceDish
+  // (clampCookingFat weighs oil rows through it) and an answer of null there is
+  // indistinguishable from "no amount given". They are belt over suspenders,
+  // not the fix.
+  //
+  // These go LAST so the specific entries above always win: "peanut butter"
+  // must not be caught by the butter entry, and a row is priced by the first
+  // pattern that matches it.
+  { match: /\b(salts?)\b/i, carbs: 0, fat: 0, protein: 0, gramsPerCup: 273, volumeUnambiguous: true },
+  // Only the seasoning. "green peppers" and "Jalapeño peppers" are vegetables
+  // and are caught by the entry above; a bare "pepper" is the grinder. Writing
+  // this as /\bpeppers?\b/ priced 110 g of green pepper as 70 g of
+  // carbohydrate — the same food/seasoning conflation that produced "Bell
+  // peppers 0.1 teaspoon", arriving from the opposite direction.
+  { match: /\b(peppercorns?|black pepper|white pepper|ground pepper|red pepper flakes?|crushed red pepper|cayenne)\b|^\s*pepper\s*$/i, carbs: 64, fat: 3, protein: 10, gramsPerCup: 110, volumeUnambiguous: true },
+  { match: /\b(water)\b/i, carbs: 0, fat: 0, protein: 0, gramsPerCup: 237, volumeUnambiguous: true },
+  { match: /\b(broths?|stocks?|bouillon)\b/i, carbs: 1, fat: 0, protein: 1, gramsPerCup: 240, volumeUnambiguous: true },
+  // Dried herbs and ground spices, as a group. Calorie-dense per 100 g and
+  // never used by the 100 g — a teaspoon of cinnamon is 6 kcal.
+  { match: /\b(basil|cilantro|coriander|parsley|thyme|oregano|rosemary|sage|dill|chives?|mint|tarragon|paprika|cumin|cinnamon|nutmeg|turmeric|ginger|cloves?|cardamom|curry powder|chil(i|li|e)s?|cayenne|bay lea(f|ves)|seasoning|spice)\b/i, carbs: 50, fat: 8, protein: 12, gramsPerCup: 50, volumeUnambiguous: true },
+  { match: /\b(garlic|shallots?|scallions?|spring onions?|leeks?|fennel|ginger root)\b/i, carbs: 20, fat: 0, protein: 5, gramsPerCup: 136, gramsPerItem: 5, volumeUnambiguous: true },
+  { match: /\b(lemons?|limes?|lemon juice|lime juice)\b/i, carbs: 9, fat: 0, protein: 1, gramsPerCup: 244, gramsPerItem: 85, volumeUnambiguous: true },
+  { match: /\b(vinegars?)\b/i, carbs: 5, fat: 0, protein: 0, gramsPerCup: 239, volumeUnambiguous: true },
+  { match: /\b(soy sauce|tamari|fish sauce|worcestershire)\b/i, carbs: 5, fat: 0, protein: 8, gramsPerCup: 255, volumeUnambiguous: true },
+  { match: /\b(mustard|hot sauce|sriracha|salsa|tomato paste|tomato sauce|passata)\b/i, carbs: 10, fat: 2, protein: 3, gramsPerCup: 250, volumeUnambiguous: true },
+  { match: /\b(mayonnaise|mayo|aioli)\b/i, carbs: 1, fat: 75, protein: 1, gramsPerCup: 220, volumeUnambiguous: true },
+  { match: /\b(cornstarch|corn starch|cornflour|arrowroot)\b/i, carbs: 91, fat: 0, protein: 0, gramsPerCup: 128, volumeUnambiguous: true },
+  { match: /\b(flaxseeds?|chia seeds?|sesame seeds?|sunflower seeds?|pumpkin seeds?|seeds?)\b/i, carbs: 29, fat: 42, protein: 18, gramsPerCup: 150, volumeUnambiguous: true },
+  { match: /\b(garbanzos?|hummus)\b/i, carbs: 27, fat: 9, protein: 8, gramsPerCup: 240 },
+  { match: /\b(arugula|rocket|romaine|chard|watercress|radicchio|endive|bok choy|brussels sprouts?|eggplants?|aubergines?|squash|beets?|radishes?|turnips?|parsnips?|artichokes?|okra|leeks)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
 ];
 
 const GRAMS_PER_UNIT: { match: RegExp; grams: number | "cup" }[] = [
@@ -121,6 +174,24 @@ const GRAMS_PER_UNIT: { match: RegExp; grams: number | "cup" }[] = [
   { match: /^\s*(ml|millilitre|millilitres|milliliter|milliliters|cc)\s*$/i, grams: 1 },
   { match: /^\s*(l|litre|litres|liter|liters)\s*$/i, grams: 1000 },
   { match: /^\s*(oz|ounce|ounces)\s*$/i, grams: 28.35 },
+  // "Garlic 2 clove" priced as null and took the whole dish out of pricing.
+  // A flat weight rather than a per-food one: a clove is a clove.
+  // (slice / whole / each need no entry — COUNT_UNIT below handles them from
+  // the food's own gramsPerItem, and does so before this table is consulted.)
+  { match: /^\s*(clove|cloves)\s*$/i, grams: 3 },
+  // The garnish units, measured as the most common unpriceable units in the
+  // catalog after cup/tbsp/tsp: leaves (62 rows), whole (30), sprig (24), stalk
+  // (23), pinch (22), spear (10). Every one is a small, near-zero-calorie amount
+  // whose absence was refusing a whole dish — the same unit-shaped escape as
+  // bare counts and millilitres before it. Flat weights, because a basil leaf
+  // weighs what a basil leaf weighs whatever dish it lands in.
+  { match: /^\s*(leaf|leaves)\s*$/i, grams: 0.5 },
+  { match: /^\s*(sprig|sprigs)\s*$/i, grams: 1 },
+  { match: /^\s*(stalk|stalks|rib|ribs)\s*$/i, grams: 40 },
+  { match: /^\s*(spear|spears)\s*$/i, grams: 15 },
+  { match: /^\s*(pinch|pinches|dash|dashes)\s*$/i, grams: 0.3 },
+  { match: /^\s*(teabag|teabags|tea bag|tea bags)\s*$/i, grams: 2 },
+  { match: /^\s*(scoop|scoops)\s*$/i, grams: 30 },
   { match: /^\s*(lb|lbs|pound|pounds)\s*$/i, grams: 453.6 },
   { match: /^\s*(cup|cups)\s*$/i, grams: "cup" },
   { match: /^\s*(tbsp|tablespoon|tablespoons)\s*$/i, grams: "cup" }, // 1/16 cup, scaled below

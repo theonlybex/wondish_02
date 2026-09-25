@@ -553,3 +553,12 @@ test("the breakfast protein rule never touches a curated row or another slot", (
   const atDinner = { name: "Ground Beef with Rice", mealTypeName: "Dinner", generated: true, ingredients: [{ name: "ground beef" }] } as never;
   assert.equal(breakfastIsBuiltOnBreakfastFood(atDinner), true);
 });
+
+test("clampCookingFat reaches a fixpoint — clamping twice changes nothing", () => {
+  const rows = [{ name: "Extra virgin olive oil", quantity: 1.5, unit: "tablespoon" }];
+  const steps = ["Sauté in olive oil."]; // silent on the amount
+  const once = clampCookingFat(rows, steps, 620);
+  assert.equal(once.changed, true);
+  const twice = clampCookingFat(once.ingredients, steps, 620);
+  assert.equal(twice.changed, false, `re-clamped to ${twice.ingredients[0].quantity}`);
+});

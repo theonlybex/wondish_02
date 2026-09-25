@@ -106,7 +106,25 @@ async function main() {
       r.steps
     );
     if (!priced || priced.coverage < PRICING_COVERAGE_MIN) continue;
-    macroFills.push({ id: r.id, name: r.name, to: { protein: priced.protein, carbs: priced.carbs, fat: priced.fat } });
+    // Scaled so 4/4/9 lands on the calorie figure the row already carries.
+    //
+    // Writing the priced macros straight in left the row incoherent with its own
+    // calories — filling 126 of these produced 29 rows that the correction step
+    // below then flagged, so the script needed a second run to settle. The
+    // calorie number is the one piece of data these rows DO have; the macros are
+    // the gap being filled, so the fill bends to the number rather than beside
+    // it. Where there is no calorie figure either, the priced values stand.
+    const pricedKcal = priced.protein * 4 + priced.carbs * 4 + priced.fat * 9;
+    const k = r.calories && pricedKcal > 0 ? r.calories / pricedKcal : 1;
+    const scale = k > 0.5 && k < 2 ? k : 1; // a factor-of-two gap is the PRICING talking, not rounding
+    macroFills.push({
+      id: r.id, name: r.name,
+      to: {
+        protein: Math.round(priced.protein * scale * 10) / 10,
+        carbs: Math.round(priced.carbs * scale * 10) / 10,
+        fat: Math.round(priced.fat * scale * 10) / 10,
+      },
+    });
   }
   console.log(`null-macro rows: ${nullMacroRows.length}; fillable from their amounts: ${macroFills.length}`);
 
