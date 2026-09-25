@@ -22,6 +22,7 @@ import {
 } from "@/lib/clara/recipe-generation";
 import { guardAiSpend } from "@/lib/ai-budget";
 import { acquireInFlight } from "@/lib/in-flight-lock";
+import { withReadableProse } from "@/lib/dish-plausibility";
 import {
   computeAllMetrics,
   computeMealCalories,
@@ -269,9 +270,9 @@ export async function POST(req: Request) {
       where: { id: { in: createdIds } },
       select: {
         id: true, name: true, emoji: true, description: true, calories: true,
-        protein: true, carbs: true, fat: true,
+        protein: true, carbs: true, fat: true, steps: true,
         mealType: { select: { name: true } },
-        ingredients: { select: { ingredient: { select: { name: true } } } },
+        ingredients: { select: { quantity: true, unit: true, ingredient: { select: { name: true } } } },
       },
     });
     const bySlotOrder = createdRows.sort(
@@ -284,7 +285,10 @@ export async function POST(req: Request) {
     );
 
     return NextResponse.json({
-      meals: bySlotOrder.map((r) => ({
+      // Amounts and steps too, as the user should read them. The cards listed
+      // ingredient NAMES only, so a day Clara had just cooked could not be
+      // cooked from the page it was offered on (QA cycle 17).
+      meals: bySlotOrder.map(withReadableProse).map((r) => ({
         id: r.id,
         name: r.name,
         emoji: r.emoji,
@@ -295,6 +299,8 @@ export async function POST(req: Request) {
         fat: r.fat,
         mealType: r.mealType?.name ?? null,
         ingredients: r.ingredients.map((ri) => ri.ingredient.name),
+        amounts: r.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity, unit: ri.unit })),
+        steps: r.steps,
       })),
       totalCalories,
       targetCalories: dailyCalories,

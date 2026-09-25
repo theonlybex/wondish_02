@@ -395,10 +395,11 @@ or reproduced; where a bot could not pin something down, it says so.
       reader is shown allowances that are not the ones enforced. Needs a real
       translation pass, not a guess.
       **Cycle 19:** rewritten in both, and all three languages now take the numbers from AI_LIMITS (ICU plurals; Russian one/few/many). A test formats every locale with the enforced limits; /pricing checked with NEXT_LOCALE=en|es|ru.
-- [ ] **A stale plan can read 166% of its fat target** (101 g against 61 g).
+- [x] **A stale plan can read 166% of its fat target** (101 g against 61 g).
       The fat ceiling landed in cycle 15, so weeks built before it keep their
       numbers. A freshly generated week still needs measuring against the
       25-38% band.
+      **Cycle 20:** a week built before the fat fixes keeps its numbers until the next New week; weeks built since measure 25-32% of calories across three profiles. Known consequence, not a defect.
 
 ### Seen once, not reproduced — kept so a second sighting is recognised
 
@@ -464,13 +465,15 @@ untouched ground.
       audited; no Clara messages were sent, so its in-conversation surfaces,
       streaming states and refusals are unaudited.
       **Cycle 19:** a real question answered against the profile; a blank message sends nothing; prompt injection declined ("My instructions are for me to follow, not to share"); Spanish answered in Spanish; first words in 3-5 s once warm (15-19 s was dev compile).
-- [ ] **Fraction rendering on a live card.** `formatQuantity` is covered by
+- [x] **Fraction rendering on a live card.** `formatQuantity` is covered by
       unit tests and was confirmed on generated dishes by bot 1, but ⅓/⅔ —
       the values the backfill actually wrote — appear on repaired CATALOG rows,
       and no bot reached a plan built from those.
-- [ ] **cook-my-day's result cards** list ingredient names only, with no amounts
+      **Cycle 20:** seen on live cards: ⅛-¾ rendered 23 times on one cooked day, 0 decimals.
+- [x] **cook-my-day's result cards** list ingredient names only, with no amounts
       and no steps, so they could not be used to check either the amount or the
       rinse repairs.
+      **Cycle 20:** each card has a "How to make it" disclosure (native details/summary, 44px, opens by keyboard) with amounts and steps through readableProse. Measured on a live Japanese day: 23 kitchen fractions, 0 decimals, no rinse, no "mediums".
 - [x] **A freshly generated week has never been measured against the 25-38% fat
       band** that cycle 15 claimed. The one week that was measured (166%) was
       built before the ceiling landed.
@@ -515,13 +518,14 @@ Each was measured and left deliberately; the reason is the entry.
   bread at 490 mg/100 g sets the floor.
 
 ### Process
-- [ ] **One fixture per TIER, not just one per bot.** Giving each bot its own
+- [x] **One fixture per TIER, not just one per bot.** Giving each bot its own
       account fixed cycle 15's problem (a bot arriving to find every allowance
       already spent) and exposed the next one: both fixtures hold coupons, so
       every guard answered `tier: "beta"` and the free tier's own copy and
       limits went untested two cycles running. Needed: a free fixture, a beta
       fixture and a paid fixture, each reset with `npm run rate-limit:reset-user`
       before a run.
+      **Cycle 20:** free: qa.free.20260925@wondish.io (no coupon, created in the Clerk dev instance, onboarded through the app); beta: qa.desktop (coupon); premium: qa.variant (Stripe). Reset with `npm run rate-limit:reset-user -- <clerk id>`.
 - [ ] **Freeze HEAD for the whole QA window, edits included.** Cycle 14 was
       invalidated by 11 commits landing mid-run. Cycle 15 froze commits but not
       the working tree, and the dev server hot-reloaded uncommitted edits into

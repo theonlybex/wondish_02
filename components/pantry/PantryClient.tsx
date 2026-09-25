@@ -7,7 +7,7 @@ import { CUISINES } from "@/lib/cuisines";
 import { basketBlockerText, computeBasketReadiness } from "@/lib/basket-readiness";
 import QuotaError from "@/components/ui/QuotaError";
 import { buildCuisineChecklists } from "@/lib/cuisine-ingredients";
-import { displayDishName } from "@/lib/dish-name";
+import { displayDishName, formatAmount } from "@/lib/dish-name";
 // Old "What to buy" design (reused the standalone GroceryListView). Replaced
 // (2026-09-07) by the inline shopping list below, which ticks bought items
 // straight into "What I have". Kept for reference.
@@ -45,6 +45,8 @@ interface CookDayMeal {
   calories: number | null;
   mealType: string | null;
   ingredients: string[];
+  amounts?: { name: string; quantity: number | null; unit: string | null }[];
+  steps?: string[];
 }
 interface CookDayResult {
   meals: CookDayMeal[];
@@ -927,9 +929,33 @@ export default function PantryClient({
                       {m.description}
                     </p>
                   )}
-                  <p className="text-[10px] mt-1.5" style={{ color: "#ABA6A6" }}>
-                    {m.ingredients.join(" · ")}
-                  </p>
+                  {m.steps && m.steps.length > 0 ? (
+                    // Native details/summary: keyboard and screen readers get
+                    // the expand behaviour for free.
+                    <details className="mt-2 group">
+                      <summary className="cursor-pointer list-none inline-flex items-center gap-1 [@media(pointer:coarse)]:min-h-11 text-xs font-semibold" style={{ color: "#812549" }}>
+                        How to make it
+                        <span aria-hidden="true" className="transition-transform group-open:rotate-90">›</span>
+                      </summary>
+                      <ul className="mt-2 space-y-1">
+                        {(m.amounts ?? m.ingredients.map((name) => ({ name, quantity: null, unit: null }))).map((a) => (
+                          <li key={a.name} className="flex justify-between gap-3 text-xs" style={{ color: "#4F4A4A" }}>
+                            <span>{a.name}</span>
+                            <span className="tabular-nums" style={{ color: "#848181" }}>{formatAmount(a.quantity, a.unit)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <ol className="mt-3 space-y-1.5 list-decimal pl-4">
+                        {m.steps.map((s, i) => (
+                          <li key={i} className="text-xs leading-relaxed" style={{ color: "#1E1A1A" }}>{s}</li>
+                        ))}
+                      </ol>
+                    </details>
+                  ) : (
+                    <p className="text-[10px] mt-1.5" style={{ color: "#ABA6A6" }}>
+                      {m.ingredients.join(" · ")}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}
