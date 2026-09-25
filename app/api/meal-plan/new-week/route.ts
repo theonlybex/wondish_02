@@ -63,6 +63,7 @@ export async function POST() {
   const recent = parseRecentDishes(patient.recentDishes);
   const excludeRecipeIds = recentDishIds(recent);
 
+  if (process.env.NODE_ENV === "development") (await import("@/lib/clara/recipe-generation")).lastTopUpDebug.value = undefined;
   try {
     const count = await regeneratePlan(patient.id, today, undefined, {
       claraFirst: true,
@@ -92,7 +93,14 @@ export async function POST() {
       .update({ where: { id: patient.id }, data: { recentDishes: merged } })
       .catch(() => {}); // best-effort: variety memory must never fail the request
 
-    return NextResponse.json({ ok: true, count });
+    return NextResponse.json({
+      ok: true,
+      count,
+      // Development only: what the Clara top-up asked for and kept.
+      ...(process.env.NODE_ENV === "development"
+        ? { debug: (await import("@/lib/clara/recipe-generation")).lastTopUpDebug.value ?? "no top-up" }
+        : {}),
+    });
   } catch (err) {
     if (err instanceof MealPlanBusyError) {
       return NextResponse.json({ error: "A plan is already being generated." }, { status: 409 });

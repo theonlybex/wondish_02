@@ -553,6 +553,13 @@ async function generateChunk(args: TopUpArgs, chunk: TopUpRequest[]): Promise<Fr
   }
 }
 
+/**
+ * The last top-up's own counts, for DEVELOPMENT responses only (the new-week
+ * route attaches it when NODE_ENV is development). The server log line says
+ * the same thing, but a QA run cannot read the dev server's console.
+ */
+export const lastTopUpDebug: { value?: Record<string, unknown> } = {};
+
 export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
   // One call per meal type, in parallel: keeps each response inside the output
@@ -694,6 +701,21 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     if (!nameKey || seen.has(nameKey)) { reject("duplicate-name", r); continue; }
     seen.add(nameKey);
     accepted.push({ recipe: r, mealTypeId: slot.mealTypeId });
+  }
+  if (process.env.NODE_ENV === "development") {
+    lastTopUpDebug.value = {
+      requested: args.requests.map((r) => `${r.count}×${r.mealTypeName}${r.leanProtein ? " (lean)" : ""}`),
+      generated: recipes.length,
+      accepted: accepted.length,
+      rejected,
+      acceptedDishes: accepted.map((a) => {
+        const p = pricedMacros(a.recipe);
+        const c = p?.calories ?? a.recipe.perServing.calories;
+        const pr = p?.protein ?? a.recipe.perServing.protein;
+        const f = p?.fat ?? a.recipe.perServing.fat;
+        return `${a.recipe.mealType}:${a.recipe.name} ${Math.round(c)}kcal P${Math.round(((pr * 4) / c) * 100)}% F${Math.round(((f * 9) / c) * 100)}%`;
+      }),
+    };
   }
   console.info(`[recipe-generation] generated=${recipes.length} accepted=${accepted.length}${retitled > 0 ? ` retitled=${retitled}` : ""}${desalted > 0 ? ` desalted=${desalted}` : ""}${defatted > 0 ? ` defatted=${defatted}` : ""} rejected=${JSON.stringify(rejected)}${rejected.allergen > 0 ? ` banTerms=${JSON.stringify(banTerms)}` : ""}`);
   if (accepted.length === 0) return [];
