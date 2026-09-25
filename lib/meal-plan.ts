@@ -996,6 +996,23 @@ export async function buildMealPlanMenus(
           // ceiling, 128-170% of target.
           if (relax.sameDay && mealCalories > 0) break;
           const pool = selectionPool.filter((r) => matches(r, relax));
+          if (pool.length > 0 && relax.sameDay && dayMacroTargetG.fat) {
+            // The last tier relaxed the fat ceiling — and then chose as if fat
+            // did not matter at all. Every day in cycle 19's measurement that
+            // ended over 54 g (of a 54 g ceiling) got there this way, since no
+            // other tier can exceed it: 113-162% of target on 7 of 7 days. A
+            // relaxed limit should still take the LEAST-bad dish, so only the
+            // candidates within 5 g of the smallest overshoot stay in play;
+            // 5 g, not 0, so the scorer still has something to choose between.
+            const ceiling = dayMacroTargetG.fat * DAY_FAT_CEILING;
+            const over = (r: PoolRecipe) => Math.max(0, todayMacroG.fat + (r.fat ?? 0) - ceiling);
+            const least = Math.min(...pool.map(over));
+            const leastFat = pool.filter((r) => over(r) <= least + 5);
+            if (process.env.WONDISH_DEBUG_POOL) {
+              console.log(`[pool] ${mealType.name} day${dayIndex} tier${ti} fat-relaxed n=${pool.length} → ${leastFat.length} (overshoot ≥ ${Math.round(least)} g)`);
+            }
+            return leastFat;
+          }
           if (pool.length > 0) {
             if (process.env.WONDISH_DEBUG_POOL) {
               console.log(`[pool] ${mealType.name} day${dayIndex} tier${ti} n=${pool.length} dishTypes=${dishTypeNames ?? "any"} win=${calWin ? `${calWin.min}-${calWin.max}` : "none"}`);
