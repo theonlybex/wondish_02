@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anthropic";
 import { prisma } from "@/lib/db";
+import { displayDishName } from "@/lib/dish-name";
 import {
   derivePatientBans,
   buildDietMatchers,
@@ -77,7 +78,18 @@ export async function POST(
 
   const menu = await prisma.menu.findFirst({
     where: { id: params.menuId, patientId: patient.id, planVersion: patient.activePlanVersion },
-    include: { recipe: { select: { calories: true } }, mealType: true },
+    // The dish's name and ingredients as well as its calories: the swap has to
+    // be able to tell whether a candidate IS what it is replacing.
+    include: {
+      recipe: {
+        select: {
+          calories: true,
+          name: true,
+          ingredients: { select: { ingredient: { select: { name: true } } } },
+        },
+      },
+      mealType: true,
+    },
   });
   if (!menu || !menu.mealTypeId || !menu.mealType) {
     return NextResponse.json({ error: "Menu not found" }, { status: 404 });
@@ -260,9 +272,28 @@ export async function POST(
       console.info(`[clara-swap] parsed=${parsed.length} afterAllergen=${survivors.length}`);
     }
     // Each rejection is named, so a 422 is explainable instead of guessed at.
+    // What we are replacing, so the swap cannot hand it straight back. QA asked
+    // to swap "Herb-Roasted Chicken Thighs with Roasted Vegetables" and got
+    // "Herb-Roasted Chicken Thighs with Roasted Vegetables" — 566 kcal became
+    // 484 with the same nine ingredients — spending one of three daily swaps for
+    // no visible change. Matched on the NAME and on the ingredient set, because
+    // a re-costed copy under the same name is the shape it actually took.
+    const replacedName = displayDishName(menu.recipe.name).trim().toLowerCase();
+    const replacedIngredients = new Set(
+      (menu.recipe.ingredients ?? []).map((ri) => ri.ingredient.name.trim().toLowerCase())
+    );
+    const isTheSameDish = (r: FridgeRecipe): boolean => {
+      if (displayDishName(r.name).trim().toLowerCase() === replacedName) return true;
+      const used = r.usesIngredients.map((n) => n.trim().toLowerCase());
+      if (used.length === 0 || used.length !== replacedIngredients.size) return false;
+      return used.every((n) => replacedIngredients.has(n));
+    };
+
     for (const r of survivors) {
       const why =
-        basket.length > 0 && !fitBasket(r, basket)
+        isTheSameDish(r)
+          ? "same-dish-as-before"
+          : basket.length > 0 && !fitBasket(r, basket)
           ? "out-of-basket"
           : !passesSanity(r)
             ? "implausible-numbers"

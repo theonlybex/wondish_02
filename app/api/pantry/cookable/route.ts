@@ -78,8 +78,8 @@ export async function GET() {
     ingredientCount: number;
     missing: string[];
   };
-  const ready: Scored[] = [];
-  const almost: Scored[] = [];
+  let ready: Scored[] = [];
+  let almost: Scored[] = [];
 
   for (const r of recipes) {
     const names = r.ingredients.map((ri) => ri.ingredient.name);
@@ -120,7 +120,14 @@ export async function GET() {
 
     const scored: Scored = {
       id: r.id,
-      name: r.name,
+      // Cleaned HERE, not only in the web UI. The payload shipped "Plain Cocoa,
+      // V11", "Black Tea, V6- Decaf", "Black coffee, V1. Plain" and "Classic
+      // Hash Browns , V1S" — internal portion-variant ids, which the web client
+      // happens to strip on render and any other consumer (iOS) does not. This
+      // route's own comment records the payload being the defect last time; it
+      // was fixed for the duplicate FILTER and not for the name field
+      // (QA 2026-09-25).
+      name: displayDishName(r.name),
       emoji: r.emoji,
       calories: r.calories,
       mealType: r.mealType?.name ?? null,
@@ -130,6 +137,34 @@ export async function GET() {
     if (missing.length === 0) ready.push(scored);
     else if (missing.length <= 2) almost.push(scored);
   }
+
+  // One card per dish, not one per PORTION.
+  //
+  // The library stores a dish once per serving size — "Classic Hash Browns ,
+  // V1S", "… V1M", "… V1L" — with byte-identical ingredient lists. Cleaning the
+  // name for display turned that into three cards reading "Classic Hash Browns"
+  // at 211, 130 and 253 kcal, plus "Black Tea" three times and "Black coffee"
+  // three times (QA 2026-09-25). Three identical answers to "what can I cook?"
+  // is worse than one.
+  //
+  // The MIDDLE portion by calories is kept, so the answer is representative
+  // rather than the smallest or largest thing on the shelf.
+  const oneCardPerDish = (rows: Scored[]): Scored[] => {
+    const groups = new Map<string, Scored[]>();
+    for (const row of rows) {
+      const key = row.name.trim().toLowerCase();
+      const group = groups.get(key);
+      if (group) group.push(row);
+      else groups.set(key, [row]);
+    }
+    return Array.from(groups.values()).map((group) => {
+      if (group.length === 1) return group[0];
+      const byCalories = [...group].sort((a, b) => (a.calories ?? 0) - (b.calories ?? 0));
+      return byCalories[Math.floor(byCalories.length / 2)];
+    });
+  };
+  ready = oneCardPerDish(ready);
+  almost = oneCardPerDish(almost);
 
   // Ready: simplest dishes first (fewest ingredients = fastest to cook).
   ready.sort((a, b) => a.ingredientCount - b.ingredientCount);

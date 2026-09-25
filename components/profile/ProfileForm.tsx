@@ -83,9 +83,17 @@ export default function ProfileForm({
   // the user's unit. Metric height ⇒ kg by default, with a toggle. The text
   // fields are separate state so typing isn't fought by round-trip rounding.
   const LBS_PER_KG = 2.20462;
-  const [weightUnitShown, setWeightUnitShown] = useState<"kg" | "lbs">(
-    (patient?.heightUnit as string) === "cm" ? "kg" : "lbs"
-  );
+  // The diner's own weightUnit, not their heightUnit. Reading heightUnit meant
+  // storing weight in lbs and height in cm displayed "Weight (kg)" with a
+  // pounds figure in the box — the number was converted correctly on save, so
+  // nothing corrupted, but the stored preference was simply ignored and the
+  // label lied (QA 2026-09-25). heightUnit is the fallback only when no weight
+  // preference exists, since a metric height implies a metric diner.
+  const [weightUnitShown, setWeightUnitShown] = useState<"kg" | "lbs">(() => {
+    const stored = (patient?.weightUnit as string | undefined)?.toLowerCase();
+    if (stored === "kg" || stored === "lbs") return stored;
+    return (patient?.heightUnit as string) === "cm" ? "kg" : "lbs";
+  });
   const fmtWeight = (lbs: string, unit: "kg" | "lbs") => {
     const v = parseFloat(lbs);
     if (!Number.isFinite(v) || v <= 0) return "";
