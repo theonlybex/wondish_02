@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName } from "./dish-plausibility";
+import { dishProblem, phrasePromisesMissingFood, breakfastIsQuickEnough, longestStepMinutes, truthfulDishName, clampAddedSalt, SEASONING_SALT_TSP, SEASONING_SALT_TSP_SMALL_DISH } from "./dish-plausibility";
 
 // The catalog vocabulary, as lib/meal-plan.ts builds it from Ingredient.name.
 const CATALOG = new Set([
@@ -441,4 +441,37 @@ test("truthfulDishName never names a dish after a seasoning — but a bell peppe
 
 test("truthfulDishName refuses rather than inventing when nothing is nameable", () => {
   assert.equal(truthfulDishName(["Sea salt", "Water", "Coconut oil"], CATALOG), null);
+});
+
+// clampAddedSalt — a per-dish ceiling cannot see a day. Every dish in a
+// measured week was under MAX_SALT_TSP and the week was over the 2,300 mg
+// guideline on 6 days of 7, so the amount is clamped rather than the dish
+// refused.
+test("clampAddedSalt brings a legal-but-heavy amount down to a seasoning", () => {
+  const { ingredients, changed } = clampAddedSalt(
+    [{ name: "Chicken thighs", quantity: 150, unit: "g" }, { name: "Salt", quantity: 0.5, unit: "teaspoon" }],
+    620
+  );
+  assert.equal(changed, true);
+  assert.deepEqual(ingredients[1], { name: "Salt", quantity: SEASONING_SALT_TSP, unit: "teaspoon" });
+  assert.deepEqual(ingredients[0], { name: "Chicken thighs", quantity: 150, unit: "g" });
+});
+
+test("clampAddedSalt holds a small dish to half the allowance", () => {
+  const { ingredients } = clampAddedSalt([{ name: "Sea salt", quantity: 0.25, unit: "tsp" }], 210);
+  assert.equal(ingredients[0].quantity, SEASONING_SALT_TSP_SMALL_DISH);
+});
+
+test("clampAddedSalt leaves an already-light dish exactly as it was", () => {
+  const rows = [{ name: "Salt", quantity: 0.125, unit: "teaspoon" }, { name: "Salt", quantity: 1, unit: "pinch" }];
+  const { changed } = clampAddedSalt(rows, 300);
+  assert.equal(changed, false);
+});
+
+test("clampAddedSalt converts a tablespoon before judging it", () => {
+  // 1/8 tbsp is 0.375 tsp — over the cap, though the number itself is small.
+  const { ingredients, changed } = clampAddedSalt([{ name: "Salt", quantity: 0.125, unit: "tablespoon" }], 600);
+  assert.equal(changed, true);
+  assert.equal(ingredients[0].unit, "teaspoon");
+  assert.equal(ingredients[0].quantity, SEASONING_SALT_TSP);
 });

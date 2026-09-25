@@ -14,6 +14,9 @@ import {
   dishProblem,
   phrasePromisesMissingFood,
   truthfulDishName,
+  clampAddedSalt,
+  countUnitFor,
+  unitIsUsable,
   breakfastIsQuickEnough as quickEnough,
   BREAKFAST_MAX_MINUTES,
   TITLE_NON_FOOD,
@@ -174,6 +177,20 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     // that wording tripled title rejections, because Clara started naming
     // dishes "Lemon Herb …" and listing neither. Say the number only.
     `- Salt: a quarter teaspoon per serving is plenty and half a teaspoon is the maximum — a day is four of these dishes and has to stay under 2,300 mg of sodium in total.`,
+    // Same argument as the salt line, and measured the same way: every dish was
+    // individually reasonable and the DAY was not. 59% of all fat in the
+    // generated catalog is added cooking oil — 432 of 912 fat rows are above a
+    // tablespoon per serving, 112 above a tablespoon and a half — and a week
+    // built from them came out at 44-55% of calories from fat against a 20%
+    // target, with the app's own rail rendering "Fat 111g of 46g · 241%".
+    //
+    // Said here rather than clamped afterwards because the model writes the
+    // amount into the STEPS as well ("toss with 1.5 tablespoons olive oil",
+    // often split across two steps that sum to the row). Editing the row alone
+    // would contradict the instructions, and rewriting the prose of 379 recipes
+    // to match is the kind of surgery that breaks more than it fixes. Told the
+    // budget up front, the model writes the amount and the steps together.
+    `- Cooking fat: one teaspoon per serving is normal and one tablespoon is the maximum, counting all the oil and butter in the dish together. A tablespoon of oil is 120 kcal of pure fat, and four dishes at a tablespoon and a half is a day that is half fat. Use a non-stick pan or a splash of water to keep it down, and write the same amount in the steps as in amounts.`,
     // Grains in cups are unreadable: three quarters of a cup of rice is ~139 g
     // dry and ~145 g COOKED, a threefold difference in carbohydrate, and one
     // QA week understated itself by ~750 kcal/day because the amounts and the
@@ -270,24 +287,6 @@ export const CALORIE_MACRO_TOLERANCE = 0.05;
  * Returns null when the ingredients are not fully known, in which case the
  * model's own figures stand (and dishProblem's floor still checks them).
  */
-/** Countable foods whose bare count IS the measurement (see staple-density). */
-const COUNTABLE = /\b(eggs?|bread|toast|muffin|bagel|tortilla|pita|apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|carrots?|avocados?|lemons?|limes?)\b/i;
-
-/** The word for one of something, when a recipe gives a bare count. */
-export function countUnitFor(name: string): string | null {
-  if (/\bbread\b/i.test(name)) return "slice";
-  if (/\b(muffin|bagel|tortilla|pita|wrap)\b/i.test(name)) return "whole";
-  if (/\beggs?\b/i.test(name)) return "egg";
-  if (/\b(apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|avocados?|lemons?|limes?|carrots?)\b/i.test(name)) return "whole";
-  return null;
-}
-
-export function unitIsUsable(name: string, unit: string | null | undefined): boolean {
-  const u = (unit ?? "").trim();
-  if (u.length > 0) return true;
-  return COUNTABLE.test(name);
-}
-
 export function pricedMacros(r: FridgeRecipe, mealTypeName = ""): PricedDish | null {
   const dish = toPlausibleDish(r, mealTypeName);
   const priced = priceDish(dish.ingredients, r.steps ?? null);
@@ -337,7 +336,7 @@ export function reconcileCalories(r: FridgeRecipe): number | null {
 // that only make sense while the model is still in the loop (see below).
 //
 // Re-exported so existing callers and tests keep one import site.
-export { BREAKFAST_MAX_MINUTES, TITLE_NON_FOOD, phrasePromisesMissingFood };
+export { BREAKFAST_MAX_MINUTES, TITLE_NON_FOOD, phrasePromisesMissingFood, countUnitFor, unitIsUsable };
 
 /** A generated recipe in the shape the shared predicate understands. */
 export function toPlausibleDish(r: FridgeRecipe, mealTypeName: string): PlausibleDish {
@@ -564,6 +563,7 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     }
   }
   let retitled = 0;
+  let desalted = 0;
   for (const raw of filtered) {
     if (accepted.length >= total) break;
     if (!withinBasket(raw)) { reject("out-of-basket", raw); continue; }
@@ -575,9 +575,18 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     // not grounds for discarding the dish (see repairProse). Everything the
     // gates below judge is judged on the repaired dish, so a rewritten name
     // still has to pass the same predicate the old one failed.
-    const r = repairProse(raw, args.catalogFoodTokens ?? new Set(), seen);
-    if (!r) { reject("title-promises-missing-food", raw); continue; }
-    if (r.name !== raw.name) retitled++;
+    const prosed = repairProse(raw, args.catalogFoodTokens ?? new Set(), seen);
+    if (!prosed) { reject("title-promises-missing-food", raw); continue; }
+    if (prosed.name !== raw.name) retitled++;
+
+    // Added salt is clamped to a seasoning amount rather than left to the
+    // model's taste. Every dish Clara writes is individually under the salt
+    // ceiling and three of them are a day's sodium guideline: a profile with no
+    // conditions came out over 2,300 mg on 6 days of 7 with every dish passing
+    // every gate (measured 2026-09-25). See SEASONING_SALT_TSP.
+    const salted = clampAddedSalt(prosed.amounts ?? [], prosed.perServing?.calories);
+    const r = salted.changed ? { ...prosed, amounts: salted.ingredients } : prosed;
+    if (salted.changed) desalted++;
 
     // The same predicate the builder applies at selection — salt, seasoning
     // quantities, slot timing, and the title's promise.
@@ -623,7 +632,7 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     seen.add(nameKey);
     accepted.push({ recipe: r, mealTypeId: slot.mealTypeId });
   }
-  console.info(`[recipe-generation] generated=${recipes.length} accepted=${accepted.length}${retitled > 0 ? ` retitled=${retitled}` : ""} rejected=${JSON.stringify(rejected)}${rejected.allergen > 0 ? ` banTerms=${JSON.stringify(banTerms)}` : ""}`);
+  console.info(`[recipe-generation] generated=${recipes.length} accepted=${accepted.length}${retitled > 0 ? ` retitled=${retitled}` : ""}${desalted > 0 ? ` desalted=${desalted}` : ""} rejected=${JSON.stringify(rejected)}${rejected.allergen > 0 ? ` banTerms=${JSON.stringify(banTerms)}` : ""}`);
   if (accepted.length === 0) return [];
   // dishType "complete meal" so the builder's primary-dish step (Step 1) can
   // select these under the full calorie-window + macro + variety rules, not

@@ -1161,9 +1161,16 @@ test("a week spreads across the dishes available instead of repeating one", () =
     const counts = new Map<string, number>();
     for (const r of res.rows) counts.set(r.recipeId, (counts.get(r.recipeId) ?? 0) + 1);
     assert.equal(counts.size, 3, "every available dish should be used");
-    assert.ok(
-      Math.max(...counts.values()) <= 3,
-      `one dish took ${Math.max(...counts.values())} of ${res.rows.length} slots: ${JSON.stringify([...counts])}`
+    // Exactly 3/2/2, not merely "no more than 3". The looser assertion passed
+    // on most runs and failed on some: the penalty ordered the candidates and
+    // then the random pick over the top three ignored that order, so with three
+    // dishes the choice was a coin toss (lib/meal-plan.ts pickByMotivation).
+    // A spread this tight is only achievable if the least-used dish really does
+    // win every time, which is the property being tested.
+    assert.deepEqual(
+      [...counts.values()].sort((a, b) => b - a),
+      [3, 2, 2],
+      `uneven spread over 7 slots: ${JSON.stringify([...counts])}`
     );
   });
 });

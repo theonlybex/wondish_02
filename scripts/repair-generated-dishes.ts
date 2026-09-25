@@ -37,6 +37,7 @@ import { BASKET_STAPLES } from "../lib/basket-coverage";
 import {
   SNACK_MAX_MINUTES, BREAKFAST_MAX_MINUTES, SMALL_DISH_KCAL, breakfastLooksLikeBreakfast,
   catalogFoodVocabulary, phrasePromisesMissingFood, truthfulDishName,
+  saltRowTsp, addedSaltCapTsp, countUnitFor,
 } from "../lib/dish-plausibility";
 import { displayDishName } from "../lib/dish-name";
 
@@ -388,6 +389,76 @@ async function main() {
   );
   for (const r of titleFixes.slice(0, Number(process.env.SHOW ?? 5))) console.log(`  "${r.from}" (no ${r.lied}) → "${r.to}"`);
 
+  // ── Clamp added salt to a seasoning amount ────────────────────────────────
+  //
+  // 983 of 1,040 generated salt rows are above an eighth of a teaspoon, 290 of
+  // them at a half. Each is under the per-dish ceiling and three of them are a
+  // day: a profile with NO conditions came out over the 2,300 mg guideline on 6
+  // days of 7, once at 3,023 mg, with every dish passing every gate. A per-dish
+  // rule cannot see a day, so the amount is clamped (see SEASONING_SALT_TSP).
+  //
+  // Generated rows only, as with the renames — a curated row's amount is
+  // editorial. Safe to rewrite because the steps say "season with salt" and do
+  // not repeat the figure.
+  const saltRows = await prisma.recipeIngredient.findMany({
+    where: {
+      ingredient: { name: { contains: "salt", mode: "insensitive" } },
+      recipe: { tags: { hasSome: ["clara", "Clara", "clara-generated"] } },
+    },
+    select: {
+      recipeId: true, ingredientId: true, quantity: true, unit: true,
+      ingredient: { select: { name: true } },
+      recipe: { select: { name: true, calories: true } },
+    },
+  });
+  const saltClamps: { recipeId: string; ingredientId: string; dish: string; from: string; toTsp: number }[] = [];
+  let mgSaved = 0;
+  for (const row of saltRows) {
+    const tsp = saltRowTsp(row.quantity, row.unit);
+    const cap = addedSaltCapTsp(row.recipe.calories);
+    if (tsp === null || tsp <= cap) continue;
+    mgSaved += (tsp - cap) * 2325;
+    saltClamps.push({
+      recipeId: row.recipeId, ingredientId: row.ingredientId, dish: row.recipe.name,
+      from: `${row.quantity} ${row.unit ?? ""}`.trim(), toTsp: cap,
+    });
+  }
+  console.log(
+    `salt rows above a seasoning amount: ${saltClamps.length} of ${saltRows.length} ` +
+      `(${Math.round(mgSaved).toLocaleString()} mg of sodium across the catalog)`
+  );
+  for (const c of saltClamps.slice(0, 3)) console.log(`  ${c.from} → ${c.toTsp} tsp — ${c.dish}`);
+
+  // ── Name the unit on a bare count ─────────────────────────────────────────
+  //
+  // QA read the rendered DOM of a fresh week and found 14 rows that say
+  // "Sliced bread 1", "Large eggs 2", "Roma tomatoes 2" — a quantity with no
+  // unit — on 6 of 7 days. countUnitFor() is correct and the dishes generated
+  // after it shipped all carry units; the gap is that it runs only at
+  // GENERATION, and the builder keeps serving rows written before it existed.
+  // Two earlier cycles reported this and both times the fix went to the write
+  // point only. It is the first thing a tester sees on opening a dish to cook.
+  //
+  // Only for foods whose bare count IS a measurement (an egg, a slice of
+  // bread), which is the same set lib/staple-density.ts can price. A bare count
+  // on anything else is not a missing word, it is a missing amount, and
+  // dishProblem refuses those at selection.
+  const countRows = await prisma.recipeIngredient.findMany({
+    where: { quantity: { not: null }, OR: [{ unit: null }, { unit: "" }] },
+    select: { recipeId: true, ingredientId: true, quantity: true, ingredient: { select: { name: true } }, recipe: { select: { name: true } } },
+  });
+  const unitFills: { recipeId: string; ingredientId: string; name: string; dish: string; quantity: number | null; unit: string }[] = [];
+  for (const row of countRows) {
+    const unit = countUnitFor(row.ingredient.name);
+    if (!unit) continue;
+    unitFills.push({
+      recipeId: row.recipeId, ingredientId: row.ingredientId,
+      name: row.ingredient.name, dish: row.recipe.name, quantity: row.quantity, unit,
+    });
+  }
+  console.log(`unitless count rows: ${countRows.length}; nameable: ${unitFills.length}`);
+  for (const u of unitFills.slice(0, 4)) console.log(`  "${u.name} ${u.quantity}" → "${u.quantity} ${u.unit}" — ${u.dish}`);
+
   if (!APPLY) {
     console.log("\nreport only — pass --apply to write");
     await prisma.$disconnect();
@@ -396,7 +467,7 @@ async function main() {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backup = `/tmp/wondish-dish-repair-${stamp}.json`;
-  writeFileSync(backup, JSON.stringify({ macroFills, macroCorrections, macroFixes, calorieFixes, linkDrops, slotMoves, renames }, null, 2));
+  writeFileSync(backup, JSON.stringify({ macroFills, macroCorrections, macroFixes, calorieFixes, linkDrops, slotMoves, renames, saltClamps, unitFills }, null, 2));
   console.log(`\nbackup written: ${backup}`);
 
   let filled = 0;
@@ -427,6 +498,22 @@ async function main() {
     await prisma.recipeIngredient.deleteMany({ where: { recipeId: d.recipeId, ingredientId: d.ingredientId } });
     dropped++;
   }
+  let unitsNamed = 0;
+  for (const u of unitFills) {
+    await prisma.recipeIngredient.updateMany({
+      where: { recipeId: u.recipeId, ingredientId: u.ingredientId },
+      data: { unit: u.unit },
+    });
+    unitsNamed++;
+  }
+  let clamped = 0;
+  for (const c of saltClamps) {
+    await prisma.recipeIngredient.updateMany({
+      where: { recipeId: c.recipeId, ingredientId: c.ingredientId },
+      data: { quantity: c.toTsp, unit: "teaspoon" },
+    });
+    clamped++;
+  }
   let renamed = 0;
   for (const r of renames) {
     await prisma.recipe.update({ where: { id: r.id }, data: { name: r.to, description: r.description } });
@@ -437,7 +524,7 @@ async function main() {
     await prisma.recipe.update({ where: { id: m.id }, data: { mealTypeId: m.toId } });
     moved++;
   }
-  console.log(`applied: ${renamed} dishes renamed from their ingredients, ${moved} dishes moved to the slot their timing fits, ${filled} null-macro rows filled, ${corrected} contradictory macro sets corrected, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
+  console.log(`applied: ${unitsNamed} bare counts given their unit, ${clamped} salt amounts clamped to a seasoning, ${renamed} dishes renamed from their ingredients, ${moved} dishes moved to the slot their timing fits, ${filled} null-macro rows filled, ${corrected} contradictory macro sets corrected, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
   await prisma.$disconnect();
 
 }

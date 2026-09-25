@@ -49,6 +49,67 @@ export const MAX_SALT_TSP = 1;
 export const MAX_SALT_TSP_SMALL_DISH = 0.5;
 export const SMALL_DISH_KCAL = 450;
 
+/**
+ * What a serving is SEASONED with, as opposed to what is absurd in one.
+ *
+ * MAX_SALT_TSP above refuses the absurd, and that is all it can do — a ceiling
+ * per dish says nothing about a day. Measured on the live catalog 2026-09-25:
+ * 983 of 1,040 generated salt rows are above an eighth of a teaspoon, 290 of
+ * them at a half. Each is individually legal and three of them are a day: a
+ * profile with no conditions at all came out over the 2,300 mg guideline on 6
+ * days of 7, once at 3,023 mg, with every dish in the week passing every gate.
+ *
+ * So the amount is CLAMPED rather than the dish refused — the same disposal as
+ * a lying title. Four dishes at these caps come to ~1,740 mg of added salt,
+ * which leaves room for the sodium already in the food. It is safe to rewrite
+ * because the steps do not repeat the figure: of 151 generated steps that
+ * looked like they stated a salt amount, every one sampled was an oil or herb
+ * amount standing next to the word "salt" ("toss with 1.5 tbsp olive oil, 1/2
+ * tsp dried thyme, salt, and pepper"). The instruction is "season with salt";
+ * this decides how much that is.
+ *
+ * Under-seasoning is the right way to be wrong here. A diner can add salt at
+ * the table and cannot take it out, and the app shows them the number either
+ * way.
+ */
+export const SEASONING_SALT_TSP = 0.25;
+export const SEASONING_SALT_TSP_SMALL_DISH = 0.125;
+const SALT_TSP_PER_GRAM = 1 / 6;
+
+export function addedSaltCapTsp(calories?: number | null): number {
+  return calories != null && calories < SMALL_DISH_KCAL ? SEASONING_SALT_TSP_SMALL_DISH : SEASONING_SALT_TSP;
+}
+
+/** A salt row's amount in teaspoons, or null when it is not measurable as one. */
+export function saltRowTsp(quantity?: number | null, unit?: string | null): number | null {
+  if (quantity == null || !(quantity > 0)) return null;
+  const u = unit ?? "";
+  if (/\b(tsp|teaspoons?)\b/i.test(u)) return quantity;
+  if (/\b(tbsp|tablespoons?)\b/i.test(u)) return quantity * 3;
+  if (/^\s*(g|gram|grams|gr)\s*$/i.test(u)) return quantity * SALT_TSP_PER_GRAM;
+  return null; // a pinch, or an unrecognised unit: too small or too vague to clamp
+}
+
+/**
+ * Clamp added salt to a seasoning amount, leaving everything else alone.
+ * Returns the same array when nothing changed, so callers can cheaply tell.
+ */
+export function clampAddedSalt<T extends { name: string; quantity?: number | null; unit?: string | null }>(
+  ingredients: readonly T[],
+  calories?: number | null
+): { ingredients: T[]; changed: boolean } {
+  const cap = addedSaltCapTsp(calories);
+  let changed = false;
+  const out = ingredients.map((i) => {
+    if (!/\bsalt\b/i.test(i.name)) return i;
+    const tsp = saltRowTsp(i.quantity, i.unit);
+    if (tsp === null || tsp <= cap) return i;
+    changed = true;
+    return { ...i, quantity: cap, unit: "teaspoon" };
+  });
+  return changed ? { ingredients: out, changed } : { ingredients: [...ingredients], changed: false };
+}
+
 export interface PlausibleIngredient {
   name: string;
   quantity?: number | null;
@@ -460,6 +521,24 @@ export function truthfulDishName(
     return name;
   }
   return null;
+}
+
+/** Countable foods whose bare count IS the measurement (see staple-density). */
+const COUNTABLE = /\b(eggs?|bread|toast|muffin|bagel|tortilla|pita|apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|carrots?|avocados?|lemons?|limes?)\b/i;
+
+/** The word for one of something, when a recipe gives a bare count. */
+export function countUnitFor(name: string): string | null {
+  if (/\bbread\b/i.test(name)) return "slice";
+  if (/\b(muffin|bagel|tortilla|pita|wrap)\b/i.test(name)) return "whole";
+  if (/\beggs?\b/i.test(name)) return "egg";
+  if (/\b(apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|avocados?|lemons?|limes?|carrots?)\b/i.test(name)) return "whole";
+  return null;
+}
+
+export function unitIsUsable(name: string, unit: string | null | undefined): boolean {
+  const u = (unit ?? "").trim();
+  if (u.length > 0) return true;
+  return COUNTABLE.test(name);
 }
 
 // Claims a reader acts on that the token rule structurally cannot see.

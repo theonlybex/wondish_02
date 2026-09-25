@@ -152,7 +152,14 @@ export default async function MealPlanPage({
       {/* Header removed (2026-09-06): the "Meal Plan" title, the "personalised
           daily menu" subtitle, the redundant date, and the Weekly view link are
           all gone — the day-navigator below is the meal-plan header now. The
-          /meal-plan/weekly route stays live; only its entry point is removed. */}
+          /meal-plan/weekly route stays live; only its entry point is removed.
+
+          Removing the title also removed the page's only <h1>, which a QA pass
+          found by looking for one and getting zero. The day-navigator is the
+          visual header and stays that way; this restores the heading for screen
+          readers and the document outline without putting the title back on
+          screen. Same words as the tab title. */}
+      <h1 className="sr-only">Meal Plan</h1>
 
       <div className="mp" style={{ animationDelay: "160ms" }}>
         <DailyMealPlanView

@@ -132,6 +132,12 @@ export default async function OverviewPage() {
     // Phones scroll the page; the fixed-height, inner-scrolling bento is a
     // desktop layout (below lg it was a clipped, unscrollable viewport).
     <div className="lg:h-full lg:overflow-hidden flex flex-col gap-4">
+      {/* The page had no <h1> at all, so its first heading was the "Daily
+          Journal" <h2> inside the bento — a level skip, and nothing naming the
+          page for a screen reader or in the heading outline. Visually hidden
+          because the design deliberately has no page title: the bento cards are
+          the header. Same words as the tab title, so they agree. */}
+      <h1 className="sr-only">Overview</h1>
       {/* innerHTML, not a text child: React hydrated the CSS as a text node
           and the browser's raw-text parsing of <style> (quotes + comment)
           made server and client disagree → "Text content did not match",

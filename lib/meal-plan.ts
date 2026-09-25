@@ -29,6 +29,16 @@ import { buildFoodMapText } from "@/lib/food-map";
 // that throws a TDZ error on load.
 import type { TopUpRequest } from "@/lib/clara/recipe-generation";
 
+// How hard the day's remaining macro gap pulls on a pick. Chosen by measuring
+// three built weeks each at 0/30/60/90/120/240 against the live database: 90
+// gave the most slots filled (29-34), the calorie total closest to target
+// (2,013-2,043 against ~2,100) AND the lowest fat share (41-42%, from 46% at
+// zero). Higher was not better — at 120 and 240 the term started refusing the
+// dishes that fill a day, and the week came in under target with the split no
+// better. Single runs cannot rank these: the pick shuffles among the top few,
+// so run-to-run spread is wider than the effect being measured.
+const DAY_MACRO_WEIGHT = 90;
+
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -201,7 +211,14 @@ function pickByMotivation(
    * tie to one that is not, which is what was missing when a QA week came back
    * with 30 slots, 18 dishes, and two of them filling 14.
    */
-  weekUseCounts: Map<string, number> = new Map()
+  weekUseCounts: Map<string, number> = new Map(),
+  /**
+   * The day's macro target in GRAMS, and what the day has eaten so far. Both or
+   * neither — without them the day-aware term below is skipped and scoring
+   * behaves exactly as it did before.
+   */
+  dayMacroTargetG: { protein: number; carbs: number; fat: number } | null = null,
+  todayMacroG: { protein: number; carbs: number; fat: number } = { protein: 0, carbs: 0, fat: 0 }
 ): RecipeCandidate {
   if (candidates.length === 1) return candidates[0];
 
@@ -229,6 +246,31 @@ function pickByMotivation(
         macroTarget
       );
       score -= deviation * 40;
+    }
+    // …and then the same question asked of the DAY: where does the day land if
+    // this dish is chosen?
+    //
+    // The per-dish rule above cannot see a day, which is the same shape of bug
+    // the sodium ceiling had. QA measured the result on 7 of 7 days: calories
+    // inside ±7% of target every day, and the split 15-25/21-41/44-55 against a
+    // 30/50/20 target — the app's own rail rendering "Fat 111g of 46g · 241%"
+    // next to "Carbs 139g of 261g · 53%". A nutrition app that displays a target
+    // and then plans double it is worse than one that displays nothing.
+    //
+    // Every candidate in a slot deviates similarly on its own ratios, so the
+    // per-dish term barely reorders them; what distinguishes them is what the
+    // DAY still needs. This term rewards the dish that closes the day's gaps —
+    // protein when protein is short, and against more fat once the fat is spent
+    // — and it is why the pool's leaner half gets reached at all: 47% of usable
+    // lunches sit at or under 30% fat while the builder was picking at 44-55%.
+    if (dayMacroTargetG && (r.calories ?? 0) > 0) {
+      let err = 0;
+      for (const k of ["protein", "carbs", "fat"] as const) {
+        const targetG = dayMacroTargetG[k];
+        if (!targetG) continue;
+        err += Math.abs(todayMacroG[k] + (r[k] ?? 0) - targetG) / targetG;
+      }
+      score -= err * DAY_MACRO_WEIGHT;
     }
     if (hasAffinity) {
       for (const ri of r.ingredients) {
@@ -259,7 +301,26 @@ function pickByMotivation(
   });
 
   scored.sort((a, b) => b.score - a.score);
-  return shuffleArray(scored.slice(0, Math.min(3, scored.length)))[0];
+  // The random pick over the best few keeps two users (and two weeks) from
+  // getting identical plans. But it was taking the top three by score and
+  // choosing among them uniformly, which THREW AWAY the ordering the -500
+  // penalty above had just established: with three eligible dishes all three
+  // sit in that window, so the penalty decided nothing and the pick was a coin
+  // toss. Exactly backwards — the penalty exists for the thin pool, and the
+  // thin pool is the case where every candidate is in the top three.
+  //
+  // It looked like it worked because it was measured on a wide pool, where the
+  // top three happen to be unused dishes anyway. A flaky unit test caught it
+  // (one dish took 4 of 7 slots on some runs, 3 on others) and a QA week found
+  // the same thing from the other side: one snack served three times.
+  //
+  // So the window is the least-used dishes only. This is still not a cap: when
+  // every candidate has been used once, they all have the fewest uses and all
+  // stay eligible, so a slot can never become unfillable — the failure mode of
+  // the hard per-week cap this replaced.
+  const fewestUses = Math.min(...scored.map((s) => weekUseCounts.get(s.id) ?? 0));
+  const freshest = scored.filter((s) => (weekUseCounts.get(s.id) ?? 0) === fewestUses);
+  return shuffleArray(freshest.slice(0, Math.min(3, freshest.length)))[0];
 }
 
 // Pool entries carry mealTypeId + description so the in-memory filters can
@@ -709,6 +770,14 @@ export async function buildMealPlanMenus(
     // dishes at half a teaspoon each add up — a QA run measured exactly that.
     // Sodium is a DAY-level quantity, so this is where it belongs.
     let todaySodiumMg = 0;
+    // The day's macros so far, so scoring can ask where the DAY lands rather
+    // than only what a dish looks like on its own.
+    const todayMacroG = { protein: 0, carbs: 0, fat: 0 };
+    const dayMacroTargetG = {
+      protein: (weekCals * macroTarget.protein) / 4,
+      carbs: (weekCals * macroTarget.carbs) / 4,
+      fat: (weekCals * macroTarget.fat) / 9,
+    };
     // Which starch each slot used. One QA week was rice 21 times out of 26:
     // titles all distinct, macros correct, and the same plate every day. Two
     // slots may share a base; the third must look elsewhere.
@@ -841,13 +910,16 @@ export async function buildMealPlanMenus(
         todaySodiumMg += dishSodiumMg(recipe.ingredients);
         const cb = dishCarbBase(recipe.ingredients);
         if (cb) todayCarbBaseCounts.set(cb, (todayCarbBaseCounts.get(cb) ?? 0) + 1);
+        todayMacroG.protein += recipe.protein ?? 0;
+        todayMacroG.carbs   += recipe.carbs ?? 0;
+        todayMacroG.fat     += recipe.fat ?? 0;
         mealCalories += recipe.calories ?? 0;
         dayCalories  += recipe.calories ?? 0;
         menus.push({ patientId, recipeId: recipe.id, mealTypeId: mealType.id, date: new Date(current), planVersion });
       };
 
       const pick = (pool: RecipeCandidate[]) =>
-        pickByMotivation(pool, motivationNames, affinityMap, seenIngredientNames, macroTarget, todaySodiumMg, weekUseCounts);
+        pickByMotivation(pool, motivationNames, affinityMap, seenIngredientNames, macroTarget, todaySodiumMg, weekUseCounts, dayMacroTargetG, todayMacroG);
 
       // ── Step 1: Try a complete meal ────────────────────────────────────────
       if (target !== null) {
@@ -954,7 +1026,8 @@ export async function buildMealPlanMenus(
         }
         if (extraCandidates.length === 0) break;
         const extra = pickByMotivation(
-          extraCandidates, motivationNames, affinityMap, seenIngredientNames, macroTarget, todaySodiumMg, weekUseCounts
+          extraCandidates, motivationNames, affinityMap, seenIngredientNames, macroTarget, todaySodiumMg, weekUseCounts,
+          dayMacroTargetG, todayMacroG
         );
         const extraCals = extra.calories ?? 0;
         if (extraCals <= 0) break; // no useful calorie contribution; further picks won't help
@@ -968,6 +1041,9 @@ export async function buildMealPlanMenus(
         // repeated the first pass's protein and sodium.
         weekUseCounts.set(extra.id, (weekUseCounts.get(extra.id) ?? 0) + 1);
         todaySodiumMg += dishSodiumMg(extra.ingredients);
+        todayMacroG.protein += extra.protein ?? 0;
+        todayMacroG.carbs   += extra.carbs ?? 0;
+        todayMacroG.fat     += extra.fat ?? 0;
         const extraCarb = dishCarbBase(extra.ingredients);
         if (extraCarb) todayCarbBaseCounts.set(extraCarb, (todayCarbBaseCounts.get(extraCarb) ?? 0) + 1);
         const extraProtein = dishProtein(extra.ingredients);
@@ -985,6 +1061,9 @@ export async function buildMealPlanMenus(
     todayProteinCounts.clear();
     todayCarbBaseCounts.clear();
     todaySodiumMg = 0;
+    todayMacroG.protein = 0;
+    todayMacroG.carbs = 0;
+    todayMacroG.fat = 0;
     current.setDate(current.getDate() + 1);
   }
 
