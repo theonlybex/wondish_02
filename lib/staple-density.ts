@@ -312,8 +312,26 @@ export interface PricedDish {
 const NEGLIGIBLE =
   /\b(salt|pepper|peppercorns?|water|vinegar|spice|seasoning|powder|paprika|cumin|oregano|thyme|basil|rosemary|parsley|cilantro|cinnamon|turmeric|ginger|bay leaf|chili flakes|cayenne|herbs?|stock|broth|lemon juice|lime juice|zest|extract|baking powder|baking soda|mustard|hot sauce|soy sauce|garlic|shallots?|scallions?|green onions?|chives?|dill|mint|sage|tarragon|lemons?|limes?|capers|olives)\b/i;
 
+/**
+ * A row that says it is already cooked, in its own note or name.
+ *
+ * The null-macro repair priced "Wild Rice , V1M- 3/4 cup, cooked unsalted"
+ * — noted `[cooked]` AND named "cooked" — at DRY density and wrote 108 g of
+ * carbohydrate onto a 125 kcal row (the true figure is ~26 g). That is the same
+ * cooked-versus-dry misread this module was built to fix, arriving from the
+ * other direction: the steps said nothing, so the default said dry.
+ */
+const ROW_SAYS_COOKED = /\bcooked\b/i;
+
+/**
+ * Cooked grain against dry, as a fraction. Rice triples in weight boiling, so
+ * 100 g of cooked rice carries about 28 g of carbohydrate against 78 g dry.
+ * One factor across the grains is close enough for a check with a 25% band.
+ */
+const COOKED_FACTOR = 0.35;
+
 export function priceDish(
-  ingredients: readonly { name: string; quantity?: number | null; unit?: string | null }[],
+  ingredients: readonly { name: string; quantity?: number | null; unit?: string | null; note?: string | null }[],
   steps?: readonly string[] | null
 ): PricedDish | null {
   let priced = 0;
@@ -338,10 +356,12 @@ export function priceDish(
       unpriced += 100;
       continue;
     }
+    // A row that declares itself cooked is priced cooked.
+    const factor = ROW_SAYS_COOKED.test(`${ing.name} ${ing.note ?? ""}`) ? COOKED_FACTOR : 1;
     priced += grams;
-    protein += (grams * (density.protein ?? 0)) / 100;
-    carbs += (grams * density.carbs) / 100;
-    fat += (grams * density.fat) / 100;
+    protein += (grams * (density.protein ?? 0) * factor) / 100;
+    carbs += (grams * density.carbs * factor) / 100;
+    fat += (grams * density.fat * factor) / 100;
   }
 
   const total = priced + unpriced;

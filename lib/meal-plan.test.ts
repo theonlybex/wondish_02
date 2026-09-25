@@ -1142,3 +1142,40 @@ test("two slots a day may share a starch, not three", () => {
     assert.ok(rice <= 2, `rice took ${rice} of ${res.rows.length} slots`);
   });
 });
+
+test("a week spreads across the dishes available instead of repeating one", () => {
+  // A QA week came back with 30 slots, 18 distinct dishes, and two of them
+  // filling 14 — the same breakfast and the same snack every day. weekUsedIds
+  // is a set, so once the ladder relaxed to "reuse allowed" nothing preferred
+  // an unused dish over one already served six times.
+  //
+  // The instrument is a scoring penalty, not a cap: it can never make a slot
+  // unfillable, it just means a repeat loses every tie. So with three dishes
+  // and seven days, all three get used and none takes the week.
+  const bfast = (id: string) => ({
+    ...makeRecipe({ id, mealTypeId: MT_B.id, calories: 400, ingredients: [`Large eggs ${id}`] }),
+    name: `Breakfast ${id}`, tags: [] as string[], prepTime: 5, cookTime: 10,
+  });
+  setDb(makePatient(), [MT_B], [bfast("a"), bfast("b"), bfast("c")]);
+  return build("p1", new Date("2026-09-24T00:00:00Z"), 1, { windowDays: 7 }).then((res) => {
+    const counts = new Map<string, number>();
+    for (const r of res.rows) counts.set(r.recipeId, (counts.get(r.recipeId) ?? 0) + 1);
+    assert.equal(counts.size, 3, "every available dish should be used");
+    assert.ok(
+      Math.max(...counts.values()) <= 3,
+      `one dish took ${Math.max(...counts.values())} of ${res.rows.length} slots: ${JSON.stringify([...counts])}`
+    );
+  });
+});
+
+test("with only one dish available the slot is still filled", () => {
+  // The penalty must not become a refusal: a filled slot beats an empty day.
+  const only = {
+    ...makeRecipe({ id: "only", mealTypeId: MT_B.id, calories: 400, ingredients: ["Large eggs"] }),
+    name: "The Only Breakfast", tags: [] as string[], prepTime: 5, cookTime: 10,
+  };
+  setDb(makePatient(), [MT_B], [only]);
+  return build("p1", new Date("2026-09-24T00:00:00Z"), 1, { windowDays: 7 }).then((res) => {
+    assert.ok(res.rows.length >= 7, `expected a dish every day, got ${res.rows.length}`);
+  });
+});

@@ -40,7 +40,16 @@ export async function POST() {
   const status = computeBasketReadiness(names);
   if (!status.ready) {
     return NextResponse.json(
-      { error: "Add more ingredients before generating a week.", ...status },
+      {
+        // Name the gap. "Add more ingredients" to someone holding fifteen
+        // savoury items and no breakfast food is not actionable (QA cycle 8).
+        error: status.missingBreakfast
+          ? "Add something for breakfast first — eggs, oats, bread or yoghurt. A week needs one."
+          : status.count < status.min
+            ? `Add ${status.min - status.count} more ingredient${status.min - status.count === 1 ? "" : "s"} before generating a week.`
+            : `Add a ${status.missingCategories.join(" and a ")} before generating a week.`,
+        ...status,
+      },
       { status: 422 }
     );
   }

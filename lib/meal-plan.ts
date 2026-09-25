@@ -94,6 +94,15 @@ export const MAX_SAME_PROTEIN_PER_DAY = 2;
 export const MAX_SAME_CARB_BASE_PER_DAY = 2;
 
 /**
+ * Slots in a WEEK one dish may fill.
+ *
+ * Three, not one: a repeat twice over is normal home cooking, seven is the
+ * product looking broken. QA measured a week of 30 slots filled by 18 dishes,
+ * two of which took 14 of them — every breakfast and every snack identical.
+ */
+export const MAX_SAME_DISH_PER_WEEK = 3;
+
+/**
  * The daily sodium guideline, in mg (WHO and most national bodies).
  *
  * Used as a ceiling the builder tries not to cross and as a preference that
@@ -181,7 +190,18 @@ function pickByMotivation(
    * preference makes the builder reach for the lighter dish of two it would
    * otherwise pick between, which is what moves the daily total.
    */
-  sodiumSoFarMg = 0
+  sodiumSoFarMg = 0,
+  /**
+   * How many slots each dish already fills this week.
+   *
+   * A hard cap here was the first attempt and it was the wrong instrument: it
+   * changed which dish won a slot in small pools and broke nine assertions
+   * about calorie windows and family rules for no gain. A penalty cannot make a
+   * slot unfillable — it just means a dish already used this week loses every
+   * tie to one that is not, which is what was missing when a QA week came back
+   * with 30 slots, 18 dishes, and two of them filling 14.
+   */
+  weekUseCounts: Map<string, number> = new Map()
 ): RecipeCandidate {
   if (candidates.length === 1) return candidates[0];
 
@@ -215,6 +235,12 @@ function pickByMotivation(
         score += (affinityMap[ri.ingredient.name.toLowerCase()] ?? 0) * 14;
       }
     }
+    // Every slot this dish already fills this week costs it heavily — more than
+    // any affinity or macro bonus can recover, so a fresh dish always wins when
+    // one exists, and a repeat only happens when nothing else is eligible.
+    const used = weekUseCounts.get(r.id) ?? 0;
+    if (used > 0) score -= used * 500;
+
     // Past ~60% of the day's sodium budget, salt starts to cost a dish points —
     // gently at first, hard once the day is over. Below that it is not a factor:
     // a dish is not worse for being seasoned.
@@ -623,6 +649,12 @@ export async function buildMealPlanMenus(
   // weekUsedIds resets every 7 days — prevents recipe exhaustion while still
   // ensuring no recipe repeats within the same week.
   const weekUsedIds = new Set<string>();
+  // How many slots each dish already fills this week. weekUsedIds is a set, so
+  // once the ladder relaxed to "reuse is allowed" a thin pool could put ONE
+  // dish in every slot of a meal: a QA week had 30 slots, 18 distinct dishes,
+  // and two of them filled 14 — the same breakfast and the same snack seven
+  // days running. Allowing reuse is not the same as allowing that.
+  const weekUseCounts = new Map<string, number>();
   // Near-duplicate guard within the week: signatures of dishes already used.
   const weekUsedSignatures = new Set<string>();
   // Protein spread: the last few protein types used, avoided while fresh options
@@ -645,7 +677,11 @@ export async function buildMealPlanMenus(
 
   const current = new Date(startDate);
   while (current <= endDate) {
-    if (dayIndex % 7 === 0) { weekUsedIds.clear(); weekUsedSignatures.clear(); }
+    // The per-dish cap is a WEEK's worth of slots, so it resets on the same
+    // 7-day boundary as weekUsedIds. A maintain plan runs 35 days: a cap that
+    // never reset would starve the long horizon (the 35-day fixture tests
+    // caught exactly that).
+    if (dayIndex % 7 === 0) { weekUsedIds.clear(); weekUsedSignatures.clear(); weekUseCounts.clear(); }
     dayIndex++;
 
     // One schedule for every direction: gradual deficit (lose), gradual
@@ -794,6 +830,7 @@ export async function buildMealPlanMenus(
 
       const addRecipe = (recipe: RecipeCandidate) => {
         trackChosen(recipe, dailyFamilies, mealSubFamilies, weekUsedIds);
+        weekUseCounts.set(recipe.id, (weekUseCounts.get(recipe.id) ?? 0) + 1);
         weekUsedSignatures.add(dishSignature(recipe.ingredients));
         todayUsedIds.add(recipe.id);
         const dp = dishProtein(recipe.ingredients);
@@ -810,7 +847,7 @@ export async function buildMealPlanMenus(
       };
 
       const pick = (pool: RecipeCandidate[]) =>
-        pickByMotivation(pool, motivationNames, affinityMap, seenIngredientNames, macroTarget, todaySodiumMg);
+        pickByMotivation(pool, motivationNames, affinityMap, seenIngredientNames, macroTarget, todaySodiumMg, weekUseCounts);
 
       // ── Step 1: Try a complete meal ────────────────────────────────────────
       if (target !== null) {

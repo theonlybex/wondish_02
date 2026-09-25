@@ -1,6 +1,7 @@
 "use client";
 
 import { apiFetch } from "@/lib/client-fetch";
+import Link from "next/link";
 import React, { useState, useEffect, useRef } from "react";
 import { displayDishName } from "@/lib/dish-name";
 import { CUISINES } from "@/lib/cuisines";
@@ -426,6 +427,34 @@ export default function DailyMealPlanView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Back and Forward move between days, now that each day pushes an entry.
+  // Without this the URL changed and the view did not, which is a worse state
+  // than not pushing at all.
+  useEffect(() => {
+    const onPop = () => {
+      const param = new URLSearchParams(window.location.search).get("date");
+      const next = param && /^\d{4}-\d{2}-\d{2}$/.test(param) ? parseLocalDate(param) : null;
+      if (!next || format(next, "yyyy-MM-dd") === format(date, "yyyy-MM-dd")) return;
+      setDate(next);
+      void apiFetch(`/api/meal-plan?date=${format(next, "yyyy-MM-dd")}&exchanges=1`)
+        .then(async (r) => {
+          const data = await r.json().catch(() => null);
+          if (!r.ok || !data) return;
+          setMenus(data.menus ?? []);
+          setLoggedRecipeIds(data.loggedRecipeIds ?? []);
+          setMealRatings(data.mealRatings ?? {});
+          setDailyCalorieTarget(data.dailyCalorieTarget ?? null);
+          setDailyMacroTarget(data.dailyMacroTarget ?? null);
+          setDaySalt(data.daySaltSodiumMg != null ? { mg: data.daySaltSodiumMg, guideline: data.dailySodiumGuidelineMg ?? 2300 } : null);
+          setExchanges(data.exchanges ?? null);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
+
   // Adopt a build that was already running when this page loaded: poll until
   // it finishes, then read the plan in, exactly as if this tab had asked.
   useEffect(() => {
@@ -578,6 +607,14 @@ export default function DailyMealPlanView({
     const newDate = dir === "next" ? addDays(date, 1) : subDays(date, 1);
     const dateStr = format(newDate, "yyyy-MM-dd");
     setDate(newDate);
+    // Put the day in the URL. Six presses of the arrow left the address bar on
+    // /meal-plan, so the day was not shareable, a refresh lost it, and Back
+    // exited the page instead of stepping back a day (QA cycle 8). replaceState
+    // rather than pushState for the arrows would keep Back broken, so this
+    // pushes — one history entry per day, which is what the arrows imply.
+    if (typeof window !== "undefined") {
+      window.history.pushState({ wondishDate: dateStr }, "", `?date=${dateStr}`);
+    }
     setLoading(true);
     try {
       const res  = await apiFetch(`/api/meal-plan?date=${dateStr}&exchanges=1`);
@@ -1248,6 +1285,38 @@ export default function DailyMealPlanView({
                   app knew and did not say. Named "added salt" rather than
                   sodium — it counts the salt on the ingredient rows, not
                   everything the diner eats. */}
+              {/* What the DAY'S PLAN holds, against the same targets — not what
+                  has been logged. The rings above divide logged intake by the
+                  target, so with nothing logged they read 0/43g and a day
+                  carrying 93 g of fat was never compared to anything. QA
+                  measured every day of a week at 158-238% of the fat target
+                  with no surface anywhere saying so, while the app was already
+                  honest about calories and sodium. */}
+              {budgetIsTarget && menus.length > 0 && (
+                <div className="pt-2.5 mt-0.5 border-t" style={{ borderColor: "#F0EFF5" }}>
+                  <p className="text-[9px] tracking-[0.18em] uppercase font-bold mb-1.5" style={{ color: "#ABA6A6" }}>
+                    This day&apos;s plan
+                  </p>
+                  {[
+                    { label: "Protein", planned: Math.round(totalProtein), target: Math.round(budgetProtein) },
+                    { label: "Carbs", planned: Math.round(totalCarbs), target: Math.round(budgetCarbs) },
+                    { label: "Fat", planned: Math.round(totalFat), target: Math.round(budgetFat) },
+                  ].map(({ label, planned, target }) => {
+                    const pct = target > 0 ? Math.round((planned / target) * 100) : 0;
+                    // A plan is not meant to hit a macro exactly; 70-130% is
+                    // the band where nothing is worth saying.
+                    const off = pct > 130 || pct < 70;
+                    return (
+                      <div key={label} className="flex items-center justify-between">
+                        <p className="text-[10px]" style={{ color: "#848181" }}>{label}</p>
+                        <p className="text-[10px] tabular-nums" style={{ color: off ? "#B75E78" : "#848181" }}>
+                          {planned}g of {target}g{off ? ` · ${pct}%` : ""}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {daySalt && daySalt.mg > 0 && (
                 <div className="flex items-center justify-between pt-2.5 border-t" style={{ borderColor: "#F0EFF5" }}>
                   <p className="text-[9px] tracking-[0.18em] uppercase font-bold" style={{ color: "#ABA6A6" }}>
@@ -1292,10 +1361,35 @@ export default function DailyMealPlanView({
           </div>
           {startDate && (
             <div className="mt-3">
-              <Button variant="secondary" size="sm" loading={newWeekLoading} onClick={() => void generateNewWeek()} className="w-full">
+              {/* Disabled with the reason beside it when the basket cannot fill
+                  a week. QA clicked an enabled button with an unready basket and
+                  got nothing at all — the server's 422 is correct and the dead
+                  click is the defect. A reason the user can read before clicking
+                  beats an error afterwards. */}
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={newWeekLoading}
+                disabled={basketStatus ? !basketStatus.ready : false}
+                onClick={() => void generateNewWeek()}
+                className="w-full"
+              >
                 Generate a new week
               </Button>
-              <NewWeekError message={newWeekError} upgrade={newWeekUpgrade} className="mt-1.5" />
+              {basketStatus && !basketStatus.ready ? (
+                <p className="text-[11px] mt-1.5 leading-snug" style={{ color: "#848181" }}>
+                  {basketStatus.missingBreakfast
+                    ? "Add something for breakfast — eggs, oats, bread or yoghurt — "
+                    : basketStatus.count < basketStatus.min
+                      ? `Add ${basketStatus.min - basketStatus.count} more ingredient${basketStatus.min - basketStatus.count === 1 ? "" : "s"} `
+                      : "Your ingredients can't fill a week yet — "}
+                  <Link href="/pantry" className="underline font-semibold" style={{ color: "#812549" }}>
+                    open Ingredients
+                  </Link>
+                </p>
+              ) : (
+                <NewWeekError message={newWeekError} upgrade={newWeekUpgrade} className="mt-1.5" />
+              )}
             </div>
           )}
         </div>

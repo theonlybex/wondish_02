@@ -90,19 +90,88 @@ async function main() {
     where: { isPublic: true, OR: [{ protein: null }, { carbs: null }, { fat: null }] },
     select: {
       id: true, name: true, calories: true, protein: true, carbs: true, fat: true, steps: true,
-      ingredients: { select: { quantity: true, unit: true, ingredient: { select: { name: true } } } },
+      ingredients: { select: { quantity: true, unit: true, note: true, ingredient: { select: { name: true } } } },
     },
   });
   const macroFills: { id: string; name: string; to: { protein: number; carbs: number; fat: number } }[] = [];
   for (const r of nullMacroRows) {
     const priced = priceDish(
-      r.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity, unit: ri.unit })),
+      r.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity, unit: ri.unit, note: ri.note })),
       r.steps
     );
     if (!priced || priced.coverage < PRICING_COVERAGE_MIN) continue;
     macroFills.push({ id: r.id, name: r.name, to: { protein: priced.protein, carbs: priced.carbs, fat: priced.fat } });
   }
   console.log(`null-macro rows: ${nullMacroRows.length}; fillable from their amounts: ${macroFills.length}`);
+
+  // ── Correct macro sets that contradict their own calorie figure ────────────
+  //
+  // Filling nulls is not enough. An earlier run of this script priced a row
+  // marked "cooked" as dry and wrote 108 g of carbohydrate onto a 125 kcal
+  // dish; separately, a library row declares 37 kcal for two eggs and a
+  // teaspoon of oil (~180). Both are self-consistent at 4/4/9 or close to it in
+  // one field and nonsense in another, so no runtime check catches them.
+  //
+  // This runs on ANY row, library included — a macro set that cannot be
+  // reconciled with the row's own calories is not measured data, it is broken
+  // data, and the ingredients are the only available arbiter.
+  const allRows = await prisma.recipe.findMany({
+    where: { isPublic: true, calories: { not: null }, protein: { not: null }, carbs: { not: null }, fat: { not: null } },
+    select: {
+      id: true, name: true, calories: true, protein: true, carbs: true, fat: true, steps: true,
+      ingredients: { select: { quantity: true, unit: true, note: true, ingredient: { select: { name: true } } } },
+    },
+  });
+  const macroCorrections: typeof macroFills = [];
+  for (const r of allRows) {
+    const ownDerived = (r.protein ?? 0) * 4 + (r.carbs ?? 0) * 4 + (r.fat ?? 0) * 9;
+    if (!r.calories || ownDerived <= 0) continue;
+    if (Math.abs(ownDerived - r.calories) / r.calories <= 0.25) continue; // internally coherent
+    const priced = priceDish(
+      r.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity, unit: ri.unit, note: ri.note })),
+      r.steps
+    );
+    if (!priced || priced.coverage < PRICING_COVERAGE_MIN) continue;
+    // The row's CALORIE figure is the measured anchor; the split is what is
+    // broken. So the priced macros are scaled to reconcile with it, rather than
+    // replacing it. That leaves the number the library measured intact and
+    // makes 4/4/9 land on it — and it avoids chasing cooked-versus-dry cup
+    // weights through the density table, which is where the last attempt at
+    // this row ended up 31% out instead of 312%.
+    const pricedKcal = priced.protein * 4 + priced.carbs * 4 + priced.fat * 9;
+    if (pricedKcal <= 0) continue;
+    const scale = r.calories / pricedKcal;
+    // A scale that far from 1 means the ingredients and the calorie figure
+    // disagree about the dish itself, not just its split. Leave it alone.
+    if (scale < 0.4 || scale > 2.5) continue;
+    macroCorrections.push({
+      id: r.id,
+      name: r.name,
+      to: {
+        protein: Math.round(priced.protein * scale * 10) / 10,
+        carbs: Math.round(priced.carbs * scale * 10) / 10,
+        fat: Math.round(priced.fat * scale * 10) / 10,
+      },
+    });
+  }
+  console.log(`macro sets contradicting their own calories, and priceable: ${macroCorrections.length}`);
+
+  // A calorie-rewrite step was written here and deliberately removed.
+  //
+  // It targeted rows whose stated calories differ from the priced figure by
+  // more than a factor of two — the case QA found was a library row declaring
+  // 37 kcal for two eggs and a teaspoon of oil. It flagged 84 rows, and reading
+  // them stopped the idea: "Scrambled Egg Whites with Fine Herbs", 36 kcal,
+  // priced at 218, because this table maps every `egg` to a whole egg at 143
+  // kcal/100 g when whites are ~52. Overwriting 84 measured figures with a
+  // table that does not know egg whites, lean cuts or portion conventions would
+  // cause more damage than it repairs.
+  //
+  // Egg whites are now in the table. The remaining wrong calorie figures in the
+  // library are a data question for a human, not something this script should
+  // guess at: the macro-set correction above is safe precisely because it
+  // anchors to the measured calorie value instead of replacing it.
+
 
   const generated = await prisma.recipe.findMany({
     where: { isPublic: true, tags: { hasSome: ["clara", "clara-swap"] } },
@@ -192,13 +261,18 @@ async function main() {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backup = `/tmp/wondish-dish-repair-${stamp}.json`;
-  writeFileSync(backup, JSON.stringify({ macroFills, macroFixes, calorieFixes, linkDrops }, null, 2));
+  writeFileSync(backup, JSON.stringify({ macroFills, macroCorrections, macroFixes, calorieFixes, linkDrops }, null, 2));
   console.log(`\nbackup written: ${backup}`);
 
   let filled = 0;
   for (const f of macroFills) {
     await prisma.recipe.update({ where: { id: f.id }, data: { protein: f.to.protein, carbs: f.to.carbs, fat: f.to.fat } });
     filled++;
+  }
+  let corrected = 0;
+  for (const f of macroCorrections) {
+    await prisma.recipe.update({ where: { id: f.id }, data: { protein: f.to.protein, carbs: f.to.carbs, fat: f.to.fat } });
+    corrected++;
   }
   let repriced = 0;
   for (const f of macroFixes) {
@@ -218,7 +292,7 @@ async function main() {
     await prisma.recipeIngredient.deleteMany({ where: { recipeId: d.recipeId, ingredientId: d.ingredientId } });
     dropped++;
   }
-  console.log(`applied: ${filled} null-macro rows filled, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
+  console.log(`applied: ${filled} null-macro rows filled, ${corrected} contradictory macro sets corrected, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
   await prisma.$disconnect();
 
 }
