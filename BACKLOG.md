@@ -332,9 +332,10 @@ or reproduced; where a bot could not pin something down, it says so.
       server writes "lbs" on every save. /overview read kg from the height,
       /profile read lbs. One rule now, the toggle remembered on the device (and
       the control says so). Measured: both screens agree, both follow a toggle.
-- [ ] **A per-account weight-unit preference needs a column** (a migration on
+- [x] **A per-account weight-unit preference needs a column** (a migration on
       the production DB, so not the agent's to run). Until then the choice is
       per device.
+      **Cycle 21:** built on branch `feat/weight-unit-pref` (worktree ../wondish_02-weight-unit): nullable `Patient.displayWeightUnit`, migration 20260925120000, one tested resolve rule, onboarding and the profile toggle save it. NOT merged — run the migration first (`npm run db:migrate:deploy`), then merge.
 - [x] **A Clara swap that finds nothing still costs a swap.** Asked for
       "something rich and creamy" on a day with 27 g of fat left, Clara returned
       four dishes over it — even once the prompt states the room in grams. The
@@ -422,7 +423,7 @@ Neither bot could make these happen again, and both said so rather than
 claiming them. They are recorded because the expensive version of this is the
 second person to see it having no idea it was seen before.
 
-- [ ] **The pantry selection changed on its own.** Between two scripts a bot's
+- [x] **The pantry selection changed on its own.** Between two scripts a bot's
       basket went from the 5 items it had chosen to a 13-item plan-derived set:
       `celery`, `zucchini`, `eggs`, `ground beef`, `Ground turkey` gone,
       `Large eggs` and `Unsalted butter` present, neither ever tapped. A
@@ -431,9 +432,11 @@ second person to see it having no idea it was seen before.
       clicking is a plausible cause. Worth looking at regardless: the catalog
       holds both `eggs` and `Large eggs` as separate ingredients, which is how
       a basket could appear to swap one for the other.
-- [ ] **An ingredient count jumped by two.** Tapping `★ Cauliflower` left the
+      **Cycle 21:** found: layout shift under the finger. The Selected list sat above the categories and wrapped, so a tap could push the chips below by 52px (once 264px) and a quick second tap landed on a different ingredient; the double-tap reproduction took 26 → 24. Fixed (one fixed-height scrolling row; chips keep their width) and measured at 0px across seven taps. The save path was verified sound: 10 machine-speed taps, each +1, screen = server after reload.
+- [x] **An ingredient count jumped by two.** Tapping `★ Cauliflower` left the
       count at 9, then `★ Carrots` moved it 9 → 11. Self-corrected, not
       reproducible; possibly a 1s poll racing an optimistic update.
+      **Cycle 21:** same mechanism as above, same fix.
 - [x] **The `stale` banner hides itself during generation.** (Closed on reading in cycle 18 — see above.) `stale &&
       !newWeekLoading` removes the whole banner — including its own button's
       spinner — so pressing "New week" there makes the screen go quiet for the
