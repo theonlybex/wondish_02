@@ -162,7 +162,7 @@ const DENSITY: {
   { match: /\b(cornstarch|corn starch|cornflour|arrowroot)\b/i, carbs: 91, fat: 0, protein: 0, gramsPerCup: 128, volumeUnambiguous: true },
   { match: /\b(flaxseeds?|chia seeds?|sesame seeds?|sunflower seeds?|pumpkin seeds?|seeds?)\b/i, carbs: 29, fat: 42, protein: 18, gramsPerCup: 150, volumeUnambiguous: true },
   { match: /\b(garbanzos?|hummus)\b/i, carbs: 27, fat: 9, protein: 8, gramsPerCup: 240 },
-  { match: /\b(arugula|rocket|romaine|chard|watercress|radicchio|endive|bok choy|brussels sprouts?|eggplants?|aubergines?|squash|beets?|radishes?|turnips?|parsnips?|artichokes?|okra|leeks)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
+  { match: /\b(arugula|rocket|romaine|chard|watercress|radicchio|endive|bok choy|brussels sprouts?|eggplants?|aubergines?|squash|beets?|radish(es)?|turnips?|parsnips?|artichokes?|okra|leeks)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
 
   // ── The last 60 foods the table could not weigh ────────────────────────────
   //
@@ -185,7 +185,7 @@ const DENSITY: {
   { match: /\b(stevias?|monkfruit|monk fruit|erythritol|sucralose|aspartame|sweeteners?)\b/i, carbs: 0, fat: 0, protein: 0, gramsPerCup: 200, volumeUnambiguous: true },
   { match: /\b(cocoa powder|cacao powder|unsweetened cocoa)\b/i, carbs: 58, fat: 14, protein: 20, gramsPerCup: 86, volumeUnambiguous: true },
   { match: /\b(raisins?|sultanas?|prunes?|dates?|dried apricots?|dried cranberries|dried fruit)\b/i, carbs: 75, fat: 1, protein: 3, gramsPerCup: 165, volumeUnambiguous: true },
-  { match: /\b(peaches?|nectarines?|apricots?|plums?|mangos?|mangoes|pineapples?|kiwis?|kiwifruit|cherries|papayas?|guavas?|figs?)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 165, gramsPerItem: 140 },
+  { match: /\b(peach(es)?|nectarines?|apricots?|plums?|mangos?|mangoes|pineapples?|kiwis?|kiwifruit|cherr(y|ies)|papayas?|guavas?|figs?)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 165, gramsPerItem: 140 },
   { match: /\b(olives?|capers?)\b/i, carbs: 6, fat: 11, protein: 1, gramsPerCup: 135, volumeUnambiguous: true },
   { match: /\b(lima beans?|edamame|butter beans?|fava beans?|split peas?|pinto beans?|cannellini)\b/i, carbs: 20, fat: 1, protein: 8, gramsPerCup: 170 },
   { match: /\b(granola|muesli)\b/i, carbs: 64, fat: 15, protein: 10, gramsPerCup: 120 },
