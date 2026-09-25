@@ -1199,3 +1199,31 @@ test("with only one dish available the slot is still filled", () => {
     assert.ok(res.rows.length >= 7, `expected a dish every day, got ${res.rows.length}`);
   });
 });
+
+test("a lunch or dinner main carries protein when the pool has a dish that does", () => {
+  // Cycle 19: a 222 g protein target was served "Brown Rice and Roasted
+  // Vegetables" (710 kcal, 14.7 g protein) as dinner, with tofu in the basket.
+  const starch = {
+    ...makeRecipe({ id: "starch", mealTypeId: MT_D.id, calories: 700, protein: 14, ingredients: ["Brown rice"] }),
+    name: "Brown Rice and Roasted Vegetables", tags: [] as string[], prepTime: 10, cookTime: 25,
+  };
+  const tofu = {
+    ...makeRecipe({ id: "tofu", mealTypeId: MT_D.id, calories: 650, protein: 40, ingredients: ["Extra-firm tofu"] }),
+    name: "Tofu Stir-Fry", tags: [] as string[], prepTime: 10, cookTime: 15,
+  };
+  setDb(makePatient(), [MT_D], [starch, tofu]);
+  return build("p1", new Date("2026-09-24T00:00:00Z"), 1, { windowDays: 1 }).then((res) => {
+    assert.deepEqual(res.rows.map((r: MenuRow) => r.recipeId), ["tofu"]);
+  });
+});
+
+test("…and a protein-light main is still served when it is all there is", () => {
+  const starch = {
+    ...makeRecipe({ id: "starch", mealTypeId: MT_D.id, calories: 700, protein: 14, ingredients: ["Brown rice"] }),
+    name: "Brown Rice and Roasted Vegetables", tags: [] as string[], prepTime: 10, cookTime: 25,
+  };
+  setDb(makePatient(), [MT_D], [starch]);
+  return build("p1", new Date("2026-09-24T00:00:00Z"), 1, { windowDays: 1 }).then((res) => {
+    assert.ok(res.rows.some((r: MenuRow) => r.recipeId === "starch"));
+  });
+});

@@ -979,6 +979,20 @@ export async function buildMealPlanMenus(
           const dp = dishProtein(r.ingredients);
           return dp === null || (todayProteinCounts.get(dp) ?? 0) < MAX_SAME_PROTEIN_PER_DAY;
         };
+        // The MAIN dish of lunch or dinner carries protein: at least 15% of its
+        // calories. Cycle 19 measured a high-protein pescatarian week (222 g
+        // target, tofu and salmon in the basket) serving "Brown Rice and
+        // Roasted Vegetables with Bell Peppers" — 710 kcal, 14.7 g protein —
+        // as a dinner, twice. Sides and the filler are exempt (a side of rice
+        // is a side of rice), and so is the last tier, where the alternative
+        // is an empty slot.
+        //
+        // A PREFERENCE inside each tier, not a filter across them: as a filter
+        // it pushed every thin pool to the last tier, which drops the
+        // variety, sodium and fat rules — four builder tests caught that.
+        const needsProteinMain = mealCalories === 0 && (mealNameLower === "lunch" || mealNameLower === "dinner");
+        const proteinDense = (r: PoolRecipe): boolean =>
+          !needsProteinMain || (r.calories ?? 0) <= 0 || (r.protein ?? 0) * 4 >= 0.15 * (r.calories ?? 0);
         const matches = (r: PoolRecipe, relax: (typeof tiers)[number]): boolean =>
           base(r) &&
           proteinRoomLeft(r) &&
@@ -1002,7 +1016,9 @@ export async function buildMealPlanMenus(
           // carried extra 97-266 kcal rows on the days that broke the fat
           // ceiling, 128-170% of target.
           if (relax.sameDay && mealCalories > 0) break;
-          const pool = selectionPool.filter((r) => matches(r, relax));
+          const matched = selectionPool.filter((r) => matches(r, relax));
+          const dense = needsProteinMain ? matched.filter(proteinDense) : matched;
+          const pool = dense.length > 0 ? dense : matched;
           if (pool.length > 0 && relax.sameDay && dayMacroTargetG.fat) {
             // The last tier relaxed the fat ceiling — and then chose as if fat
             // did not matter at all. Every day in cycle 19's measurement that
