@@ -726,6 +726,44 @@ export async function buildMealPlanMenus(
       })
       .filter((r) => r.count > 0);
 
+    // ── Lean-protein top-up ───────────────────────────────────────────────
+    // A pool can be deep and still the wrong SHAPE. A pescatarian basket of 16
+    // ingredients had plenty of lunches, every one ~40% fat and ~20% protein,
+    // so nothing was ever generated and a 222 g protein target landed at
+    // 54-65% on every day of five measured weeks (cycle 19-21). When a slot
+    // has fewer than LEAN_MIN dishes that reach 80% of the diner's protein
+    // share without passing 130% of the fat share, Clara is asked for lean,
+    // protein-forward dishes from the same basket (user-directed 2026-09-25).
+    const LEAN_MIN = 4;
+    const minProteinShare = macroTarget.protein * 0.8;
+    const maxFatShare = macroTarget.fat * 1.3;
+    const isLean = (r: PoolRecipe) =>
+      (r.calories ?? 0) > 0 &&
+      ((r.protein ?? 0) * 4) / (r.calories as number) >= minProteinShare &&
+      ((r.fat ?? 0) * 9) / (r.calories as number) <= maxFatShare;
+    const leanPool = opts.basket ? selectionPool : recipePool;
+    for (const mt of mealTypes) {
+      if (mt.name.toLowerCase() === "snack") continue;
+      const lean = leanPool.filter((r) => r.mealTypeId === mt.id && isLean(r)).length;
+      if (lean >= LEAN_MIN) continue;
+      const want = CLARA_PER_TYPE - lean;
+      const leanProtein = { minProteinPct: Math.round(macroTarget.protein * 100), maxFatPct: Math.round(macroTarget.fat * 100) };
+      const existing = thin.find((t) => t.mealTypeId === mt.id);
+      if (existing) {
+        existing.count = Math.max(existing.count, want);
+        existing.leanProtein = leanProtein;
+      } else {
+        thin.push({
+          mealTypeId: mt.id,
+          mealTypeName: mt.name,
+          count: want,
+          targetCalories: baseMealCals[mt.name.toLowerCase()] ?? Math.round(baseTDEE * 0.25),
+          leanProtein,
+        });
+      }
+      if (process.env.WONDISH_DEBUG_POOL) console.log(`[pool] ${mt.name} lean=${lean} → lean-protein top-up of ${want}`);
+    }
+
     if (thin.length > 0) {
       const existingNames = new Set(
         (

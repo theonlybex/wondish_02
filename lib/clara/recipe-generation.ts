@@ -75,6 +75,12 @@ export interface TopUpRequest {
   mealTypeName: string;
   count: number;
   targetCalories: number; // per-serving hint for the prompt
+  /**
+   * Ask for lean, protein-forward dishes: the pool for this slot has too few
+   * that reach the diner's protein share without blowing the fat one (see
+   * lib/meal-plan.ts, "lean-protein top-up"). Percentages of calories.
+   */
+  leanProtein?: { minProteinPct: number; maxFatPct: number };
 }
 
 interface TopUpArgs {
@@ -153,7 +159,12 @@ export function macroSplitLine(m: { protein: number; carbs: number; fat: number 
 
 function systemPrompt(args: TopUpArgs, total: number): string {
   const perType = args.requests
-    .map((r) => `- ${r.count} × ${r.mealTypeName} (target ≈${Math.round(r.targetCalories)} kcal per serving)`)
+    .map((r) =>
+      `- ${r.count} × ${r.mealTypeName} (target ≈${Math.round(r.targetCalories)} kcal per serving)` +
+      (r.leanProtein
+        ? ` — LEAN AND PROTEIN-FORWARD: at least ${r.leanProtein.minProteinPct}% of calories from protein and no more than ${r.leanProtein.maxFatPct}% from fat. Build each around a generous portion of the leanest protein available, a measured starch, plenty of vegetables, and at most 1 teaspoon of oil.`
+        : "")
+    )
     .join("\n");
   const banned =
     args.bannedNames.length > 0
