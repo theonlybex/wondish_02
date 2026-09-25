@@ -88,7 +88,7 @@ const DENSITY: {
   { match: /\b(ground turkey|ground chicken)\b/i, carbs: 0, fat: 8, protein: 19, gramsPerCup: 225 },
   { match: /\b(ground pork|pork|bacon|ham)\b/i, carbs: 0, fat: 14, protein: 20, gramsPerCup: 225 },
   { match: /\b(salmon)\b/i, carbs: 0, fat: 13, protein: 20, gramsPerCup: 150 },
-  { match: /\b(tuna|cod|tilapia|haddock|white fish)\b/i, carbs: 0, fat: 2, protein: 22, gramsPerCup: 150 },
+  { match: /\b(tuna|cod|tilapia|haddock|catfish|trout|sole|pollock|white fish)\b/i, carbs: 0, fat: 2, protein: 22, gramsPerCup: 150 },
   { match: /\b(shrimp|prawns?)\b/i, carbs: 1, fat: 1, protein: 20, gramsPerCup: 145 },
   { match: /\b(eggs?)\b/i, carbs: 1, fat: 10, protein: 13, gramsPerCup: 243, gramsPerItem: 50 },
   { match: /\b(tofu|tempeh)\b/i, carbs: 4, fat: 8, protein: 17, gramsPerCup: 250 },
@@ -98,16 +98,16 @@ const DENSITY: {
   { match: /\b(greek yogurt)\b/i, carbs: 4, fat: 4, protein: 9, gramsPerCup: 245 , volumeUnambiguous: true },
   { match: /\b(yogurt|milk)\b/i, carbs: 5, fat: 3, protein: 3, gramsPerCup: 245 , volumeUnambiguous: true },
   { match: /\b(cheddar|parmesan|feta|mozzarella|cheese)\b/i, carbs: 2, fat: 28, protein: 24, gramsPerCup: 110 },
-  { match: /\b(almonds?|walnuts?|peanuts?|cashews?|nuts)\b/i, carbs: 22, fat: 50, protein: 21, gramsPerCup: 140 },
+  { match: /\b(almonds?|walnuts?|peanuts?|cashews?|pecans?|pistachios?|hazelnuts?|macadamias?|nuts)\b/i, carbs: 22, fat: 50, protein: 21, gramsPerCup: 140 },
   { match: /\b(peanut butter|almond butter)\b/i, carbs: 20, fat: 50, protein: 25, gramsPerCup: 258 },
-  { match: /\b(avocado)\b/i, carbs: 9, fat: 15, protein: 2, gramsPerCup: 150 },
+  { match: /\b(avocados?)\b/i, carbs: 9, fat: 15, protein: 2, gramsPerCup: 150 },
   // Vegetables and fruit, as a group: little of anything, but not nothing.
   // "bell peppers", not "peppers?": a bare "pepper" is the seasoning, and
   // matching it here put "pepper 0.1 teaspoon" into the floor as a vegetable.
   // volumeUnambiguous: a cup of chopped vegetables weighs about a cup of
   // chopped vegetables however it is later cooked, and tying veg rows to the
   // dry-GRAIN test meant one bad step phrase took a whole dish out of pricing.
-  { match: /\b(broccoli|cauliflower|zucchini|spinach|carrots?|bell peppers?|green peppers?|red peppers?|yellow peppers?|jalape(n|ñ)o peppers?|chipotle peppers?|poblano peppers?|tomato(es)?|onions?|celery|cucumber|lettuce|cabbage|mushrooms?|greens?|kale|asparagus|green beans?)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
+  { match: /\b(broccoli|cauliflower|zucchini|spinach|carrots?|bell peppers?|green peppers?|red peppers?|yellow peppers?|jalape(n|ñ)o peppers?|chipotle peppers?|poblano peppers?|tomato(es)?|onions?|celery|cucumbers?|lettuce|cabbages?|mushrooms?|greens?|kale|asparagus|green beans?)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
   { match: /\b(potato(es)?|sweet potato(es)?|corn|peas)\b/i, carbs: 18, fat: 0, protein: 2, gramsPerCup: 150, gramsPerItem: 170 },
   { match: /\b(apples?|bananas?|berries|strawberries|blueberries|oranges?|grapes?|pears?|melon)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 150, gramsPerItem: 130 },
 
@@ -163,6 +163,42 @@ const DENSITY: {
   { match: /\b(flaxseeds?|chia seeds?|sesame seeds?|sunflower seeds?|pumpkin seeds?|seeds?)\b/i, carbs: 29, fat: 42, protein: 18, gramsPerCup: 150, volumeUnambiguous: true },
   { match: /\b(garbanzos?|hummus)\b/i, carbs: 27, fat: 9, protein: 8, gramsPerCup: 240 },
   { match: /\b(arugula|rocket|romaine|chard|watercress|radicchio|endive|bok choy|brussels sprouts?|eggplants?|aubergines?|squash|beets?|radishes?|turnips?|parsnips?|artichokes?|okra|leeks)\b/i, carbs: 6, fat: 0, protein: 2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
+
+  // ── The last 60 foods the table could not weigh ────────────────────────────
+  //
+  // Found by asking, for every ingredient a public recipe actually uses, whether
+  // gramsOf can answer — rather than one dish at a time. 62 could not be
+  // weighed. Two of those were PLURAL TRAPS fixed above ("Cucumbers" on 74 rows
+  // and "Avocados" on 13, against patterns written /\bcucumber\b/ and
+  // /\bavocado\b/): the fourth instance in this session of a singular-only
+  // pattern silently not matching the catalog's own spelling, after \begg\b
+  // against "eggs", \bberries\b against "strawberries", and \bpeppers?\b
+  // catching "Bell peppers". Every pattern here takes s? deliberately.
+  //
+  // The rest are the long tail of real foods: fruit the table had never listed,
+  // the cream and sour cream, the sweeteners, coffee and tea, and the
+  // gluten-free products. Textbook values per 100 g as bought.
+  { match: /\b(sour cream|cr[eè]me fra[iî]che)\b/i, carbs: 4, fat: 20, protein: 2, gramsPerCup: 230, volumeUnambiguous: true },
+  { match: /\b(heavy cream|double cream|whipping cream|half.and.half)\b/i, carbs: 3, fat: 37, protein: 2, gramsPerCup: 238, volumeUnambiguous: true },
+  { match: /\b(soymilks?|soy milk|oat milk|almond milk|coconut milk|rice milk)\b/i, carbs: 2, fat: 2, protein: 2, gramsPerCup: 243, volumeUnambiguous: true },
+  { match: /\b(coffees?|espresso|teas?|teabags?|herbal tea)\b/i, carbs: 0, fat: 0, protein: 0, gramsPerCup: 237, volumeUnambiguous: true },
+  { match: /\b(stevias?|monkfruit|monk fruit|erythritol|sucralose|aspartame|sweeteners?)\b/i, carbs: 0, fat: 0, protein: 0, gramsPerCup: 200, volumeUnambiguous: true },
+  { match: /\b(cocoa powder|cacao powder|unsweetened cocoa)\b/i, carbs: 58, fat: 14, protein: 20, gramsPerCup: 86, volumeUnambiguous: true },
+  { match: /\b(raisins?|sultanas?|prunes?|dates?|dried apricots?|dried cranberries|dried fruit)\b/i, carbs: 75, fat: 1, protein: 3, gramsPerCup: 165, volumeUnambiguous: true },
+  { match: /\b(peaches?|nectarines?|apricots?|plums?|mangos?|mangoes|pineapples?|kiwis?|kiwifruit|cherries|papayas?|guavas?|figs?)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 165, gramsPerItem: 140 },
+  { match: /\b(olives?|capers?)\b/i, carbs: 6, fat: 11, protein: 1, gramsPerCup: 135, volumeUnambiguous: true },
+  { match: /\b(lima beans?|edamame|butter beans?|fava beans?|split peas?|pinto beans?|cannellini)\b/i, carbs: 20, fat: 1, protein: 8, gramsPerCup: 170 },
+  { match: /\b(granola|muesli)\b/i, carbs: 64, fat: 15, protein: 10, gramsPerCup: 120 },
+  { match: /\b(coconut flakes?|shredded coconut|desiccated coconut)\b/i, carbs: 24, fat: 65, protein: 7, gramsPerCup: 80, volumeUnambiguous: true },
+  // Split by SIZE, not by shelf: a cracker is ~12 g and a bun is ~60 g, and
+  // listing them together priced a gluten-free bun as a cracker.
+  { match: /\b(crackers?|crispbreads?|rice cakes?)\b/i, carbs: 70, fat: 10, protein: 8, gramsPerCup: 120, gramsPerItem: 12 },
+  { match: /\b(buns?|rolls?|flour tortillas?|wraps?|naan|baguettes?)\b/i, carbs: 52, fat: 4, protein: 9, gramsPerCup: 120, gramsPerItem: 60 },
+  { match: /\b(cooking wine|white wine|red wine|sherry|mirin|rice wine)\b/i, carbs: 3, fat: 0, protein: 0, gramsPerCup: 235, volumeUnambiguous: true },
+  { match: /\b(cream of \w+ soup|condensed soup|canned soup)\b/i, carbs: 9, fat: 6, protein: 3, gramsPerCup: 245, volumeUnambiguous: true },
+  { match: /\b(clam juice|tomato juice|vegetable juice)\b/i, carbs: 4, fat: 0, protein: 1, gramsPerCup: 240, volumeUnambiguous: true },
+  { match: /\b(baking powder|baking soda|bicarbonate|cream of tartar|yeast)\b/i, carbs: 28, fat: 0, protein: 0, gramsPerCup: 220, volumeUnambiguous: true },
+  { match: /\b(meatless \w+|plant.based \w+|vegan \w+|seitan|quorn)\b/i, carbs: 5, fat: 5, protein: 20, gramsPerCup: 140 },
 ];
 
 const GRAMS_PER_UNIT: { match: RegExp; grams: number | "cup" }[] = [
