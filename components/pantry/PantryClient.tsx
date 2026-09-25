@@ -701,16 +701,25 @@ export default function PantryClient({
           )}
         </div>
 
-        {selected.size > 0 && (
-          <div className="mb-4">
-            <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-2" style={{ color: "#ABA6A6" }}>
-              Selected ({selected.size})
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {Array.from(selected.entries()).map(([id, name]) => chip({ id, name }))}
-            </div>
+        {/* One row that scrolls sideways, at a fixed height, and always there.
+            It used to wrap: each tap could add a row ABOVE the category chips
+            and push them 52px down, so a quick second tap landed on a
+            different ingredient. That is the "count jumped by two" and the
+            "selection changed on its own" that QA saw once each and could not
+            reproduce (measured in cycle 21: chips below moved 52px and 264px
+            after a single tap). */}
+        <div className="mb-4">
+          <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-2" style={{ color: "#ABA6A6" }}>
+            Selected ({selected.size})
+          </p>
+          <div className="flex flex-nowrap gap-2 overflow-x-auto min-h-[44px] -mx-1 px-1 pb-1" aria-label="Selected ingredients">
+            {selected.size === 0 ? (
+              <p className="text-xs self-center" style={{ color: "#ABA6A6" }}>Nothing yet — tap what you have below.</p>
+            ) : (
+              Array.from(selected.entries()).map(([id, name]) => <span key={id} className="shrink-0">{chip({ id, name })}</span>)
+            )}
           </div>
-        )}
+        </div>
 
         <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-2" style={{ color: "#ABA6A6" }}>
           Browse by category
@@ -745,7 +754,10 @@ export default function PantryClient({
                             className={`min-h-[44px] px-3.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${sel ? "text-white" : "text-[#5F1C35] bg-white hover:bg-[#812549]/10"}`}
                             style={sel ? { background: "#812549", borderColor: "#812549" } : { borderColor: "rgba(129,37,73,0.3)" }}
                           >
-                            {sel ? "✓ " : ""}{it.favorite ? "★ " : ""}{it.name}
+                            {/* The ✓ always takes its space, so selecting a chip does
+                                not widen it and reflow the chips after it. */}
+                            <span aria-hidden="true" className={sel ? "" : "invisible"}>✓ </span>
+                            {it.favorite ? "★ " : ""}{it.name}
                           </button>
                         );
                       })}
