@@ -119,6 +119,8 @@ effect.
 
 | 14 | Two QA bots, run in parallel against a frozen commit, found 35 defects — **three of them created by cycles 12 and 13's own fixes.** A category rule shipped that morning was wrong in BOTH directions (`\bberrys?\b` cannot match "berries", so the lie passed; and the token rule then refused "Oatmeal with Berries" over listed *Blueberries*). Cycle 13's slot moves had **relocated** 27 breakfast-shaped dishes into Lunch and Dinner rather than repairing them — "Oatmeal with Carrots and Ground Beef" became a 373 kcal lunch where no rule could see it. A snack had a clock and no size, so 104 of 143 were plated meals up to 876 kcal. Plus: a swap that returned the dish it replaced, a blank name saving as "success", three screens contradicting each other about one basket, the dish name at 11px and its calories at 9px on a phone, a 28×26px hamburger, and `\btortilla\b` missing "Flour tortillas" | category patterns written out with the check as sole authority; the oats-and-meat shape retired in every slot; `SNACK_MAX_KCAL`; the swap refuses its own predecessor and now sees the day's fat; both ends refuse a blank name; one `basketBlockerText`; a 12px floor below 480px and 44px hit areas; negations and free-from products exempted; units pluralised; Clara given tomorrow |
 
+| 15 | Two bots against a **frozen, pushed** commit. They confirmed most of 13 and 14 — 33 distinct dishes in 33 slots, 32 of 33 priced right against an independent USDA table, zero raw protein in 18 meat dishes, the modal trapping focus through 25 tabs, 11 of 11 profile misinputs refused, the 12px floor holding on every mobile page. Then: **the headline fix of the commit they were testing did not work** — /pantry's cook-my-day route rewrote the guard's sentence and dropped the `upgrade` flag, so the component was right and had nothing to render, **and the test written to prevent that was green and blind to it** because it only checked the client. Fat measured **29-52%** against a 25% target where I had reported 27-33% — my figure was a lucky run. And the sodium rail counted ADDED SALT against the **total**-sodium guideline, so a day at ~3,300 mg printed green | the test now checks all nine metered routes forward `guard.body`, verified by reintroducing the bug; fat gets the CEILING that fixed sodium (scoring was only ever a preference, and the oil is genuinely in the recipes — the rows agree with the step text), landing 25-38%; DENSITY gains a sodium column and the ceiling, rail, label and Clara all move together; quota checked before the in-flight lock; the weight-unit toggle persists its choice; /pantry's cookable list gets the slot rules; /pricing gets an h1 |
+
 ## What the cycles taught
 
 A green test suite proves nothing about content: 1,284 tests passed while a week
@@ -180,6 +182,18 @@ catalog and READ what it flags. Every time that was done, it found something —
 a "Scramble" stripped from 81 correctly-named dishes, three properly-cooked
 dishes condemned as raw, four correct products refused as untrue. Every time it
 was skipped, QA found it instead, a cycle later.
+
+**A test that watches one end of a wire proves nothing about the wire.** The
+no-paywall test asserted the CLIENT reads the `upgrade` flag and passed green
+while the SERVER was dropping it — so the surface QA had just reported as a dead
+end stayed one, in the commit named after fixing it. Both ends, or neither.
+Prove it by reintroducing the bug and watching the test fail; that took thirty
+seconds and would have caught it.
+
+**Report the range, not the run.** Fat was reported at 27-33% from a single
+measurement; three runs gave 27-43% and QA's week hit 52%. The builder shuffles,
+so one week is a sample. Any number quoted from a generated plan needs at least
+three runs behind it, stated as a range.
 
 **Relabelling is not repairing.** A dish filed under the wrong slot is repaired
 by moving it. A dish that is wrong in every slot is repaired by retiring it, and

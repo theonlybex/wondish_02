@@ -88,6 +88,108 @@ already applied to the shared Neon DB, so landing is code-only. **[verified]**
 
 ---
 
+## 0b. Open QA defects (cycles 8-15, 2026-09-25)
+
+Fifteen fix→test cycles ran against the live database, the last four verified by
+two independent QA bots driving the browser. What those cycles FIXED is in the
+commit log and in `docs/qa/beta-test-plan.md`'s cycle table. **This is what they
+found and left open.** None of it blocks a beta on its own; §0 does.
+
+Confidence: every line below was measured or observed by a QA bot on
+`2e788d2` unless marked otherwise.
+
+### Half-fixed — finish these first
+- [ ] **cook-my-day's in-flight lock is never released.** `ai-cookday-inflight`
+      is a 90-second rate limit taken at `app/api/pantry/cook-day/route.ts:133`
+      and never cleared on completion, so after a SUCCESSFUL run the user is
+      told "Clara is already cooking your day — give her a moment" for 90
+      seconds. Cycle 15 fixed the ordering (quota is now checked before the
+      lock, so a refused user no longer burns it) and not the release.
+
+### Reported as fixed twice and still on screen
+- [ ] **Unmeasurable amounts.** `0.37 tablespoons`, `1.03 tablespoons`,
+      `1.03 teaspoons`, `0.51 tablespoons`, `4.7 ml`, `0.063 teaspoons` — 17
+      rows in one week. `measurableAmount` (lib/dish-plausibility.ts) rounds to
+      eighths but only runs inside `clampCookingFat`, so stored rows keep the
+      old clamp's output and seasoning rows were never rounded at all. A
+      backfill that normalises EVERY amount is the fix; sub-eighth spoon
+      amounts should probably become "1 pinch" rather than rounding up, which
+      would inflate sodium.
+
+### Correctness
+- [ ] **One dish's macros were not computed from its amounts.** "Sliced
+      Tomatoes with Olive Oil and Oregano" declares 93 kcal / 3 g protein over
+      food worth 72 kcal / 1.4 g. The tell is that its macros are all whole
+      numbers (`3 / 9 / 5`) while every other dish carries the tenth-of-a-gram
+      signature — and `3×4 + 9×4 + 5×9 = 93`, so it passes the internal
+      self-consistency check while being wrong against food. Small harm; the
+      value is that it proves the "computed from amounts" path has an escape.
+      Finding every all-integer macro row is a one-query job.
+- [ ] **A step tells the user to rinse raw chicken** ("Rinse the chicken breast
+      and pat dry"), against USDA/FSIS advice — rinsing aerosolises pathogens.
+      One instance in 18 meat dishes.
+- [ ] **A dish titled "Large Eggs"** — the catalog row name used as a recipe
+      name, under-describing six of its seven ingredients. Does not lie, so the
+      title gate passes it.
+
+### Copy and UI
+- [ ] **Touch targets under 44px**, measured by hit-test (not bounding box):
+      "Beta → Plus" 94.8×**30.8**, "Settings" 73.9×**30**, /meal-plan's "Cuisine
+      for today" and "View full week" ×**16**, /overview's "+ Add" ×**20.8** and
+      "FULL JOURNAL →" ×**16.8**, all 28 /pantry chips ×**32**, /profile's three
+      selects ×**42**. The hamburger and the day pagers PASS — their
+      `.touch-target::after` expanders work and an earlier 28×26 report was a
+      measurement error.
+- [ ] **"Once a day" is hardcoded** on the cook-my-day card
+      (`PantryClient.tsx:850`). Beta gets 2, Plus gets 3. /pricing's Free column
+      also never mentions Free's 1 cook-my-day.
+- [ ] **The new-week refusal renders twice** — in the sidebar and again inside
+      the unrelated amber "Your profile changed" banner, which then carries a
+      quota error about something else. A screen reader announces it twice.
+- [ ] **The banner's "New week" button is not blocked** when the basket is
+      unready; the sidebar's equivalent is (`aria-disabled` +
+      `aria-describedby`).
+
+### Refused by design — listed so nobody re-opens them as bugs
+Each was measured and left deliberately; the reason is the entry.
+- **199 dishes with no quantity on any ingredient.** The largest single
+  refusal. Cannot be repaired without inventing amounts.
+- **29 that cook in a fat they never list** and cannot be priced after the oil
+  row is added, so the repair that fixed 77 of them cannot reach these.
+- **9 steps calling for unlisted salt** — ~118 mg each, and a third is poaching
+  water that gets drained, so a fix would overstate sodium as often as correct
+  it.
+- **2 titles that omit their meat** ("Spaghetti with Tomato and Spinach Sauce"
+  containing beef). A gate for it had a 50% false-positive rate over 2 real
+  dishes.
+- **1,083 rows show no prep/cook time.** The timing GATE reads their steps, so
+  nothing slow slips through; filling the displayed field means inventing a
+  total from steps that overlap.
+- **347 curated rows** whose calories disagree with 4/4/9 of their own macros —
+  measured nutrition data, where fibre and rounding make the arithmetic
+  approximate. Generated rows are at 0.
+
+### Known consequence, not a defect
+- **2-3 days of 7 now read over 2,300 mg of sodium.** That is the true number
+  replacing a false green: the rail counted added salt and compared it to the
+  TOTAL-sodium guideline, so every day passed. The app had been under-counting
+  by ~600 mg a day. The builder's ceiling pushes as low as the catalog allows;
+  bread at 490 mg/100 g sets the floor.
+
+### Process
+- [ ] **Give each QA bot its own fixture account.** Both share
+      `qa.bot1/bot2.0924@wondish.io`, and cycle 15's second bot arrived to find
+      every allowance already spent — so it verified every refusal and not one
+      success path. The swap's behaviour and Clara's answers went untested for
+      that reason alone.
+- [ ] **Freeze HEAD for the whole QA window, edits included.** Cycle 14 was
+      invalidated by 11 commits landing mid-run. Cycle 15 froze commits but not
+      the working tree, and the dev server hot-reloaded uncommitted edits into
+      the bot's later measurements. It read the diffs and cleared them, but it
+      should not have had to.
+
+---
+
 ## 1. In flight — built but not landed
 
 - [x] `feat/restaurants-phase-3-attribution`, `feat/clara-generation-pantry-freemode`,
