@@ -37,7 +37,7 @@ import { BASKET_STAPLES } from "../lib/basket-coverage";
 import {
   SNACK_MAX_MINUTES, BREAKFAST_MAX_MINUTES, SMALL_DISH_KCAL, breakfastLooksLikeBreakfast,
   catalogFoodVocabulary, phrasePromisesMissingFood, truthfulDishName,
-  saltRowTsp, addedSaltCapTsp, countUnitFor, clampCookingFat, dishProblem,
+  saltRowTsp, addedSaltCapTsp, countUnitFor, clampCookingFat, dishProblem, longestStepMinutes,
 } from "../lib/dish-plausibility";
 import { displayDishName } from "../lib/dish-name";
 
@@ -614,6 +614,40 @@ async function main() {
   console.log(`dishes that cook in a fat they never list, repairable by listing a teaspoon: ${fatAdds.length}`);
   for (const f of fatAdds.slice(0, 3)) console.log(`  + 1 tsp olive oil → ${f.priced?.calories} kcal — ${f.name}`);
 
+  // ── A stated time its own steps outlast ───────────────────────────────────
+  //
+  // 31 dishes state a total their steps contradict — "20 minutes" on a card
+  // whose step 3 says to bake for 35. This is not only a pool problem (selection
+  // refuses them, correctly); it is a number on screen that a person plans their
+  // evening around, and it is wrong in the direction that matters.
+  //
+  // The steps are the truth: a recipe that simmers for 35 minutes takes at least
+  // 35 minutes, whatever the field says. So cookTime rises to close the gap and
+  // prepTime is left alone. Raising it can then push the dish out of the
+  // breakfast or snack ceiling, which is the correct consequence — it really is
+  // that slow, and the ceiling was only ever passing it because the number lied.
+  //
+  // Generated rows only: a curated recipe's times came from an editor.
+  const timeRows = await prisma.recipe.findMany({
+    where: { isPublic: true, tags: { hasSome: ["clara", "Clara", "clara-generated"] } },
+    select: { id: true, name: true, prepTime: true, cookTime: true, steps: true },
+  });
+  const timeFixes: { id: string; name: string; from: number; to: number; longest: number }[] = [];
+  for (const r of timeRows) {
+    const stated = (r.prepTime ?? 0) + (r.cookTime ?? 0);
+    if (stated <= 0) continue; // nothing claimed, nothing contradicted
+    const longest = longestStepMinutes(r.steps ?? []);
+    if (longest <= stated) continue;
+    timeFixes.push({
+      id: r.id, name: r.name, from: stated, longest,
+      to: (r.cookTime ?? 0) + (longest - stated), // the new cookTime
+    });
+  }
+  console.log(`dishes whose steps outlast their stated time: ${timeFixes.length}`);
+  for (const t of timeFixes.slice(0, 4)) {
+    console.log(`  stated ${t.from} min, a step takes ${t.longest} — ${t.name}`);
+  }
+
   if (!APPLY) {
     console.log("\nreport only — pass --apply to write");
     await prisma.$disconnect();
@@ -622,7 +656,7 @@ async function main() {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backup = `/tmp/wondish-dish-repair-${stamp}.json`;
-  writeFileSync(backup, JSON.stringify({ macroFills, macroCorrections, macroFixes, calorieFixes, linkDrops, slotMoves, renames, saltClamps, unitFills, fatClamps, fatAdds }, null, 2));
+  writeFileSync(backup, JSON.stringify({ macroFills, macroCorrections, macroFixes, calorieFixes, linkDrops, slotMoves, renames, saltClamps, unitFills, fatClamps, fatAdds, timeFixes }, null, 2));
   console.log(`\nbackup written: ${backup}`);
 
   let filled = 0;
@@ -652,6 +686,11 @@ async function main() {
   for (const d of linkDrops) {
     await prisma.recipeIngredient.deleteMany({ where: { recipeId: d.recipeId, ingredientId: d.ingredientId } });
     dropped++;
+  }
+  let timesFixed = 0;
+  for (const t of timeFixes) {
+    await prisma.recipe.update({ where: { id: t.id }, data: { cookTime: t.to } });
+    timesFixed++;
   }
   let fatListed = 0;
   for (const f of fatAdds) {
@@ -708,7 +747,7 @@ async function main() {
     await prisma.recipe.update({ where: { id: m.id }, data: { mealTypeId: m.toId } });
     moved++;
   }
-  console.log(`applied: ${fatListed} dishes given the oil their steps already use, ${defatted} dishes de-oiled and repriced, ${unitsNamed} bare counts given their unit, ${clamped} salt amounts clamped to a seasoning, ${renamed} dishes renamed from their ingredients, ${moved} dishes moved to the slot their timing fits, ${filled} null-macro rows filled, ${corrected} contradictory macro sets corrected, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
+  console.log(`applied: ${timesFixed} stated times raised to what their steps take, ${fatListed} dishes given the oil their steps already use, ${defatted} dishes de-oiled and repriced, ${unitsNamed} bare counts given their unit, ${clamped} salt amounts clamped to a seasoning, ${renamed} dishes renamed from their ingredients, ${moved} dishes moved to the slot their timing fits, ${filled} null-macro rows filled, ${corrected} contradictory macro sets corrected, ${repriced} dishes repriced from their amounts, ${cal} calorie rows reconciled, ${dropped} bogus ingredient links removed`);
   await prisma.$disconnect();
 
 }
