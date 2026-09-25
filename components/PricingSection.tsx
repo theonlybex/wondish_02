@@ -2,6 +2,7 @@ import Link from "next/link";
 import PlanPicker from "./billing/PlanPicker";
 import IncludedFoodSection from "./IncludedFoodSection";
 import { getTranslations } from "next-intl/server";
+import { AI_LIMITS } from "@/lib/ai-budget";
 
 function Check({ dark = false }: { dark?: boolean }) {
   return (
@@ -35,8 +36,21 @@ export default async function PricingSection({
     ? betaAccessUntil.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
     : null;
 
-  const freeFeatures = [t("freeF1"), t("freeF2"), t("freeF3"), t("freeF4")];
-  const premiumFeatures = [t("premiumF1"), t("premiumF2"), t("premiumF3"), t("premiumF4"), t("premiumF5"), t("premiumF6"), t("premiumF7"), t("premiumF8"), t("premiumF9")];
+  // The numbers come from the limits the server ENFORCES, in every language.
+  // Spanish and Russian carried an older feature list ("BMI calculator",
+  // "50+ recipes") for cycles after the allowances changed; English was right
+  // only because someone had typed the same numbers twice.
+  const lim = (tier: "free" | "premium") => ({
+    weeks: AI_LIMITS.planGen[tier],
+    msgs: AI_LIMITS.claraChat[tier],
+    swaps: AI_LIMITS.swap[tier],
+    fridge: AI_LIMITS.fridge[tier],
+    cook: AI_LIMITS.cookDay[tier],
+  });
+  const free = lim("free");
+  const plus = lim("premium");
+  const freeFeatures = [t("freeF1", free), t("freeF2", free), t("freeF3", free), t("freeF4")];
+  const premiumFeatures = [t("premiumF1"), t("premiumF2", plus), t("premiumF3", plus), t("premiumF4", plus), t("premiumF5", plus), t("premiumF6"), t("premiumF7"), t("premiumF8"), t("premiumF9")];
 
   return (
     <section id="pricing" className="pb-24">
