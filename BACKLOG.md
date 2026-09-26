@@ -261,16 +261,18 @@ or reproduced; where a bot could not pin something down, it says so.
       rolls into the next month with no indication the URL was corrected. (The
       other bad dates are handled well, and `?date=<script>` is safe.)
       **Cycle 18:** round-trip check on the page, like the API's. Measured: today.
-- [ ] **~89 library dishes have visibly broken prose** — "Add Tofu , cook 8-10
+- [x] **~89 library dishes have visibly broken prose** — "Add Tofu , cook 8-10
       minutes until done, flipping half wathroughou, remove from heat." Import
       noise, on a public page.
       **Cycle 21:** the mechanical part (a space before punctuation) is repaired everywhere prose is shown or written — /dishes now has 0. The garbled words ("wathroughou") need a person: `node --import tsx scripts/audit-library.ts` lists every flagged row (report only, CSV to /tmp).
-- [ ] **84 of 2,440 dishes declare under 60 kcal and 5 over 1,200**, including
+      **Backfill 2026-09-26:** the audit's word check rebuilt against the system dictionary and read by hand: 26 dishes fixed by exact substring (scripts/repair-typos.ts) — "half wathroughou" ×10, "peacans" ×7, "remining" ×3, "parmesa", "isntructions", "Slicesalmon", "pasta:.". What the audit still lists are real words (shakshuka, microplane, nonstick).
+- [x] **84 of 2,440 dishes declare under 60 kcal and 5 over 1,200**, including
       `Beef Pot Roast` at 0 kcal and `Air fryer French Fries` at 11. A
       25 kcal condiment ("Homemade Cashew parmesan cheese") was served as a
       SNACK slot. Library data, not the repriced macros — all 28 freshly priced
       dishes were within ±0.3% of 4P+4C+9F.
       **Cycle 21:** no longer servable (a slot's first dish, a snack and the day's top-up need 60 kcal; 0 kcal never chosen — test verified by reintroducing the bug) and no longer on /dishes. The stored numbers still need correcting; the audit script lists them.
+      **Backfill 2026-09-26:** 17 repriced from their own amounts (scripts/repair-impossible-calories.ts; e.g. Scrambled Eggs 6 → 187, two pork dishes 1,239/1,386 → 556/715). Left on purpose: drinks (really ~0 kcal), 3 dishes whose 1,214-1,273 kcal is TRUE at full pricing coverage, and Beef Pot Roast (unpriceable, 0 kcal — never served, not on /dishes).
 - [x] **A stray second click on "New week" spends a real allowance** with no
       confirmation step. The bot burned two of three weekly generations on one
       script click.
@@ -293,7 +295,7 @@ or reproduced; where a bot could not pin something down, it says so.
       clean at phone portrait, phone landscape and tablet.
 
 **Open — found by the cycle-18 bot pass (frozen `03e78cb`, then its own fixes)**
-- [ ] **The stored rows still need the backfill, and it needs a human to run
+- [x] **The stored rows still need the backfill, and it needs a human to run
       it.** The live-DB read that measures them was refused to the agent this
       cycle (production reads need explicit permission), so every data fix
       landed at the write path and at RENDER — the screen is right, the rows
@@ -302,6 +304,7 @@ or reproduced; where a bot could not pin something down, it says so.
       `--apply`; then `scripts/repair-amounts.ts` the same way (the rows the
       cycle-17 bots stored before the write-path fix, e.g. `0.05 teaspoon
       pepper`). Both write a backup to /tmp first.
+      **Backfill 2026-09-26:** run (user-directed). repair-steps-and-titles: 772 step lists, 210 descriptions (4 raw-fish rinses), 23 egg titles — every one of 1,542 changed sentences scanned before applying, and three wording bugs fixed first (oil read as "1 g"; "a pinch of as written"; oil as "a pinch"). repair-amounts: 89 rows, salt now only rounds DOWN, 58 dishes repriced. Both re-run to 0. Backups in /tmp.
 - [x] **A fresh week's fat is 30-41%**, three of seven days at or above the 38%
       top of the band cycle 15 claimed (Sep 29 38%, Sep 30 39%, Oct 1 41%, on
       days of 1401-1748 kcal). One week — per "report the range, not the run",

@@ -19,7 +19,7 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
 import { PrismaClient } from "@prisma/client";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const SPACE_BEFORE_PUNCT = /\s[,.;:!?](?=\s|$)/;
 const DOUBLE_PUNCT = /[,.;:]{2,}(?!\.)/;
@@ -27,7 +27,22 @@ const DOUBLE_PUNCT = /[,.;:]{2,}(?!\.)/;
 // another ("wathroughou"): the second is heuristic, so these are listed for a
 // person to read, never rewritten.
 const NO_VOWEL_WORD = /\b[b-df-hj-np-tv-z]{5,}\b/i;
-const RUN_ON = /\b\w*(through|minutes|until|heat)\w{2,}\b/i;
+// A word that is not a word: 7+ letters, in neither the system dictionary nor
+// the catalog's own ingredient names ("wathroughou"). A first version matched
+// any word containing "through" or "heat" and flagged "preheated" 158 times.
+const DICT = new Set(
+  (() => { try { return readFileSync("/usr/share/dict/words", "utf8"); } catch { return ""; } })()
+    .split("\n").map((w) => w.trim().toLowerCase()).filter(Boolean)
+);
+const INFLECTED = /(s|es|ed|d|ing|ly|er|est)$/;
+const isWord = (w: string, food: Set<string>) => {
+  const l = w.toLowerCase();
+  if (DICT.has(l) || food.has(l)) return true;
+  for (const suf of ["s", "es", "ed", "d", "ing", "ly", "er", "est"]) if (l.endsWith(suf) && (DICT.has(l.slice(0, -suf.length)) || DICT.has(l.slice(0, -suf.length) + "e"))) return true;
+  if (/(ied|ies)$/.test(l) && DICT.has(l.slice(0, -3) + "y")) return true;
+  return false;
+};
+void INFLECTED;
 
 async function main() {
   const prisma = new PrismaClient();
@@ -36,13 +51,30 @@ async function main() {
     select: { id: true, name: true, description: true, steps: true, calories: true, dishType: { select: { name: true } }, mealType: { select: { name: true } } },
   });
 
+  const food = new Set(
+    (await prisma.ingredient.findMany({ select: { name: true } }))
+      .flatMap((i) => i.name.toLowerCase().split(/[^a-z]+/))
+      .filter(Boolean)
+  );
+  // Unknown words used across 3+ dishes are real words the 1934 dictionary
+  // lacks ("nonstick", "smoothie", "frittata"); a garbled one is a one-off.
+  const unknownIn = new Map<string, Set<string>>();
+  for (const r of rows) for (const t of [r.description ?? "", ...r.steps]) for (const w of t.match(/[A-Za-z]{7,}/g) ?? []) {
+    if (isWord(w, food)) continue;
+    const k = w.toLowerCase(); if (!unknownIn.has(k)) unknownIn.set(k, new Set()); unknownIn.get(k)!.add(r.id);
+  }
+  if (process.env.LIST_UNKNOWN) {
+    const common = [...unknownIn.entries()].filter(([, ids]) => ids.size >= 3).sort((a, b) => b[1].size - a[1].size);
+    console.log("unknown words in 3+ dishes:\n" + common.map(([w, ids]) => `${ids.size} ${w}`).join("  |  "));
+  }
+  const garbled = (t: string) => (t.match(/[A-Za-z]{7,}/g) ?? []).find((w) => (unknownIn.get(w.toLowerCase())?.size ?? 99) <= 2);
   const prose: { id: string; name: string; why: string; text: string }[] = [];
   for (const r of rows) {
     for (const t of [r.description ?? "", ...r.steps]) {
       const why = SPACE_BEFORE_PUNCT.test(t) ? "space before punctuation"
         : DOUBLE_PUNCT.test(t) ? "doubled punctuation"
         : NO_VOWEL_WORD.test(t) ? "word with no vowel"
-        : RUN_ON.test(t) && !/throughout|thoroughly/i.test(t.match(RUN_ON)?.[0] ?? "") ? "run-on word"
+        : DICT.size > 0 && garbled(t) ? `not a word: "${garbled(t)}"`
         : null;
       if (why) { prose.push({ id: r.id, name: r.name, why, text: t }); break; }
     }
@@ -54,10 +86,11 @@ async function main() {
   const count = (why: string) => prose.filter((p) => p.why === why).length;
   console.log(`public dishes:                 ${rows.length}`);
   console.log(`broken prose:                  ${prose.length}`);
-  for (const w of ["space before punctuation", "doubled punctuation", "word with no vowel", "run-on word"]) console.log(`  ${w.padEnd(28)} ${count(w)}`);
+  for (const w of ["space before punctuation", "doubled punctuation", "word with no vowel"]) console.log(`  ${w.padEnd(28)} ${count(w)}`);
+  console.log(`  ${"not a word".padEnd(28)} ${prose.filter((p) => p.why.startsWith("not a word")).length}`);
   console.log(`under 60 kcal (not a side):    ${tiny.length}   (0 kcal: ${tiny.filter((r) => !r.calories).length})`);
   console.log(`over 1,200 kcal:               ${huge.length}`);
-  console.log("\nprose samples:\n" + prose.slice(0, 10).map((p) => `  [${p.why}] ${p.name}\n     ${p.text.slice(0, 140)}`).join("\n"));
+  console.log("\nprose samples:\n" + prose.slice(0, Number(process.env.SAMPLE ?? 10)).map((p) => `  [${p.why}] ${p.name}\n     ${p.text.slice(0, 140)}`).join("\n"));
   console.log("\ncalorie samples:\n" + [...tiny.slice(0, 8), ...huge.slice(0, 5)].map((r) => `  ${r.calories} kcal  ${r.mealType?.name ?? "?"}  ${r.name}`).join("\n"));
 
   const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
