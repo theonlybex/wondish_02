@@ -399,7 +399,7 @@ or reproduced; where a bot could not pin something down, it says so.
       (42px), and three text links (16-17px). The sweep of 16 pages at 390px
       on a touch device now reports 0 under 44, 0 overlaps, 0 horizontal
       overflow, 0 console errors.
-- [ ] **Seen once:** /meal-plan/weekly returned 500 ("Cannot read properties
+- [x] **Seen once:** /meal-plan/weekly returned 500 ("Cannot read properties
       of null (reading 'useContext')") during a dev-server recompile. 3 of 3
       reloads were 200. Dev-only as far as can be told; watch for it on a
       production build.
@@ -407,9 +407,10 @@ or reproduced; where a bot could not pin something down, it says so.
   free account, 1,725-1,931 kcal): fat 25-28% of calories on 7 of 7 days,
   88-106% of the gram target; calories 85-102%; no oat dish at lunch or
   dinner.
+      **Closed 2026-09-26:** reproduced on the DEV server (2 of 40 loads): webpack's on-demand compile race in Next 14 ('Cannot read properties of undefined (reading \'call\')', then Next's own error boundary crashing). The production build: 120 of 120 loads clean, 0 errors in the log. Dev-only; nothing to fix in the app.
 
 **Cycle 21**
-- [ ] **qa.variant eats 74-85% of its calories** since the lean-protein change:
+- [x] **qa.variant eats 74-85% of its calories** since the lean-protein change:
       protein and fat both improved, and the lean lunches Clara writes are
       ~250 kcal smaller than the slot. Next lever, if wanted: let a lunch or
       dinner take a lean side when the slot is under 85% (today's filler waits
@@ -429,6 +430,7 @@ or reproduced; where a bot could not pin something down, it says so.
       The rest of qa.variant's gap is blocked by fat AND sodium together; only
       relaxing the 2,300 mg sodium guideline could close it — a health call
       not taken. The day shows the gap as "N kcal free".
+      **Closed 2026-09-26:** as far as the basket and the health limits allow. Clara's snacks now carry no added salt, and a short day's calorie top-up may take fat to 135% with a lean snack (owner: calories over fat). qa.variant 79-90% of calories over two weeks; healthy profiles unchanged (85-105% kcal, 90-119% fat). The builder log shows the rest of the gap refused on SODIUM on every day — only relaxing the 2,300 mg guideline could close it, and the owner kept it.
 - [x] **Generated dishes were briefed "~0% protein"** (fixed in cycle 19);
       re-measured here: Clara's lean dishes come back at 23-31% protein.
 - Development responses now carry what the top-up asked for and kept
@@ -459,10 +461,11 @@ or reproduced; where a bot could not pin something down, it says so.
       just replaced.
 - [x] Admin routes logged Next's own dynamic-rendering signal as "[admin]
       unhandled error" six times per build; given back, 0 now.
-- [ ] **A failed cook-my-day still spends the allowance** (a free user's only
+- [x] **A failed cook-my-day still spends the allowance** (a free user's only
       one of the day, lost to a model failure — seen once in production:
       422 then 200 on retry). Refunding it the way swaps are refunded does
       not fit the $30 Plus ceiling without trimming something. Needs a call.
+      **Closed 2026-09-26:** refunded like swaps: the allowance is read, each model call is a cookDayAttempt, and cookDay is charged only when a day is saved. Free (one a day) gets one retry; premium's attempts equal its allowance so the $30 ceiling holds (test). Verified on the production build: a delivered day spent one attempt and one plan.
 
 **Final system bot (2026-09-26, production build, 64 checks)**
 Platform, public pages ×3 languages, a brand-new sign-up through onboarding,
@@ -626,11 +629,12 @@ Each was measured and left deliberately; the reason is the entry.
       fixture and a paid fixture, each reset with `npm run rate-limit:reset-user`
       before a run.
       **Cycle 20:** free: qa.free.20260925@wondish.io (no coupon, created in the Clerk dev instance, onboarded through the app); beta: qa.desktop (coupon); premium: qa.variant (Stripe). Reset with `npm run rate-limit:reset-user -- <clerk id>`.
-- [ ] **Freeze HEAD for the whole QA window, edits included.** Cycle 14 was
+- [x] **Freeze HEAD for the whole QA window, edits included.** Cycle 14 was
       invalidated by 11 commits landing mid-run. Cycle 15 froze commits but not
       the working tree, and the dev server hot-reloaded uncommitted edits into
       the bot's later measurements. It read the diffs and cleared them, but it
       should not have had to.
+      **Closed 2026-09-26:** practised from cycle 18 on: every bot run was preceded by a commit and, from cycle 23, ran against a production build that cannot hot-reload.
 
 ---
 
