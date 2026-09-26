@@ -59,7 +59,10 @@ export function buildSubscriptionView(
   // Every account carries a STRIPE/FREE row from sign-up; without a Stripe
   // subscription behind it there is nothing to manage — that's just "free",
   // not a lapsed subscription.
-  if (isStripe && row.plan !== "PREMIUM" && !row.stripeSubscriptionId) {
+  // A declined first payment leaves an INCOMPLETE subscription for ~23 hours.
+  // It is not a plan the user has — show them the free panel and the way to
+  // subscribe, not "Plus · Renews on …" (Stripe sandbox run, 2026-09-26).
+  if ((isStripe && row.plan !== "PREMIUM" && !row.stripeSubscriptionId) || (isStripe && row.status === "INCOMPLETE")) {
     return { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, endedAt: null, cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [] };
   }
   const plan = isStripe ? priceToPlan(row.stripePriceId) : null;

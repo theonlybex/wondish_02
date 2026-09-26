@@ -74,3 +74,12 @@ test("a subscription cancelled early says when it actually ended, not when it wa
   const live = buildSubscriptionView({ ...base, status: "ACTIVE", plan: "PREMIUM", stripeCurrentPeriodEnd: new Date("2026-10-25T00:00:00Z") }, null, () => "monthly");
   assert.equal(live.endedAt, null);
 });
+
+test("a declined first payment (INCOMPLETE) shows the free panel, not Plus", () => {
+  const v = buildSubscriptionView(
+    { source: "STRIPE", plan: "PREMIUM", status: "INCOMPLETE", stripeSubscriptionId: "sub_x", stripePriceId: "price_m", stripeCurrentPeriodEnd: new Date("2026-10-26T00:00:00Z"), cancelAtPeriodEnd: false },
+    null, () => "monthly"
+  );
+  assert.equal(v.isPremium, false);
+  assert.equal(v.source, null);
+});

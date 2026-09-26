@@ -5,8 +5,15 @@ import { prisma } from "@/lib/db";
 // Single source of truth for "does this subscription grant premium access".
 // Extracted verbatim from the inline check formerly at
 // app/(dashboard)/layout.tsx:11-14 — plan must be PREMIUM AND status must be
-// one of ACTIVE/TRIALING/INCOMPLETE (INCOMPLETE covers a just-started Stripe
-// checkout that hasn't confirmed payment yet but shouldn't be locked out).
+// one of ACTIVE/TRIALING.
+//
+// INCOMPLETE used to count too, as "a just-started checkout that hasn't
+// confirmed payment yet". With Stripe's hosted Checkout that moment never
+// reaches the app — the subscription is `active` before the user is sent back,
+// 3-D Secure included — and INCOMPLETE is instead exactly what a DECLINED first
+// payment leaves behind. So a declined card granted Plus for the ~23 hours
+// Stripe keeps it, and checkout then refused the buyer as "already subscribed"
+// instead of letting them try another card (Stripe sandbox run, 2026-09-26).
 // Grace period past a lapsed Stripe period end before entitlement is cut —
 // covers renewal-webhook delivery lag without leaving a meaningful free
 // window. Entitlement is otherwise 100% webhook-dependent: one missed
@@ -21,7 +28,7 @@ export function hasActivePremium(
 ): boolean {
   if (!subscription) return false;
   if (subscription.plan !== "PREMIUM") return false;
-  if (!["ACTIVE", "TRIALING", "INCOMPLETE"].includes(subscription.status)) return false;
+  if (!["ACTIVE", "TRIALING"].includes(subscription.status)) return false;
   // Period-end backstop: only rows that carry a Stripe period end are
   // subject to it — coupon/admin grants (null periodEnd) never expire here.
   const periodEnd = subscription.stripeCurrentPeriodEnd;

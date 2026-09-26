@@ -6,7 +6,7 @@ import { planByKey } from "./billing/plans";
 // ─── 2026-07-24 logic-audit Task 9 ──────────────────────────────────────────
 //
 // The webhook's inline mappings sent unpaid/paused/incomplete_expired to
-// INCOMPLETE — which hasActivePremium counts as premium — so a sub whose
+// INCOMPLETE — which hasActivePremium then counted as premium — so a sub whose
 // payments stopped kept premium indefinitely. One shared honest mapping;
 // unknown statuses fail safe to CANCELED.
 

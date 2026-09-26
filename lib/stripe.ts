@@ -10,7 +10,7 @@ function getStripe() {
 
 // Honest Stripe→DB status mapping, shared by every webhook handler. The old
 // inline mappings collapsed unpaid/paused/incomplete_expired into INCOMPLETE
-// — which hasActivePremium counts as premium (fresh-checkout grace) — so a
+// — which hasActivePremium then counted as premium — so a
 // sub whose payments stopped kept premium indefinitely. Unknown/future
 // statuses fail SAFE to CANCELED: losing entitlement wrongly is recoverable,
 // granting it wrongly is free premium.

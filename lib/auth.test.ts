@@ -4,7 +4,7 @@ import { accountHasActivePremium, hasActivePremium, primarySubscriptionRow, reso
 
 // Extracted verbatim from the inline check formerly at
 // app/(dashboard)/layout.tsx:11-14 — plan === "PREMIUM" AND status in
-// [ACTIVE, TRIALING, INCOMPLETE]. Pinned here so the extraction can't drift.
+// [ACTIVE, TRIALING] (INCOMPLETE removed 2026-09-26). Pinned here so it can't drift.
 
 test("null or undefined subscription is never premium", () => {
   assert.equal(hasActivePremium(null), false);
@@ -16,10 +16,13 @@ test("non-PREMIUM plan is never premium, regardless of status", () => {
   assert.equal(hasActivePremium({ plan: "FREE", status: "TRIALING" }), false);
 });
 
-test("PREMIUM plan with ACTIVE, TRIALING, or INCOMPLETE status is active premium", () => {
+test("PREMIUM plan with ACTIVE or TRIALING status is active premium", () => {
   assert.equal(hasActivePremium({ plan: "PREMIUM", status: "ACTIVE" }), true);
   assert.equal(hasActivePremium({ plan: "PREMIUM", status: "TRIALING" }), true);
-  assert.equal(hasActivePremium({ plan: "PREMIUM", status: "INCOMPLETE" }), true);
+});
+
+test("INCOMPLETE is a declined first payment, not premium (sandbox run 2026-09-26)", () => {
+  assert.equal(hasActivePremium({ plan: "PREMIUM", status: "INCOMPLETE" }), false);
 });
 
 test("PREMIUM plan with any other status is not active premium", () => {
