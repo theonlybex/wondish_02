@@ -31,8 +31,11 @@ export function subscriptionRowFromStripe(sub: StripeSubLike) {
   };
 }
 
+const LIVE = new Set(["ACTIVE", "TRIALING", "PAST_DUE"]);
+
 interface SyncDeps {
   retrieve: (id: string) => Promise<StripeSubLike>;
+  current: (accountId: string) => Promise<{ stripeSubscriptionId: string | null; status: string } | null>;
   updateMany: (args: {
     where: { accountId: string; source: "STRIPE" };
     data: ReturnType<typeof subscriptionRowFromStripe>;
@@ -41,19 +44,23 @@ interface SyncDeps {
 
 const defaultDeps: SyncDeps = {
   retrieve: (id) => stripe().subscriptions.retrieve(id) as unknown as Promise<StripeSubLike>,
+  current: (accountId) =>
+    prisma.subscription.findFirst({ where: { accountId, source: "STRIPE" }, select: { stripeSubscriptionId: true, status: true } }),
   updateMany: (args) => prisma.subscription.updateMany(args),
 };
 
 /**
  * Re-read the subscription from Stripe and write the (accountId, STRIPE) row.
  * `count === 0` means the row is gone (account deleted) — callers treat it as
- * a tolerated no-op, never an error, so Stripe retries don't loop for days.
+ * a tolerated no-op, never an error, so Stripe retries don't loop for days;
+ * `stale: true` means the event was about a leftover subscription and the
+ * member's live one was kept.
  */
 export async function syncStripeSubscription(
   accountId: string,
   stripeSubscriptionId: string,
   deps: SyncDeps = defaultDeps
-): Promise<{ count: number }> {
+): Promise<{ count: number; stale?: boolean }> {
   const sub = await deps.retrieve(stripeSubscriptionId);
   // Defense: a session/subscription id must belong to the account we were
   // told about. Stripe stamps accountId into subscription metadata at
@@ -63,5 +70,22 @@ export async function syncStripeSubscription(
       `[billing/sync] account mismatch: subscription ${sub.id} belongs to ${sub.metadata.accountId}, not ${accountId}`
     );
   }
-  return deps.updateMany({ where: { accountId, source: "STRIPE" }, data: subscriptionRowFromStripe(sub) });
+  const data = subscriptionRowFromStripe(sub);
+  // One row per account, many subscriptions per customer: every declined or
+  // abandoned checkout leaves an `incomplete` subscription behind, and Stripe
+  // keeps sending events for it (a late payment failure, the expiry ~23h
+  // later). Such a stale subscription must never overwrite the one the member
+  // is paying on — only a subscription that is itself paying may take over a
+  // live row.
+  const row = await deps.current(accountId);
+  if (
+    row?.stripeSubscriptionId &&
+    row.stripeSubscriptionId !== sub.id &&
+    LIVE.has(row.status) &&
+    data.status !== "ACTIVE" &&
+    data.status !== "TRIALING"
+  ) {
+    return { count: 0, stale: true };
+  }
+  return deps.updateMany({ where: { accountId, source: "STRIPE" }, data });
 }

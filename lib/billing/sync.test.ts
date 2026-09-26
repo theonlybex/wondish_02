@@ -50,6 +50,7 @@ test("syncStripeSubscription retrieves via the SDK and writes the STRIPE row", a
   const calls: unknown[] = [];
   const res = await syncStripeSubscription("acc_1", "sub_1", {
     retrieve: async (id) => { calls.push(["retrieve", id]); return sub(); },
+    current: async () => null,
     updateMany: async (args) => { calls.push(["update", args]); return { count: 1 }; },
   });
   assert.equal(res.count, 1);
@@ -63,8 +64,41 @@ test("syncStripeSubscription refuses a subscription whose metadata names another
   await assert.rejects(
     () => syncStripeSubscription("acc_OTHER", "sub_1", {
       retrieve: async () => sub(),
+      current: async () => null,
       updateMany: async () => { throw new Error("must not write"); },
     }),
     /account mismatch/
   );
+});
+
+function syncWith(row: { stripeSubscriptionId: string | null; status: string } | null, incoming: StripeSubLike) {
+  const writes: unknown[] = [];
+  return syncStripeSubscription("acc_1", incoming.id, {
+    retrieve: async () => incoming,
+    current: async () => row,
+    updateMany: async (args) => { writes.push(args); return { count: 1 }; },
+  }).then((res) => ({ res, writes }));
+}
+
+test("a leftover incomplete checkout never overwrites the member's paying subscription", async () => {
+  for (const status of ["incomplete", "incomplete_expired", "canceled", "past_due"]) {
+    const { res, writes } = await syncWith({ stripeSubscriptionId: "sub_paying", status: "ACTIVE" }, sub({ id: "sub_old", status }));
+    assert.equal(writes.length, 0, status);
+    assert.equal(res.stale, true, status);
+  }
+});
+
+test("a new paying subscription replaces an ended or incomplete row", async () => {
+  for (const rowStatus of ["CANCELED", "INCOMPLETE"]) {
+    const { writes } = await syncWith({ stripeSubscriptionId: "sub_old", status: rowStatus }, sub({ id: "sub_new", status: "active" }));
+    assert.equal(writes.length, 1, rowStatus);
+  }
+  // …and an incomplete attempt may still write over an ended row (both free).
+  const { writes } = await syncWith({ stripeSubscriptionId: "sub_old", status: "CANCELED" }, sub({ id: "sub_try", status: "incomplete" }));
+  assert.equal(writes.length, 1);
+});
+
+test("events for the member's own subscription always write, even when it ends", async () => {
+  const { writes } = await syncWith({ stripeSubscriptionId: "sub_1", status: "ACTIVE" }, sub({ status: "canceled" }));
+  assert.equal(writes.length, 1);
 });
