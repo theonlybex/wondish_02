@@ -422,6 +422,34 @@ or reproduced; where a bot could not pin something down, it says so.
   quarter of every generated batch is rejected as out-of-basket (7 of 28) —
   the next place to win acceptance.
 
+**Cycle 23 — the first production build (`next build && next start`)**
+- [x] **The diet matchers threw in production.** /api/pantry/cookable and
+      /api/pantry/to-buy answered 500 on the minified build only: SWC inlined
+      template constants in lib/diet-match.ts and re-escaped `\\b` as a
+      backslash + BACKSPACE, invalid under the regex `u` flag. Twenty cycles
+      on the dev server could not see it. Fixed (no `\b` in string-built
+      patterns), a unit test, and `scripts/check-build.mjs` now fails
+      `npm run build` on a mangled escape — verified by running it against
+      the broken build (exit 1) and the fixed one (pass).
+- [x] **Production sweep**: 16 pages at phone size, 0 failed requests, 0
+      console or server errors. New week 200 in 63 s; Clara's first words
+      3.1 s; cook-my-day 4/4; the development-only `debug`/`rejections`
+      fields confirmed absent from production responses.
+- [x] **The rate-limit kill switch, verified** for the first time on a real
+      build: `RATE_LIMIT_ENFORCE_BACKEND=1` with no Upstash → nothing served
+      (500 everywhere); with Upstash → normal. Default (unset) serves and
+      reports `degraded`, by the 2026-09-17 decision. **Ready to set in Vercel
+      Production.**
+- [x] **A swap started while a new week builds** answered a bare "Menu not
+      found". Rows are locked during the build; the 404 now says the dish was
+      just replaced.
+- [x] Admin routes logged Next's own dynamic-rendering signal as "[admin]
+      unhandled error" six times per build; given back, 0 now.
+- [ ] **A failed cook-my-day still spends the allowance** (a free user's only
+      one of the day, lost to a model failure — seen once in production:
+      422 then 200 on retry). Refunding it the way swaps are refunded does
+      not fit the $30 Plus ceiling without trimming something. Needs a call.
+
 **Still open from before**
 - [x] **The journal's five step dots are 32px wide** (44 tall). Five 44px
       targets need 220px inside a 46px control; fixing it properly means
