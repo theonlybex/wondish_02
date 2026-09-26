@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getAccount } from "@/lib/queries";
 import { loadSubscriptionView } from "@/lib/billing/load-view";
 import BillingPanel from "@/components/billing/BillingPanel";
+import { limitFor } from "@/lib/ai-budget";
 
 export const metadata = { title: "Billing" };
 
@@ -51,7 +52,15 @@ export default async function MembershipPage() {
             <p className="font-bold text-lg">All features unlocked — no restrictions apply.</p>
           </div>
         ) : (
-          <BillingPanel initial={view} />
+          <BillingPanel
+            initial={view}
+            limits={{
+              betaWeeks: limitFor("planGen", "beta").max,
+              betaChat: limitFor("claraChat", "beta").max,
+              plusWeeks: limitFor("planGen", "premium").max,
+              plusChat: limitFor("claraChat", "premium").max,
+            }}
+          />
         )}
       </div>
 

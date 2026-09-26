@@ -24,7 +24,10 @@ const CARD_SHADOW = { boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(
 // allowances (3 new weeks a week, 13 Clara messages a day; lib/ai-budget.ts
 // tierFor/maxFor), and the card states those numbers rather than describing
 // them as "about half of Plus", which was both vague and wrong.
-export default function BillingPanel({ initial }: { initial: SubscriptionView }) {
+/** Beta vs Plus allowances, from the enforced table (lib/ai-budget limitFor). */
+export interface TierLimits { betaWeeks: number; betaChat: number; plusWeeks: number; plusChat: number }
+
+export default function BillingPanel({ initial, limits }: { initial: SubscriptionView; limits?: TierLimits }) {
   const [view, setView] = useState(initial);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -133,8 +136,11 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
             {/* Honest about what a coupon grants: a preview, not the paid
                 product. Invited testers, not lapsed customers — keep it light. */}
             <p className="text-sm mb-4 max-w-md" style={{ color: "rgba(255,255,255,0.75)" }}>
-              Beta is a preview of Plus, not the full thing: 3 new weeks a week and 13 Clara messages a
-              day, where Plus gives 5 and 25.
+              {/* Numbers from the enforced limits: this read "13 … Plus gives 5 and
+                  25" after Plus chat had become 20 and beta 10 (2026-09-26). */}
+              Beta is a preview of Plus, not the full thing: {limits?.betaWeeks ?? 3} new weeks a week and{" "}
+              {limits?.betaChat ?? 10} Clara messages a day, where Plus gives {limits?.plusWeeks ?? 5} and{" "}
+              {limits?.plusChat ?? 20}.
               Upgrade whenever you like for the full limits.
             </p>
             <Link
