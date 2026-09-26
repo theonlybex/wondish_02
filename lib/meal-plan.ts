@@ -993,9 +993,15 @@ export async function buildMealPlanMenus(
         // does a dish already on today's plate come back. The old two-tier
         // fallback jumped straight to "anything", so a thin basket pool put
         // the same chicken dish at lunch AND dinner every day.
-        const tiers: { protein: boolean; crossWeek: boolean; weekReuse: boolean; sameDay: boolean }[] = [
+        // fatForMacros: the fat ceiling gives way to protein — as a TIER, tried
+        // only once the strict ones are empty. Applied to every check it fired
+        // at breakfast on healthy days (protein is always "behind" at 8am) and
+        // took two on-target profiles from 25-28% to 28-32% of calories as fat
+        // for nothing (cycle 22).
+        const tiers: { protein: boolean; crossWeek: boolean; weekReuse: boolean; sameDay: boolean; fatForMacros?: boolean }[] = [
           { protein: false, crossWeek: false, weekReuse: false, sameDay: false },
           { protein: true,  crossWeek: false, weekReuse: false, sameDay: false },
+          { protein: true,  crossWeek: false, weekReuse: false, sameDay: false, fatForMacros: true },
           { protein: true,  crossWeek: true,  weekReuse: false, sameDay: false },
           { protein: true,  crossWeek: true,  weekReuse: true,  sameDay: false },
           { protein: true,  crossWeek: true,  weekReuse: true,  sameDay: true },
@@ -1027,7 +1033,7 @@ export async function buildMealPlanMenus(
         // which refuses nothing — a ceiling nobody can meet is the same as no
         // ceiling. This one is meetable, and what it refuses is the dish that
         // takes an already-fatty day further.
-        const dayFatRoomLeft = (r: PoolRecipe): boolean => {
+        const dayFatRoomLeft = (r: PoolRecipe, forMacros = false): boolean => {
           const budget = dayMacroTargetG.fat;
           if (!budget) return true;
           // PACED: the fat allowed so far scales with the share of the day's
@@ -1046,7 +1052,7 @@ export async function buildMealPlanMenus(
           const behindOnProtein = dayMacroTargetG.protein > 0 && todayMacroG.protein < proteinPace;
           const carriesProtein =
             (r.calories ?? 0) > 0 && ((r.protein ?? 0) * 4) / (r.calories as number) >= macroTarget.protein * 0.8;
-          const ceiling = behindOnProtein && carriesProtein ? DAY_FAT_CEILING_FOR_MACROS : DAY_FAT_CEILING;
+          const ceiling = forMacros && behindOnProtein && carriesProtein ? DAY_FAT_CEILING_FOR_MACROS : DAY_FAT_CEILING;
           return todayMacroG.fat + (r.fat ?? 0) <= budget * ceiling * share;
         };
         const sodiumRoomLeft = (r: PoolRecipe): boolean =>
@@ -1087,7 +1093,7 @@ export async function buildMealPlanMenus(
           // alternative is an unfilled slot. Neither is worth an empty day, and
           // both are worth every other kind of compromise first.
           (relax.sameDay || sodiumRoomLeft(r)) &&
-          (relax.sameDay || dayFatRoomLeft(r)) &&
+          (relax.sameDay || dayFatRoomLeft(r, relax.fatForMacros === true)) &&
           (relax.sameDay || carbBaseRoomLeft(r)) &&
           (relax.protein || (() => { const dp = dishProtein(r.ingredients); return dp === null || !prevDayProteins.has(dp); })()) &&
           (relax.crossWeek || !excludeRecipeIds.has(r.id)) &&
