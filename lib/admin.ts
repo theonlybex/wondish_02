@@ -44,6 +44,11 @@ export const RECIPE_MUTABLE_FIELDS = [
 export const ZIPCODE_MUTABLE_FIELDS = ["code", "city", "state", "country", "active"] as const;
 
 export function adminErrorResponse(err: unknown) {
+  // Next's own "this route is dynamic" signal, thrown by headers() while it
+  // decides how to build a route. Caught here it was logged six times per
+  // production build as an "unhandled error", burying any real one. It is not
+  // ours to handle — give it back.
+  if ((err as { digest?: unknown } | null)?.digest === "DYNAMIC_SERVER_USAGE") throw err;
   const message = err instanceof Error ? err.message : "Internal error";
   if (message === "UNAUTHORIZED") return Response.json({ error: "Unauthorized" }, { status: 401 });
   if (message === "FORBIDDEN") return Response.json({ error: "Forbidden" }, { status: 403 });

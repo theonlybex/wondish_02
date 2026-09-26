@@ -657,3 +657,14 @@ test("exactBanPattern: a caffeine rule on 'coffee' or 'black tea' leaves decaf p
   assert.equal(exactBanPattern("black tea").test("strong black tea"), true);
   assert.equal(exactBanPattern("decaf coffee").test("decaf coffee"), true);
 });
+
+// The production minifier turned "\\b" inside these string-built patterns into
+// a backslash + BACKSPACE, an invalid escape under the "u" flag, and every
+// exact-ban matcher threw in production (2026-09-26). The module spells its
+// word boundaries without \b; this keeps it that way.
+import { exactBanPattern as _exactBan } from "./diet-match";
+test("string-built ban patterns contain no \\b (the production minifier mangles it)", () => {
+  for (const name of ["sugar", "milk", "pasta", "olive oil", "coffee", "chicken"]) {
+    assert.ok(!_exactBan(name).source.includes("\\b"), `${name}: ${_exactBan(name).source}`);
+  }
+});

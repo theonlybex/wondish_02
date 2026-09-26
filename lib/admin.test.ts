@@ -97,3 +97,9 @@ test("RECIPE/ZIPCODE allowlists contain no relation or identity keys", () => {
     }
   }
 });
+
+test("Next's dynamic-rendering signal passes through the admin error handler", () => {
+  const signal = Object.assign(new Error("Dynamic server usage"), { digest: "DYNAMIC_SERVER_USAGE" });
+  assert.throws(() => adminErrorResponse(signal), /Dynamic server usage/);
+  assert.equal(adminErrorResponse(new Error("boom")).status, 500);
+});

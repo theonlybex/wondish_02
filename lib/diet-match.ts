@@ -287,10 +287,20 @@ const SUBSTITUTE_MARKERS = "vegan|vegetarian|plant-based|plant based|meatless|me
 const PLANT_BASES = "almond|oat|soy|soya|coconut|cashew|rice|hemp|pea|nut|peanut|cocoa|shea|apple|macadamia|hazelnut|walnut|pistachio|sunflower|flax|sesame";
 const DAIRY_EGG_TERM_RE = /^(?:milk|cream|butter|cheese|yogurt|yoghurt|eggs?|mayonnaise|mayo|creamer|ice cream|sour cream|cream cheese|whipped cream|heavy cream|buttermilk|custard|whole milk|kefir)$/;
 const GRAIN_TERM_RE = /^(?:pasta|noodles?|bread|flour|all-purpose flour|crackers?|cracker crumbs|buns?|muffins?|english muffins?|rotini|orzo|penne|spaghetti|macaroni|fettuccine|linguine|lasagna|tortillas?|flour tortillas?|wraps?|cereal|granola|oats|breadcrumbs|bread crumbs|panko|couscous|pizza|pizza dough|dough|bagels?|pita|croutons|pretzels?|pastry|cookies?|cake|biscuits?|pancakes?|waffles?)$/;
-const MARKER_LOOKBEHIND = `(?<!\\b(?:${SUBSTITUTE_MARKERS})\\s(?:[\\p{L}-]+\\s)?)`;
-const PLANT_BASE_LOOKBEHIND = `(?<!\\b(?:${PLANT_BASES})\\s(?:(?:milk|cream)\\s)?)`;
-const GRAIN_MARKER_LOOKBEHIND = `(?<!\\b(?:gluten-free|gluten free|wheat-free|wheat free|grain-free|grain free),?\\s(?:[\\p{L}&-]+,?\\s){0,3})`;
-const FREE_LOOKAHEAD = `(?!(?:-|\\s)free\\b)`;
+// No `\\b` in any pattern built from STRINGS in this module. The production
+// minifier inlines these constants into the template below and re-escapes a
+// "\\b" as "\\\b" — a backslash then a BACKSPACE character, an invalid escape
+// under the "u" flag — so every exact-ban matcher threw in production and
+// /api/pantry/cookable and /api/pantry/to-buy answered 500 (first production
+// build, 2026-09-26; the dev server is not minified and never showed it).
+// \s and \p survive; \b alone does, because in a JS string it also means
+// backspace. These two are the same word boundary, spelt without it.
+const WB_START = "(?<![\\p{L}\\p{N}_])";
+const WB_END = "(?![\\p{L}\\p{N}_])";
+const MARKER_LOOKBEHIND = `(?<!${WB_START}(?:${SUBSTITUTE_MARKERS})\\s(?:[\\p{L}-]+\\s)?)`;
+const PLANT_BASE_LOOKBEHIND = `(?<!${WB_START}(?:${PLANT_BASES})\\s(?:(?:milk|cream)\\s)?)`;
+const GRAIN_MARKER_LOOKBEHIND = `(?<!${WB_START}(?:gluten-free|gluten free|wheat-free|wheat free|grain-free|grain free),?\\s(?:[\\p{L}&-]+,?\\s){0,3})`;
+const FREE_LOOKAHEAD = `(?!(?:-|\\s)free${WB_END})`;
 
 export const exactBanPattern = (name: string, opts: { grainExempt?: boolean } = {}) => {
   const lowered = name.trim().toLowerCase();
@@ -298,8 +308,8 @@ export const exactBanPattern = (name: string, opts: { grainExempt?: boolean } = 
   const grainExempt = (opts.grainExempt ?? true) && GRAIN_TERM_RE.test(lowered);
   const substitutable = (DAIRY_EGG_TERM_RE.test(lowered) ? PLANT_BASE_LOOKBEHIND : "") + (grainExempt ? GRAIN_MARKER_LOOKBEHIND : "");
   const derived = DERIVED_PRODUCT_RE.test(lowered) || DECAF_RE.test(lowered);
-  const prefix = derived ? "" : "(?<!\\bdecaf\\s)(?<!\\bdecaffeinated\\s)";
-  const suffix = derived ? "" : "(?!\\s+(?:cider\\s+)?(?:oil|vinegar|spray|extract)\\b)";
+  const prefix = derived ? "" : `(?<!${WB_START}decaf\\s)(?<!${WB_START}decaffeinated\\s)`;
+  const suffix = derived ? "" : `(?!\\s+(?:cider\\s+)?(?:oil|vinegar|spray|extract)${WB_END})`;
   return new RegExp(
     `${MARKER_LOOKBEHIND}${substitutable}${prefix}(?<![\\p{L}\\p{N}])(?:${body})(?![\\p{L}\\p{N}])${FREE_LOOKAHEAD}${suffix}`,
     "iu"
