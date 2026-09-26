@@ -1,4 +1,4 @@
-// Creates (once) the Wondish Premium product and the two catalog prices by
+// Creates (once) the Wondish Plus product and the two catalog prices by
 // lookup_key, then verifies every price matches lib/billing/plans.ts. Safe to
 // rerun: existing prices are reused, mismatches are reported, nothing is
 // deleted. Run per environment (test key locally, live key for production):
@@ -17,10 +17,14 @@ async function main() {
   // consistent, so a rerun seconds after creation would create a duplicate.
   const products = await stripe.products.list({ active: true, limit: 100 });
   const product =
-    products.data.find((p) => p.name === "Wondish Premium") ??
+    products.data.find((p) => p.name === "Wondish Plus") ??
     (await stripe.products.create({
-      name: "Wondish Premium",
-      description: "Full meal planner, weekly generation, and Clara without limits.",
+      // What the app calls it, and what it is. The sandbox products said
+      // "Unlimited access … priority AI generation" at checkout (2026-09-26):
+      // Plus is bigger allowances, not unlimited, and there is no priority.
+      name: "Wondish Plus",
+      description:
+        "More room on everything in Wondish: more new weeks, Clara messages, dish swaps, fridge ideas and cook-my-day plans. Every feature is also in the free plan.",
     }));
   console.log(`product ${product.id}`);
 
@@ -45,7 +49,7 @@ async function main() {
       unit_amount: plan.amountCents,
       currency: plan.currency,
       recurring: { interval: plan.interval, interval_count: plan.intervalCount },
-      nickname: plan.key === "monthly" ? "Premium monthly" : "Premium 6 months",
+      nickname: plan.key === "monthly" ? "Plus monthly" : "Plus 6 months",
     });
     console.log(`CREATED  ${plan.lookupKey} → ${created.id}`);
   }
