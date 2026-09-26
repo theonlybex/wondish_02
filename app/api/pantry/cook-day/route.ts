@@ -20,7 +20,7 @@ import {
   normalizeCuisine,
   CLARA_RECIPE_TAG,
 } from "@/lib/clara/recipe-generation";
-import { guardAiSpend } from "@/lib/ai-budget";
+import { guardAiSpend, remainingAiSpend } from "@/lib/ai-budget";
 import { acquireInFlight } from "@/lib/in-flight-lock";
 import { withReadableProse } from "@/lib/dish-plausibility";
 import {
@@ -109,7 +109,12 @@ export async function POST(req: Request) {
   // nothing was cooking. The real reason was hidden behind a false one for a
   // minute and a half (QA 2026-09-25). Checking the cheap, truthful refusal
   // first also means a user out of allowance never touches the lock at all.
-  const guard = await guardAiSpend(userId, "cookDay");
+  // READ the allowance here, spend it only once Clara has answered (below).
+  // It was spent up front, so a model error — which bills almost nothing —
+  // still cost the user their cook-my-day while the message said "Nothing was
+  // used up" (final system bot, 2026-09-26). Charging after the call makes that
+  // sentence true without adding any model spend to the budget.
+  const guard = await remainingAiSpend(userId, "cookDay");
   if (!guard.ok) {
     // The guard's OWN body, verbatim — not a rewritten sentence.
     //
@@ -226,6 +231,9 @@ export async function POST(req: Request) {
       const toolUse = msg.content.find(
         (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
       );
+      // Clara answered: the tokens are spent, so the allowance is too (user
+      // bucket and the org-wide ceiling). Never refuses a day already paid for.
+      await guardAiSpend(userId, "cookDay", guard.tier);
       const rawList = (toolUse?.input as { recipes?: unknown } | undefined)?.recipes;
       recipes = Array.isArray(rawList)
         ? rawList
@@ -244,22 +252,32 @@ export async function POST(req: Request) {
     // ── Deterministic gates ────────────────────────────────────────────────────
     const slotByName = new Map(slots.map((s) => [s.name.toLowerCase(), s]));
     const filled = new Map<string, { recipe: FridgeRecipe; mealTypeId: string }>();
-    for (const r of applyAllergenFilter(recipes, matchers)) {
-      if (!passesSanity(r)) continue;
+    // Why each dish was turned away, so a "couldn't build a safe day" in
+    // production can be explained from the log alone (the final bot saw two
+    // in five runs for a vegan + hypertension + kidney profile, unexplained).
+    const allowed = applyAllergenFilter(recipes, matchers);
+    const why: Record<string, number> = { generated: recipes.length, allergen: recipes.length - allowed.length };
+    const note = (k: string) => { why[k] = (why[k] ?? 0) + 1; };
+    for (const r of allowed) {
+      if (!passesSanity(r)) { note("sanity"); continue; }
       const slot = slotByName.get((r.mealType ?? "").toLowerCase());
-      if (!slot || filled.has(slot.id)) continue;
+      if (!slot) { note("unknown-slot"); continue; }
+      if (filled.has(slot.id)) { note("slot-already-filled"); continue; }
       // Pantry coverage: every ingredient on hand (staples free); allow at most
       // one miss so a near-perfect day isn't discarded — the miss is surfaced.
       const missing = r.usesIngredients.filter(
         (n) => !onHandLower.has(n.trim().toLowerCase()) && !STAPLES.has(n.trim().toLowerCase())
       );
-      if (missing.length > 1) continue;
+      if (missing.length > 1) { note("needs-2+-missing-ingredients"); continue; }
       filled.set(slot.id, { recipe: r, mealTypeId: slot.id });
     }
+    console.info(`[cook-day] filled=${filled.size}/${slots.length} ${JSON.stringify(why)}`);
 
     if (filled.size === 0) {
       return NextResponse.json(
-        { error: "Clara couldn't build a safe day from these ingredients — add a few more and retry." },
+        // Clara answered, so this attempt counted; say so rather than invite a
+        // retry a free user no longer has.
+        { error: "Clara couldn't build a safe day from these ingredients, and the attempt counted as today's cook-my-day. Adding a few more ingredients gives her more to work with next time." },
         { status: 422 }
       );
     }
