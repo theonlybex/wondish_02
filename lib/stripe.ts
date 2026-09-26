@@ -233,24 +233,36 @@ export async function setCancelAtPeriodEnd(subscriptionId: string, cancel: boole
 
 /**
  * Upgrade (monthly → 6-month): charge the prorated difference now and start
- * the new cycle today.
+ * the new cycle today. `pending_if_incomplete` means the new plan only takes
+ * effect once that charge succeeds: a declined card or a bank that wants the
+ * member to confirm leaves them on their current, paid plan (never past_due)
+ * and hands back the invoice page where they can finish the payment.
  * Downgrade (6-month → monthly): Stripe can't change interval in place, so a
  * schedule keeps the paid period intact and flips to monthly at period end.
  */
-export async function switchPlanPrice(subscriptionId: string, newPriceId: string, upgrade: boolean): Promise<void> {
+export async function switchPlanPrice(
+  subscriptionId: string,
+  newPriceId: string,
+  upgrade: boolean
+): Promise<{ confirmUrl: string | null }> {
   const s = getStripe();
   const sub = await releasePendingSwitch(subscriptionId);
   const item = sub.items.data[0];
   if (!item) throw new Error(`Subscription ${subscriptionId} has no items`);
 
   if (upgrade) {
-    await s.subscriptions.update(subscriptionId, {
+    // A pending update accepts only price/proration/anchor fields.
+    if (sub.cancel_at_period_end) await s.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
+    const updated = await s.subscriptions.update(subscriptionId, {
       items: [{ id: item.id, price: newPriceId }],
       proration_behavior: "always_invoice",
       billing_cycle_anchor: "now",
-      cancel_at_period_end: false,
+      payment_behavior: "pending_if_incomplete",
+      expand: ["latest_invoice"],
     });
-    return;
+    if (!updated.pending_update) return { confirmUrl: null };
+    const invoice = updated.latest_invoice;
+    return { confirmUrl: typeof invoice === "object" && invoice ? invoice.hosted_invoice_url ?? null : null };
   }
 
   if (sub.cancel_at_period_end) await s.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
@@ -263,4 +275,5 @@ export async function switchPlanPrice(subscriptionId: string, newPriceId: string
       { items: [{ price: newPriceId, quantity: 1 }] },
     ],
   });
+  return { confirmUrl: null };
 }

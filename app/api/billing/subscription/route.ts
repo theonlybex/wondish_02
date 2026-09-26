@@ -32,6 +32,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "No Stripe subscription to change." }, { status: 409 });
   }
 
+  let confirmUrl: string | null = null;
   if (action === "cancel" || action === "resume") {
     await setCancelAtPeriodEnd(row.stripeSubscriptionId, action === "cancel");
   } else if (action === "keep") {
@@ -44,12 +45,25 @@ export async function PATCH(req: NextRequest) {
     const current = currentPrice?.lookup_key ? planByLookupKey(currentPrice.lookup_key) : null;
     if (current?.key === target.key) return NextResponse.json({ error: "Already on that plan." }, { status: 409 });
     const upgrade = target.months > (current?.months ?? 1);
-    await switchPlanPrice(row.stripeSubscriptionId, await resolvePlanPrice(target), upgrade);
+    try {
+      ({ confirmUrl } = await switchPlanPrice(row.stripeSubscriptionId, await resolvePlanPrice(target), upgrade));
+    } catch (err) {
+      // A hard card decline on the upgrade charge: nothing changed.
+      if ((err as { type?: string })?.type === "StripeCardError") {
+        return NextResponse.json(
+          { error: "Your card was declined, so you're still on your current plan. Update your card and try again." },
+          { status: 402 }
+        );
+      }
+      throw err;
+    }
   } else {
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   }
 
   await syncStripeSubscription(account.id, row.stripeSubscriptionId);
   const fresh = await loadSubscriptionView(userId);
-  return NextResponse.json(fresh!.view);
+  // The upgrade charge is waiting on the member (bank confirmation or a
+  // declined card): they stay on their current plan until it's paid.
+  return NextResponse.json(confirmUrl ? { ...fresh!.view, confirmUrl } : fresh!.view);
 }

@@ -32,6 +32,9 @@ export default function BillingPanel({ initial, limits }: { initial: Subscriptio
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // An upgrade whose charge is waiting on the member (their bank wants to
+  // confirm it, or the card was declined): the new plan starts once it's paid.
+  const [confirmUrl, setConfirmUrl] = useState<string | null>(null);
 
   async function change(action: "cancel" | "resume" | "switch" | "keep", plan?: string) {
     setBusy(action);
@@ -45,6 +48,7 @@ export default function BillingPanel({ initial, limits }: { initial: Subscriptio
       const data = await res.json().catch(() => null);
       if (!res.ok || !data) { setError(data?.error ?? "Something went wrong."); return; }
       setView(data);
+      setConfirmUrl(typeof data.confirmUrl === "string" ? data.confirmUrl : null);
       setConfirmCancel(false);
     } catch {
       setError("Network error. Please try again.");
@@ -105,6 +109,15 @@ export default function BillingPanel({ initial, limits }: { initial: Subscriptio
           <button type="button" onClick={() => void openPortal()} disabled={busy !== null} className="underline font-semibold min-h-[44px] disabled:opacity-60">
             Update payment method
           </button>
+        </div>
+      )}
+
+      {confirmUrl && (
+        <div role="status" className="rounded-2xl px-5 py-4 text-sm flex flex-wrap items-center gap-3" style={{ background: "#FFF3E0", color: "#b45309" }}>
+          <span>Your bank needs you to confirm this payment. You stay on your current plan until it goes through.</span>
+          <a href={confirmUrl} className="underline font-semibold min-h-[44px] inline-flex items-center">
+            Confirm payment
+          </a>
         </div>
       )}
 
