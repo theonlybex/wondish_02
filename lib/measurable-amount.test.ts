@@ -212,3 +212,11 @@ test("'of' goes before a food, not before 'as written'", () => {
   assert.equal(repairProseAmounts("If using dried basil, use 0.0625 teaspoon as written."), "If using dried basil, use a pinch as written.");
   assert.equal(repairProseAmounts("Add 0.0625 teaspoon salt."), "Add a pinch of salt.");
 });
+
+test("salt is never rounded up when an amount is repaired", () => {
+  assert.deepEqual(repairAmount(0.2, "teaspoon", "salt"), { quantity: 0.125, unit: "teaspoon" });
+  assert.deepEqual(repairAmount(0.4, "teaspoon", "Kosher salt"), { quantity: 0.3333, unit: "teaspoon" });
+  assert.deepEqual(repairAmount(0.3, "teaspoon", "salt"), { quantity: 0.25, unit: "teaspoon" });
+  // pepper still takes the nearest mark
+  assert.deepEqual(repairAmount(0.2, "teaspoon", "pepper"), { quantity: 0.25, unit: "teaspoon" });
+});

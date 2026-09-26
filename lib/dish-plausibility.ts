@@ -391,6 +391,14 @@ export function repairAmount(
       if (quantity < 15) return { quantity: snapToKitchenFraction(tsp), unit: "teaspoon" };
       return { quantity: Math.round(quantity), unit: u };
     }
+    // Salt never rounds UP: 0.2 tsp → ¼ added ~120 mg of sodium per dish,
+    // against a day the sodium ceiling is already holding tight (the report
+    // before the 2026-09-25 backfill). Every salt clamp in this file snaps
+    // down; the repair of a stored row does too.
+    if (/\bsalt\b/i.test(name)) {
+      const down = snapToKitchenFraction(quantity, "down");
+      return down > 0 ? { quantity: down, unit: u } : { quantity: Math.max(1, Math.round(tsp * 16)), unit: "pinch" };
+    }
     return { quantity: snapToKitchenFraction(quantity), unit: u };
   }
 
