@@ -1298,7 +1298,17 @@ export async function buildMealPlanMenus(
         if (extraCandidates.length === 0) {
           extraCandidates = selectionPool.filter((r) => matchesExtra(r, false) && !todayUsedIds.has(r.id));
         }
-        if (extraCandidates.length === 0) break;
+        if (extraCandidates.length === 0) {
+          if (process.env.WONDISH_DEBUG_POOL) {
+            // Which rule emptied the top-up, one filter at a time.
+            const snacks = selectionPool.filter((r) => r.mealTypeId === snackMealType.id && !todayUsedIds.has(r.id));
+            const inWindow = snacks.filter((r) => r.calories !== null && r.calories >= Math.max(minCals, MIN_MEAL_KCAL) && r.calories <= maxCals);
+            const fatOk = inWindow.filter((r) => dayMacroTargetG.fat === 0 || todayMacroG.fat + (r.fat ?? 0) <= dayMacroTargetG.fat * DAY_FAT_CEILING_FOR_MACROS);
+            const saltOk = fatOk.filter((r) => todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG);
+            console.log(`[topup] day${dayIndex} ${Math.round(dayCalories)}/${Math.round(weekCals)} kcal gap=${Math.round(calGap)} window=${Math.max(minCals, MIN_MEAL_KCAL)}-${maxCals} snacks=${snacks.length} inWindow=${inWindow.length} fatOk=${fatOk.length} sodiumOk=${saltOk.length}`);
+          }
+          break;
+        }
         const extra = pickByMotivation(
           extraCandidates, motivationNames, affinityMap, seenIngredientNames, macroTarget, todaySodiumMg, weekUseCounts,
           dayMacroTargetG, todayMacroG
