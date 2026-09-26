@@ -56,5 +56,21 @@ test("the default STRIPE/FREE row with no subscription is plain free, not a laps
 
 test("no row → free", () => {
   const v = buildSubscriptionView(null, null, priceToPlan);
-  assert.deepEqual(v, { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [] });
+  assert.deepEqual(v, { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, endedAt: null, cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [] });
+});
+
+test("a subscription cancelled early says when it actually ended, not when it was paid to", () => {
+  const base = { source: "STRIPE" as const, plan: "FREE", status: "CANCELED", stripeSubscriptionId: "sub_1", stripePriceId: "price_m", cancelAtPeriodEnd: false };
+  const early = buildSubscriptionView(
+    { ...base, stripeCurrentPeriodEnd: new Date("2026-10-25T00:00:00Z"), canceledAt: new Date("2026-09-25T18:30:00Z") },
+    null, () => "monthly"
+  );
+  assert.equal(early.endedAt, "2026-09-25T18:30:00.000Z");
+  const atPeriodEnd = buildSubscriptionView(
+    { ...base, stripeCurrentPeriodEnd: new Date("2026-10-25T00:00:00Z"), canceledAt: new Date("2026-10-25T00:05:00Z") },
+    null, () => "monthly"
+  );
+  assert.equal(atPeriodEnd.endedAt, "2026-10-25T00:00:00.000Z");
+  const live = buildSubscriptionView({ ...base, status: "ACTIVE", plan: "PREMIUM", stripeCurrentPeriodEnd: new Date("2026-10-25T00:00:00Z") }, null, () => "monthly");
+  assert.equal(live.endedAt, null);
 });

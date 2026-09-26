@@ -114,7 +114,7 @@ export default function BillingPanel({ initial }: { initial: SubscriptionView })
         {isStripe && (
           <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.75)" }}>
             {lapsed
-              ? `Ended on ${fmtDate(view.periodEnd)}`
+              ? `Ended on ${fmtDate(view.endedAt ?? view.periodEnd)}`
               : ending
                 ? `Ends on ${fmtDate(view.periodEnd)}`
                 : view.pendingPlan

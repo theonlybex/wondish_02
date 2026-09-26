@@ -13,7 +13,7 @@ export default async function MembershipPage() {
   const [account, loaded] = await Promise.all([getAccount(userId), loadSubscriptionView(userId)]);
   const isAdmin = account?.roles?.some((r) => r.role.name === "SUPER") ?? false;
   const view = loaded?.view ?? {
-    isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null,
+    isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, endedAt: null,
     cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [],
   };
   const firstName = account?.firstName ?? "there";

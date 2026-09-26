@@ -15,6 +15,13 @@ export interface SubscriptionView {
   priceLabel: string | null;
   status: string | null;
   periodEnd: string | null;
+  /**
+   * When a subscription that has ended actually ended: the cancellation time
+   * when it came before the paid-through date. "Ended on October 25" was shown
+   * for a subscription cancelled on September 25 (production billing run,
+   * 2026-09-26) — periodEnd is how long it was PAID for, not when it stopped.
+   */
+  endedAt: string | null;
   cancelAtPeriodEnd: boolean;
   canSwitchTo: PlanKey | null;
   // A scheduled downgrade: the plan that takes over at periodEnd.
@@ -31,6 +38,7 @@ type Row = {
   stripePriceId: string | null;
   stripeCurrentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
+  canceledAt?: Date | null;
 };
 
 type Summary = {
@@ -45,14 +53,14 @@ export function buildSubscriptionView(
   priceToPlan: (priceId: string | null) => PlanKey | null
 ): SubscriptionView {
   if (!row) {
-    return { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [] };
+    return { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, endedAt: null, cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [] };
   }
   const isStripe = row.source === "STRIPE";
   // Every account carries a STRIPE/FREE row from sign-up; without a Stripe
   // subscription behind it there is nothing to manage — that's just "free",
   // not a lapsed subscription.
   if (isStripe && row.plan !== "PREMIUM" && !row.stripeSubscriptionId) {
-    return { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [] };
+    return { isPremium: false, source: null, plan: null, priceLabel: null, status: null, periodEnd: null, endedAt: null, cancelAtPeriodEnd: false, canSwitchTo: null, pendingPlan: null, card: null, invoices: [] };
   }
   const plan = isStripe ? priceToPlan(row.stripePriceId) : null;
   const pendingPlan = isStripe ? priceToPlan(summary?.pendingPriceId ?? null) : null;
@@ -63,6 +71,13 @@ export function buildSubscriptionView(
     priceLabel: plan ? priceLabelFor(plan) : null,
     status: row.status,
     periodEnd: row.stripeCurrentPeriodEnd?.toISOString() ?? null,
+    endedAt:
+      row.status === "CANCELED"
+        ? (row.canceledAt && (!row.stripeCurrentPeriodEnd || row.canceledAt < row.stripeCurrentPeriodEnd)
+            ? row.canceledAt
+            : row.stripeCurrentPeriodEnd
+          )?.toISOString() ?? null
+        : null,
     cancelAtPeriodEnd: row.cancelAtPeriodEnd,
     canSwitchTo: plan === "monthly" ? "sixmonth" : plan === "sixmonth" ? "monthly" : null,
     pendingPlan: pendingPlan && pendingPlan !== plan ? pendingPlan : null,
