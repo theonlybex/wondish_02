@@ -52,13 +52,6 @@ const DAY_MACRO_WEIGHT = 90;
  */
 const DAY_FAT_CEILING = 1.15;
 
-/**
- * How far fat may go when it is standing between the day and its protein or
- * its calories (user decision, 2026-09-25: "let the fat limit lose to fit the
- * necessary macros"). A hard stop still — never unlimited.
- */
-const DAY_FAT_CEILING_FOR_MACROS = 1.35;
-
 /** The smallest a slot's first dish, or a snack, may be (see queryRecipes). */
 const MIN_MEAL_KCAL = 60;
 
@@ -993,15 +986,9 @@ export async function buildMealPlanMenus(
         // does a dish already on today's plate come back. The old two-tier
         // fallback jumped straight to "anything", so a thin basket pool put
         // the same chicken dish at lunch AND dinner every day.
-        // fatForMacros: the fat ceiling gives way to protein — as a TIER, tried
-        // only once the strict ones are empty. Applied to every check it fired
-        // at breakfast on healthy days (protein is always "behind" at 8am) and
-        // took two on-target profiles from 25-28% to 28-32% of calories as fat
-        // for nothing (cycle 22).
-        const tiers: { protein: boolean; crossWeek: boolean; weekReuse: boolean; sameDay: boolean; fatForMacros?: boolean }[] = [
+        const tiers: { protein: boolean; crossWeek: boolean; weekReuse: boolean; sameDay: boolean }[] = [
           { protein: false, crossWeek: false, weekReuse: false, sameDay: false },
           { protein: true,  crossWeek: false, weekReuse: false, sameDay: false },
-          { protein: true,  crossWeek: false, weekReuse: false, sameDay: false, fatForMacros: true },
           { protein: true,  crossWeek: true,  weekReuse: false, sameDay: false },
           { protein: true,  crossWeek: true,  weekReuse: true,  sameDay: false },
           { protein: true,  crossWeek: true,  weekReuse: true,  sameDay: true },
@@ -1033,7 +1020,7 @@ export async function buildMealPlanMenus(
         // which refuses nothing — a ceiling nobody can meet is the same as no
         // ceiling. This one is meetable, and what it refuses is the dish that
         // takes an already-fatty day further.
-        const dayFatRoomLeft = (r: PoolRecipe, forMacros = false): boolean => {
+        const dayFatRoomLeft = (r: PoolRecipe): boolean => {
           const budget = dayMacroTargetG.fat;
           if (!budget) return true;
           // PACED: the fat allowed so far scales with the share of the day's
@@ -1043,17 +1030,7 @@ export async function buildMealPlanMenus(
           // days of every week measured in cycle 19. The 0.35 floor keeps an
           // egg breakfast possible.
           const share = dayBudget > 0 ? Math.min(1, Math.max(0.35, (dayCalories + (r.calories ?? 0)) / dayBudget)) : 1;
-          // Fat gives way to PROTEIN (user decision, 2026-09-25): when the day
-          // is behind its protein pace, a dish that carries the diner's own
-          // protein share may take fat to DAY_FAT_CEILING_FOR_MACROS. A
-          // pescatarian 222 g target sat at 57-77% of protein because every
-          // protein-rich dish in its basket broke a 115% fat ceiling.
-          const proteinPace = dayMacroTargetG.protein * share * 0.9;
-          const behindOnProtein = dayMacroTargetG.protein > 0 && todayMacroG.protein < proteinPace;
-          const carriesProtein =
-            (r.calories ?? 0) > 0 && ((r.protein ?? 0) * 4) / (r.calories as number) >= macroTarget.protein * 0.8;
-          const ceiling = forMacros && behindOnProtein && carriesProtein ? DAY_FAT_CEILING_FOR_MACROS : DAY_FAT_CEILING;
-          return todayMacroG.fat + (r.fat ?? 0) <= budget * ceiling * share;
+          return todayMacroG.fat + (r.fat ?? 0) <= budget * DAY_FAT_CEILING * share;
         };
         const sodiumRoomLeft = (r: PoolRecipe): boolean =>
           todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG;
@@ -1093,7 +1070,7 @@ export async function buildMealPlanMenus(
           // alternative is an unfilled slot. Neither is worth an empty day, and
           // both are worth every other kind of compromise first.
           (relax.sameDay || sodiumRoomLeft(r)) &&
-          (relax.sameDay || dayFatRoomLeft(r, relax.fatForMacros === true)) &&
+          (relax.sameDay || dayFatRoomLeft(r)) &&
           (relax.sameDay || carbBaseRoomLeft(r)) &&
           (relax.protein || (() => { const dp = dishProtein(r.ingredients); return dp === null || !prevDayProteins.has(dp); })()) &&
           (relax.crossWeek || !excludeRecipeIds.has(r.id)) &&
@@ -1280,12 +1257,8 @@ export async function buildMealPlanMenus(
           // so the slot that exists to close a calorie gap is the one most
           // likely to blow the day's fat — the fourth rule this top-up has had
           // to be told about after sodium, protein and starch.
-          // The top-up only runs when the day is under 90% of its calories, and
-          // calories outrank fat (user decision, 2026-09-25): the ceiling here
-          // is the relaxed one. A 2,959 kcal profile sat at 74-85% of its day
-          // because every snack that could close the gap broke 115% fat.
           (dayMacroTargetG.fat === 0 ||
-            todayMacroG.fat + (r.fat ?? 0) <= dayMacroTargetG.fat * DAY_FAT_CEILING_FOR_MACROS) &&
+            todayMacroG.fat + (r.fat ?? 0) <= dayMacroTargetG.fat * DAY_FAT_CEILING) &&
           (() => { const b = dishCarbBase(r.ingredients); return b === null || (todayCarbBaseCounts.get(b) ?? 0) < MAX_SAME_CARB_BASE_PER_DAY; })() &&
           (() => { const p = dishProtein(r.ingredients); return p === null || (todayProteinCounts.get(p) ?? 0) < MAX_SAME_PROTEIN_PER_DAY; })() &&
           !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id) || weekUsedSignatures.has(dishSignature(r.ingredients))));
@@ -1303,7 +1276,7 @@ export async function buildMealPlanMenus(
             // Which rule emptied the top-up, one filter at a time.
             const snacks = selectionPool.filter((r) => r.mealTypeId === snackMealType.id && !todayUsedIds.has(r.id));
             const inWindow = snacks.filter((r) => r.calories !== null && r.calories >= Math.max(minCals, MIN_MEAL_KCAL) && r.calories <= maxCals);
-            const fatOk = inWindow.filter((r) => dayMacroTargetG.fat === 0 || todayMacroG.fat + (r.fat ?? 0) <= dayMacroTargetG.fat * DAY_FAT_CEILING_FOR_MACROS);
+            const fatOk = inWindow.filter((r) => dayMacroTargetG.fat === 0 || todayMacroG.fat + (r.fat ?? 0) <= dayMacroTargetG.fat * DAY_FAT_CEILING);
             const saltOk = fatOk.filter((r) => todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG);
             console.log(`[topup] day${dayIndex} ${Math.round(dayCalories)}/${Math.round(weekCals)} kcal gap=${Math.round(calGap)} window=${Math.max(minCals, MIN_MEAL_KCAL)}-${maxCals} snacks=${snacks.length} inWindow=${inWindow.length} fatOk=${fatOk.length} sodiumOk=${saltOk.length}`);
           }
