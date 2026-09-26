@@ -464,6 +464,26 @@ or reproduced; where a bot could not pin something down, it says so.
       422 then 200 on retry). Refunding it the way swaps are refunded does
       not fit the $30 Plus ceiling without trimming something. Needs a call.
 
+**Final system bot (2026-09-26, production build, 64 checks)**
+Platform, public pages ×3 languages, a brand-new sign-up through onboarding,
+taste, pantry and a first week, the meal plan, pantry and cook-my-day, Clara,
+profile, journal and meal log, Stripe checkout → Plus → cancel, and a phone
+sweep of every page. First run 50/64, all failures triaged: 3 were the bot's
+own mistakes, and the rest found and fixed —
+- [x] meal-log row edit/delete at 32×32 (only present once something is
+      logged, so no sweep had seen them); taste quiz "Start over" 55×17 and
+      Back/Next at 40px — all 44 now.
+- [x] **cook-my-day charged the allowance before calling Clara**, so a model
+      error said "Nothing was used up" while it had been used. Now charged
+      only when Clara answers (budget unchanged); a filtered-out day says it
+      counted; refusal reasons are logged. Strict profile afterwards: 3/3.
+- Known, recorded, not blocking: a brand-new narrow basket's week ran
+  76-93% of calories, and one day 2,407 mg of sodium (107 over) — the
+  last-tier relaxation, which takes the least-salty dish when the only
+  alternative is an empty slot.
+- Stripe and Clerk are live-keyed in production (owner, 2026-09-26) — the
+  launch items for them are closed.
+
 **Still open from before**
 - [x] **The journal's five step dots are 32px wide** (44 tall). Five 44px
       targets need 220px inside a 46px control; fixing it properly means
