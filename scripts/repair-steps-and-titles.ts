@@ -84,7 +84,7 @@ async function main() {
   console.log(
     "\nsteps:\n" +
       stepFixes
-        .slice(0, 6)
+        .slice(0, Number(process.env.SAMPLE ?? 6))
         .map((f) => {
           const from = f.from.split(" ⏎ ");
           const to = f.to.split(" ⏎ ");
@@ -94,6 +94,8 @@ async function main() {
         .join("\n")
   );
   console.log("\ntitles:\n" + titleFixes.slice(0, 8).map((f) => `  ${f.from}\n    → ${f.to}`).join("\n"));
+
+  if (process.env.DUMP) writeFileSync(process.env.DUMP, JSON.stringify({ stepFixes, descFixes, titleFixes }, null, 2));
 
   if (!APPLY) {
     console.log("\nreport only. Re-run with --apply to write.");

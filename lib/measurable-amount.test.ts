@@ -158,7 +158,7 @@ test("decimal amounts in a step are written as a cook measures them", () => {
     repairProseAmounts("Pour 0.33 cup of mung bean plant-based egg into the pan."),
     "Pour ⅓ cup of mung bean plant-based egg into the pan."
   );
-  assert.equal(repairProseAmounts("Spray with 0.25 gr of avocado oil."), "Spray with a pinch of avocado oil.");
+  assert.equal(repairProseAmounts("Spray with 0.25 gr of avocado oil."), "Spray with a few drops of avocado oil.");
   assert.equal(repairProseAmounts("Add 1.5 cups of broth."), "Add 1½ cups of broth.");
   assert.equal(repairProseAmounts("Stir in 0.37 tablespoons olive oil."), "Stir in ⅓ tablespoon olive oil.");
 });
@@ -199,4 +199,16 @@ test("import spacing is repaired: 'Add Tofu , cook' reads 'Add Tofu, cook'", () 
   assert.equal(readableProse("Add Tofu , cook 8-10 minutes until done ."), "Add Tofu, cook 8-10 minutes until done.");
   assert.equal(readableProse("Mix well; serve."), "Mix well; serve.");
   assert.equal(readableProse("Ratio 1 : 2 is fine"), "Ratio 1: 2 is fine");
+});
+
+test("the amount knows what it is OF, however many words the name has", () => {
+  assert.equal(
+    repairProseAmounts("Line a baking sheet with foil and lightly coat with a thin layer of 0.25 gr extra virgin olive oil."),
+    "Line a baking sheet with foil and lightly coat with a thin layer of a few drops of extra virgin olive oil."
+  );
+});
+
+test("'of' goes before a food, not before 'as written'", () => {
+  assert.equal(repairProseAmounts("If using dried basil, use 0.0625 teaspoon as written."), "If using dried basil, use a pinch as written.");
+  assert.equal(repairProseAmounts("Add 0.0625 teaspoon salt."), "Add a pinch of salt.");
 });

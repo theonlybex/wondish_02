@@ -431,18 +431,31 @@ const SINGULAR_UNIT: Record<string, string> = {
  * or null when there was nothing to change.
  */
 export function repairProseAmounts(text: string): string | null {
-  const out = text.replace(PROSE_AMOUNT, (whole, num: string, rawUnit: string, tail: string | undefined) => {
+  const out = text.replace(PROSE_AMOUNT, (whole, num: string, rawUnit: string, tail: string | undefined, offset: number) => {
+    // What the amount is OF: the rest of the phrase, not just the three words
+    // the pattern keeps. "0.25 gr extra virgin olive oil" had "oil" as its
+    // fourth word and came out as "1 g" of it (first backfill report).
+    const of = `${tail ?? ""} ${text.slice(offset + whole.length).split(/[,.;:]/)[0]}`;
     const q = Number(num);
     if (!(q > 0)) return whole;
     const unit = SINGULAR_UNIT[rawUnit.toLowerCase()] ?? rawUnit;
-    const repaired = repairAmount(q, unit, tail ?? "") ?? { quantity: q, unit };
+    const repaired = repairAmount(q, unit, of) ?? { quantity: q, unit };
+    // Oil is not pinched: "spray it with a pinch of avocado oil" was the
+    // first report's wording for a quarter gram of spray. A few drops.
+    const isOil = /\boil\b/i.test(of);
     const amount =
-      repaired.unit === "pinch" && repaired.quantity === 1
-        ? "a pinch"
-        : formatAmount(repaired.quantity, repaired.unit);
+      repaired.unit === "pinch" && isOil
+        ? "a few drops"
+        : repaired.unit === "pinch" && repaired.quantity === 1
+          ? "a pinch"
+          : formatAmount(repaired.quantity, repaired.unit);
     // "a pinch kosher salt" needs the "of" a unit word did without.
-    const of = repaired.unit === "pinch" && tail && !/^\s+of\b/i.test(tail) ? " of" : "";
-    return `${amount}${of}${tail ?? ""}`;
+    // "of" only before a food: "use a pinch as written", not "a pinch of as".
+    const ofWord =
+      repaired.unit === "pinch" && tail && !/^\s+(of|as|and|or|to|into|over|in|on|for|until|then|with|per|each)\b/i.test(tail)
+        ? " of"
+        : "";
+    return `${amount}${ofWord}${tail ?? ""}`;
   });
   // "2 medium large eggs": the size of the row and the grade of the egg, both
   // printed. The grade is the one that describes the egg. Eggs only: "a medium
