@@ -32,7 +32,9 @@ export async function PATCH(
   const menu = await prisma.menu.findFirst({
     where: { id: params.menuId, patientId: patient.id, planVersion: patient.activePlanVersion },
   });
-  if (!menu) return NextResponse.json({ error: "Menu not found" }, { status: 404 });
+  // Usually a race with New week: the dish on screen was replaced while the
+  // user was choosing. Say that, not "Menu not found" (production run, 2026-09-26).
+  if (!menu) return NextResponse.json({ error: "That dish is no longer on your plan — it was just replaced. Refresh to see your new week." }, { status: 404 });
 
   // isPublic parity with every serving surface (audit Task 18): a private
   // recipe id could previously be swapped in and read back in full.

@@ -95,7 +95,8 @@ export async function POST(
     },
   });
   if (!menu || !menu.mealTypeId || !menu.mealType) {
-    return NextResponse.json({ error: "Menu not found" }, { status: 404 });
+    // Usually a race with New week: see the plain swap route.
+    return NextResponse.json({ error: "That dish is no longer on your plan — it was just replaced. Refresh to see your new week." }, { status: 404 });
   }
 
   // One Clara swap per slot at a time (S12). The window equals this route's

@@ -1193,12 +1193,16 @@ export default function DailyMealPlanView({
                                 role="button"
                                 tabIndex={0}
                                 aria-expanded={isSelected}
-                                className={`flex items-center justify-between gap-2 cursor-pointer rounded-lg transition-colors outline-none [@media(pointer:coarse)]:min-h-11 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 ${
+                                // Locked while a new week is being built: these dishes are
+                                // about to be replaced, and a swap started now answered
+                                // "Menu not found" (production run, 2026-09-26).
+                                aria-disabled={newWeekLoading || undefined}
+                                className={`flex items-center justify-between gap-2 cursor-pointer rounded-lg transition-colors outline-none [@media(pointer:coarse)]:min-h-11 aria-disabled:opacity-60 aria-disabled:cursor-progress focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 ${
                                   isSelected ? "-mx-1.5 px-1.5 py-0.5 bg-[#ffffff]" : ""
                                 }`}
-                                onClick={() => selectCard(isSelected ? null : menu.id)}
+                                onClick={() => { if (!newWeekLoading) selectCard(isSelected ? null : menu.id); }}
                                 onKeyDown={(e) => {
-                                  if (e.target !== e.currentTarget) return;
+                                  if (e.target !== e.currentTarget || newWeekLoading) return;
                                   if (e.key === "Enter" || e.key === " ") {
                                     e.preventDefault();
                                     selectCard(isSelected ? null : menu.id);
