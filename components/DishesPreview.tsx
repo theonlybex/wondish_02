@@ -43,7 +43,7 @@ export default async function DishesPreview() {
           <p className="text-lg" style={{ color: "#4F4A4A" }}>{t("subheadline")}</p>
           <Link
             href="/dishes"
-            className="inline-block mt-4 text-sm font-semibold transition-opacity hover:opacity-70"
+            className="inline-flex items-center [@media(pointer:coarse)]:min-h-11 mt-4 text-sm font-semibold transition-opacity hover:opacity-70"
             style={{ color: "#812549" }}
           >
             {t("viewAll")} →

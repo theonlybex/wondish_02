@@ -10,7 +10,7 @@ export default function AuthLayout({
     <div className="min-h-screen bg-navy flex flex-col">
       {/* Minimal header */}
       <header className="px-5 sm:px-8 py-5">
-        <Link href="/" className="inline-flex items-center group text-white" aria-label="Wondish home">
+        <Link href="/" className="inline-flex items-center group text-white [@media(pointer:coarse)]:min-h-11" aria-label="Wondish home">
           <BrandLogo className="h-5 w-auto" />
         </Link>
       </header>

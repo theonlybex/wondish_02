@@ -39,7 +39,7 @@ export default function Navbar() {
         }}
       >
         {/* Logo */}
-        <Link href="/" className="flex items-center shrink-0" style={{ color: "#812549" }} aria-label="Wondish home">
+        <Link href="/" className="flex items-center shrink-0 [@media(pointer:coarse)]:min-h-11" style={{ color: "#812549" }} aria-label="Wondish home">
           <BrandLogo />
         </Link>
 
@@ -97,7 +97,7 @@ export default function Navbar() {
         {/* Mobile toggle */}
         <button
           onClick={() => setOpen(!open)}
-          className="md:hidden p-2 transition-colors hover:text-[#1E1A1A]"
+          className="md:hidden p-3 -mr-1 transition-colors hover:text-[#1E1A1A]"
           style={{ color: "#4F4A4A" }}
           aria-label="Toggle menu"
         >

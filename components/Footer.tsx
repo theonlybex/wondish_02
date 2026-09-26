@@ -10,7 +10,7 @@ export default async function Footer() {
       <div className="max-w-[1180px] mx-auto">
         <div className="grid grid-cols-2 sm:grid-cols-[1.7fr_1fr_1fr_1fr] gap-10 mb-12">
           <div className="col-span-2 sm:col-span-1">
-            <Link href="/" className="inline-flex items-center mb-3.5 text-white" aria-label="Wondish home">
+            <Link href="/" className="inline-flex items-center mb-3.5 text-white [@media(pointer:coarse)]:min-h-11" aria-label="Wondish home">
               <BrandLogo />
             </Link>
             <p className="text-sm leading-[1.7] max-w-[280px]">{t("tagline")}</p>
