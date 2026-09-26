@@ -405,6 +405,16 @@ or reproduced; where a bot could not pin something down, it says so.
       finds nothing to add; reverted. What is left is a nutrition decision:
       for a high-protein target on a fatty basket, is 80% of calories at
       ~113-122% of fat the right trade, or should the fat ceiling give way?
+      **Cycle 22:** the fat ceiling was relaxed (user decision) and MEASURED:
+      no gain for qa.variant, healthy profiles fattier — reverted. The
+      builder's own log then showed the real blocker is SODIUM (the day's
+      top-up refused every right-sized snack on sodium, 7 of 7 days). Sodium
+      is now paced like fat and a relaxed tier takes the least-salty dish:
+      qa.variant 77-87% of calories (from 69-88%), healthy profiles at their
+      best yet (qa.desktop 94-104% kcal, 23-30% fat, sodium 1,554-2,052 mg).
+      The rest of qa.variant's gap is blocked by fat AND sodium together; only
+      relaxing the 2,300 mg sodium guideline could close it — a health call
+      not taken. The day shows the gap as "N kcal free".
 - [x] **Generated dishes were briefed "~0% protein"** (fixed in cycle 19);
       re-measured here: Clara's lean dishes come back at 23-31% protein.
 - Development responses now carry what the top-up asked for and kept
