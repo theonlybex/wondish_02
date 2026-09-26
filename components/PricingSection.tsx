@@ -2,7 +2,7 @@ import Link from "next/link";
 import PlanPicker from "./billing/PlanPicker";
 import IncludedFoodSection from "./IncludedFoodSection";
 import { getTranslations } from "next-intl/server";
-import { AI_LIMITS } from "@/lib/ai-budget";
+import { AI_LIMITS, limitFor } from "@/lib/ai-budget";
 
 function Check({ dark = false }: { dark?: boolean }) {
   return (
@@ -79,8 +79,11 @@ export default async function PricingSection({
                 You&apos;re on Beta access until {betaEnds}
               </p>
               <p className="text-sm mt-1" style={{ color: "#4F4A4A" }}>
-                Beta sits between the two below: 3 new weeks a week and 13 Clara messages a day, against
-                Free&apos;s 1 and 5 and Plus&apos;s 5 and 25. It ends on that date — Plus keeps your access
+                {/* From the enforced limits (they read 13 and 25 after the trim to 10 and 20). */}
+                Beta sits between the two below: {limitFor("planGen", "beta").max} new weeks a week and{" "}
+                {limitFor("claraChat", "beta").max} Clara messages a day, against Free&apos;s{" "}
+                {limitFor("planGen", "free").max} and {limitFor("claraChat", "free").max} and Plus&apos;s{" "}
+                {limitFor("planGen", "premium").max} and {limitFor("claraChat", "premium").max}. It ends on that date — Plus keeps your access
                 going afterwards, and you don&apos;t need to do anything today.
               </p>
             </div>

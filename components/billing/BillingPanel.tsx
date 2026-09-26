@@ -76,9 +76,9 @@ export default function BillingPanel({ initial, limits }: { initial: Subscriptio
           {/* Two false claims until 2026-09-24: nothing is "unlocked" by
               paying — Free has the whole app, including the planner a free
               account can and does generate — and Plus is not "without
-              limits", it is 25 Clara messages a day and 5 new weeks a week. */}
+              limits" — its numbers come from the enforced table (limits prop). */}
           You have the whole app on Free: 1 new week a week and 5 Clara messages a day.
-          Plus raises those to 5 and 25.
+          Plus raises those to {limits?.plusWeeks ?? 5} and {limits?.plusChat ?? 20}.
         </p>
         <Link href="/pricing" className="inline-flex min-h-[44px] items-center px-6 rounded-2xl bg-primary text-white font-bold text-sm">
           See plans →
