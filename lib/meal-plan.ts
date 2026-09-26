@@ -1270,8 +1270,15 @@ export async function buildMealPlanMenus(
           // so the slot that exists to close a calorie gap is the one most
           // likely to blow the day's fat — the fourth rule this top-up has had
           // to be told about after sodium, protein and starch.
+          // A day under 90% of its calories may take fat to 135% of target —
+          // but only with a LEAN snack (≤35% of its own calories from fat), so
+          // the calories go up and the day's fat SHARE comes down. Calories
+          // outrank fat here (owner, 2026-09-26); a broad version of this made
+          // healthy days fattier for nothing and was reverted in cycle 22.
           (dayMacroTargetG.fat === 0 ||
-            todayMacroG.fat + (r.fat ?? 0) <= dayMacroTargetG.fat * DAY_FAT_CEILING) &&
+            todayMacroG.fat + (r.fat ?? 0) <=
+              dayMacroTargetG.fat *
+                ((r.calories ?? 0) > 0 && ((r.fat ?? 0) * 9) / (r.calories as number) <= 0.35 ? 1.35 : DAY_FAT_CEILING)) &&
           (() => { const b = dishCarbBase(r.ingredients); return b === null || (todayCarbBaseCounts.get(b) ?? 0) < MAX_SAME_CARB_BASE_PER_DAY; })() &&
           (() => { const p = dishProtein(r.ingredients); return p === null || (todayProteinCounts.get(p) ?? 0) < MAX_SAME_PROTEIN_PER_DAY; })() &&
           !(excludeUsed && (weekUsedIds.has(r.id) || excludeRecipeIds.has(r.id) || weekUsedSignatures.has(dishSignature(r.ingredients))));
@@ -1289,7 +1296,7 @@ export async function buildMealPlanMenus(
             // Which rule emptied the top-up, one filter at a time.
             const snacks = selectionPool.filter((r) => r.mealTypeId === snackMealType.id && !todayUsedIds.has(r.id));
             const inWindow = snacks.filter((r) => r.calories !== null && r.calories >= Math.max(minCals, MIN_MEAL_KCAL) && r.calories <= maxCals);
-            const fatOk = inWindow.filter((r) => dayMacroTargetG.fat === 0 || todayMacroG.fat + (r.fat ?? 0) <= dayMacroTargetG.fat * DAY_FAT_CEILING);
+            const fatOk = inWindow.filter((r) => dayMacroTargetG.fat === 0 || todayMacroG.fat + (r.fat ?? 0) <= dayMacroTargetG.fat * ((r.calories ?? 0) > 0 && ((r.fat ?? 0) * 9) / (r.calories as number) <= 0.35 ? 1.35 : DAY_FAT_CEILING));
             const saltOk = fatOk.filter((r) => todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG);
             console.log(`[topup] day${dayIndex} ${Math.round(dayCalories)}/${Math.round(weekCals)} kcal gap=${Math.round(calGap)} window=${Math.max(minCals, MIN_MEAL_KCAL)}-${maxCals} snacks=${snacks.length} inWindow=${inWindow.length} fatOk=${fatOk.length} sodiumOk=${saltOk.length}`);
           }
