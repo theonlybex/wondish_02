@@ -67,7 +67,7 @@ export async function PATCH(req: NextRequest) {
   const {
     firstName, lastName, birthday, sexAtBirth, height, heightUnit,
     heightFt, heightIn,
-    weight, physicalActivityId, goalWeight,
+    weight, physicalActivityId, goalWeight, displayWeightUnit,
     motivationIds, healthConditionIds, foodPreferenceIds, foodToAvoidIds, foodAllergyIds,
   } = body;
 
@@ -196,6 +196,7 @@ export async function PATCH(req: NextRequest) {
       heightIn: heightIn ? parseFloat(heightIn) : null,
       weight: weight ? parseFloat(weight) : null,
       weightUnit: "lbs",
+      displayWeightUnit: displayWeightUnit === "kg" || displayWeightUnit === "lbs" ? displayWeightUnit : null,
       bmi,
       physicalActivityId: physicalActivityId || null,
       goalWeight: goalWeight ? parseFloat(goalWeight) : null,
@@ -211,6 +212,8 @@ export async function PATCH(req: NextRequest) {
       heightIn: sent("heightIn") ? (heightIn ? parseFloat(heightIn) : null) : undefined,
       weight: weight ? parseFloat(weight) : undefined,
       weightUnit: "lbs",
+      // The reading preference, separate from the storage unit above.
+      ...(displayWeightUnit === "kg" || displayWeightUnit === "lbs" ? { displayWeightUnit } : {}),
       bmi: bmi ?? undefined,
       physicalActivityId: sent("physicalActivityId") ? physicalActivityId || null : undefined,
       goalWeight: goalWeight ? parseFloat(goalWeight) : undefined,

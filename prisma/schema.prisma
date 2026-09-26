@@ -128,7 +128,8 @@ model Patient {
   genderId           String?
   gender             Gender?           @relation(fields: [genderId], references: [id])
   weight             Float?
-  weightUnit         String?           @default("lbs")
+  weightUnit         String?           @default("lbs") // STORAGE unit — always "lbs"
+  displayWeightUnit  String? // what the person reads weights in: "kg" | "lbs"; null = from heightUnit
   height             Float? // stored in cm (converted from user input)
   heightUnit         String?           @default("ftin") // "cm" | "in" | "ftin"
   heightFt           Int? // feet component (when heightUnit = "ftin")

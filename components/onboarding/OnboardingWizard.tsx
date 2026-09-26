@@ -343,6 +343,8 @@ export default function OnboardingWizard({ refData, accountData }: OnboardingWiz
           sexAtBirth,
           height: String(heightCmValue()),
           heightUnit,
+          // The unit chosen here is how they read weights from now on.
+          displayWeightUnit: weightUnit,
           heightFt: heightUnit === "ftin" ? heightFt : null,
           heightIn: heightUnit === "ftin" ? heightIn : null,
           weight: String(weightLbs()),

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CaloricProfileDTO } from "@/types";
 import type { WeeklyTargetDTO } from "@/types";
 import { kgToLbs } from "@/lib/prediction-data";
-import { readWeightUnitPref } from "@/lib/weight-unit-pref";
 import { resolveDailyCalorieTarget } from "@/lib/caloric-engine";
 import { apiFetch } from "@/lib/client-fetch";
 import {
@@ -34,10 +33,6 @@ export default function CaloricProfileCard() {
   // for the actual-intake arc. Non-fatal — the arc is simply absent on error.
   const [today] = useState(() => formatLocalDate(new Date()));
   const [intake, setIntake] = useState<DayEnvelopeDTO | null>(null);
-  // A weight unit chosen on this device (see lib/weight-unit-pref). Read after
-  // mount: localStorage does not exist during server rendering.
-  const [unitPref, setUnitPref] = useState<"kg" | "lbs" | null>(null);
-  useEffect(() => setUnitPref(readWeightUnitPref()), []);
 
   // `silent` refetches (e.g. after a journal weigh-in) update the numbers in
   // place without flashing the loading skeleton or replaying the animations.
@@ -147,7 +142,8 @@ export default function CaloricProfileCard() {
     : 1;
   // Same rule as /profile (lib/weight-unit-pref): the server's height-based
   // default, overridden by a choice made on this device.
-  const weightUnit: "kg" | "lbs" = unitPref ?? profile.displayUnit ?? "lbs";
+  // The account's choice, resolved by the server (displayWeightUnit, else height).
+  const weightUnit: "kg" | "lbs" = profile.displayUnit ?? "lbs";
   const showWeight = (kg: number) => `${fmt(weightUnit === "kg" ? kg : kgToLbs(kg))} ${weightUnit}`;
   const circumference = 2 * Math.PI * 54;
   const dashOffset = circumference * (1 - calRatio);
