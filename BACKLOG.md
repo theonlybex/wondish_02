@@ -487,6 +487,32 @@ own mistakes, and the rest found and fixed —
 - Stripe and Clerk are live-keyed in production (owner, 2026-09-26) — the
   launch items for them are closed.
 
+**Stripe experience run (2026-09-26, sandbox, production build, 41/41)**
+Every buyer path on real hosted Checkout with the `stripe listen` forwarder
+(503 webhooks, all 200): abandon; declined card then retry; unknown and valid
+promo (discount carried to the first invoice); 3-D Secure fail then pass;
+already-subscribed; plan upgrade needing bank confirmation → Stripe invoice
+page → 6-month; downgrade scheduled, then Keep; cancel/resume; card portal
+and return; past due → banner → recovered; ended → free; a beta coupon
+holder upgrading and falling back to beta. Found and fixed —
+- [x] **A leftover checkout attempt overwrote a paying subscription.** Every
+      declined/abandoned checkout leaves an incomplete subscription whose late
+      events (a payment failure; expiry ~23h later) were synced onto the
+      account's one row — a member who paid after a decline dropped to
+      INCOMPLETE, and on expiry would drop to Free. Only a paying
+      subscription may now replace a live row (`lib/billing/sync.ts`, tests).
+- [x] **A declined first payment granted Plus** (INCOMPLETE counted as
+      premium) — `lib/auth.ts`, test.
+- [x] **Monthly → 6-month with a card the bank wants confirmed made the
+      member past due** (and so lost Plus). Now `pending_if_incomplete`: they
+      stay on their paid plan and the panel links to Stripe's invoice page to
+      confirm; a hard decline returns a clear 402.
+- [ ] **Open, needs the owner's call:** a past-due member loses Plus at once,
+      while the banner says "Update your card to keep Plus".
+- [ ] **Owner:** the sandbox's public business name is "Painless Food
+      Corporation sandbox" (shown on Checkout and invoices) — check the live
+      account's name before launch.
+
 **Still open from before**
 - [x] **The journal's five step dots are 32px wide** (44 tall). Five 44px
       targets need 220px inside a 46px control; fixing it properly means
