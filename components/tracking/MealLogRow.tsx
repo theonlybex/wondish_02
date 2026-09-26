@@ -17,7 +17,7 @@ interface MealLogRowProps {
 export default function MealLogRow({ log, onEdit, onDelete, disabled }: MealLogRowProps) {
   const meta = SOURCE_META[log.source] ?? SOURCE_META.MANUAL;
   const iconBtn =
-    "w-8 h-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer";
+    "w-8 h-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11";
 
   return (
     <div className="flex items-center gap-2 py-2 border-b border-[#F5F1DD] last:border-b-0">

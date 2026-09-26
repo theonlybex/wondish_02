@@ -220,15 +220,16 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
   return (
     <div className="max-w-md mx-auto pb-24">
       {/* Start over */}
-      <div className="flex justify-end items-center mb-1 h-5">
+      {/* 44px on a finger: "Start over" measured 55x17 (final bot, 2026-09-26). */}
+      <div className="flex justify-end items-center mb-1 min-h-5">
         {confirmReset ? (
           <span className="flex items-center gap-2 text-[11px]">
             <span style={{ color: "#848181" }}>Clear all your picks?</span>
-            <button onClick={() => void startOver()} disabled={resetting} className="font-bold text-error disabled:opacity-50">Start over</button>
-            <button onClick={() => setConfirmReset(false)} className="font-semibold" style={{ color: "#848181" }}>Cancel</button>
+            <button onClick={() => void startOver()} disabled={resetting} className="font-bold text-error disabled:opacity-50 px-1 [@media(pointer:coarse)]:min-h-11">Start over</button>
+            <button onClick={() => setConfirmReset(false)} className="font-semibold px-1 [@media(pointer:coarse)]:min-h-11" style={{ color: "#848181" }}>Cancel</button>
           </span>
         ) : (
-          <button onClick={() => setConfirmReset(true)} className="text-[11px] hover:text-navy transition-colors" style={{ color: "#ABA6A6" }}>
+          <button onClick={() => setConfirmReset(true)} className="text-[11px] hover:text-navy transition-colors px-1 [@media(pointer:coarse)]:min-h-11" style={{ color: "#ABA6A6" }}>
             Start over
           </button>
         )}
@@ -279,7 +280,7 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
       {/* Sticky Back / Next */}
       <div className="fixed bottom-0 left-0 right-0 px-5 py-3 flex items-center justify-between gap-3 max-w-md mx-auto" style={{ background: "linear-gradient(to top, #F9F7ED 70%, rgba(249,247,237,0))" }}>
         {levelIdx > 0 ? (
-          <button onClick={() => setLevelIdx((i) => i - 1)} className="px-4 py-2.5 rounded-2xl text-sm font-semibold border border-[#EAE4CA] bg-white text-[#5F1C35]">
+          <button onClick={() => setLevelIdx((i) => i - 1)} className="px-4 py-2.5 min-h-11 rounded-2xl text-sm font-semibold border border-[#EAE4CA] bg-white text-[#5F1C35]">
             ← Back
           </button>
         ) : (
@@ -287,7 +288,7 @@ export default function IngredientTinder({ mode }: { mode: "onboarding" | "edit"
         )}
         <button
           onClick={() => (isLast ? setDone(true) : setLevelIdx((i) => i + 1))}
-          className="px-8 py-2.5 rounded-2xl bg-primary text-white font-bold text-sm shadow-lg shadow-primary/25"
+          className="px-8 py-2.5 min-h-11 rounded-2xl bg-primary text-white font-bold text-sm shadow-lg shadow-primary/25"
         >
           {isLast ? "Finish" : "Next →"}
         </button>
