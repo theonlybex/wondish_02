@@ -1032,8 +1032,16 @@ export async function buildMealPlanMenus(
           const share = dayBudget > 0 ? Math.min(1, Math.max(0.35, (dayCalories + (r.calories ?? 0)) / dayBudget)) : 1;
           return todayMacroG.fat + (r.fat ?? 0) <= budget * DAY_FAT_CEILING * share;
         };
-        const sodiumRoomLeft = (r: PoolRecipe): boolean =>
-          todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG;
+        // Paced like fat (cycle 19), for the same reason: checked only against
+        // the whole day, breakfast and lunch spent the sodium and the evening
+        // had nothing that fit. On a 2,959 kcal day the calorie top-up found
+        // 4-28 right-sized snacks and refused every one on sodium, every day
+        // of the week (cycle 22 log) — the day stopped at 69-88% of its
+        // calories. The guideline itself (DAILY_SODIUM_MAX_MG) is unchanged.
+        const sodiumRoomLeft = (r: PoolRecipe): boolean => {
+          const share = dayBudget > 0 ? Math.min(1, Math.max(0.35, (dayCalories + (r.calories ?? 0)) / dayBudget)) : 1;
+          return todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG * share;
+        };
         const carbBaseRoomLeft = (r: PoolRecipe): boolean => {
           const b = dishCarbBase(r.ingredients);
           return b === null || (todayCarbBaseCounts.get(b) ?? 0) < MAX_SAME_CARB_BASE_PER_DAY;
@@ -1101,7 +1109,12 @@ export async function buildMealPlanMenus(
             const ceiling = dayMacroTargetG.fat * DAY_FAT_CEILING;
             const over = (r: PoolRecipe) => Math.max(0, todayMacroG.fat + (r.fat ?? 0) - ceiling);
             const least = Math.min(...pool.map(over));
-            const leastFat = pool.filter((r) => over(r) <= least + 5);
+            const leastFatAll = pool.filter((r) => over(r) <= least + 5);
+            // …and the least-salty of those: this tier relaxes sodium too, and
+            // choosing blind here is what spent the day's sodium by lunch.
+            const saltOver = (r: PoolRecipe) => Math.max(0, todaySodiumMg + dishSodiumMg(r.ingredients) - DAILY_SODIUM_MAX_MG);
+            const leastSalt = Math.min(...leastFatAll.map(saltOver));
+            const leastFat = leastFatAll.filter((r) => saltOver(r) <= leastSalt + 150);
             if (process.env.WONDISH_DEBUG_POOL) {
               console.log(`[pool] ${mealType.name} day${dayIndex} tier${ti} fat-relaxed n=${pool.length} → ${leastFat.length} (overshoot ≥ ${Math.round(least)} g)`);
             }
