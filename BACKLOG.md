@@ -30,13 +30,16 @@ State on 2026-09-14: `feat/beta-hardening` (the 2026-09-13 concurrency pass,
 already applied to the shared Neon DB, so landing is code-only. **[verified]**
 
 ### A. Land the code
-- [ ] `npx next lint` on the whole project — the one gate in the hardening
+- [x] `npx next lint` on the whole project — the one gate in the hardening
       plan's final checklist not yet run.
-- [ ] Manual check from the plan: `PREMIUM_GATES=on npm run dev`, as a coupon
+      **2026-09-26:** clean, and run on every commit since.
+- [x] Manual check from the plan: `PREMIUM_GATES=on npm run dev`, as a coupon
       user send 3 Clara messages, generate a week, double-click "New week" —
       second click says "already being generated", weekly counter drops by one.
-- [ ] Merge / PR the stack (`workbooks-tier2` → `beta-premium-coupons` →
+      **2026-09-26:** obsolete (gates are off by decision); the double-click and the counters were verified on the production build instead.
+- [x] Merge / PR the stack (`workbooks-tier2` → `beta-premium-coupons` →
       `beta-hardening`) into `main` and push.
+      **2026-09-26:** the three branches are merged and gone. `main` is **47 commits ahead of origin — push is yours**.
 
 ### B. Beta environment (Vercel)
 - [ ] **Promote Clerk to a `pk_live` instance** (§4, `docs/productionStage.md`
@@ -54,8 +57,19 @@ already applied to the shared Neon DB, so landing is code-only. **[verified]**
       the dashboard's children in a gate, and every metered surface must offer
       the upgrade. `components/PremiumGuard.tsx` stays as parked code with no
       callers.
-- [ ] Upstash variables in Vercel — without them the AI spend and in-flight
+- [x] Upstash variables in Vercel — without them the AI spend and in-flight
       locks degrade to per-instance memory and the double-tap guards weaken.
+      **2026-09-26:** present as the Vercel integration's KV_REST_API_URL/TOKEN pair, which the code accepts. Recommended: also set `RATE_LIMIT_ENFORCE_BACKEND=1` in Production (kill switch verified on a real build).
+- [ ] **Rename `NEXT_PUBLIC_SENTRY_DNS` → `NEXT_PUBLIC_SENTRY_DSN`** in Vercel
+      (Production + Preview). The typo disabled production error reporting
+      for 109 days; the code now accepts both spellings, so the next deploy
+      reports either way — the rename is tidiness.
+- [ ] **Stripe keys are not in Vercel** (`STRIPE_SECRET_KEY`,
+      `STRIPE_WEBHOOK_SECRET` missing; only the publishable key). Needed only
+      if beta users can buy. The whole money path was verified against the
+      sandbox on a production build (checkout → Plus → cancel → free). Also
+      in the Stripe dashboard: the public business name reads "Painless Food
+      Corporation sandbox" on checkout.
 - [ ] Create the cohort coupon codes at `/admin/coupons`
       (runbook `docs/billing/coupons.md`).
 - [ ] Stripe, **only if beta users can buy**: `npx tsx
