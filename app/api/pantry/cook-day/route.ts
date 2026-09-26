@@ -20,7 +20,7 @@ import {
   normalizeCuisine,
   CLARA_RECIPE_TAG,
 } from "@/lib/clara/recipe-generation";
-import { guardAiSpend, remainingAiSpend } from "@/lib/ai-budget";
+import { guardAiSpend, remainingAiSpend, chargeAiSpend } from "@/lib/ai-budget";
 import { acquireInFlight } from "@/lib/in-flight-lock";
 import { withReadableProse } from "@/lib/dish-plausibility";
 import {
@@ -115,6 +115,9 @@ export async function POST(req: Request) {
   // used up" (final system bot, 2026-09-26). Charging after the call makes that
   // sentence true without adding any model spend to the budget.
   const guard = await remainingAiSpend(userId, "cookDay");
+  // …and an attempt left: failed days are refunded, but not without limit.
+  const attemptLeft = guard.ok ? await remainingAiSpend(userId, "cookDayAttempt", guard.tier) : guard;
+  if (!attemptLeft.ok) return NextResponse.json(attemptLeft.body, { status: attemptLeft.status });
   if (!guard.ok) {
     // The guard's OWN body, verbatim — not a rewritten sentence.
     //
@@ -233,7 +236,9 @@ export async function POST(req: Request) {
       );
       // Clara answered: the tokens are spent, so the allowance is too (user
       // bucket and the org-wide ceiling). Never refuses a day already paid for.
-      await guardAiSpend(userId, "cookDay", guard.tier);
+      // The attempt, metered here with the org-wide ceiling; the allowance
+      // itself only when a day is delivered (chargeAiSpend below).
+      await guardAiSpend(userId, "cookDayAttempt", guard.tier);
       const rawList = (toolUse?.input as { recipes?: unknown } | undefined)?.recipes;
       recipes = Array.isArray(rawList)
         ? rawList
@@ -277,13 +282,15 @@ export async function POST(req: Request) {
       return NextResponse.json(
         // Clara answered, so this attempt counted; say so rather than invite a
         // retry a free user no longer has.
-        { error: "Clara couldn't build a safe day from these ingredients, and the attempt counted as today's cook-my-day. Adding a few more ingredients gives her more to work with next time." },
+        { error: "Clara couldn't build a safe day from these ingredients. It didn't count against today's cook-my-day — add a few more ingredients and try again." },
         { status: 422 }
       );
     }
 
     const accepted = Array.from(filled.values());
     const createdIds = await persistValidatedRecipes(accepted, [CLARA_RECIPE_TAG, "pantry-day"], undefined, cuisine);
+    // Delivered: now it is one of the day's cook-my-day plans.
+    if (createdIds.length > 0) await chargeAiSpend(userId, "cookDay", guard.tier);
     const createdRows = await prisma.recipe.findMany({
       where: { id: { in: createdIds } },
       select: {

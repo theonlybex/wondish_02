@@ -102,6 +102,12 @@ export const AI_LIMITS: Record<string, AiLimit> = {
   // does not spend a swap). This is the bucket that bounds the bill. Beta,
   // being half of premium, gets two refunds rather than three.
   swapAttempt: { bucket: "ai-swapattempt", window: "day", free: 5, premium: 8, label: "swap attempts" },
+  // Every cook-my-day model call. cookDay above is charged only when a day is
+  // DELIVERED; a day Clara answered but that failed the safety filters spends
+  // an attempt, not the allowance. Free gets one retry (1 + 1) — its whole day
+  // was one attempt; premium's attempts equal its allowance, because the $30
+  // ceiling has no room for more cook-my-day calls (lib/ai-budget.test.ts).
+  cookDayAttempt: { bucket: "ai-cookdayattempt", window: "day", free: 2, premium: 3, label: "cook-my-day attempts" },
 
 } as const;
 

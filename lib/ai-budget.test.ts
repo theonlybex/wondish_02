@@ -35,13 +35,15 @@ test("tiers: free 1 new week/week + 5 Clara messages/day; premium 5/week + 20/da
 const COST_USD: Record<string, number> = {
   claraChat: 0.012,
   fridge: 0.02,
-  cookDay: 0.05,
   planInit: 0.08,
   planGen: 0.08,
   // A swap costs its tokens when ATTEMPTED; charging the swap bucket on
   // delivery spends no more model time. The attempt cap is what bounds it.
   swap: 0,
   swapAttempt: 0.02,
+  // Same shape: the tokens are spent per ATTEMPT, charging on delivery adds none.
+  cookDay: 0,
+  cookDayAttempt: 0.05,
 };
 const DAYS_PER_MONTH = 365 / 12;
 
@@ -85,7 +87,8 @@ test("beta is half of premium, floored at free, and never exceeds premium", () =
   // swapAttempt ties too, and that is not a lost benefit: it is a model-call
   // cap, not an allowance. Beta's 5 attempts carry 3 swaps + 2 refunds, free's
   // carry 2 + 3; the swaps themselves are still 3 against 2.
-  assert.deepEqual(ties, ["planInit", "swapAttempt"], `beta/free ties changed: ${ties.join(", ")}`);
+  // cookDayAttempt ties by design: beta's 2 attempts carry its 2 plans.
+  assert.deepEqual(ties, ["planInit", "swapAttempt", "cookDayAttempt"], `beta/free ties changed: ${ties.join(", ")}`);
 });
 
 test("every spend bucket carries the ai- prefix the rate limiter keys its fallback on", () => {
@@ -327,4 +330,22 @@ test("a swap that finds nothing spends an attempt, not a swap; a delivered one s
   // The attempt cap still stops a sixth model call: free is 2 swaps + 3 refunds.
   assert.equal((await guardAiSpend("u1", "swapAttempt", "free", limiter)).ok, true);
   assert.equal((await guardAiSpend("u1", "swapAttempt", "free", limiter)).ok, false);
+});
+
+test("a cook-my-day that finds no safe day spends an attempt, not the day's plan; free gets one retry", async () => {
+  const { chargeAiSpend, guardAiSpend, remainingAiSpend } = await import("./ai-budget");
+  const counts = new Map<string, number>();
+  const limiter = async (name: string, id: string, limit: number) => {
+    const k = `${name}:${id}`; const n = (counts.get(k) ?? 0) + 1; counts.set(k, n); return { success: n <= limit };
+  };
+  // A refused day: one attempt, no plan.
+  assert.equal((await guardAiSpend("u2", "cookDayAttempt", "free", limiter)).ok, true);
+  assert.equal(counts.get("ai-cookday-free:u2") ?? 0, 0);
+  // The retry delivers: a second attempt and the plan.
+  assert.equal((await guardAiSpend("u2", "cookDayAttempt", "free", limiter)).ok, true);
+  await chargeAiSpend("u2", "cookDay", "free", limiter);
+  assert.equal(counts.get("ai-cookday-free:u2"), 1);
+  // No third model call on free.
+  assert.equal((await guardAiSpend("u2", "cookDayAttempt", "free", limiter)).ok, false);
+  void remainingAiSpend;
 });
