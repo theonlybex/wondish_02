@@ -507,8 +507,20 @@ holder upgrading and falling back to beta. Found and fixed —
       member past due** (and so lost Plus). Now `pending_if_incomplete`: they
       stay on their paid plan and the panel links to Stripe's invoice page to
       confirm; a hard decline returns a clear 402.
-- [ ] **Open, needs the owner's call:** a past-due member loses Plus at once,
-      while the banner says "Update your card to keep Plus".
+- [x] **A past-due member loses Plus at once, while the banner said "keep Plus".**
+      Owner's call (2026-09-26): they drop to the free allowance at once and
+      keep what they have, like ChatGPT/Claude plans. The banners now say so,
+      and a refusal reads "...new weeks are paused until your card is
+      updated" with **Update your card →** (/membership), not the upgrade.
+      Verified on the production build: a past-due buyer's "Generate a new
+      week" shows exactly that; a free buyer's shows "New weeks are part of
+      Plus — Free comes with your first week..." with Upgrade → /pricing.
+- [x] **New weeks became monthly** (owner, 2026-09-26): Free has its first
+      week only, Beta 2 a month, Plus 4 a month; a profile-change rebuild is
+      its own allowance (1 a week, Plus 2) so Free can apply a new allergy.
+      Pricing en/es/ru, membership panels and FAQ updated. Stripe run after
+      the change: 44/44. Note: the iOS app, if it calls POST
+      /api/meal-plan or /regenerate for an existing plan, now meets Free's 0.
 - [ ] **Owner:** the sandbox's public business name is "Painless Food
       Corporation sandbox" (shown on Checkout and invoices) — check the live
       account's name before launch.
