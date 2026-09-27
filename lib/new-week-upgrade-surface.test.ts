@@ -219,11 +219,16 @@ test(`${SURFACE} renders the message and an ${UPGRADE_HREF} link gated on its up
   const messageRendered = collect(fn, ts.isJsxExpression).some((e) => e.expression && mentions(e.expression, "message"));
   assert.ok(messageRendered, `${SURFACE} never renders its message prop inside JSX (${at(sf, fn)})`);
 
-  // (b) There is a link to UPGRADE_HREF …
+  // (b) There is a link to UPGRADE_HREF … — since 2026-09-26 the destination
+  //     is the prop's own `upgrade.href`, chosen by lib/quota-cta.ts (UPGRADE_HREF,
+  //     or the card update for a member whose payment failed; proven there).
   const links = collect(fn, isOpeningLike).filter((el) => {
     if (!LINK_TAGS.has(tagText(el))) return false;
     const href = el.attributes.properties.filter(ts.isJsxAttribute).find((a) => attrName(a) === "href");
-    return href !== undefined && attrStringValue(href) === UPGRADE_HREF;
+    if (href === undefined) return false;
+    if (attrStringValue(href) === UPGRADE_HREF) return true;
+    const init = href.initializer;
+    return !!init && ts.isJsxExpression(init) && !!init.expression && init.expression.getText() === "upgrade.href";
   });
   assert.equal(
     links.length,
@@ -270,7 +275,12 @@ test(`${UPGRADE_STATE} is fed from the 429 body's upgrade flag`, () => {
   // parsed response (`data?.upgrade === true`), so the flag the server sets is
   // the flag the surfaces render. Resetting to false elsewhere is fine.
   const fromBody = calls.some((c) =>
-    c.arguments.some((arg) => collect(arg, ts.isPropertyAccessExpression).some((p) => p.name.text === "upgrade"))
+    c.arguments.some(
+      (arg) =>
+        collect(arg, ts.isPropertyAccessExpression).some((p) => p.name.text === "upgrade") ||
+        // quotaCta(data) reads data.upgrade (lib/quota-cta.test.ts)
+        (ts.isCallExpression(arg) && ts.isIdentifier(arg.expression) && arg.expression.text === "quotaCta")
+    )
   );
   assert.ok(
     fromBody,

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { CUISINES } from "@/lib/cuisines";
 import { basketBlockerText, computeBasketReadiness } from "@/lib/basket-readiness";
 import QuotaError from "@/components/ui/QuotaError";
+import { quotaCta, type QuotaCta } from "@/lib/quota-cta";
 import { buildCuisineChecklists } from "@/lib/cuisine-ingredients";
 import { displayDishName, formatAmount } from "@/lib/dish-name";
 // Old "What to buy" design (reused the standalone GroceryListView). Replaced
@@ -90,7 +91,7 @@ export default function PantryClient({
   const [cookError, setCookError] = useState("");
   // The API says whether Plus would actually buy more (lib/ai-budget.ts sets it
   // only when the premium limit is higher). Never inferred here.
-  const [cookUpgrade, setCookUpgrade] = useState(false);
+  const [cookUpgrade, setCookUpgrade] = useState<QuotaCta>(null);
   // Nothing generates until the user picks a cuisine (no auto-fire).
   const [cookingCuisine, setCookingCuisine] = useState<string | null>(null);
   // "What to buy" — smart stocking list: ingredients that unlock the most
@@ -301,7 +302,7 @@ export default function PantryClient({
     setCooking(true);
     setCookingCuisine(cuisine);
     setCookError("");
-      setCookUpgrade(false);
+      setCookUpgrade(null);
     try {
       const res = await apiFetch("/api/pantry/cook-day", {
         method: "POST",
@@ -313,7 +314,7 @@ export default function PantryClient({
         setCookError(
           data?.error ?? "Clara couldn't cook right now — nothing was used up. Try again."
         );
-        setCookUpgrade(data?.upgrade === true);
+        setCookUpgrade(quotaCta(data));
         return;
       }
       setCookDay(data);

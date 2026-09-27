@@ -200,12 +200,16 @@ test("every surface that spends an allowance offers Plus when it runs out", () =
     assert.ok(existsSync(path), `${file} is gone — update METERED_SURFACES in this test`);
     const sf = parse(path);
 
-    // Either the shared component, or an own link to /pricing. Both are real
-    // answers; what is refused is neither.
+    // Either the shared component, or an own link to /pricing or to the
+    // destination quotaCta() picked (lib/quota-cta.ts: /pricing, or the card
+    // update for a member whose payment failed). What is refused is neither.
     const usesShared = collect(sf, (n): n is ts.JsxOpeningElement | ts.JsxSelfClosingElement =>
       (ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) && n.tagName.getText() === "QuotaError"
     ).length > 0;
 
+    const callsQuotaCta = collect(sf, ts.isCallExpression).some(
+      (c) => ts.isIdentifier(c.expression) && c.expression.text === "quotaCta"
+    );
     const ownLink = collect(sf, (n): n is ts.JsxOpeningElement | ts.JsxSelfClosingElement =>
       ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)
     ).some((el) => {
@@ -218,6 +222,10 @@ test("every surface that spends an allowance offers Plus when it runs out", () =
         if (init && ts.isJsxExpression(init) && init.expression && ts.isStringLiteralLike(init.expression)) {
           return init.expression.text === "/pricing";
         }
+        // {cta.href}, where cta came from quotaCta()
+        if (init && ts.isJsxExpression(init) && init.expression && ts.isPropertyAccessExpression(init.expression)) {
+          return init.expression.name.text === "href" && callsQuotaCta;
+        }
         return false;
       });
     });
@@ -225,7 +233,9 @@ test("every surface that spends an allowance offers Plus when it runs out", () =
     // And the flag must come from the response, not be assumed: lib/ai-budget.ts
     // sets upgrade:true only when a paid tier would actually grant more, so a
     // beta tester at the premium ceiling is never shown a pointless upsell.
-    const readsFlag = collect(sf, ts.isPropertyAccessExpression).some((p) => p.name.text === "upgrade");
+    // quotaCta() reads exactly that flag (lib/quota-cta.test.ts).
+    const readsFlag =
+      callsQuotaCta || collect(sf, ts.isPropertyAccessExpression).some((p) => p.name.text === "upgrade");
 
     if (!usesShared && !ownLink) {
       missing.push(`  ${file} (${why}) — spends an allowance and offers no way to get more`);

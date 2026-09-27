@@ -30,13 +30,15 @@ import { hasActivePremium } from "@/lib/auth";
 
 const DAY = 86_400;
 const WEEK = 7 * DAY;
+// Sliding 30 days, like every window here (lib/rate-limit.ts slidingWindow).
+const MONTH = 30 * DAY;
 
 // "beta" is TEMPORARY (2026-09-17): coupon holders simulating the paid product
 // for a couple of runs. It has no column of its own — see maxFor(). Retiring it
 // is three deletions: this union member, the branch in maxFor(), and the
 // COUPON check in tierFor().
 export type AiTier = "free" | "beta" | "premium";
-export type AiWindow = "day" | "week";
+export type AiWindow = "day" | "week" | "month";
 
 export interface AiLimit {
   bucket: string;
@@ -58,18 +60,20 @@ export interface AiLimit {
 // usage (~12 requests/day ≈ $0.30/day) is comfortably profitable.
 //
 // Per-bucket reasoning: Clara chat keeps its 25/day because it is the cheapest
-// request and the product's headline. New weeks keep 5/week for the same
-// reason. The big cut is plan setups, 10/day → 3: at $0.08 each that line was
+// request and the product's headline. New weeks were 5/week until 2026-09-26,
+// when they became a monthly allowance (see planGen). The big cut is plan setups, 10/day → 3: at $0.08 each that line was
 // quietly the most expensive in the table, and nobody re-runs onboarding ten
 // times a day.
 //
 // The FREE column is a taste, not a usable tier (2026-09-17, user-directed):
 // one week's plan and five Clara messages is enough to see whether the product
 // works for you, and anything more is what Plus is for. Ratios against premium:
-// chat 1:5, new weeks 1:5, swaps 2:5, fridge 1:3, cook-my-day 1:3.
+// chat 1:5, new weeks 0:4 (the first week comes with setup), swaps 2:5,
+// fridge 1:3, cook-my-day 1:3.
 //
-// Worst case per day: free ≈ $0.36 ($11/month), beta ≈ $0.57 ($17/month),
-// premium ≈ $0.97 ($29.4/month at 30.44 days). lib/ai-budget.test.ts asserts
+// Worst case per day (recomputed 2026-09-26, monthly new weeks + rebuilds):
+// free ≈ $0.47 ($14.3/month), beta ≈ $0.56 ($16.9/month), premium ≈ $0.94
+// ($28.7/month at 30.44 days). lib/ai-budget.test.ts asserts
 // the $30 premium ceiling directly, so a future limit bump that breaks the
 // budget fails the suite rather than the bill.
 // (A previous note here claimed free worst case ≈ $0.55/week; that cannot be
@@ -91,8 +95,17 @@ export const AI_LIMITS: Record<string, AiLimit> = {
   // line in the free column ($0.16/day of $0.36) — drop it to 1 if cost beats
   // first-run safety.
   planInit: { bucket: "ai-planinit", window: "day", free: 2, premium: 3, label: "plan setups" },
-  // Rolling-week generation (New week, regenerate): the headline free limit.
-  planGen: { bucket: "ai-plangen", window: "week", free: 1, premium: 5, label: "new weeks" },
+  // New weeks (2026-09-26, user-directed): Free has the week it was set up
+  // with (planInit) and no new ones; Beta 2 a month (half of premium); Plus 4
+  // a month — a month of plans. When the week runs out, the refusal is the
+  // upgrade moment, the way ChatGPT and Claude plans meter.
+  planGen: { bucket: "ai-plangen", window: "month", free: 0, premium: 4, label: "new weeks" },
+  // Rebuilding the week you ALREADY have because the profile changed (a new
+  // allergy, goal or weight — patient.mealPlanStale, set server-side). Not a
+  // new week: a Free member who adds an allergy must be able to get the unsafe
+  // dishes off their plan. Its own small bucket so it can't be farmed for
+  // weeks: every rebuild needs a real profile change first.
+  planRebuild: { bucket: "ai-planrebuild", window: "week", free: 1, premium: 2, label: "plan rebuilds" },
   // Clara single-dish swaps and "cuisine for today" — charged only when one
   // DELIVERS (chargeAiSpend after the dish is saved). Costs nothing by itself;
   // the model's tokens are metered by swapAttempt below.
@@ -130,6 +143,11 @@ export const GLOBAL_AI_DAILY_MAX = 2000;
  * small premium limit can land BELOW free (fridge 6 → 3, plan setups 3 → 2),
  * and a coupon tester must never get less than a signed-out-of-pocket user.
  */
+const WINDOW_SEC: Record<AiWindow, number> = { day: DAY, week: WEEK, month: MONTH };
+const PER: Record<AiWindow, string> = { day: "today", week: "this week", month: "this month" };
+const RESETS: Record<AiWindow, string> = { day: "tomorrow", week: "next week", month: "as the month rolls on" };
+const A_WINDOW: Record<AiWindow, string> = { day: "a day", week: "a week", month: "a month" };
+
 function maxFor(cfg: AiLimit, tier: AiTier): number {
   if (tier === "premium") return cfg.premium;
   if (tier === "beta") return Math.max(cfg.free, Math.ceil(cfg.premium / 2));
@@ -138,7 +156,7 @@ function maxFor(cfg: AiLimit, tier: AiTier): number {
 
 export function limitFor(kind: AiGuardKind, tier: AiTier): { max: number; windowSec: number; window: AiWindow } {
   const cfg = AI_LIMITS[kind];
-  return { max: maxFor(cfg, tier), windowSec: cfg.window === "week" ? WEEK : DAY, window: cfg.window };
+  return { max: maxFor(cfg, tier), windowSec: WINDOW_SEC[cfg.window], window: cfg.window };
 }
 
 /**
@@ -166,13 +184,34 @@ export interface QuotaExceededBody {
   window: AiWindow;
   /** true when the premium tier has a higher limit — the UI can offer an upgrade. */
   upgrade: boolean;
+  /**
+   * Set when the account is on the free allowance only because its Plus
+   * payment failed: the UI links to the card update, not to /pricing.
+   */
+  lapsed?: "past_due";
 }
 
-export function quotaExceededBody(kind: AiGuardKind, tier: AiTier): QuotaExceededBody {
+/**
+ * A member whose renewal failed drops to the free allowance at once — what
+ * they already have (this week's plan, saved dishes) stays; only new
+ * generation is metered at the free rate, the way ChatGPT and Claude plans
+ * lapse. The refusal is where they find out, so it has to say why.
+ */
+export async function paymentLapsed(userId: string): Promise<"past_due" | null> {
+  const row = await prisma.subscription.findFirst({
+    where: { account: { clerkId: userId }, source: { not: "COUPON" }, status: "PAST_DUE" },
+    select: { id: true },
+  });
+  return row ? "past_due" : null;
+}
+
+type LapsedLookup = (userId: string) => Promise<"past_due" | null>;
+
+export function quotaExceededBody(kind: AiGuardKind, tier: AiTier, lapsed: "past_due" | null = null): QuotaExceededBody {
   const cfg = AI_LIMITS[kind];
   const limit = maxFor(cfg, tier);
-  const per = cfg.window === "week" ? "this week" : "today";
-  const resets = cfg.window === "week" ? "next week" : "tomorrow";
+  const per = PER[cfg.window];
+  const resets = RESETS[cfg.window];
   // Anyone below premium who would actually gain something is offered the
   // upgrade — beta testers included. Buckets where premium matches the tier's
   // own limit (plan setups) get the plain "resets tomorrow" message instead of
@@ -188,9 +227,30 @@ export function quotaExceededBody(kind: AiGuardKind, tier: AiTier): QuotaExceede
   // This sentence is the upgrade prompt on every quota refusal — the single
   // most-read line in the app — so it must use the name on the pricing page.
   const error = upgrade
-    ? `You've used your ${allowance} for ${per}. Plus gives you ${cfg.premium} ${cfg.window === "week" ? "a week" : "a day"}.`
+    ? limit === 0
+      // Nothing to have "used": the tier simply doesn't include it (Free's new
+      // weeks — its first week came with setup).
+      ? `New weeks are part of Plus — Free comes with your first week. Plus gives you ${cfg.premium} ${cfg.label} ${A_WINDOW[cfg.window]}.`
+      : `You've used your ${allowance} for ${per}. Plus gives you ${cfg.premium} ${A_WINDOW[cfg.window]}.`
     : `You've reached ${per}'s limit for ${cfg.label} (${limit}) — it resets ${resets}.`;
+  if (lapsed === "past_due" && tier === "free") {
+    return {
+      error:
+        limit === 0
+          // The action is the link beside it (quotaCta → "Update your card →").
+          ? `Your Plus payment didn't go through, so ${cfg.label} are paused until your card is updated.`
+          : `Your Plus payment didn't go through, so you're on the free allowance — and you've used your ${allowance} for ${per}.`,
+      code: "quota", kind, tier, limit, window: cfg.window, upgrade, lapsed,
+    };
+  }
   return { error, code: "quota", kind, tier, limit, window: cfg.window, upgrade };
+}
+
+async function refusal(userId: string, kind: AiGuardKind, tier: AiTier, lapsedLookup: LapsedLookup): Promise<AiGuardResult> {
+  // Only a free-tier refusal can be a lapse; the lookup runs only on refusal.
+  const lapsed = tier === "free" ? await lapsedLookup(userId).catch(() => null) : null;
+  const body = quotaExceededBody(kind, tier, lapsed);
+  return { ok: false, status: 429, error: body.error, body };
 }
 
 /**
@@ -203,7 +263,7 @@ export function quotaExceededBody(kind: AiGuardKind, tier: AiTier): QuotaExceede
  */
 export function allowanceFrequency(kind: AiGuardKind, tier: AiTier): string {
   const { max, window } = limitFor(kind, tier);
-  const per = window === "week" ? "a week" : "a day";
+  const per = A_WINDOW[window];
   if (max === 1) return `Once ${per}`;
   if (max === 2) return `Twice ${per}`;
   return `${max} times ${per}`;
@@ -261,17 +321,16 @@ export async function chargeAiSpend(
 export async function remainingAiSpend(
   userId: string,
   kind: AiGuardKind,
-  tier?: AiTier
+  tier?: AiTier,
+  lapsedLookup: LapsedLookup = paymentLapsed
 ): Promise<AiGuardResult> {
   const t = tier ?? (await resolveAiTier(userId));
   const { max, windowSec } = limitFor(kind, t);
+  if (max === 0) return refusal(userId, kind, t, lapsedLookup);
   const left = await remainingTokens(`${AI_LIMITS[kind].bucket}-${t}`, userId, max, windowSec);
   // null = the backend could not answer. Proceed rather than refuse on a read
   // we did not manage to make; the charge on success still meters it.
-  if (left !== null && left <= 0) {
-    const body = quotaExceededBody(kind, t);
-    return { ok: false, status: 429, error: body.error, body };
-  }
+  if (left !== null && left <= 0) return refusal(userId, kind, t, lapsedLookup);
   return { ok: true, tier: t };
 }
 
@@ -279,18 +338,18 @@ export async function guardAiSpend(
   userId: string,
   kind: AiGuardKind,
   tier?: AiTier,
-  limiter: Limiter = rateLimit
+  limiter: Limiter = rateLimit,
+  lapsedLookup: LapsedLookup = paymentLapsed
 ): Promise<AiGuardResult> {
   const t = tier ?? (await resolveAiTier(userId));
   const { max, windowSec } = limitFor(kind, t);
+  // Not in this tier at all (Free's new weeks): refuse before any counter.
+  if (max === 0) return refusal(userId, kind, t, lapsedLookup);
 
   // 1. Per-user quota for this tier. The bucket carries the tier so an
   //    upgrade mid-window starts a fresh (larger) counter.
   const user = await limiter(`${AI_LIMITS[kind].bucket}-${t}`, userId, max, windowSec);
-  if (!user.success) {
-    const body = quotaExceededBody(kind, t);
-    return { ok: false, status: 429, error: body.error, body };
-  }
+  if (!user.success) return refusal(userId, kind, t, lapsedLookup);
 
   // 2. Global daily ceiling (single shared counter for the whole org).
   const global = await limiter("ai-global-day", "ALL", GLOBAL_AI_DAILY_MAX, DAY);

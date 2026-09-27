@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import SwapMealModal from "@/components/meal-plan/SwapMealModal";
 import Button from "@/components/ui/Button";
 import QuotaError from "@/components/ui/QuotaError";
+import { quotaCta, type QuotaCta } from "@/lib/quota-cta";
 import type { MealType } from "@/lib/local-date";
 import { MenuEntry, RecipeDTO, PlanExchangeDTO } from "@/types";
 
@@ -484,7 +485,7 @@ export default function DailyMealPlanView({
   const [newWeekLoading, setNewWeekLoading] = useState(initialGenerating);
   const [newWeekError, setNewWeekError] = useState("");
   // Set when the 429 body says the premium tier has a higher weekly limit.
-  const [newWeekUpgrade, setNewWeekUpgrade] = useState(false);
+  const [newWeekUpgrade, setNewWeekUpgrade] = useState<QuotaCta>(null);
   const [newWeekFrom, setNewWeekFrom] = useState<"banner" | "empty" | "sidebar">("sidebar");
   /**
    * A blocked control that was pressed anyway. The reason is always rendered
@@ -515,14 +516,14 @@ export default function DailyMealPlanView({
     setNewWeekLoading(true);
     setNewWeekFrom(from);
     setNewWeekError("");
-    setNewWeekUpgrade(false);
+    setNewWeekUpgrade(null);
     selectCard(null);
     try {
       const res = await apiFetch("/api/meal-plan/new-week", { method: "POST" });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         setNewWeekError(data?.error ?? "Couldn't generate your week — try again.");
-        setNewWeekUpgrade(data?.code === "quota" && data?.upgrade === true);
+        setNewWeekUpgrade(quotaCta(data));
         void loadBasketStatus();
         return;
       }

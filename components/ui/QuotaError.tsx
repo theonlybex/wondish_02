@@ -1,3 +1,5 @@
+import type { QuotaCta } from "@/lib/quota-cta";
+
 /**
  * The one way a spent allowance is shown.
  *
@@ -28,8 +30,8 @@ export default function QuotaError({
   tone = "error",
 }: {
   message: string;
-  /** From the response body. Never inferred — see lib/ai-budget.ts. */
-  upgrade: boolean;
+  /** From the response body via quotaCta(). Never inferred — see lib/ai-budget.ts. */
+  upgrade: QuotaCta;
   className?: string;
   /**
    * Two surfaces, because /pantry's cook-my-day card is dark: the error red
@@ -55,10 +57,10 @@ export default function QuotaError({
         <>
           {" "}
           <a
-            href="/pricing"
+            href={upgrade.href}
             className={`underline font-semibold whitespace-nowrap${onDark ? " text-white" : ""}`}
           >
-            Upgrade for more →
+            {upgrade.label}
           </a>
         </>
       )}

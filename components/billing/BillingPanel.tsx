@@ -21,11 +21,11 @@ const CARD_SHADOW = { boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(
 // Naming: the paid tier is "Plus" on screen (Wondish Plus / Wondish Chef);
 // `isPremium` and the PREMIUM enum are the code's legacy name for the same
 // thing. A COUPON-only grant is NOT Plus — it is beta access with its own
-// allowances (3 new weeks a week, 13 Clara messages a day; lib/ai-budget.ts
+// allowances (2 new weeks a month, 10 Clara messages a day; lib/ai-budget.ts
 // tierFor/maxFor), and the card states those numbers rather than describing
 // them as "about half of Plus", which was both vague and wrong.
 /** Beta vs Plus allowances, from the enforced table (lib/ai-budget limitFor). */
-export interface TierLimits { betaWeeks: number; betaChat: number; plusWeeks: number; plusChat: number }
+export interface TierLimits { freeChat: number; betaWeeks: number; betaChat: number; plusWeeks: number; plusChat: number }
 
 export default function BillingPanel({ initial, limits }: { initial: SubscriptionView; limits?: TierLimits }) {
   const [view, setView] = useState(initial);
@@ -81,8 +81,8 @@ export default function BillingPanel({ initial, limits }: { initial: Subscriptio
               paying — Free has the whole app, including the planner a free
               account can and does generate — and Plus is not "without
               limits" — its numbers come from the enforced table (limits prop). */}
-          You have the whole app on Free: 1 new week a week and 5 Clara messages a day.
-          Plus raises those to {limits?.plusWeeks ?? 5} and {limits?.plusChat ?? 20}.
+          You have the whole app on Free: your first week and {limits?.freeChat ?? 5} Clara messages a day.
+          Plus adds {limits?.plusWeeks ?? 4} new weeks a month and {limits?.plusChat ?? 20} messages a day.
         </p>
         <Link href="/pricing" className="inline-flex min-h-[44px] items-center px-6 rounded-2xl bg-primary text-white font-bold text-sm">
           See plans →
@@ -105,7 +105,7 @@ export default function BillingPanel({ initial, limits }: { initial: Subscriptio
     <div className="flex flex-col gap-4">
       {view.status === "PAST_DUE" && (
         <div role="alert" className="rounded-2xl px-5 py-4 text-sm flex flex-wrap items-center gap-3" style={{ background: "#FFF3E0", color: "#b45309" }}>
-          <span>Your last payment failed. Update your card to keep Plus.</span>
+          <span>Your last payment didn&apos;t go through, so you&apos;re on the free allowance for now. Everything you have stays — update your card to get Plus back.</span>
           <button type="button" onClick={() => void openPortal()} disabled={busy !== null} className="underline font-semibold min-h-[44px] disabled:opacity-60">
             Update payment method
           </button>
@@ -151,7 +151,7 @@ export default function BillingPanel({ initial, limits }: { initial: Subscriptio
             <p className="text-sm mb-4 max-w-md" style={{ color: "rgba(255,255,255,0.75)" }}>
               {/* Numbers from the enforced limits: this read "13 … Plus gives 5 and
                   25" after Plus chat had become 20 and beta 10 (2026-09-26). */}
-              Beta is a preview of Plus, not the full thing: {limits?.betaWeeks ?? 3} new weeks a week and{" "}
+              Beta is a preview of Plus, not the full thing: {limits?.betaWeeks ?? 2} new weeks a month and{" "}
               {limits?.betaChat ?? 10} Clara messages a day, where Plus gives {limits?.plusWeeks ?? 5} and{" "}
               {limits?.plusChat ?? 20}.
               Upgrade whenever you like for the full limits.

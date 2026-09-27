@@ -14,7 +14,8 @@ const lim = (tier: "free" | "premium") => ({
   fridge: AI_LIMITS.fridge[tier], cook: AI_LIMITS.cookDay[tier],
 });
 const keys: [string, "free" | "premium", (keyof ReturnType<typeof lim>)[]][] = [
-  ["freeF1", "free", ["weeks"]], ["freeF2", "free", ["msgs"]], ["freeF3", "free", ["swaps", "fridge", "cook"]],
+  // freeF1 names no number: Free's new weeks are 0 — it has the first week.
+  ["freeF1", "free", []], ["freeF2", "free", ["msgs"]], ["freeF3", "free", ["swaps", "fridge", "cook"]],
   ["premiumF2", "premium", ["weeks"]], ["premiumF3", "premium", ["msgs"]], ["premiumF4", "premium", ["swaps", "fridge"]], ["premiumF5", "premium", ["cook"]],
 ];
 

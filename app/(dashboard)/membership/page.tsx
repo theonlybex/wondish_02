@@ -55,6 +55,7 @@ export default async function MembershipPage() {
           <BillingPanel
             initial={view}
             limits={{
+              freeChat: limitFor("claraChat", "free").max,
               betaWeeks: limitFor("planGen", "beta").max,
               betaChat: limitFor("claraChat", "beta").max,
               plusWeeks: limitFor("planGen", "premium").max,

@@ -27,7 +27,7 @@ export async function POST() {
 
   const patient = await prisma.patient.findFirst({
     where: { account: { clerkId: userId } },
-    select: { id: true, profileCompleted: true, mealPlanStartDate: true, activePlanVersion: true, recentDishes: true },
+    select: { id: true, profileCompleted: true, mealPlanStartDate: true, activePlanVersion: true, recentDishes: true, mealPlanStale: true },
   });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
   if (!patient.profileCompleted) return NextResponse.json({ error: "Profile not complete" }, { status: 422 });
@@ -73,7 +73,10 @@ export async function POST() {
       excludeRecipeIds,
       // Charged only by the request that holds the claim (S8).
       preflight: async () => {
-        const guard = await guardAiSpend(userId, "planGen");
+        // A profile change (server-set mealPlanStale, cleared by the build)
+        // makes this a rebuild of the week the member already has, not a new
+        // one — its own small allowance, so Free can still apply a new allergy.
+        const guard = await guardAiSpend(userId, patient.mealPlanStale ? "planRebuild" : "planGen");
         return guard.ok ? null : { status: guard.status, body: { ...guard.body } };
       },
     });

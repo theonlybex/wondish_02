@@ -23,7 +23,7 @@ const faqs = [
   },
   {
     q: "What happens to my data if I downgrade?",
-    a: "Everything is preserved — meal history, journal entries, profile. And no feature disappears: Free has the same app, at Free's weekly and daily allowances. You keep the planner, Clara and your grocery lists; you just get fewer new weeks and messages.",
+    a: "Everything is preserved — meal history, journal entries, profile and the week you already have. Free keeps the same app at Free's daily allowances: the planner, Clara and your grocery lists stay. New weeks are part of Plus, so once your current week ends, Plus is how your plan keeps going.",
   },
   {
     q: "Is there a family or team plan?",

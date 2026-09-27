@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { MAX_MESSAGE_CHARS } from "@/lib/chat-history";
 import { apiFetch } from "@/lib/client-fetch";
+import { quotaCta, type QuotaCta } from "@/lib/quota-cta";
 
 interface Message {
   role: "user" | "assistant";
@@ -27,7 +28,7 @@ export default function DishCheckerClient({ firstName }: Props) {
   ]);
   // Set when a refusal says a higher tier would help, so the bubble can offer
   // the upgrade instead of naming a limit and stopping there.
-  const [quotaUpgrade, setQuotaUpgrade] = useState(false);
+  const [quotaUpgrade, setQuotaUpgrade] = useState<QuotaCta>(null);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -110,7 +111,8 @@ export default function DishCheckerClient({ firstName }: Props) {
             // dropped the flag, so a free user hit "You've used your 5 free
             // Clara messages for today. Plus gives you 25 a day." with nothing
             // to click and no /pricing anywhere on the page (QA 2026-09-24).
-            if (errData?.code === "quota" && errData?.upgrade === true) setQuotaUpgrade(true);
+            const cta = quotaCta(errData);
+            if (cta) setQuotaUpgrade(cta);
           } catch { /* ignore parse errors */ }
         }
         throw new Error(errMsg);
@@ -236,11 +238,11 @@ export default function DishCheckerClient({ firstName }: Props) {
                     plan surface has always got this right. */}
                 {msg.error && quotaUpgrade && i === messages.length - 1 && (
                   <Link
-                    href="/pricing"
+                    href={quotaUpgrade.href}
                     className="block mt-2 font-bold hover:underline"
                     style={{ color: "#812549" }}
                   >
-                    Upgrade for more →
+                    {quotaUpgrade.label}
                   </Link>
                 )}
               </div>

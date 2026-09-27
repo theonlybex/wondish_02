@@ -7,6 +7,7 @@ import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import { RecipeDTO } from "@/types";
 import { CUISINES } from "@/lib/cuisines";
+import { quotaCta, type QuotaCta } from "@/lib/quota-cta";
 
 interface SwapMealModalProps {
   open: boolean;
@@ -30,7 +31,7 @@ export default function SwapMealModal({
   const [cuisine, setCuisine] = useState<string>("Surprise me");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [upgrade, setUpgrade] = useState(false);
+  const [upgrade, setUpgrade] = useState<QuotaCta>(null);
 
   // Reset the form each time the modal opens for a fresh dish.
   useEffect(() => {
@@ -38,7 +39,7 @@ export default function SwapMealModal({
       setRequest("");
       setCuisine("Surprise me");
       setError("");
-      setUpgrade(false);
+      setUpgrade(null);
       setLoading(false);
     }
   }, [open]);
@@ -65,7 +66,7 @@ export default function SwapMealModal({
         setError(data?.error ?? "Clara couldn't swap that — try rewording your request.");
         // The new-week refusal has always offered the upgrade; this one named
         // the limit and stopped there (QA 2026-09-24).
-        setUpgrade(data?.code === "quota" && data?.upgrade === true);
+        setUpgrade(quotaCta(data));
         return;
       }
       if (data?.recipe) {
@@ -129,8 +130,8 @@ export default function SwapMealModal({
         <div role="alert" className="mt-4 bg-error/10 border border-error/20 text-error rounded-xl px-4 py-2.5 text-sm">
           {error}
           {upgrade && (
-            <Link href="/pricing" className="block mt-1.5 font-bold underline">
-              Upgrade for more →
+            <Link href={upgrade.href} className="block mt-1.5 font-bold underline">
+              {upgrade.label}
             </Link>
           )}
         </div>

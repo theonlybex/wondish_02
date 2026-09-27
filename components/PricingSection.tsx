@@ -80,10 +80,10 @@ export default async function PricingSection({
               </p>
               <p className="text-sm mt-1" style={{ color: "#4F4A4A" }}>
                 {/* From the enforced limits (they read 13 and 25 after the trim to 10 and 20). */}
-                Beta sits between the two below: {limitFor("planGen", "beta").max} new weeks a week and{" "}
-                {limitFor("claraChat", "beta").max} Clara messages a day, against Free&apos;s{" "}
-                {limitFor("planGen", "free").max} and {limitFor("claraChat", "free").max} and Plus&apos;s{" "}
-                {limitFor("planGen", "premium").max} and {limitFor("claraChat", "premium").max}. It ends on that date — Plus keeps your access
+                Beta sits between the two below: {limitFor("planGen", "beta").max} new weeks a month and{" "}
+                {limitFor("claraChat", "beta").max} Clara messages a day, against Free&apos;s first week and{" "}
+                {limitFor("claraChat", "free").max} messages, and Plus&apos;s{" "}
+                {limitFor("planGen", "premium").max} weeks and {limitFor("claraChat", "premium").max} messages. It ends on that date — Plus keeps your access
                 going afterwards, and you don&apos;t need to do anything today.
               </p>
             </div>
