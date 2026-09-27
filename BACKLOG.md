@@ -519,8 +519,9 @@ holder upgrading and falling back to beta. Found and fixed —
       week only, Beta 2 a month, Plus 4 a month; a profile-change rebuild is
       its own allowance (1 a week, Plus 2) so Free can apply a new allergy.
       Pricing en/es/ru, membership panels and FAQ updated. Stripe run after
-      the change: 44/44. Note: the iOS app, if it calls POST
-      /api/meal-plan or /regenerate for an existing plan, now meets Free's 0.
+      the change: 44/44. The iOS app's "regenerate" (POST
+      /api/meal-plan/regenerate) follows the same rule: a profile-change
+      rebuild is allowed, a new week meets Free's 0 and iOS shows the message.
 - [ ] **Owner:** the sandbox's public business name is "Painless Food
       Corporation sandbox" (shown on Checkout and invoices) — check the live
       account's name before launch.
