@@ -487,7 +487,26 @@ own mistakes, and the rest found and fixed —
 - Stripe and Clerk are live-keyed in production (owner, 2026-09-26) — the
   launch items for them are closed.
 
-**Stripe experience run (2026-09-26, sandbox, production build, 41/41)**
+**Final full-system run (2026-09-27, production build, real AI spend $0.35)**
+Every feature, with a token meter on the server: platform, public pages ×3
+languages, a brand-new user from sign-up to first week, the Free new-week
+refusal, a profile-change rebuild, meal plan + Clara swap, pantry +
+cook-my-day, Clara chat, fridge, profile, journal, payments, phone sweep.
+All green after these fixes —
+- [x] **A brand-new Free member could not build their first week** (the
+      monthly-weeks change charged it as a new week). weekBuildKind(): first
+      week = onboarding allowance, profile change = rebuild, else new week.
+- [x] **Fridge cut off mid-answer (502)** on Sonnet's 2048 tokens, and was
+      the one Sonnet call, ~3x the budget's price. Now Haiku, 4096 tokens.
+- [x] **A failed week build still spent the allowance.** Now charged on
+      delivery (/new-week and iOS /regenerate), like swaps and cook-my-day.
+- [x] Profile-changed banner says "rebuild this week"; "Generate my whole
+      week" is a real 44px button.
+- Known, unchanged: a narrow new basket's week runs ~80-88% of calories
+  (sodium-bound; recorded before). One network blip (DB websocket + model
+  timeouts at the same minute) failed a build cleanly and kept the old week.
+
+, sandbox, production build, 41/41)**
 Every buyer path on real hosted Checkout with the `stripe listen` forwarder
 (503 webhooks, all 200): abandon; declined card then retry; unknown and valid
 promo (discount carried to the first invoice); 3-D Secure fail then pass;
