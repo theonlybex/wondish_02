@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, MealPlanBusyError, EmptyPlanError, ThinPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
-import { guardAiSpend, tierFor } from "@/lib/ai-budget";
+import { guardAiSpend, tierFor, weekBuildKind } from "@/lib/ai-budget";
 import { internalError } from "@/lib/api-error";
 
 export const runtime = "nodejs";
@@ -71,9 +71,9 @@ export async function POST() {
       // only by the request that holds the claim, so a double-click's loser
       // (409 busy) is never billed a week it didn't get.
       preflight: async () => {
-        // Same rule as /new-week: a profile change makes this a rebuild of the
-        // week the member has (planRebuild), not a new week. iOS calls here.
-        const guard = await guardAiSpend(userId, patient.mealPlanStale ? "planRebuild" : "planGen", aiTier);
+        // Same rule as /new-week (weekBuildKind). iOS calls here.
+        const hasAnyPlan = (await prisma.menu.count({ where: { patientId: patient.id } })) > 0;
+        const guard = await guardAiSpend(userId, weekBuildKind({ hasAnyPlan, stale: patient.mealPlanStale }), aiTier);
         return guard.ok ? null : { status: guard.status, body: { ...guard.body } };
       },
     });

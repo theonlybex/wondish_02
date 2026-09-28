@@ -1,6 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AI_LIMITS, GLOBAL_AI_DAILY_MAX, guardAiSpend, limitFor, quotaExceededBody, tierFor } from "./ai-budget";
+import { AI_LIMITS, GLOBAL_AI_DAILY_MAX, guardAiSpend, limitFor, quotaExceededBody, tierFor, weekBuildKind } from "./ai-budget";
+
+test("a member's first week is onboarding, never a new week — Free (0 new weeks) must still get it", async () => {
+  assert.equal(weekBuildKind({ hasAnyPlan: false, stale: false }), "planInit");
+  assert.equal(weekBuildKind({ hasAnyPlan: false, stale: true }), "planInit");
+  assert.equal(weekBuildKind({ hasAnyPlan: true, stale: true }), "planRebuild");
+  assert.equal(weekBuildKind({ hasAnyPlan: true, stale: false }), "planGen");
+  // The whole point: a brand-new Free member's first build is allowed.
+  const { limiter } = fakeLimiter();
+  assert.equal((await guardAiSpend("new", weekBuildKind({ hasAnyPlan: false, stale: false }), "free", limiter)).ok, true);
+});
 
 // In-memory limiter: counts per (bucket, identifier); no time passes.
 function fakeLimiter() {

@@ -793,7 +793,10 @@ export default function DailyMealPlanView({
       {stale && !newWeekLoading && startDate && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-4 text-sm">
           <div className="flex items-center gap-3">
-            <span className="flex-1 text-amber-800">Your profile changed — generate a new week to apply it to your meal plan.</span>
+            {/* A rebuild, not a new week: it spends planRebuild (lib/ai-budget.ts),
+                which Free has too — "generate a new week" read as the thing
+                Free can't do (2026-09-26). */}
+            <span className="flex-1 text-amber-800">Your profile changed — rebuild this week to apply it to your meal plan.</span>
             {/* The same guard the sidebar's button has. This one was left
                 enabled, so the identical click did nothing here and explained
                 itself there — two buttons for one action must refuse the same
@@ -812,7 +815,7 @@ export default function DailyMealPlanView({
               }}
               className={basketStatus && !basketStatus.ready ? "opacity-50 cursor-not-allowed" : undefined}
             >
-              New week
+              Rebuild week
             </Button>
           </div>
           {basketStatus && !basketStatus.ready && (
@@ -1010,7 +1013,7 @@ export default function DailyMealPlanView({
               <button
                 type="button"
                 onClick={() => void generateNewWeek("empty")}
-                className="px-4 py-2 rounded-full text-xs font-semibold text-white"
+                className="min-h-[44px] px-5 py-2 rounded-full text-xs font-semibold text-white"
                 style={{ background: "#812549" }}
               >
                 Generate my whole week

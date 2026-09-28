@@ -126,6 +126,20 @@ export const AI_LIMITS: Record<string, AiLimit> = {
 
 export type AiGuardKind = keyof typeof AI_LIMITS;
 
+/**
+ * Which allowance building a week spends. Three different things share the
+ * week-building routes, and only one of them is a "new week":
+ *   - the FIRST week a member ever gets is onboarding (planInit) — Free has
+ *     no new weeks, so charging planGen here refused every new sign-up its
+ *     first plan (final bot, 2026-09-27);
+ *   - a rebuild after a profile change (server-set mealPlanStale) is planRebuild;
+ *   - anything else is a new week (planGen).
+ */
+export function weekBuildKind(p: { hasAnyPlan: boolean; stale: boolean }): "planInit" | "planRebuild" | "planGen" {
+  if (!p.hasAnyPlan) return "planInit";
+  return p.stale ? "planRebuild" : "planGen";
+}
+
 // Org-wide hard ceiling on total Anthropic-billed REQUESTS per rolling day.
 // THIS is the number that caps a runaway bill.
 //

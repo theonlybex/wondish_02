@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError, ThinPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
 import { internalError } from "@/lib/api-error";
-import { guardAiSpend } from "@/lib/ai-budget";
+import { guardAiSpend, weekBuildKind } from "@/lib/ai-budget";
 import { computeBasketReadiness, basketBlockerText } from "@/lib/basket-readiness";
 import { parseRecentDishes, recentDishIds, mergeRecentDishes } from "@/lib/recent-dishes";
 
@@ -73,10 +73,10 @@ export async function POST() {
       excludeRecipeIds,
       // Charged only by the request that holds the claim (S8).
       preflight: async () => {
-        // A profile change (server-set mealPlanStale, cleared by the build)
-        // makes this a rebuild of the week the member already has, not a new
-        // one — its own small allowance, so Free can still apply a new allergy.
-        const guard = await guardAiSpend(userId, patient.mealPlanStale ? "planRebuild" : "planGen");
+        // First week = onboarding, profile change = rebuild, else a new week
+        // (weekBuildKind). Any menu row ever means the first week happened.
+        const hasAnyPlan = (await prisma.menu.count({ where: { patientId: patient.id } })) > 0;
+        const guard = await guardAiSpend(userId, weekBuildKind({ hasAnyPlan, stale: patient.mealPlanStale }));
         return guard.ok ? null : { status: guard.status, body: { ...guard.body } };
       },
     });

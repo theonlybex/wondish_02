@@ -15,6 +15,7 @@ import {
   SUGGEST_RECIPES_SCHEMA,
 } from "@/lib/fridge";
 import Anthropic from "@anthropic-ai/sdk";
+import { CLARA_MODEL } from "@/lib/clara/anthropic-client";
 import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anthropic";
 
 // 300s (Vercel's current default ceiling) not 60: a real week generation was
@@ -104,10 +105,13 @@ export async function POST(req: NextRequest) {
   let msg: Anthropic.Message;
   try {
     msg = await anthropic.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 2048,
-      // Sonnet 5 defaults to adaptive thinking when the param is omitted;
-      // generation latency wants it off (C6, same as dish-checker).
+      // Haiku, like every other Clara feature: lib/ai-budget.ts prices a
+      // fridge request at Haiku's ~$0.02, and that is what keeps Plus inside
+      // its $30/month ceiling. This was the one Sonnet call left, and at
+      // 2048 tokens it ran out mid-answer — three recipes, cut off, parsed
+      // as nothing, a 502 (final bot, 2026-09-27). 4096 fits three.
+      model: CLARA_MODEL,
+      max_tokens: 4096,
       thinking: { type: "disabled" },
       system: FRIDGE_SYSTEM_PROMPT(foodMapText, MAX_RECIPES),
       tools: [
