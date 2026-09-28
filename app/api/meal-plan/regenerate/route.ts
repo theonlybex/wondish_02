@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, MealPlanBusyError, EmptyPlanError, ThinPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
-import { guardAiSpend, tierFor, weekBuildKind } from "@/lib/ai-budget";
+import { chargeAiSpend, remainingAiSpend, tierFor, weekBuildKind, type AiTier } from "@/lib/ai-budget";
 import { internalError } from "@/lib/api-error";
 
 export const runtime = "nodejs";
@@ -65,6 +65,8 @@ export async function POST() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // Checked before, charged on delivery — same as /new-week.
+  let spend: { kind: ReturnType<typeof weekBuildKind>; tier: AiTier } | null = null;
   try {
     const count = await regeneratePlan(patient.id, today, undefined, {
       // Generation can trigger a Clara top-up call — spend guard. Charged
@@ -73,10 +75,16 @@ export async function POST() {
       preflight: async () => {
         // Same rule as /new-week (weekBuildKind). iOS calls here.
         const hasAnyPlan = (await prisma.menu.count({ where: { patientId: patient.id } })) > 0;
-        const guard = await guardAiSpend(userId, weekBuildKind({ hasAnyPlan, stale: patient.mealPlanStale }), aiTier);
-        return guard.ok ? null : { status: guard.status, body: { ...guard.body } };
+        const kind = weekBuildKind({ hasAnyPlan, stale: patient.mealPlanStale });
+        const guard = await remainingAiSpend(userId, kind, aiTier);
+        if (!guard.ok) return { status: guard.status, body: { ...guard.body } };
+        spend = { kind, tier: guard.tier };
+        return null;
       },
     });
+    // (Assigned inside preflight, which TypeScript can't see from here.)
+    const charged = spend as { kind: ReturnType<typeof weekBuildKind>; tier: AiTier } | null;
+    if (charged) await chargeAiSpend(userId, charged.kind, charged.tier);
     return NextResponse.json({ ok: true, count });
   } catch (err) {
     if (err instanceof MealPlanBusyError) {

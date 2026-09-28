@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError, ThinPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
 import { internalError } from "@/lib/api-error";
-import { guardAiSpend, weekBuildKind } from "@/lib/ai-budget";
+import { chargeAiSpend, remainingAiSpend, weekBuildKind, type AiTier } from "@/lib/ai-budget";
 import { computeBasketReadiness, basketBlockerText } from "@/lib/basket-readiness";
 import { parseRecentDishes, recentDishIds, mergeRecentDishes } from "@/lib/recent-dishes";
 
@@ -64,6 +64,12 @@ export async function POST() {
   const excludeRecipeIds = recentDishIds(recent);
 
   if (process.env.NODE_ENV === "development") (await import("@/lib/clara/recipe-generation")).lastTopUpDebug.value = undefined;
+  // Charged on DELIVERY, like swaps and cook-my-day: the allowance is checked
+  // before the build and spent only once the week is saved. A build that
+  // fails (model timeout, lost DB connection, a thin basket) used to cost the
+  // member a week anyway — Free's one rebuild, or a quarter of Plus's month
+  // (final bot, 2026-09-27).
+  let spend: { kind: ReturnType<typeof weekBuildKind>; tier: AiTier } | null = null;
   try {
     const count = await regeneratePlan(patient.id, today, undefined, {
       claraFirst: true,
@@ -76,10 +82,16 @@ export async function POST() {
         // First week = onboarding, profile change = rebuild, else a new week
         // (weekBuildKind). Any menu row ever means the first week happened.
         const hasAnyPlan = (await prisma.menu.count({ where: { patientId: patient.id } })) > 0;
-        const guard = await guardAiSpend(userId, weekBuildKind({ hasAnyPlan, stale: patient.mealPlanStale }));
-        return guard.ok ? null : { status: guard.status, body: { ...guard.body } };
+        const kind = weekBuildKind({ hasAnyPlan, stale: patient.mealPlanStale });
+        const guard = await remainingAiSpend(userId, kind);
+        if (!guard.ok) return { status: guard.status, body: { ...guard.body } };
+        spend = { kind, tier: guard.tier };
+        return null;
       },
     });
+    // (Assigned inside preflight, which TypeScript can't see from here.)
+    const charged = spend as { kind: ReturnType<typeof weekBuildKind>; tier: AiTier } | null;
+    if (charged) await chargeAiSpend(userId, charged.kind, charged.tier);
 
     // Record this week's dishes in the rolling window (prunes expired entries).
     const after = await prisma.patient.findUnique({
