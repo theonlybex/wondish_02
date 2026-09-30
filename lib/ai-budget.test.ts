@@ -178,7 +178,7 @@ test("free user: 6th Clara message today is refused with an upgrade hint; the gl
     assert.doesNotMatch(r.error, /premium/i);
     assert.equal((r.body as { upgrade?: boolean }).upgrade, true);
   }
-  assert.equal(calls.filter((c) => c.startsWith("ai-global-day")).length, 5);
+  assert.equal(calls.filter((c) => c.startsWith("ai-global-day|")).length, 5);
 });
 
 test("free user: no new week after the first (which came with setup); beta gets 2 a month, Plus 4", async () => {
@@ -411,4 +411,27 @@ test("the lapse wording is only for the free tier, and a failed lookup falls bac
   const r = await guardAiSpend("u8", "planGen", "free", limiter, async () => { throw new Error("db down"); });
   assert.equal(r.ok, false);
   if (!r.ok) assert.equal(r.error, "New weeks are part of Plus — Free comes with your first week. Plus gives you 4 new weeks a month.");
+});
+
+test("a flood of free accounts spends only Free's pool: paying members keep Clara", async () => {
+  const { guardGlobalAiSpend, FREE_AI_DAILY_MAX } = await import("./ai-budget");
+  const { limiter } = fakeLimiter();
+  for (let i = 0; i < FREE_AI_DAILY_MAX; i++) assert.equal((await guardGlobalAiSpend("free", limiter)).ok, true);
+  const f = await guardGlobalAiSpend("free", limiter);
+  assert.equal(f.ok, false);
+  if (!f.ok) assert.match(f.error, /very busy today/);
+  // Plus and beta still get through: the org ceiling has room left.
+  assert.equal((await guardGlobalAiSpend("premium", limiter)).ok, true);
+  assert.equal((await guardGlobalAiSpend("beta", limiter)).ok, true);
+  assert.ok(FREE_AI_DAILY_MAX < GLOBAL_AI_DAILY_MAX, "Free's pool must leave room for paying members");
+});
+
+test("guardAiSpend counts a free request against Free's pool as well as the org ceiling", async () => {
+  const { limiter, calls } = fakeLimiter();
+  await guardAiSpend("u7", "claraChat", "free", limiter, noLapse);
+  assert.ok(calls.some((c) => c.startsWith("ai-global-day-free|ALL")));
+  assert.ok(calls.some((c) => c.startsWith("ai-global-day|ALL")));
+  const { limiter: l2, calls: c2 } = fakeLimiter();
+  await guardAiSpend("u7", "claraChat", "premium", l2);
+  assert.ok(!c2.some((c) => c.startsWith("ai-global-day-free")), "paying members don't draw on Free's pool");
 });

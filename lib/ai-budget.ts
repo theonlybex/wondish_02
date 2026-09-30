@@ -149,6 +149,36 @@ export function weekBuildKind(p: { hasAnyPlan: boolean; stale: boolean }): "plan
 // Raise proportionally as the cohort grows.
 export const GLOBAL_AI_DAILY_MAX = 2000;
 
+// The share of that ceiling Free accounts may use between them (2026-09-30,
+// owner's concern: a thousand throwaway sign-ups each building a first week).
+// Free accounts cost nothing to make, so without a pool of their own a flood
+// of them could spend the whole org ceiling and lock paying members out of
+// Clara for the day. Free draws from this pool AND the org ceiling; beta and
+// Plus only from the org ceiling, so at least 800 requests a day stay theirs.
+export const FREE_AI_DAILY_MAX = 1200;
+
+/**
+ * Count one model request against the org-wide ceiling (and Free's pool for a
+ * free account). Every Anthropic-billed request must pass through here —
+ * guardAiSpend does, and routes that check-then-charge a per-user allowance
+ * (week builds) call it directly, before the model runs.
+ */
+export async function guardGlobalAiSpend(tier: AiTier, limiter: Limiter = rateLimit): Promise<AiGuardResult> {
+  if (tier === "free") {
+    const pool = await limiter("ai-global-day-free", "ALL", FREE_AI_DAILY_MAX, DAY);
+    if (!pool.success) {
+      const error = "Clara is very busy today — please try again tomorrow, or upgrade to Plus to skip the queue.";
+      return { ok: false, status: 429, error, body: { error } };
+    }
+  }
+  const global = await limiter("ai-global-day", "ALL", GLOBAL_AI_DAILY_MAX, DAY);
+  if (!global.success) {
+    const error = "Clara is at capacity for today — please try again tomorrow.";
+    return { ok: false, status: 429, error, body: { error } };
+  }
+  return { ok: true, tier };
+}
+
 /**
  * The allowance for one bucket at one tier.
  *
@@ -365,12 +395,6 @@ export async function guardAiSpend(
   const user = await limiter(`${AI_LIMITS[kind].bucket}-${t}`, userId, max, windowSec);
   if (!user.success) return refusal(userId, kind, t, lapsedLookup);
 
-  // 2. Global daily ceiling (single shared counter for the whole org).
-  const global = await limiter("ai-global-day", "ALL", GLOBAL_AI_DAILY_MAX, DAY);
-  if (!global.success) {
-    const error = "Clara is at capacity for today — please try again tomorrow.";
-    return { ok: false, status: 429, error, body: { error } };
-  }
-
-  return { ok: true, tier: t };
+  // 2. Global daily ceilings: Free's pool, then the whole org's.
+  return guardGlobalAiSpend(t, limiter);
 }

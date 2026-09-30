@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError, ThinPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
 import { internalError } from "@/lib/api-error";
-import { chargeAiSpend, remainingAiSpend, weekBuildKind, type AiTier } from "@/lib/ai-budget";
+import { chargeAiSpend, guardGlobalAiSpend, remainingAiSpend, weekBuildKind, type AiTier } from "@/lib/ai-budget";
 import { computeBasketReadiness, basketBlockerText } from "@/lib/basket-readiness";
 import { parseRecentDishes, recentDishIds, mergeRecentDishes } from "@/lib/recent-dishes";
 
@@ -85,6 +85,9 @@ export async function POST() {
         const kind = weekBuildKind({ hasAnyPlan, stale: patient.mealPlanStale });
         const guard = await remainingAiSpend(userId, kind);
         if (!guard.ok) return { status: guard.status, body: { ...guard.body } };
+        // The model runs either way, so the org ceiling counts the attempt.
+        const globalGuard = await guardGlobalAiSpend(guard.tier);
+        if (!globalGuard.ok) return { status: globalGuard.status, body: { ...globalGuard.body } };
         spend = { kind, tier: guard.tier };
         return null;
       },
