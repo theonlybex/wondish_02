@@ -124,6 +124,30 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
+ * Read a just-written value back, allowing for replica lag. Production's
+ * Upstash database serves reads from a replica near the Vercel region, and a
+ * GET issued right after the SET can land before the replica has it: prod's
+ * /api/health reported "degraded" (503) with `wrote "pong", read null` while
+ * the same build against the same store read it back at once from elsewhere,
+ * and the rate-limit counters themselves were live (2026-09-29). Enforcement
+ * is unaffected — the limiter's scripts run on the primary. A few short
+ * retries tell lag from a store that really drops writes.
+ */
+export async function readBack<T>(
+  get: () => Promise<T | null>,
+  expected: T,
+  { attempts = 6, delayMs = 150 }: { attempts?: number; delayMs?: number } = {}
+): Promise<{ ok: boolean; got: T | null; tries: number }> {
+  let got: T | null = null;
+  for (let i = 1; i <= attempts; i++) {
+    got = await get();
+    if (got === expected) return { ok: true, got, tries: i };
+    if (i < attempts) await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return { ok: false, got, tries: attempts };
+}
+
+/**
  * Real SET → GET → DEL round-trip through the shared client, bounded by
  * `timeoutMs` (the client itself retries with backoff for ~4 s when the host
  * is down, too long for a health check). Never throws.
@@ -146,8 +170,8 @@ export async function probeRateLimitBackend(timeoutMs = 3000): Promise<RateLimit
     await withTimeout(
       (async () => {
         await redis.set(key, "pong", { px: 10_000 });
-        const got = await redis.get<string>(key);
-        if (got !== "pong") throw new Error(`round-trip mismatch: wrote "pong", read ${JSON.stringify(got)}`);
+        const back = await readBack(() => redis!.get<string>(key), "pong");
+        if (!back.ok) throw new Error(`round-trip mismatch: wrote "pong", read ${JSON.stringify(back.got)} after ${back.tries} tries`);
         await redis.del(key);
       })(),
       timeoutMs

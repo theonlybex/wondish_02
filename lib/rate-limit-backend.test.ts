@@ -145,3 +145,18 @@ test("watcher is healthy only when Upstash is reachable AND shared", () => {
     false
   );
 });
+
+test("readBack tolerates replica lag: a value that appears on the 3rd read counts as reachable", async () => {
+  const { readBack } = await import("./rate-limit-backend");
+  let n = 0;
+  const r = await readBack(async () => (++n >= 3 ? "pong" : null), "pong", { delayMs: 1 });
+  assert.deepEqual(r, { ok: true, got: "pong", tries: 3 });
+});
+
+test("readBack still fails a store that never returns the write", async () => {
+  const { readBack } = await import("./rate-limit-backend");
+  let n = 0;
+  const r = await readBack(async () => { n++; return null; }, "pong", { attempts: 4, delayMs: 1 });
+  assert.deepEqual(r, { ok: false, got: null, tries: 4 });
+  assert.equal(n, 4);
+});
