@@ -10,7 +10,7 @@ async function main() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY not loaded");
   const stripe = new Stripe(key, { apiVersion: "2024-04-10" });
-  const mode = key.startsWith("sk_live") ? "LIVE" : "test";
+  const mode = /^(sk|rk)_live_/.test(key) ? "LIVE" : "test";
   console.log(`Stripe ${mode} mode`);
 
   // products.list, not products.search: the search index is eventually
