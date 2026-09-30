@@ -109,9 +109,10 @@ Local dev talks to the **shared production Postgres**, so these are real rows:
   production process with no Upstash refuse to boot. Off by default because it
   turns one unset variable into an outage and was never verified against a real
   `next build && next start`. Verify first, then arm it.
-- **Tune `FREE_AI_DAILY_CENTS`** (Free's shared AI budget, $20/day since
-  2026-09-30) to real sign-up volume. Plus and Beta have no shared cap — each
-  member is bounded by their own allowances — so the Anthropic console's
+- **Tune `FREE_AI_DAILY_CENTS`** (the shared AI budget of every unpaid
+  account, Free and Beta, $20/day since 2026-09-30) to real sign-up volume.
+  Paying members have no shared cap — each is bounded by their own
+  allowances — so the Anthropic console's
   monthly spend limit is the backstop for the whole bill. Set one.
 - **Retire the `beta` tier** once the simulation runs are done — three deletions,
   see `lib/ai-budget.ts`.

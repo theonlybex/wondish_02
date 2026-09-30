@@ -419,15 +419,18 @@ test("the Free pool is a daily budget in dollars: $20 of measured costs, then 'v
   assert.equal((await guardGlobalAiSpend("free", "claraChat", limiter)).ok, false);
 });
 
-test("Plus and Beta have no shared cap: a spent Free pool never touches them", async () => {
+test("only paying members skip the pool: Beta (unpaid) shares it with Free, Plus never touches it", async () => {
   const { guardGlobalAiSpend } = await import("./ai-budget");
   const { limiter, calls } = fakeLimiter();
   await limiter("ai-free-pool", "ALL", FREE_AI_DAILY_CENTS, 86_400, undefined, FREE_AI_DAILY_CENTS);
-  for (const tier of ["premium", "beta"] as const) {
-    assert.equal((await guardGlobalAiSpend(tier, "planGen", limiter)).ok, true, tier);
-    assert.equal((await guardAiSpend(`u-${tier}`, "claraChat", tier, limiter)).ok, true, tier);
-  }
+  // Plus: straight through, the pool isn't even consulted.
+  assert.equal((await guardGlobalAiSpend("premium", "planGen", limiter)).ok, true);
+  assert.equal((await guardAiSpend("u-plus", "claraChat", "premium", limiter)).ok, true);
   assert.equal(calls.filter((c) => c.startsWith("ai-free-pool")).length, 1, "only the setup call touched the pool");
+  // Beta: refused once the shared budget is spent.
+  const b = await guardGlobalAiSpend("beta", "claraChat", limiter);
+  assert.equal(b.ok, false);
+  if (!b.ok) assert.match(b.error, /very busy today/);
 });
 
 test("every metered kind has a measured cost; the ones charged on delivery cost nothing extra", () => {

@@ -156,25 +156,25 @@ export const AI_COST_CENTS: Record<AiGuardKind, number> = {
   cookDayAttempt: 2,
 };
 
-// The daily AI budget for ALL Free accounts together, in cents (owner,
-// 2026-09-30: $20 a day). Free accounts cost nothing to make, so a flood of
-// throwaway sign-ups is bounded by this, not by their number. It is a budget
-// in money, not a request count: a week build costs ~10c and a Clara message
-// ~0.5c, so counting requests could not promise a dollar figure. Plus and
-// Beta are not in any shared pool — each member is bounded by their own
-// allowances (Plus ≤ $30/month, paid for; Beta by how many coupons exist) —
-// so nothing a Free flood does can touch them. The Anthropic console's
-// monthly spend limit is the last backstop for everyone.
+// The daily AI budget for every account that doesn't pay — Free and Beta
+// together — in cents (owner, 2026-09-30: $20 a day). Free accounts cost
+// nothing to make, so a flood of throwaway sign-ups is bounded by this, not by
+// their number; Beta coupon holders don't pay either, so they share it. It is
+// a budget in money, not a request count: a week build costs ~10c and a Clara
+// message ~0.5c, so counting requests could not promise a dollar figure. Only
+// paying members (Plus, admins) are outside it — each is bounded by their own
+// allowances (≤ $30/month, paid for). The Anthropic console's monthly spend
+// limit is the last backstop for everyone.
 export const FREE_AI_DAILY_CENTS = 2000;
 
 /**
- * Spend one model request's cost from Free's daily pool. Paying and beta
- * members pass straight through. Every Anthropic-billed request must go
+ * Spend one model request's cost from the unpaid daily pool (Free and Beta).
+ * Paying members pass straight through. Every Anthropic-billed request must go
  * through here — guardAiSpend does, and routes that check-then-charge a
  * per-user allowance (week builds) call it directly, before the model runs.
  */
 export async function guardGlobalAiSpend(tier: AiTier, kind: AiGuardKind, limiter: Limiter = rateLimit): Promise<AiGuardResult> {
-  if (tier !== "free") return { ok: true, tier };
+  if (tier === "premium") return { ok: true, tier };
   const cost = AI_COST_CENTS[kind];
   if (cost > 0) {
     const pool = await limiter("ai-free-pool", "ALL", FREE_AI_DAILY_CENTS, DAY, undefined, cost);
@@ -409,6 +409,6 @@ export async function guardAiSpend(
   const user = await limiter(`${AI_LIMITS[kind].bucket}-${t}`, userId, max, windowSec);
   if (!user.success) return refusal(userId, kind, t, lapsedLookup);
 
-  // 2. Free's shared daily budget (Plus and Beta pass straight through).
+  // 2. The unpaid accounts' shared daily budget (Plus passes straight through).
   return guardGlobalAiSpend(t, kind, limiter);
 }
