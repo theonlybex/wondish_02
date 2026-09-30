@@ -11,8 +11,8 @@ Written 2026-09-17. Tick as you go.
 ## A. Upstash (rate limiting) — blocking for real spend caps
 
 Without this every limit runs on a per-instance memory counter: the effective
-cap is `limit × instances` and `GLOBAL_AI_DAILY_MAX` (the org-wide backstop that
-bounds the Anthropic bill) degrades the same way. See `docs/rate-limiting.md`.
+cap is `limit × instances` and `FREE_AI_DAILY_CENTS` (Free's shared $20/day
+AI budget) degrades the same way. See `docs/rate-limiting.md`.
 
 - [x] **Delete the stale Vercel KV variables.** The old Upstash database was
       *archived due to inactivity*, so `KV_REST_API_URL`, `KV_REST_API_TOKEN`,
@@ -109,8 +109,10 @@ Local dev talks to the **shared production Postgres**, so these are real rows:
   production process with no Upstash refuse to boot. Off by default because it
   turns one unset variable into an outage and was never verified against a real
   `next build && next start`. Verify first, then arm it.
-- **Raise `GLOBAL_AI_DAILY_MAX`** (2000/day ≈ $40/day) as paying users arrive.
-  Per-user caps decide who gets served; this decides the total bill.
+- **Tune `FREE_AI_DAILY_CENTS`** (Free's shared AI budget, $20/day since
+  2026-09-30) to real sign-up volume. Plus and Beta have no shared cap — each
+  member is bounded by their own allowances — so the Anthropic console's
+  monthly spend limit is the backstop for the whole bill. Set one.
 - **Retire the `beta` tier** once the simulation runs are done — three deletions,
   see `lib/ai-budget.ts`.
 - **Free `planInit` 2/day → 1/day?** It is the largest line in the free column

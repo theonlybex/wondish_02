@@ -78,8 +78,8 @@ export async function POST() {
         const kind = weekBuildKind({ hasAnyPlan, stale: patient.mealPlanStale });
         const guard = await remainingAiSpend(userId, kind, aiTier);
         if (!guard.ok) return { status: guard.status, body: { ...guard.body } };
-        // The model runs either way, so the org ceiling counts the attempt.
-        const globalGuard = await guardGlobalAiSpend(guard.tier);
+        // The model runs either way, so Free's daily budget pays for the attempt.
+        const globalGuard = await guardGlobalAiSpend(guard.tier, kind);
         if (!globalGuard.ok) return { status: globalGuard.status, body: { ...globalGuard.body } };
         spend = { kind, tier: guard.tier };
         return null;

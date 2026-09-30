@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AI_LIMITS, GLOBAL_AI_DAILY_MAX, guardAiSpend, limitFor, quotaExceededBody, tierFor, weekBuildKind } from "./ai-budget";
+import { AI_COST_CENTS, AI_LIMITS, FREE_AI_DAILY_CENTS, guardAiSpend, limitFor, quotaExceededBody, tierFor, weekBuildKind } from "./ai-budget";
 
 test("a member's first week is onboarding, never a new week — Free (0 new weeks) must still get it", async () => {
   assert.equal(weekBuildKind({ hasAnyPlan: false, stale: false }), "planInit");
@@ -16,12 +16,17 @@ test("a member's first week is onboarding, never a new week — Free (0 new week
 function fakeLimiter() {
   const counts = new Map<string, number>();
   const calls: string[] = [];
-  const limiter = async (name: string, id: string, limit: number, _windowSec: number) => {
+  // `rate` = units this call uses (the Free pool counts cents). Like
+  // Upstash's sliding window (measured 2026-09-30), a refused call that is
+  // bigger than what is left still drains the remainder: 24/30 used, +12 is
+  // refused and the last 6 are gone too.
+  const limiter = async (name: string, id: string, limit: number, _windowSec: number, _o?: undefined, rate = 1) => {
     const key = `${name}|${id}`;
-    const n = (counts.get(key) ?? 0) + 1;
-    counts.set(key, n);
+    const n = (counts.get(key) ?? 0) + rate;
     calls.push(`${key}:${limit}`);
-    return { success: n <= limit };
+    if (n > limit) { counts.set(key, Math.max(counts.get(key) ?? 0, limit)); return { success: false }; }
+    counts.set(key, n);
+    return { success: true };
   };
   return { limiter, calls };
 }
@@ -178,7 +183,7 @@ test("free user: 6th Clara message today is refused with an upgrade hint; the gl
     assert.doesNotMatch(r.error, /premium/i);
     assert.equal((r.body as { upgrade?: boolean }).upgrade, true);
   }
-  assert.equal(calls.filter((c) => c.startsWith("ai-global-day|")).length, 5);
+  assert.equal(calls.filter((c) => c.startsWith("ai-free-pool|")).length, 5);
 });
 
 test("free user: no new week after the first (which came with setup); beta gets 2 a month, Plus 4", async () => {
@@ -324,31 +329,16 @@ test("guardAiSpend's new-week 429 carries the same body the UI keys on (code + u
     assert.equal((p.body as { code?: string }).code, "quota");
     assert.equal((p.body as { upgrade?: boolean }).upgrade, false);
   }
-  // The global-ceiling 429 is NOT a quota body: no `code`, no `upgrade`. The
-  // UI must not mistake "Clara is at capacity" for an upsell moment.
+  // The Free-pool 429 is NOT a quota body: no `code`, no `upgrade` flag the
+  // UI would render as an allowance refusal ("very busy" is its own message).
   const g = fakeLimiter();
-  for (let i = 0; i < GLOBAL_AI_DAILY_MAX; i++) await g.limiter("ai-global-day", "ALL", GLOBAL_AI_DAILY_MAX, 86_400);
-  const c = await guardAiSpend("fresh", "planGen", "premium", g.limiter);
+  await g.limiter("ai-free-pool", "ALL", FREE_AI_DAILY_CENTS, 86_400, undefined, FREE_AI_DAILY_CENTS);
+  const c = await guardAiSpend("fresh", "planInit", "free", g.limiter, noLapse);
   assert.equal(c.ok, false);
   if (!c.ok) {
     assert.equal("code" in c.body, false);
     assert.equal("upgrade" in c.body, false);
   }
-});
-
-test("global ceiling stops everyone once the org-wide daily count is spent", async () => {
-  const { limiter } = fakeLimiter();
-  // Exhaust the global bucket directly, then a fresh premium user is refused.
-  for (let i = 0; i < GLOBAL_AI_DAILY_MAX; i++) await limiter("ai-global-day", "ALL", GLOBAL_AI_DAILY_MAX, 86_400);
-  const r = await guardAiSpend("fresh", "swap", "premium", limiter);
-  assert.equal(r.ok, false);
-  if (!r.ok) assert.match(r.error, /at capacity/);
-});
-
-test("global ceiling is sized for a 50-tester beta", () => {
-  // 50 testers x ~40 requests/day worst case = 2000. Below that the 51st
-  // request of a busy evening read as an outage ("Clara is at capacity").
-  assert.equal(GLOBAL_AI_DAILY_MAX, 2000);
 });
 
 test("a swap that finds nothing spends an attempt, not a swap; a delivered one spends both", async () => {
@@ -413,25 +403,37 @@ test("the lapse wording is only for the free tier, and a failed lookup falls bac
   if (!r.ok) assert.equal(r.error, "New weeks are part of Plus — Free comes with your first week. Plus gives you 4 new weeks a month.");
 });
 
-test("a flood of free accounts spends only Free's pool: paying members keep Clara", async () => {
-  const { guardGlobalAiSpend, FREE_AI_DAILY_MAX } = await import("./ai-budget");
+test("the Free pool is a daily budget in dollars: $20 of measured costs, then 'very busy'", async () => {
+  const { guardGlobalAiSpend } = await import("./ai-budget");
+  assert.equal(FREE_AI_DAILY_CENTS, 2000);
   const { limiter } = fakeLimiter();
-  for (let i = 0; i < FREE_AI_DAILY_MAX; i++) assert.equal((await guardGlobalAiSpend("free", limiter)).ok, true);
-  const f = await guardGlobalAiSpend("free", limiter);
+  // A flood of first weeks (12c each) runs out after $20, not after 2000 requests.
+  let weeks = 0;
+  while ((await guardGlobalAiSpend("free", "planInit", limiter)).ok) weeks++;
+  assert.equal(weeks, Math.floor(2000 / AI_COST_CENTS.planInit));
+  const f = await guardGlobalAiSpend("free", "planInit", limiter);
   assert.equal(f.ok, false);
   if (!f.ok) assert.match(f.error, /very busy today/);
-  // Plus and beta still get through: the org ceiling has room left.
-  assert.equal((await guardGlobalAiSpend("premium", limiter)).ok, true);
-  assert.equal((await guardGlobalAiSpend("beta", limiter)).ok, true);
-  assert.ok(FREE_AI_DAILY_MAX < GLOBAL_AI_DAILY_MAX, "Free's pool must leave room for paying members");
+  // Upstash drains the few cents a refused week couldn't use (≤ 11c of $20),
+  // so the pool is simply spent for the day.
+  assert.equal((await guardGlobalAiSpend("free", "claraChat", limiter)).ok, false);
 });
 
-test("guardAiSpend counts a free request against Free's pool as well as the org ceiling", async () => {
+test("Plus and Beta have no shared cap: a spent Free pool never touches them", async () => {
+  const { guardGlobalAiSpend } = await import("./ai-budget");
   const { limiter, calls } = fakeLimiter();
-  await guardAiSpend("u7", "claraChat", "free", limiter, noLapse);
-  assert.ok(calls.some((c) => c.startsWith("ai-global-day-free|ALL")));
-  assert.ok(calls.some((c) => c.startsWith("ai-global-day|ALL")));
-  const { limiter: l2, calls: c2 } = fakeLimiter();
-  await guardAiSpend("u7", "claraChat", "premium", l2);
-  assert.ok(!c2.some((c) => c.startsWith("ai-global-day-free")), "paying members don't draw on Free's pool");
+  await limiter("ai-free-pool", "ALL", FREE_AI_DAILY_CENTS, 86_400, undefined, FREE_AI_DAILY_CENTS);
+  for (const tier of ["premium", "beta"] as const) {
+    assert.equal((await guardGlobalAiSpend(tier, "planGen", limiter)).ok, true, tier);
+    assert.equal((await guardAiSpend(`u-${tier}`, "claraChat", tier, limiter)).ok, true, tier);
+  }
+  assert.equal(calls.filter((c) => c.startsWith("ai-free-pool")).length, 1, "only the setup call touched the pool");
+});
+
+test("every metered kind has a measured cost; the ones charged on delivery cost nothing extra", () => {
+  for (const k of Object.keys(AI_LIMITS)) assert.ok(k in AI_COST_CENTS, `${k} has no cost`);
+  assert.equal(AI_COST_CENTS.swap, 0);
+  assert.equal(AI_COST_CENTS.cookDay, 0);
+  // A week build is four Clara calls, ~10c measured (2026-09-27).
+  assert.ok(AI_COST_CENTS.planInit >= 10);
 });

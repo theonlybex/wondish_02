@@ -35,16 +35,16 @@ function getUpstashLimiter(name: string, limit: number, windowSec: number): Rate
 const g = globalThis as unknown as { __wondishRateLimitStore?: Map<string, { count: number; resetAt: number }> };
 const memStore = (g.__wondishRateLimitStore ??= new Map<string, { count: number; resetAt: number }>());
 
-function memoryLimit(id: string, limit: number, windowSec: number): RateLimitResult {
+function memoryLimit(id: string, limit: number, windowSec: number, rate = 1): RateLimitResult {
   const now = Date.now();
-  if (limit < 1) return { success: false };
+  if (limit < 1 || rate > limit) return { success: false };
   const entry = memStore.get(id);
   if (!entry || now > entry.resetAt) {
-    memStore.set(id, { count: 1, resetAt: now + windowSec * 1000 });
+    memStore.set(id, { count: rate, resetAt: now + windowSec * 1000 });
     return { success: true };
   }
-  if (entry.count >= limit) return { success: false };
-  entry.count++;
+  if (entry.count + rate > limit) return { success: false };
+  entry.count += rate;
   return { success: true };
 }
 
@@ -109,7 +109,9 @@ export async function rateLimit(
   identifier: string,
   limit: number,
   windowSec: number,
-  backendOverride?: (identifier: string) => Promise<RateLimitResult>
+  backendOverride?: (identifier: string) => Promise<RateLimitResult>,
+  /** Units this request uses up (default 1) — the Free AI pool counts cents. */
+  rate = 1
 ): Promise<RateLimitResult> {
   try {
     if (backendOverride) {
@@ -117,7 +119,7 @@ export async function rateLimit(
       return { success };
     }
     if (redis) {
-      const { success } = await getUpstashLimiter(name, limit, windowSec).limit(identifier);
+      const { success } = await getUpstashLimiter(name, limit, windowSec).limit(identifier, rate === 1 ? undefined : { rate });
       return { success };
     }
     if (process.env.NODE_ENV === "production" && !warnedMemoryFallbackInProd) {
@@ -126,7 +128,7 @@ export async function rateLimit(
         "[rate-limit] Upstash env vars absent in production — falling back to per-instance memory; limits are NOT enforced across instances"
       );
     }
-    return memoryLimit(JSON.stringify([name, identifier]), limit, windowSec);
+    return memoryLimit(JSON.stringify([name, identifier]), limit, windowSec, rate);
   } catch (err) {
     // Spend buckets (lib/ai-budget.ts, all named "ai-*") are the Anthropic
     // bill cap. On a backend error they degrade to the per-instance counter:
@@ -136,7 +138,7 @@ export async function rateLimit(
     // buckets take (availability over enforcement, 2026-07-24 audit Task 12).
     if (name.startsWith("ai-")) {
       console.error(`[rate-limit] backend error for spend bucket "${name}" — using per-instance fallback`, err);
-      return memoryLimit(JSON.stringify([name, identifier]), limit, windowSec);
+      return memoryLimit(JSON.stringify([name, identifier]), limit, windowSec, rate);
     }
     console.error(`[rate-limit] backend error for bucket "${name}" — failing open`, err);
     return { success: true };

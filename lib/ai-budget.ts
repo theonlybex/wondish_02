@@ -140,41 +140,48 @@ export function weekBuildKind(p: { hasAnyPlan: boolean; stale: boolean }): "plan
   return p.stale ? "planRebuild" : "planGen";
 }
 
-// Org-wide hard ceiling on total Anthropic-billed REQUESTS per rolling day.
-// THIS is the number that caps a runaway bill.
-//
-// Sized for the closed beta (2026-09-13): 50 testers x ~40 requests/day at
-// the trial limits = 2000. Worst case at the ceiling on Haiku ≈ $40 for the
-// day; realistic usage (~12 requests/tester) is a small fraction of that.
-// Raise proportionally as the cohort grows.
-export const GLOBAL_AI_DAILY_MAX = 2000;
+// What one model request costs, in cents, measured with a token meter on the
+// production build (2026-09-27) and rounded up. A week build is four Clara
+// calls. swap and cookDay are charged on delivery and spend no model time of
+// their own — their attempts carry the cost.
+export const AI_COST_CENTS: Record<AiGuardKind, number> = {
+  claraChat: 1,
+  fridge: 1,
+  planInit: 12,
+  planGen: 12,
+  planRebuild: 12,
+  swap: 0,
+  swapAttempt: 2,
+  cookDay: 0,
+  cookDayAttempt: 2,
+};
 
-// The share of that ceiling Free accounts may use between them (2026-09-30,
-// owner's concern: a thousand throwaway sign-ups each building a first week).
-// Free accounts cost nothing to make, so without a pool of their own a flood
-// of them could spend the whole org ceiling and lock paying members out of
-// Clara for the day. Free draws from this pool AND the org ceiling; beta and
-// Plus only from the org ceiling, so at least 800 requests a day stay theirs.
-export const FREE_AI_DAILY_MAX = 1200;
+// The daily AI budget for ALL Free accounts together, in cents (owner,
+// 2026-09-30: $20 a day). Free accounts cost nothing to make, so a flood of
+// throwaway sign-ups is bounded by this, not by their number. It is a budget
+// in money, not a request count: a week build costs ~10c and a Clara message
+// ~0.5c, so counting requests could not promise a dollar figure. Plus and
+// Beta are not in any shared pool — each member is bounded by their own
+// allowances (Plus ≤ $30/month, paid for; Beta by how many coupons exist) —
+// so nothing a Free flood does can touch them. The Anthropic console's
+// monthly spend limit is the last backstop for everyone.
+export const FREE_AI_DAILY_CENTS = 2000;
 
 /**
- * Count one model request against the org-wide ceiling (and Free's pool for a
- * free account). Every Anthropic-billed request must pass through here —
- * guardAiSpend does, and routes that check-then-charge a per-user allowance
- * (week builds) call it directly, before the model runs.
+ * Spend one model request's cost from Free's daily pool. Paying and beta
+ * members pass straight through. Every Anthropic-billed request must go
+ * through here — guardAiSpend does, and routes that check-then-charge a
+ * per-user allowance (week builds) call it directly, before the model runs.
  */
-export async function guardGlobalAiSpend(tier: AiTier, limiter: Limiter = rateLimit): Promise<AiGuardResult> {
-  if (tier === "free") {
-    const pool = await limiter("ai-global-day-free", "ALL", FREE_AI_DAILY_MAX, DAY);
+export async function guardGlobalAiSpend(tier: AiTier, kind: AiGuardKind, limiter: Limiter = rateLimit): Promise<AiGuardResult> {
+  if (tier !== "free") return { ok: true, tier };
+  const cost = AI_COST_CENTS[kind];
+  if (cost > 0) {
+    const pool = await limiter("ai-free-pool", "ALL", FREE_AI_DAILY_CENTS, DAY, undefined, cost);
     if (!pool.success) {
       const error = "Clara is very busy today — please try again tomorrow, or upgrade to Plus to skip the queue.";
       return { ok: false, status: 429, error, body: { error } };
     }
-  }
-  const global = await limiter("ai-global-day", "ALL", GLOBAL_AI_DAILY_MAX, DAY);
-  if (!global.success) {
-    const error = "Clara is at capacity for today — please try again tomorrow.";
-    return { ok: false, status: 429, error, body: { error } };
   }
   return { ok: true, tier };
 }
@@ -328,7 +335,14 @@ export async function resolveAiTier(userId: string): Promise<AiTier> {
   return tierFor(account.subscriptions, isAdmin);
 }
 
-type Limiter = (name: string, identifier: string, limit: number, windowSec: number) => Promise<{ success: boolean }>;
+type Limiter = (
+  name: string,
+  identifier: string,
+  limit: number,
+  windowSec: number,
+  backendOverride?: undefined,
+  rate?: number
+) => Promise<{ success: boolean }>;
 
 /**
  * Gate an Anthropic-billed request. Call BEFORE the model request.
@@ -395,6 +409,6 @@ export async function guardAiSpend(
   const user = await limiter(`${AI_LIMITS[kind].bucket}-${t}`, userId, max, windowSec);
   if (!user.success) return refusal(userId, kind, t, lapsedLookup);
 
-  // 2. Global daily ceilings: Free's pool, then the whole org's.
-  return guardGlobalAiSpend(t, limiter);
+  // 2. Free's shared daily budget (Plus and Beta pass straight through).
+  return guardGlobalAiSpend(t, kind, limiter);
 }
