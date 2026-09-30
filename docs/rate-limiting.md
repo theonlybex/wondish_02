@@ -2,9 +2,10 @@
 
 `lib/rate-limit.ts` is the one limiter. Every Anthropic-billed route goes through
 `guardAiSpend()` in `lib/ai-budget.ts` before the model call (buckets `ai-*`: the
-per-user tier quota, then — unpaid accounts (Free and Beta) only — `FREE_AI_DAILY_CENTS`, a shared
-daily budget in cents charged by each request's measured cost `AI_COST_CENTS`,
-bucket `ai-free-pool`); burst buckets
+per-user tier quota, then — unpaid accounts only — their tier's shared daily
+budget in cents, charged by each request's measured cost `AI_COST_CENTS`: Free
+`FREE_AI_DAILY_CENTS` ($20, bucket `ai-free-pool`), Beta `BETA_AI_DAILY_CENTS`
+($40, bucket `ai-beta-pool`); paying members have no shared pool); burst buckets
 (`dish-checker`, `regenerate`, …) use `rateLimit()` directly. Both end up in the
 same function, which has two backends:
 

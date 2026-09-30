@@ -419,18 +419,26 @@ test("the Free pool is a daily budget in dollars: $20 of measured costs, then 'v
   assert.equal((await guardGlobalAiSpend("free", "claraChat", limiter)).ok, false);
 });
 
-test("only paying members skip the pool: Beta (unpaid) shares it with Free, Plus never touches it", async () => {
-  const { guardGlobalAiSpend } = await import("./ai-budget");
+test("Free and Beta have separate pools; paying members have none", async () => {
+  const { guardGlobalAiSpend, BETA_AI_DAILY_CENTS } = await import("./ai-budget");
+  assert.equal(BETA_AI_DAILY_CENTS, 4000);
   const { limiter, calls } = fakeLimiter();
+  // A Free flood spends Free's pool…
   await limiter("ai-free-pool", "ALL", FREE_AI_DAILY_CENTS, 86_400, undefined, FREE_AI_DAILY_CENTS);
-  // Plus: straight through, the pool isn't even consulted.
-  assert.equal((await guardGlobalAiSpend("premium", "planGen", limiter)).ok, true);
-  assert.equal((await guardAiSpend("u-plus", "claraChat", "premium", limiter)).ok, true);
-  assert.equal(calls.filter((c) => c.startsWith("ai-free-pool")).length, 1, "only the setup call touched the pool");
-  // Beta: refused once the shared budget is spent.
+  assert.equal((await guardGlobalAiSpend("free", "claraChat", limiter)).ok, false);
+  // …and Beta testers are untouched: their own pool.
+  assert.equal((await guardGlobalAiSpend("beta", "planGen", limiter)).ok, true);
+  assert.ok(calls.some((c) => c.startsWith("ai-beta-pool|ALL")));
+  // Beta's own pool runs out on its own budget.
+  await limiter("ai-beta-pool", "ALL", BETA_AI_DAILY_CENTS, 86_400, undefined, BETA_AI_DAILY_CENTS);
   const b = await guardGlobalAiSpend("beta", "claraChat", limiter);
   assert.equal(b.ok, false);
   if (!b.ok) assert.match(b.error, /very busy today/);
+  // Plus: straight through, no pool consulted at all.
+  const before = calls.length;
+  assert.equal((await guardGlobalAiSpend("premium", "planGen", limiter)).ok, true);
+  assert.equal((await guardAiSpend("u-plus", "claraChat", "premium", limiter)).ok, true);
+  assert.ok(!calls.slice(before).some((c) => /pool/.test(c)), "paying members never touch a pool");
 });
 
 test("every metered kind has a measured cost; the ones charged on delivery cost nothing extra", () => {

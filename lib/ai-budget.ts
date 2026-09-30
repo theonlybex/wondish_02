@@ -156,28 +156,39 @@ export const AI_COST_CENTS: Record<AiGuardKind, number> = {
   cookDayAttempt: 2,
 };
 
-// The daily AI budget for every account that doesn't pay — Free and Beta
-// together — in cents (owner, 2026-09-30: $20 a day). Free accounts cost
-// nothing to make, so a flood of throwaway sign-ups is bounded by this, not by
-// their number; Beta coupon holders don't pay either, so they share it. It is
-// a budget in money, not a request count: a week build costs ~10c and a Clara
-// message ~0.5c, so counting requests could not promise a dollar figure. Only
-// paying members (Plus, admins) are outside it — each is bounded by their own
-// allowances (≤ $30/month, paid for). The Anthropic console's monthly spend
-// limit is the last backstop for everyone.
+// Daily AI budgets for the accounts that don't pay, in cents, one pool per
+// tier (owner, 2026-09-30). A budget in money, not a request count: a week
+// build costs ~10c and a Clara message ~0.5c, so counting requests could not
+// promise a dollar figure. Only paying members (Plus, admins) are outside
+// both — each is bounded by their own allowances (≤ $30/month, paid for). The
+// Anthropic console's monthly spend limit is the last backstop for everyone.
+//
+// Free, $20/day: accounts cost nothing to make, so a flood of throwaway
+// sign-ups is bounded by this, not by their number.
 export const FREE_AI_DAILY_CENTS = 2000;
+// Beta, $40/day, its own pool so a Free flood can never lock testers out.
+// Sized for 50-200 testers: realistic use is ~10-20c per active tester a day
+// ($10-20/day at 200), and the worst case is ~56c each (every Beta allowance,
+// every day), so $40 also covers ~70 testers maxing out at once. It exists
+// against abuse (a leaked coupon), not to ration real testing.
+export const BETA_AI_DAILY_CENTS = 4000;
+const POOLS: Partial<Record<AiTier, { bucket: string; cents: number }>> = {
+  free: { bucket: "ai-free-pool", cents: FREE_AI_DAILY_CENTS },
+  beta: { bucket: "ai-beta-pool", cents: BETA_AI_DAILY_CENTS },
+};
 
 /**
- * Spend one model request's cost from the unpaid daily pool (Free and Beta).
- * Paying members pass straight through. Every Anthropic-billed request must go
+ * Spend one model request's cost from its tier's daily pool (Free and Beta
+ * each have their own). Paying members pass straight through. Every Anthropic-billed request must go
  * through here — guardAiSpend does, and routes that check-then-charge a
  * per-user allowance (week builds) call it directly, before the model runs.
  */
 export async function guardGlobalAiSpend(tier: AiTier, kind: AiGuardKind, limiter: Limiter = rateLimit): Promise<AiGuardResult> {
-  if (tier === "premium") return { ok: true, tier };
+  const p = POOLS[tier];
+  if (!p) return { ok: true, tier };
   const cost = AI_COST_CENTS[kind];
   if (cost > 0) {
-    const pool = await limiter("ai-free-pool", "ALL", FREE_AI_DAILY_CENTS, DAY, undefined, cost);
+    const pool = await limiter(p.bucket, "ALL", p.cents, DAY, undefined, cost);
     if (!pool.success) {
       const error = "Clara is very busy today — please try again tomorrow, or upgrade to Plus to skip the queue.";
       return { ok: false, status: 429, error, body: { error } };
@@ -409,6 +420,6 @@ export async function guardAiSpend(
   const user = await limiter(`${AI_LIMITS[kind].bucket}-${t}`, userId, max, windowSec);
   if (!user.success) return refusal(userId, kind, t, lapsedLookup);
 
-  // 2. The unpaid accounts' shared daily budget (Plus passes straight through).
+  // 2. The tier's shared daily budget (Free, Beta; Plus passes straight through).
   return guardGlobalAiSpend(t, kind, limiter);
 }
