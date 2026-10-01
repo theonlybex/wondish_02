@@ -177,7 +177,9 @@ export default async function OverviewPage() {
           ...(gridDays.length > 0
             ? {
                 gridTemplateColumns: "1fr 1fr 340px",
-                gridTemplateRows: "3fr 2fr",
+                // The Caloric Profile takes the height its content needs (it
+                // never scrolls); activity + journal share the rest.
+                gridTemplateRows: "auto minmax(232px, 1fr)",
                 gridTemplateAreas: `
                   "caloric caloric caloric"
                   "streak  streak  journal"

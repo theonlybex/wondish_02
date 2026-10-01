@@ -194,12 +194,16 @@ export default function CaloricProfileCard() {
 
       <div className="p-5 flex-1 overflow-auto">
 
-      {/* Top row: Calorie ring + This Week's Target hero */}
-      <div className="flex flex-wrap items-center gap-5 mb-4">
+      {/* Everything fits without scrolling (owner, 2026-10-01): on a wide card
+          the ring, the week's target and the journey chart share one row and
+          the six tiles share the next; on a narrower one the chart wraps under
+          the ring. The glossary is one line. */}
+      {/* Row 1: Calorie ring + This Week's Target hero + journey chart */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mb-3">
         {/* Calorie ring */}
         <div className="cp-a flex flex-col items-center" style={{ animationDelay: "60ms" }}>
           <div
-            className="relative w-[110px] h-[110px]"
+            className="relative w-[96px] h-[96px]"
             role="img"
             aria-label={`${rampTargetCalories != null ? "Today's target" : "Goal once the ramp settles"} ${headlineTarget} kilocalories${
               intake ? `, ${Math.round(eatenCalories)} eaten today` : ""
@@ -283,13 +287,16 @@ export default function CaloricProfileCard() {
 
         {/* This Week's Target — hero text */}
         <WeeklyTargetHero weeklyTarget={profile.weeklyTarget} cbmiClass={profile.cbmiClass} unit={weightUnit} />
+
+        {/* Momentum band — the whole journey to the target weight. Beside the
+            hero on a wide card, its own full-width line otherwise. */}
+        <div className="w-full lg:w-auto lg:flex-[1.3] lg:min-w-[220px] min-w-0">
+          <WeeklyTargetBand weeklyTarget={profile.weeklyTarget} targetKg={profile.tbwKg} unit={weightUnit} />
+        </div>
       </div>
 
-      {/* Full-width momentum band — the whole journey rising to the user's target weight */}
-      <WeeklyTargetBand weeklyTarget={profile.weeklyTarget} targetKg={profile.tbwKg} unit={weightUnit} />
-
-      {/* Metrics grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+      {/* Metrics: one row of six from lg up */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         <MetricTile
           label="Current Weight"
           value={showWeight(profile.cbwKg)}
@@ -329,15 +336,11 @@ export default function CaloricProfileCard() {
         />
       </div>
 
-      {/* Glossary */}
-      <div className="cp-a mt-3 pt-3 border-t border-[#F0F0F2] flex flex-col gap-1" style={{ animationDelay: "460ms" }}>
-        <p className="text-[10px] text-[#CCC6C6] leading-relaxed">
-          <span className="font-semibold text-[#848181]">BMR</span> — Basal Metabolic Rate: calories your body burns at complete rest to sustain basic functions.
-        </p>
-        <p className="text-[10px] text-[#CCC6C6] leading-relaxed">
-          <span className="font-semibold text-[#848181]">TDEE</span> — Total Daily Energy Expenditure: your BMR adjusted for activity level, representing total daily calorie burn.
-        </p>
-      </div>
+      {/* Glossary — one line */}
+      <p className="cp-a mt-2 text-[11px] text-[#ABA6A6] leading-snug" style={{ animationDelay: "460ms" }}>
+        <span className="font-semibold text-[#848181]">BMR</span> — calories your body burns at rest.{" "}
+        <span className="font-semibold text-[#848181]">TDEE</span> — your BMR plus daily activity: your total daily burn.
+      </p>
       </div>
     </div>
   );
@@ -360,14 +363,14 @@ function MetricTile({
 }) {
   return (
     <div
-      className="cp-a rounded-xl px-3 py-2.5 border"
+      className="cp-a rounded-xl px-3 py-2 border min-w-0"
       style={{
         animationDelay: delay,
         borderColor: accent ? "rgba(125,184,125,0.25)" : "#F0F0F2",
         background: accent ? "rgba(125,184,125,0.06)" : "#FAFAFA",
       }}
     >
-      <p className="text-[10px] uppercase tracking-wider text-[#848181] mb-0.5">{label}</p>
+      <p className="text-[10px] uppercase tracking-wide leading-tight text-[#848181] mb-0.5">{label}</p>
       <div className="flex items-baseline gap-1">
         <span
           className="text-lg font-bold"
@@ -452,12 +455,12 @@ function WeeklyTargetHero({
         </>
       ) : (
         <>
-          <div className="flex items-end gap-2.5">
+          <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1">
             <span className="text-5xl font-black text-[#812549] leading-none tabular-nums">
               {targetLbs.toFixed(1)}
             </span>
             <span className="text-base font-bold text-[#ABA6A6] mb-0.5">{unit}</span>
-            <span className="inline-flex items-center text-xs font-bold text-[#B75E78] bg-[#B75E78]/10 rounded-full px-2 py-0.5 mb-1">
+            <span className="inline-flex items-center whitespace-nowrap text-xs font-bold text-[#B75E78] bg-[#B75E78]/10 rounded-full px-2 py-0.5 mb-1">
               {/* "this week": the engine ramps, so 0.39/wk beside "week 1 of 21"
                   with a 10 lb gap read as 26 weeks of arithmetic (QA cycle 17).
                   The rate is this week's, and it says so. */}
@@ -579,7 +582,7 @@ function WeeklyTargetBand({ weeklyTarget, targetKg, unit }: { weeklyTarget?: Wee
   };
 
   return (
-    <div className="cp-a mb-4" style={{ animationDelay: "180ms" }}>
+    <div className="cp-a" style={{ animationDelay: "180ms" }}>
       <div
         ref={ref}
         className="w-full relative cursor-crosshair"
