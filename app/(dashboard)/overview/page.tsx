@@ -6,7 +6,9 @@ import Link from "next/link";
 import MealStreakGrid, { GridDay } from "@/components/MealStreakGrid";
 import CaloricProfileCard from "@/components/dashboard/CaloricProfileCard";
 import QuickJournalLog from "@/components/dashboard/QuickJournalLog";
-import DailyLogCard from "@/components/tracking/DailyLogCard";
+// Today's Log is parked (owner, 2026-10-01: "doesn't do much for us"). To bring
+// it back: restore this import, the card below, and the "log" grid areas.
+// import DailyLogCard from "@/components/tracking/DailyLogCard";
 import PendingInviteBanner from "@/components/restaurant/PendingInviteBanner";
 import { findClaimableInvites } from "@/lib/restaurant-pending-invites-server";
 
@@ -24,7 +26,7 @@ const OVERVIEW_CSS = `
     .ov-bento {
       grid-template-columns: 1fr !important;
       grid-template-rows: auto !important;
-      grid-template-areas: "caloric" "log" "streak" "journal" !important;
+      grid-template-areas: "caloric" "streak" "journal" !important;
     }
     .ov-bento > * { min-height: 0; }
   }
@@ -160,12 +162,13 @@ export default async function OverviewPage() {
       {/* ── Bento grid ───────────────────────────────────────────── */}
       {/*
           With streak data:
-            [ caloric ] [ caloric ] [   log   ]
+            [ caloric ] [ caloric ] [ caloric ]
             [ streak  ] [ streak  ] [ journal ]
 
           Without streak data:
-            [ caloric ] [   log   ]
             [ caloric ] [ journal ]
+
+          (Today's Log — the "log" area — is parked; see the import above.)
       */}
       <div
         className="ov ov-bento flex-1 min-h-0 grid gap-3"
@@ -176,15 +179,14 @@ export default async function OverviewPage() {
                 gridTemplateColumns: "1fr 1fr 340px",
                 gridTemplateRows: "3fr 2fr",
                 gridTemplateAreas: `
-                  "caloric caloric log"
+                  "caloric caloric caloric"
                   "streak  streak  journal"
                 `,
               }
             : {
                 gridTemplateColumns: "1fr 340px",
-                gridTemplateRows: "3fr 2fr",
+                gridTemplateRows: "1fr",
                 gridTemplateAreas: `
-                  "caloric log"
                   "caloric journal"
                 `,
               }),
@@ -223,13 +225,14 @@ export default async function OverviewPage() {
           </div>
         </div>
 
-        {/* Today's Log — intake tracking */}
+        {/* Today's Log — intake tracking (parked, see the import above)
         <div
           className="rounded-2xl overflow-hidden bg-white"
           style={{ gridArea: "log", boxShadow: "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)" }}
         >
           <DailyLogCard />
         </div>
+        */}
 
         {/* Caloric Profile */}
         <div
