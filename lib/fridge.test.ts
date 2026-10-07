@@ -188,7 +188,7 @@ function butterAllergyPatient(): PatientDietGraph {
 test("applyAllergenFilter: drops a recipe naming a banned term in its name", () => {
   const matchers = buildDietMatchers(derivePatientBans(peanutAllergyPatient()));
   const recipes = parseFridgeRecipes([validRecipeInput({ name: "Peanut Noodles" })], 3)!;
-  assert.deepEqual(applyAllergenFilter(recipes, matchers), []);
+  assert.deepEqual(applyAllergenFilter(recipes, matchers, () => []), []);
 });
 
 test("applyAllergenFilter: drops a recipe naming a banned term in usesIngredients/missingIngredients/steps", () => {
@@ -196,15 +196,15 @@ test("applyAllergenFilter: drops a recipe naming a banned term in usesIngredient
   const inUses = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["peanut oil"] })], 3)!;
   const inMissing = parseFridgeRecipes([validRecipeInput({ missingIngredients: ["peanuts"] })], 3)!;
   const inSteps = parseFridgeRecipes([validRecipeInput({ steps: ["Add crushed peanuts on top."] })], 3)!;
-  assert.deepEqual(applyAllergenFilter(inUses, matchers), []);
-  assert.deepEqual(applyAllergenFilter(inMissing, matchers), []);
-  assert.deepEqual(applyAllergenFilter(inSteps, matchers), []);
+  assert.deepEqual(applyAllergenFilter(inUses, matchers, () => []), []);
+  assert.deepEqual(applyAllergenFilter(inMissing, matchers, () => []), []);
+  assert.deepEqual(applyAllergenFilter(inSteps, matchers, () => []), []);
 });
 
 test("applyAllergenFilter: a clean recipe survives", () => {
   const matchers = buildDietMatchers(derivePatientBans(peanutAllergyPatient()));
   const recipes = parseFridgeRecipes([validRecipeInput({ name: "Chickpea Skillet" })], 3)!;
-  const out = applyAllergenFilter(recipes, matchers);
+  const out = applyAllergenFilter(recipes, matchers, () => []);
   assert.equal(out.length, 1);
 });
 
@@ -214,14 +214,14 @@ test("applyAllergenFilter: word-boundary — 'butter' must NOT ban 'butternut sq
     [validRecipeInput({ name: "Roasted Butternut Squash", usesIngredients: ["butternut squash"] })],
     3
   )!;
-  const out = applyAllergenFilter(recipes, matchers);
+  const out = applyAllergenFilter(recipes, matchers, () => []);
   assert.equal(out.length, 1);
 });
 
 test("applyAllergenFilter: 'butter' DOES ban a recipe actually using butter", () => {
   const matchers = buildDietMatchers(derivePatientBans(butterAllergyPatient()));
   const recipes = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["2 tbsp butter"] })], 3)!;
-  const out = applyAllergenFilter(recipes, matchers);
+  const out = applyAllergenFilter(recipes, matchers, () => []);
   assert.deepEqual(out, []);
 });
 
@@ -230,7 +230,7 @@ test("applyAllergenFilter: empty matchers -> passthrough", () => {
     foodAllergies: [], foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [],
   }));
   const recipes = parseFridgeRecipes([validRecipeInput()], 3)!;
-  assert.deepEqual(applyAllergenFilter(recipes, matchers), recipes);
+  assert.deepEqual(applyAllergenFilter(recipes, matchers, () => []), recipes);
 });
 
 test("applyAllergenFilter: all recipes dropped -> []", () => {
@@ -239,7 +239,7 @@ test("applyAllergenFilter: all recipes dropped -> []", () => {
     [validRecipeInput({ name: "Peanut A" }), validRecipeInput({ name: "Peanut B" })],
     3
   )!;
-  assert.deepEqual(applyAllergenFilter(recipes, matchers), []);
+  assert.deepEqual(applyAllergenFilter(recipes, matchers, () => []), []);
 });
 
 // ─── applyAllergenFilter: exactBanned phrase branch (foodToAvoid -> source "avoid") ───
@@ -278,8 +278,8 @@ test("applyAllergenFilter: exactBanned single-word phrase ('cilantro') drops a r
   const matchers = buildDietMatchers(derivePatientBans(cilantroAvoidPatient()));
   const withCilantro = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["fresh cilantro", "lime"] })], 3)!;
   const withoutCilantro = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["parsley", "lime"] })], 3)!;
-  assert.deepEqual(applyAllergenFilter(withCilantro, matchers), []);
-  const survivors = applyAllergenFilter(withoutCilantro, matchers);
+  assert.deepEqual(applyAllergenFilter(withCilantro, matchers, () => []), []);
+  const survivors = applyAllergenFilter(withoutCilantro, matchers, () => []);
   assert.equal(survivors.length, 1);
 });
 
@@ -290,9 +290,9 @@ test("applyAllergenFilter: exactBanned multi-word phrase ('red meat') matches on
   const withRedMeat = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["red meat", "onion"] })], 3)!;
   const withMeatOnly = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["stew meat", "onion"] })], 3)!;
   const withRedOnly = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["red peppers", "onion"] })], 3)!;
-  assert.deepEqual(applyAllergenFilter(withRedMeat, matchers), []);
-  assert.equal(applyAllergenFilter(withMeatOnly, matchers).length, 1);
-  assert.equal(applyAllergenFilter(withRedOnly, matchers).length, 1);
+  assert.deepEqual(applyAllergenFilter(withRedMeat, matchers, () => []), []);
+  assert.equal(applyAllergenFilter(withMeatOnly, matchers, () => []).length, 1);
+  assert.equal(applyAllergenFilter(withRedOnly, matchers, () => []).length, 1);
 });
 
 test("applyAllergenFilter: exactBanned entry with an empty/whitespace name is ignored (guard) and drops nothing", () => {
@@ -301,7 +301,7 @@ test("applyAllergenFilter: exactBanned entry with an empty/whitespace name is ig
     [validRecipeInput({ name: "Chickpea Skillet" }), validRecipeInput({ name: "Roasted Butternut Squash" })],
     3
   )!;
-  const out = applyAllergenFilter(recipes, matchers);
+  const out = applyAllergenFilter(recipes, matchers, () => []);
   assert.equal(out.length, recipes.length);
 });
 
@@ -353,7 +353,7 @@ test("audit-T2: exact ban with punctuation edges ('Nuts (tree)') blocks a matchi
   };
   const matchers = buildDietMatchers(derivePatientBans(patient));
   const recipes = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["nuts (tree) mix", "honey"] })], 3)!;
-  assert.deepEqual(applyAllergenFilter(recipes, matchers), []);
+  assert.deepEqual(applyAllergenFilter(recipes, matchers, () => []), []);
 });
 
 // ─── 2026-07-24 logic-audit Task 3: description/conflicts must be scanned ───
@@ -364,7 +364,7 @@ test("audit-T3: allergen mentioned only in description is caught by the filter",
     [validRecipeInput({ description: "Crispy tofu fried in peanut oil." })],
     3
   )!;
-  assert.deepEqual(applyAllergenFilter(recipes, matchers), []);
+  assert.deepEqual(applyAllergenFilter(recipes, matchers, () => []), []);
 });
 
 test("audit-T3: allergen mentioned only in conflicts is caught by the filter", () => {
@@ -373,7 +373,7 @@ test("audit-T3: allergen mentioned only in conflicts is caught by the filter", (
     [validRecipeInput({ conflicts: ["contains peanut sauce"] })],
     3
   )!;
-  assert.deepEqual(applyAllergenFilter(recipes, matchers), []);
+  assert.deepEqual(applyAllergenFilter(recipes, matchers, () => []), []);
 });
 
 test("validateFridgeRecipeSnapshot: parseOneRecipe exported — accepts well-formed recipe, rejects junk", () => {
@@ -406,21 +406,21 @@ test("applyAllergenFilter: a condition ban in the steps/description only does NO
     [validRecipeInput({ name: "Herb Chicken", usesIngredients: ["chicken breast", "olive oil"], description: "No salt needed.", steps: ["Season to taste with salt and pepper."] })],
     3
   )!;
-  assert.equal(applyAllergenFilter(recipes, matchers).length, 1);
+  assert.equal(applyAllergenFilter(recipes, matchers, () => []).length, 1);
 });
 
 test("applyAllergenFilter: a condition ban in usesIngredients or the name still rejects", () => {
   const matchers = buildDietMatchers(derivePatientBans(saltConditionPatient()));
   const inUses = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["chicken", "kosher salt"] })], 3)!;
   const inName = parseFridgeRecipes([validRecipeInput({ name: "Salt-Baked Fish" })], 3)!;
-  assert.deepEqual(applyAllergenFilter(inUses, matchers), []);
-  assert.deepEqual(applyAllergenFilter(inName, matchers), []);
+  assert.deepEqual(applyAllergenFilter(inUses, matchers, () => []), []);
+  assert.deepEqual(applyAllergenFilter(inName, matchers, () => []), []);
 });
 
 test("applyAllergenFilter: an ALLERGY in the steps alone still rejects (safety scan is unchanged)", () => {
   const matchers = buildDietMatchers(derivePatientBans(peanutAllergyPatient()));
   const inSteps = parseFridgeRecipes([validRecipeInput({ steps: ["Garnish with crushed peanuts."] })], 3)!;
-  assert.deepEqual(applyAllergenFilter(inSteps, matchers), []);
+  assert.deepEqual(applyAllergenFilter(inSteps, matchers, () => []), []);
 });
 
 // ─── amounts (per-serving quantities from the model) ─────────────────────────
@@ -430,4 +430,28 @@ test("validateFridgeRecipeSnapshot keeps well-formed amounts and drops junk rows
   const ok = validateFridgeRecipeSnapshot({ ...base, amounts: [{ name: "chicken breast", quantity: 6, unit: "oz" }, { name: "brown rice", quantity: "0.5", unit: "cup" }, { name: "", quantity: 1, unit: "" }, { name: "x", quantity: -2, unit: "g" }, { name: "y", quantity: "abc", unit: "g" }] });
   assert.deepEqual(ok?.amounts, [{ name: "chicken breast", quantity: 6, unit: "oz" }, { name: "brown rice", quantity: 0.5, unit: "cup" }]);
   assert.equal(validateFridgeRecipeSnapshot(base)?.amounts, undefined);
+});
+
+// ─── applyAllergenFilter: grain rule + component groups (sim, 2026-10-07) ───
+
+test("applyAllergenFilter: a Keto bread ban is not exempted by 'gluten-free' (the list is about carbs)", () => {
+  const keto: PatientDietGraph = {
+    foodAllergies: [], foodToAvoid: [], healthConditions: [], motivations: [],
+    foodPreferences: [{ food: { name: "Keto", bannedIngredients: [{ name: "bread" }] } }],
+  };
+  const matchers = buildDietMatchers(derivePatientBans(keto));
+  const recipes = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["gluten-free bread"] })], 3)!;
+  assert.deepEqual(applyAllergenFilter(recipes, matchers, () => []), []);
+});
+
+test("applyAllergenFilter: an ingredient whose catalog row carries a banned allergen group is dropped", () => {
+  const wheat: PatientDietGraph = {
+    foodAllergies: [{ food: { name: "Wheat", bannedIngredients: [] } }],
+    foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [],
+  };
+  const matchers = buildDietMatchers(derivePatientBans(wheat));
+  const recipes = parseFridgeRecipes([validRecipeInput({ usesIngredients: ["Rolled oats"] })], 3)!;
+  const groupsOf = (name: string) => (name.toLowerCase() === "rolled oats" ? ["BIG9-WHEAT"] : []);
+  assert.deepEqual(applyAllergenFilter(recipes, matchers, groupsOf), []);
+  assert.equal(applyAllergenFilter(recipes, matchers, () => []).length, 1);
 });

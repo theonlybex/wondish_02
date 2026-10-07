@@ -66,6 +66,20 @@ export interface DerivedBans {
   conditionGroupCodes?: string[];
   // Same, implied by enforced trigger trials (FODMAP_FRUCTANS → BIG9-WHEAT).
   trialGroupCodes?: string[];
+  // Same, implied by diets (PREFERENCE_GROUPS) and foods to avoid (AVOID_GROUPS).
+  preferenceGroupCodes?: string[];
+  avoidGroupCodes?: string[];
+}
+
+/** Every group code a derived ban set forbids, any source. */
+export function allGroupCodes(bans: DerivedBans): string[] {
+  return Array.from(new Set([
+    ...(bans.allergyGroupCodes ?? []),
+    ...(bans.conditionGroupCodes ?? []),
+    ...(bans.trialGroupCodes ?? []),
+    ...(bans.preferenceGroupCodes ?? []),
+    ...(bans.avoidGroupCodes ?? []),
+  ]));
 }
 
 // FoodAllergy.name → Wondish 03 "Baseline & Restriction Rules" allergen group
@@ -103,6 +117,23 @@ export const CONDITION_GROUPS: Record<string, string[]> = {
 export function conditionGroupCodesFor(conditionName: string): string[] {
   return CONDITION_GROUPS[conditionName.trim().toLowerCase()] ?? [];
 }
+
+// Diets and avoid-rules that exclude a Big-9 component by definition. Name
+// lists alone missed tagged products: "meatless beef strips" (egg) passed
+// every vegan check, and gluten-free crackers made with egg were offered to
+// vegans on What to buy (rule-compliance simulation, 2026-10-07). Only
+// definitional exclusions — Paleo/Keto ban foods for other reasons and stay
+// name-based.
+export const PREFERENCE_GROUPS: Record<string, string[]> = {
+  vegan: ["BIG9-COW-MILK", "BIG9-EGG", "BIG9-FISH", "BIG9-CRUSTACEAN"],
+  vegetarian: ["BIG9-FISH", "BIG9-CRUSTACEAN"],
+  "dairy-free": ["BIG9-COW-MILK"],
+  "gluten-free": ["BIG9-WHEAT"],
+};
+export const AVOID_GROUPS: Record<string, string[]> = {
+  shellfish: ["BIG9-CRUSTACEAN"],
+};
+const groupsFor = (table: Record<string, string[]>, name: string | undefined) => (name ? table[name.trim().toLowerCase()] ?? [] : []);
 
 // Allergy matchers are RegExp instances carrying the original (lowercased,
 // singular-stemmed) term alongside, so evaluateDishAgainstProfile can report
@@ -144,7 +175,11 @@ export function derivePatientBans(patient: PatientDietGraph, today: Date = new D
 
   // A list that bans gluten or wheat is about gluten: its grain terms may be
   // exempted by a "gluten-free" marker (see ExactBan.grainExempt).
-  const aboutGluten = (list: readonly { name: string }[]) => list.some((b) => /^(gluten|wheat)$/i.test(b.name.trim()));
+  // A list that also bans the naturally gluten-free grains (rice, corn) is
+  // grain-free, not gluten-free: Paleo bans wheat AND rice, so a gluten-free
+  // loaf is still bread to it (rule-compliance simulation, 2026-10-07).
+  const aboutGluten = (list: readonly { name: string }[]) =>
+    list.some((b) => /^(gluten|wheat)$/i.test(b.name.trim())) && !list.some((b) => /^(rice|white rice|corn)$/i.test(b.name.trim()));
   const exactBanned: ExactBan[] = [
     // foodToAvoid: own name AND its bannedIngredients children ("Red meat" →
     // beef, lamb, veal…). The children were added 2026-09-11; before that a
@@ -186,7 +221,10 @@ export function derivePatientBans(patient: PatientDietGraph, today: Date = new D
     for (const g of groups ?? []) if (!trialGroupCodes.includes(g)) trialGroupCodes.push(g);
   }
 
-  return { allergyNames, exactBanned, allergyGroupCodes, conditionGroupCodes, trialGroupCodes };
+  const preferenceGroupCodes = Array.from(new Set(patient.foodPreferences.flatMap((fp) => groupsFor(PREFERENCE_GROUPS, fp.food.name))));
+  const avoidGroupCodes = Array.from(new Set(patient.foodToAvoid.flatMap((f) => groupsFor(AVOID_GROUPS, f.food.name))));
+
+  return { allergyNames, exactBanned, allergyGroupCodes, conditionGroupCodes, trialGroupCodes, preferenceGroupCodes, avoidGroupCodes };
 }
 
 // ── buildDietMatchers ───────────────────────────────────────────────────────
@@ -320,7 +358,15 @@ export const exactBanPattern = (name: string, opts: { grainExempt?: boolean } = 
   );
 };
 
-export function buildDietMatchers({ allergyNames, exactBanned, allergyGroupCodes = [], conditionGroupCodes = [], trialGroupCodes = [] }: DerivedBans): DietMatchers {
+export function buildDietMatchers({
+  allergyNames,
+  exactBanned,
+  allergyGroupCodes = [],
+  conditionGroupCodes = [],
+  trialGroupCodes = [],
+  preferenceGroupCodes = [],
+  avoidGroupCodes = [],
+}: DerivedBans): DietMatchers {
   const allergyMatchers = Array.from(new Set(allergyNames.flatMap(expandBanName)))
     .map((lowered) => ({ lowered, stem: singularize(lowered) }))
     .filter(({ stem }) => stem.length >= 2)
@@ -349,6 +395,9 @@ export function buildDietMatchers({ allergyNames, exactBanned, allergyGroupCodes
   const dedupedExactBanned = Array.from(deduped.values());
 
   const groupSources = new Map<string, BanSource>();
+  // Later wins: the most specific source names the violation.
+  for (const g of preferenceGroupCodes) groupSources.set(g, "preference");
+  for (const g of avoidGroupCodes) groupSources.set(g, "avoid");
   for (const g of trialGroupCodes) groupSources.set(g, "trial");
   for (const g of conditionGroupCodes) groupSources.set(g, "condition");
   for (const g of allergyGroupCodes) groupSources.set(g, "allergy");
@@ -378,7 +427,7 @@ const GROUP_PROMPT_WORDS: Record<string, string> = {
 
 /** Every banned name for a model prompt: name bans, then each banned group's allergen word (deduped, case-insensitive). */
 export function bannedNamesForPrompt(bans: DerivedBans): string[] {
-  const groups = [...(bans.allergyGroupCodes ?? []), ...(bans.conditionGroupCodes ?? []), ...(bans.trialGroupCodes ?? [])];
+  const groups = allGroupCodes(bans);
   const all = [...bans.allergyNames, ...bans.exactBanned.map((b) => b.name), ...groups.map((g) => GROUP_PROMPT_WORDS[g] ?? "").filter(Boolean)];
   const seen = new Set<string>();
   return all.filter((n) => {

@@ -13,6 +13,7 @@
 import {
   derivePatientBans,
   buildDietMatchers,
+  allGroupCodes,
   enforcedTrials,
   evaluateDishAgainstProfile,
   type DietMatchers,
@@ -53,7 +54,7 @@ export function ingredientBanCheck(patient: PatientDietGraph, today: Date = new 
   const parts: { rule: BanRule; graph: PatientDietGraph }[] = [];
   const add = (kind: BanKind, label: string | undefined, terms: string[], graph: PatientDietGraph) => {
     const bans = derivePatientBans(graph, today);
-    const groups = [...(bans.allergyGroupCodes ?? []), ...(bans.conditionGroupCodes ?? []), ...(bans.trialGroupCodes ?? [])];
+    const groups = allGroupCodes(bans);
     const rule = { kind, label: label?.trim() || "Your profile", terms: uniq(terms), groups };
     if (rule.terms.length > 0 || rule.groups.length > 0) parts.push({ rule, graph });
   };

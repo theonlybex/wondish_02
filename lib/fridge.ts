@@ -228,14 +228,26 @@ function recipeSearchText(recipe: FridgeRecipe): string {
     .toLowerCase();
 }
 
-export function applyAllergenFilter(recipes: FridgeRecipe[], matchers: DietMatchers): FridgeRecipe[] {
+// `groupsOf` resolves an ingredient name to the Big-9 groups of the catalog row
+// it would be stored as (loadIngredientGroups). Required, so no AI route can
+// forget it: free text never carries groups, and without the lookup a Clara
+// dish of "Orzo pasta" passed a Celiac diner and mayonnaise passed a soy
+// allergy (rule-compliance simulation, 2026-10-07).
+export function applyAllergenFilter(
+  recipes: FridgeRecipe[],
+  matchers: DietMatchers,
+  groupsOf: (ingredientName: string) => readonly string[]
+): FridgeRecipe[] {
   // Guard against a malformed DB row with an empty/whitespace name: an empty
   // pattern (`\b\b`) matches everywhere, silently dropping every recipe
   // (fails safe, but breaks the feature). Mirrors the same length guard
   // lib/food-map.ts's collectBannedTerms already applies to banned terms.
+  // grainExempt is the list's own: a Keto "bread" ban is about carbs, so a
+  // gluten-free loaf is still bread (the engine already knew; this did not).
   const exactPatterns = matchers.exactBanned
     .filter((b) => b.name.trim().length > 0)
-    .map((b) => exactBanPattern(b.name));
+    .map((b) => exactBanPattern(b.name, { grainExempt: b.grainExempt }));
+  const bannedGroups = matchers.bannedGroups ?? new Set<string>();
 
   return recipes.filter((recipe) => {
     // Allergies are safety-critical: every model-authored field is scanned.
@@ -248,6 +260,12 @@ export function applyAllergenFilter(recipes: FridgeRecipe[], matchers: DietMatch
     // 28/28 generated dishes for a Hypertension profile (2026-09-11).
     const composition = recipeCompositionText(recipe);
     if (exactPatterns.some((re) => re.test(composition))) return false;
+    // Component groups of the catalog rows the ingredients resolve to.
+    if (bannedGroups.size > 0) {
+      for (const ing of [...recipe.usesIngredients, ...recipe.missingIngredients]) {
+        if (groupsOf(ing).some((g) => bannedGroups.has(g))) return false;
+      }
+    }
     return true;
   });
 }

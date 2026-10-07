@@ -719,3 +719,34 @@ test("no caller builds matchers from a partial ban set", () => {
   walk("lib");
   assert.deepEqual(offenders, []);
 });
+
+test("diets and avoids imply component groups: a vegan never gets an egg-tagged ingredient", () => {
+  const graph = (prefs: string[], avoids: string[] = []): PatientDietGraph => ({
+    ...emptyPatient(),
+    foodPreferences: prefs.map((name) => ({ food: { name, bannedIngredients: [] } })),
+    foodToAvoid: avoids.map((name) => ({ food: { name, bannedIngredients: [] } })),
+  });
+  const groups = (g: PatientDietGraph) => [...buildDietMatchers(derivePatientBans(g)).bannedGroups].sort();
+  assert.deepEqual(groups(graph(["Vegan"])), ["BIG9-COW-MILK", "BIG9-CRUSTACEAN", "BIG9-EGG", "BIG9-FISH"]);
+  assert.deepEqual(groups(graph(["Vegetarian"])), ["BIG9-CRUSTACEAN", "BIG9-FISH"]);
+  assert.deepEqual(groups(graph(["Dairy-free"])), ["BIG9-COW-MILK"]);
+  assert.deepEqual(groups(graph(["Gluten-free"])), ["BIG9-WHEAT"]);
+  assert.deepEqual(groups(graph(["Pescatarian", "Keto"])), []);
+  assert.deepEqual(groups(graph([], ["Shellfish"])), ["BIG9-CRUSTACEAN"]);
+  const vegan = buildDietMatchers(derivePatientBans(graph(["Vegan"])));
+  const r = evaluateDishAgainstProfile(["meatless beef strips"], vegan, [["BIG9-EGG", "BIG9-SOY"]]);
+  assert.deepEqual(r.violations, [{ ingredient: "meatless beef strips", term: "BIG9-EGG", source: "preference" }]);
+});
+
+test("a grain-free list (Paleo bans wheat AND rice/corn) does not exempt gluten-free bread; a gluten list does", () => {
+  const pref = (name: string, bans: string[]): PatientDietGraph => ({
+    ...emptyPatient(),
+    foodPreferences: [{ food: { name, bannedIngredients: bans.map((n) => ({ name: n })) } }],
+  });
+  const passes = (g: PatientDietGraph, item: string) => evaluateDishAgainstProfile([item], buildDietMatchers(derivePatientBans(g))).passed;
+  const paleo = pref("Paleo", ["wheat", "rice", "corn", "bread", "crackers"]);
+  assert.equal(passes(paleo, "gluten-free bread"), false);
+  assert.equal(passes(paleo, "Potato & tapioca gluten-free crackers"), false);
+  const glutenFree = pref("Gluten-free", ["wheat", "gluten", "bread", "crackers"]);
+  assert.equal(passes(glutenFree, "gluten-free bread"), true);
+});

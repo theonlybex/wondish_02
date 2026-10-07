@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anthropic";
 import { prisma } from "@/lib/db";
+import { loadIngredientGroups } from "@/lib/ingredient-catalog-db";
 import {
   derivePatientBans,
   buildDietMatchers,
@@ -261,7 +262,8 @@ export async function POST(req: Request) {
     // Why each dish was turned away, so a "couldn't build a safe day" in
     // production can be explained from the log alone (the final bot saw two
     // in five runs for a vegan + hypertension + kidney profile, unexplained).
-    const allowed = applyAllergenFilter(recipes, matchers);
+    const groupsOf = await loadIngredientGroups(recipes.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
+    const allowed = applyAllergenFilter(recipes, matchers, groupsOf);
     const why: Record<string, number> = { generated: recipes.length, allergen: recipes.length - allowed.length };
     const note = (k: string) => { why[k] = (why[k] ?? 0) + 1; };
     for (const r of allowed) {

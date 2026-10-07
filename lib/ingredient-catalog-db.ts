@@ -34,3 +34,21 @@ export async function resolveCatalogIngredientIds(names: string[] = catalogItemN
   }
   return idByName;
 }
+
+/**
+ * Big-9 groups for free-text ingredient names (a Clara dish's lists), looked
+ * up the way persistence links them: case-insensitive exact name. One query.
+ * Unknown names have no groups — name matching still applies to them.
+ */
+export async function loadIngredientGroups(names: readonly string[]): Promise<(ingredientName: string) => readonly string[]> {
+  const lower = (s: string) => s.trim().toLowerCase();
+  const wanted = Array.from(new Set(names.map((n) => n.trim()).filter(Boolean)));
+  if (wanted.length === 0) return () => [];
+  const rows = await prisma.ingredient.findMany({
+    where: { name: { in: wanted, mode: "insensitive" } },
+    select: { name: true, allergenGroups: true },
+  });
+  const byName = new Map<string, string[]>();
+  for (const r of rows) byName.set(lower(r.name), [...(byName.get(lower(r.name)) ?? []), ...r.allergenGroups]);
+  return (n) => byName.get(lower(n)) ?? [];
+}
