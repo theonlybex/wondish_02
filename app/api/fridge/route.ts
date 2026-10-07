@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { loadIngredientGroups } from "@/lib/ingredient-catalog-db";
+import { specifyCookingOil } from "@/lib/clara/oil";
 import { rateLimit } from "@/lib/rate-limit";
 import { accountHasActivePremium, getOrCreateAccount } from "@/lib/auth";
 import { guardAiSpend } from "@/lib/ai-budget";
@@ -140,7 +141,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Clara couldn't read that. Try again." }, { status: 502 });
   }
 
-  const groupsOf = await loadIngredientGroups(parsed.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
-  const recipes = applyAllergenFilter(parsed, matchers, groupsOf); // F-D7 hard drop
+  // Fridge dishes are shown, not stored, so they miss repairForStorage: name the oil here.
+  const named = parsed.map(specifyCookingOil);
+  const groupsOf = await loadIngredientGroups(named.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
+  const recipes = applyAllergenFilter(named, matchers, groupsOf); // F-D7 hard drop
   return NextResponse.json(imageUsed === undefined ? { recipes } : { recipes, imageUsed });
 }

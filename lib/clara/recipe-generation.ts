@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createAnthropic } from "@/lib/anthropic";
 import { prisma } from "@/lib/db";
 import { loadIngredientGroups } from "@/lib/ingredient-catalog-db";
+import { specifyCookingOil } from "@/lib/clara/oil";
 import {
   validateFridgeRecipeSnapshot,
   applyAllergenFilter,
@@ -124,7 +125,7 @@ interface TopUpArgs {
 // well say so. Profile bans still remove any of them (freeStaplesFor).
 const FREE_STAPLES = [
   "salt", "pepper", "water",
-  "olive oil", "cooking oil", "butter",
+  "olive oil", "avocado oil", "butter",
   "garlic powder", "onion powder", "paprika", "cumin", "oregano", "thyme", "cinnamon",
 ] as const;
 export function freeStaplesFor(matchers: DietMatchers): string[] {
@@ -197,6 +198,7 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     perType,
     `Rules:`,
     `- Everyday dishes with common, individually named ingredients (e.g. "chicken breast", "brown rice", "olive oil") — no compound items, no brand names.`,
+    `- Name the oil you cook with (e.g. "olive oil", "avocado oil", "toasted sesame oil") in the ingredients and the steps — never "cooking oil", "oil" or "cooking spray": the shopping list has to say which bottle to buy.`,
     `- Name each dish by what is IN it, like a menu would ("Apple Slices with Olive Oil Drizzle"). Never name a dish by what it lacks — no "X-Free", "No-X" or "-less" in names.`,
     `- prepMinutes and cookMinutes: realistic whole minutes for a home cook (prep = washing/chopping/mixing, cook = time on heat; 0 for no-cook dishes).`,
     `- Each dish is a COMPLETE MEAL for its slot (protein + carb + veg where sensible), close to the stated per-serving calorie target.`,
@@ -753,7 +755,7 @@ export function repairForStorage(recipe: FridgeRecipe): FridgeRecipe {
     const fixed = typeof a.quantity === "number" ? repairAmount(a.quantity, a.unit, a.name) : null;
     return fixed ? { ...a, quantity: fixed.quantity, unit: fixed.unit ?? "" } : a;
   });
-  return { ...withReadableProse(recipe), ...(amounts ? { amounts } : {}) };
+  return specifyCookingOil({ ...withReadableProse(recipe), ...(amounts ? { amounts } : {}) });
 }
 
 /**

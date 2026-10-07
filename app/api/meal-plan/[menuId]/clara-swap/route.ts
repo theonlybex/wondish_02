@@ -255,6 +255,7 @@ export async function POST(
     // into "best of two" — four would be better and does not fit the budget.
     `You are Clara, Wondish's nutrition assistant. Suggest TWO different ${cuisine ? cuisine + " " : ""}${mealTypeName.toLowerCase()} dishes to replace one the user didn't want. Vary the protein and the method between them; the app picks whichever fits the rest of the day.`,
     `Rules:`,
+    `- Name the oil you cook with (e.g. "olive oil", "avocado oil", "toasted sesame oil") in the ingredients and the steps — never "cooking oil", "oil" or "cooking spray": the shopping list has to say which bottle to buy.`,
     `- mealType must be exactly "${mealTypeName}".`,
     `- Target ≈${targetCalories} kcal per serving (within ±20%).`,
     // macro.* are FRACTIONS (0.30). This printed Math.round(0.30) — "~0%

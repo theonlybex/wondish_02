@@ -205,6 +205,7 @@ export async function POST(req: Request) {
       ),
       `The four dishes together must land within ±10% of ${dailyCalories} kcal total.`,
       `Rules:`,
+      `- Name the oil you cook with (e.g. "olive oil", "avocado oil", "toasted sesame oil") in the ingredients and the steps — never "cooking oil", "oil" or "cooking spray": the shopping list has to say which bottle to buy.`,
       `- usesIngredients may ONLY contain items from the on-hand list (plus the free staples), named exactly as given.`,
       `- List EVERY ingredient in usesIngredients; leave missingIngredients empty.`,
       `- perServing macros must be realistic and self-consistent (protein/carbs/fat roughly explain the calories).`,
