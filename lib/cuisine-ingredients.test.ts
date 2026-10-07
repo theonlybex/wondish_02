@@ -80,3 +80,11 @@ test("a variety counts, a different food that merely contains the word does not"
   assert.equal(ownsStaple("chicken", ["chicken stock"]), false);
   assert.equal(ownsStaple("chicken", ["chicken seasoning"]), false);
 });
+
+test("banned staples are dropped from the checklist and its total", () => {
+  const lists = buildCuisineChecklists([], new Set(["chicken", "beef", "fish sauce"]));
+  const american = lists.find((c) => c.cuisine === "American")!;
+  assert.equal(american.total, 6);
+  assert.ok(!american.staples.some((s) => s.name === "chicken" || s.name === "beef"));
+  assert.ok(!lists.find((c) => c.cuisine === "Thai")!.staples.some((s) => s.name === "fish sauce"));
+});

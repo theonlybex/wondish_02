@@ -8,6 +8,7 @@ import { basketBlockerText, computeBasketReadiness } from "@/lib/basket-readines
 import QuotaError from "@/components/ui/QuotaError";
 import { quotaCta, type QuotaCta } from "@/lib/quota-cta";
 import { buildCuisineChecklists } from "@/lib/cuisine-ingredients";
+import type { BanRule } from "@/lib/ingredient-bans";
 import { displayDishName, formatAmount } from "@/lib/dish-name";
 // Old "What to buy" design (reused the standalone GroceryListView). Replaced
 // (2026-09-07) by the inline shopping list below, which ticks bought items
@@ -117,13 +118,21 @@ export default function PantryClient({
   const [cuisineIds, setCuisineIds] = useState<Record<string, string> | null>(null);
   const [openCuisine, setOpenCuisine] = useState<string | null>(null);
   // Full catalog grouped by category (shared by both tabs' category sections).
-  const [catalog, setCatalog] = useState<{ key: string; title: string; items: { id: string; name: string; favorite: boolean }[] }[] | null>(null);
+  // `bannedBy` names the profile rules that ban an item; What to buy hides those.
+  const [catalog, setCatalog] = useState<{ key: string; title: string; items: { id: string; name: string; favorite: boolean; bannedBy?: string[] }[] }[] | null>(null);
   const [openCat, setOpenCat] = useState<string | null>(null);
+  // The profile rules behind those hidden items, for the "Banned ingredients" panel.
+  const [bans, setBans] = useState<{ rules: BanRule[]; cuisineStaples: Record<string, string[]> } | null>(null);
+  const [showBans, setShowBans] = useState(false);
   const loadCatalog = async () => {
     if (catalog) return;
     try {
       const res = await apiFetch("/api/pantry/catalog");
-      if (res.ok) setCatalog((await res.json()).categories ?? []);
+      if (res.ok) {
+        const data = await res.json();
+        setCatalog(data.categories ?? []);
+        setBans(data.bans ?? null);
+      }
     } catch {
       /* leave null */
     }
@@ -405,7 +414,12 @@ export default function PantryClient({
   if (view === "buy") {
     // Names, not lowercased keys: the checklist tokenises them itself now, and
     // the exact-string compare it replaces is why every cuisine read 0/8.
-    const checklists = buildCuisineChecklists(Array.from(selected.values()));
+    // Never offer what the profile bans: banned staples leave the cuisine
+    // checklists, banned catalog items leave the category sections.
+    const checklists = buildCuisineChecklists(Array.from(selected.values()), new Set(Object.keys(bans?.cuisineStaples ?? {})));
+    const buyCatalog = (catalog ?? [])
+      .map((cat) => ({ ...cat, items: cat.items.filter((it) => !it.bannedBy) }))
+      .filter((cat) => cat.items.length > 0);
     const neededById = new Map((groceryItems ?? []).flatMap((i) => (i.needed ? [[i.ingredientId, i.needed] as const] : [])));
     return (
       <div>
@@ -415,7 +429,7 @@ export default function PantryClient({
             {syncError}
           </div>
         )}
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="inline-flex p-0.5 rounded-full border" style={{ borderColor: "#EAE4CA", background: "#F5F1DD" }}>
             {(["category", "value", "cuisine"] as const).map((m) => (
               <button
@@ -431,10 +445,35 @@ export default function PantryClient({
               </button>
             ))}
           </div>
-          <a href="/taste?edit=1" className="inline-flex items-center [@media(pointer:coarse)]:min-h-11 text-xs font-semibold shrink-0 hover:underline" style={{ color: "#812549" }}>
-            Edit favorites →
-          </a>
+          <div className="flex items-center gap-3 shrink-0">
+            {bans && (
+              <button
+                type="button"
+                onClick={() => setShowBans((v) => !v)}
+                aria-expanded={showBans}
+                aria-controls="banned-ingredients"
+                className="inline-flex items-center gap-1.5 [@media(pointer:coarse)]:min-h-11 px-2.5 py-1 rounded-full border text-xs font-semibold transition-colors hover:bg-[#F5F1DD]"
+                style={{ borderColor: "#EAE4CA", color: showBans ? "#812549" : "#6B6767", background: showBans ? "#F5F1DD" : "transparent" }}
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M3.6 12.4l8.8-8.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                Banned ingredients
+                {bans.rules.length > 0 && (
+                  <span className="tabular-nums text-[10px] font-bold px-1.5 rounded-full" style={{ background: "#EAE4CA", color: "#6B6767" }}>
+                    {bannedCount(bans)}
+                  </span>
+                )}
+              </button>
+            )}
+            <a href="/taste?edit=1" className="inline-flex items-center [@media(pointer:coarse)]:min-h-11 text-xs font-semibold hover:underline" style={{ color: "#812549" }}>
+              Edit favorites →
+            </a>
+          </div>
         </div>
+
+        {showBans && bans && <BannedPanel rules={bans.rules} hidden={(catalog ?? []).flatMap((c) => c.items.filter((it) => it.bannedBy))} />}
 
         {buyMode === "category" ? (
           catalog === null ? (
@@ -444,7 +483,7 @@ export default function PantryClient({
               <p className="text-xs mb-1" style={{ color: "#848181" }}>
                 Tap what you need — it&apos;s added to your ingredients. Favorites (★) are on top; things you have drop to the bottom.
               </p>
-              {catalog.map((cat) => {
+              {buyCatalog.map((cat) => {
                 const open = openCat === cat.key;
                 const owned = cat.items.filter((it) => selected.has(it.id)).length;
                 const sorted = [...cat.items].sort(
@@ -1037,5 +1076,129 @@ export default function PantryClient({
         </p>
       </div>
     </div>
+  );
+}
+
+// ── Banned ingredients ──────────────────────────────────────────────────────
+// Out of the way behind a button on What to buy: what the profile bans, rule
+// by rule, so a missing item is explained rather than silently absent.
+
+const BAN_KIND_LABEL: Record<BanRule["kind"], string> = {
+  allergy: "Allergy",
+  avoid: "Avoiding",
+  condition: "Health condition",
+  diet: "Diet",
+  goal: "Goal",
+  trial: "Trigger trial",
+};
+
+// Wondish 03 Big-9 component groups, said the way a person would.
+const BAN_GROUP_LABEL: Record<string, string> = {
+  "BIG9-COW-MILK": "anything made with milk",
+  "BIG9-CRUSTACEAN": "anything with shellfish",
+  "BIG9-EGG": "anything made with egg",
+  "BIG9-FISH": "anything with fish",
+  "BIG9-PEANUT": "anything with peanut",
+  "BIG9-SESAME": "anything with sesame",
+  "BIG9-SOY": "anything made with soy",
+  "BIG9-TREE-NUT": "anything with tree nuts",
+  "BIG9-WHEAT": "anything made with wheat",
+};
+
+function ruleEntries(rule: BanRule): string[] {
+  return [...rule.groups.map((g) => BAN_GROUP_LABEL[g] ?? g), ...rule.terms];
+}
+
+function bannedCount(bans: { rules: BanRule[] }): number {
+  return new Set(bans.rules.flatMap((r) => ruleEntries(r).map((t) => t.toLowerCase()))).size;
+}
+
+const RULE_PREVIEW = 18;
+
+function BannedPanel({ rules, hidden }: { rules: BanRule[]; hidden: { id: string; name: string; bannedBy?: string[] }[] }) {
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  return (
+    <section
+      id="banned-ingredients"
+      aria-label="Banned ingredients"
+      className="mb-4 rounded-2xl border p-4"
+      style={{ borderColor: "#EAE4CA", background: "#FBFAF5" }}
+    >
+      {rules.length === 0 ? (
+        <p className="text-sm" style={{ color: "#6B6767" }}>
+          Nothing is banned. Your profile has no allergies, diets or foods to avoid.{" "}
+          <a href="/profile" className="font-semibold hover:underline" style={{ color: "#812549" }}>Edit profile →</a>
+        </p>
+      ) : (
+        <>
+          <p className="text-xs mb-3" style={{ color: "#6B6767" }}>
+            These never appear in your shopping list, because of your profile.{" "}
+            <a href="/profile" className="font-semibold hover:underline whitespace-nowrap" style={{ color: "#812549" }}>Change in profile →</a>
+          </p>
+
+          {hidden.length > 0 && (
+            <div className="mb-4">
+              <h3 className="text-[11px] font-bold uppercase tracking-wide mb-1.5" style={{ color: "#848181" }}>
+                Hidden from your list
+              </h3>
+              <ul className="flex flex-wrap gap-1.5">
+                {hidden.map((it) => (
+                  <li
+                    key={it.id}
+                    className="text-xs px-2 py-1 rounded-full bg-white border"
+                    style={{ borderColor: "#EAE4CA", color: "#1E1A1A" }}
+                    title={`Banned by ${it.bannedBy?.join(", ")}`}
+                  >
+                    {it.name}
+                    <span className="sr-only">, banned by {it.bannedBy?.join(", ")}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {rules.map((rule, i) => {
+              const entries = ruleEntries(rule);
+              const open = expanded.has(i);
+              const shown = open ? entries : entries.slice(0, RULE_PREVIEW);
+              return (
+                <div key={`${rule.kind}:${rule.label}`}>
+                  <h3 className="flex items-baseline gap-2 mb-1.5">
+                    <span className="text-sm font-bold text-[#1E1A1A]">{rule.label}</span>
+                    <span className="text-[10px] uppercase tracking-wide" style={{ color: "#848181" }}>{BAN_KIND_LABEL[rule.kind]}</span>
+                  </h3>
+                  <ul className="flex flex-wrap gap-1.5">
+                    {shown.map((t) => (
+                      <li key={t} className="text-xs px-2 py-1 rounded-full" style={{ background: "#F5F1DD", color: "#6B6767" }}>
+                        {t}
+                      </li>
+                    ))}
+                  </ul>
+                  {entries.length > RULE_PREVIEW && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpanded((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(i)) next.delete(i);
+                          else next.add(i);
+                          return next;
+                        })
+                      }
+                      aria-expanded={open}
+                      className="mt-1.5 inline-flex items-center [@media(pointer:coarse)]:min-h-11 text-xs font-semibold hover:underline"
+                      style={{ color: "#812549" }}
+                    >
+                      {open ? "Show fewer" : `Show all ${entries.length}`}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </section>
   );
 }

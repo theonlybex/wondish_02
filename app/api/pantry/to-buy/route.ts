@@ -10,6 +10,7 @@ import {
   PATIENT_DIET_INCLUDE,
 } from "@/lib/diet-match";
 import { rankToBuy } from "@/lib/to-buy";
+import { ingredientBanCheck } from "@/lib/ingredient-bans";
 import { aggregateNeeds, toBase, formatPurchase } from "@/lib/grocery-quantities";
 
 // Smart stocking list: ingredients to buy to unlock the most dishes — favorites
@@ -27,9 +28,11 @@ export async function GET() {
   });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
-  const { allergyNames, exactBanned } = derivePatientBans(patient);
-  const matchers = buildDietMatchers({ allergyNames, exactBanned });
-  const hasBans = matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
+  // The whole derived ban set, Big-9 group codes included: passing only
+  // { allergyNames, exactBanned } dropped them, so a milk allergy's
+  // component-tagged cheeses were never checked here.
+  const matchers = buildDietMatchers(derivePatientBans(patient));
+  const hasBans = matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0 || matchers.bannedGroups.size > 0;
 
   const [recipesRaw, pantry, prefs] = await Promise.all([
     prisma.recipe.findMany({
@@ -48,20 +51,27 @@ export async function GET() {
     : recipesRaw
   ).map((r) => ({ ingredients: r.ingredients.map((ri) => ({ ingredientId: ri.ingredientId, name: ri.ingredient.name })) }));
 
+  // Every ingredient of a passing dish is allowed by construction; the
+  // per-ingredient pass is the guarantee that nothing banned is offered even
+  // if dish and ingredient checks ever drift apart.
+  const groupsById = new Map(recipesRaw.flatMap((r) => r.ingredients.map((ri) => [ri.ingredientId, ri.ingredient.allergenGroups] as const)));
+  const check = ingredientBanCheck(patient);
   const ranked = rankToBuy({
     recipes,
     pantry: new Set(pantry.map((p) => p.ingredientId)),
     liked: new Set(prefs.map((p) => p.ingredientId)),
     cap: 50,
   });
+  const reasons = check.reasonsForMany(ranked.map((i) => ({ name: i.name, allergenGroups: groupsById.get(i.ingredientId) ?? [] })));
+  const allowed = ranked.filter((_, i) => reasons[i].length === 0);
 
   // Best-effort purchase amounts for this week's plan (Wondish 06). Never
   // fails the list: any error just leaves `needed` off.
-  const needed = await weeklyNeeds(patient.id, patient.activePlanVersion, ranked.map((i) => i.ingredientId)).catch((e) => {
+  const needed = await weeklyNeeds(patient.id, patient.activePlanVersion, allowed.map((i) => i.ingredientId)).catch((e) => {
     console.warn("[to-buy] weekly amounts skipped:", e instanceof Error ? e.message : e);
     return new Map<string, { amount: string; approx: boolean }>();
   });
-  const items = ranked.map((i) => {
+  const items = allowed.map((i) => {
     const n = needed.get(i.ingredientId);
     return n ? { ...i, needed: n } : i;
   });

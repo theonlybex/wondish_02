@@ -32,8 +32,9 @@ export interface PatientDietGraph {
   // condition.name optional for hand-built graphs; when present it unlocks
   // CONDITION_GROUPS (Celiac → BIG9-WHEAT components).
   healthConditions: { condition: { name?: string; bannedIngredients: { name: string }[] } }[];
-  foodPreferences: { food: { bannedIngredients: { name: string }[] } }[];
-  motivations: { motivation: { bannedIngredients: { name: string }[] } }[];
+  // names optional: only the banned-ingredients list (lib/ingredient-bans) labels rules with them.
+  foodPreferences: { food: { name?: string; bannedIngredients: { name: string }[] } }[];
+  motivations: { motivation: { name?: string; bannedIngredients: { name: string }[] } }[];
   // Trigger trials (workbook 04). Optional: most callers/tests predate them.
   // Terms come from lib/trials/category-terms by rule.category.
   triggerTrials?: TrialGraphRow[];

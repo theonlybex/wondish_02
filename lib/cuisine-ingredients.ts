@@ -102,16 +102,24 @@ export function ownsStaple(staple: string, ownedNames: readonly string[]): boole
   return false;
 }
 
-/** Build the per-cuisine checklists against the user's owned ingredient names. */
-export function buildCuisineChecklists(owned: Set<string> | readonly string[]): CuisineChecklist[] {
+/**
+ * Build the per-cuisine checklists against the user's owned ingredient names.
+ * `banned` (lowercased staple names) drops staples the profile bans: they are
+ * not offered, and not counted toward "ready" — a vegetarian's American
+ * checklist is 6 staples, not 8 with chicken and beef forever unticked. A
+ * cuisine left with no staples is dropped.
+ */
+export function buildCuisineChecklists(owned: Set<string> | readonly string[], banned: ReadonlySet<string> = new Set()): CuisineChecklist[] {
   const byIng = cuisinesByIngredient();
   const ownedNames = Array.from(owned);
-  return Object.entries(CUISINE_STAPLES).map(([cuisine, ings]) => {
+  return Object.entries(CUISINE_STAPLES).flatMap(([cuisine, all]) => {
+    const ings = all.filter((name) => !banned.has(name.toLowerCase()));
+    if (ings.length === 0) return [];
     const staples: CuisineStaple[] = ings.map((name) => {
       const k = name.toLowerCase();
       return { name, have: ownsStaple(name, ownedNames), alsoIn: (byIng.get(k) ?? []).filter((c) => c !== cuisine) };
     });
     const have = staples.filter((s) => s.have).length;
-    return { cuisine, staples, have, total: staples.length, ready: have / staples.length >= CUISINE_READY_THRESHOLD };
+    return [{ cuisine, staples, have, total: staples.length, ready: have / staples.length >= CUISINE_READY_THRESHOLD }];
   });
 }
