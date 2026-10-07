@@ -4,7 +4,7 @@
 // browser, no network, no writes, no model calls.
 //
 //   npm run sim:snapshot     # read-only export from the shared DB (once)
-//   npm run sim:rules        # this file + sim/additions.sim.ts; SIM_PAIRS=0 skips the ~2.7k pair profiles
+//   npm run sim:rules        # this file + sim/additions.sim.ts; SIM_PAIRS=0 skips the ~3k pair profiles; SIM_RANDOM=n sets the random 3–8-rule combos (default 250)
 //
 // Each service's output is reduced to the ingredients it puts in front of the
 // diner and judged by sim/oracle.ts. Any violation fails the run; the report
@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { snap, state, ingById, ingByName, recipeById, recipeItems } from "./setup";
-import { buildProfiles, makePatient, ruleUniverse, type Profile } from "./profiles";
+import { buildProfiles, makePatient, ruleUniverse, RANDOM_COMBOS, RANDOM_SEED, type Profile } from "./profiles";
 import { makeOracle, type Verdict } from "./oracle";
 
 type Served = { name: string; allergenGroups?: readonly string[]; via: string };
@@ -165,7 +165,8 @@ type Row = { service: string; profiles: number; items: number; violations: numbe
 
 test("every service respects every rule, alone and combined", { timeout: 6 * 60 * 60 * 1000 }, async () => {
   const pairs = process.env.SIM_PAIRS !== "0";
-  const profiles = buildProfiles(snap, { pairs });
+  const random = Number(process.env.SIM_RANDOM ?? RANDOM_COMBOS);
+  const profiles = buildProfiles(snap, { pairs, random });
   const services = await loadServices();
   const violations: Violation[] = [];
   const errors: { profile: string; service: string; message: string }[] = [];
@@ -228,7 +229,7 @@ test("every service respects every rule, alone and combined", { timeout: 6 * 60 
   lines.push(`# Rule-compliance simulation`, ``);
   lines.push(`Run ${new Date().toISOString()} · snapshot ${snap.takenAt} · ${Math.round((Date.now() - t0) / 1000)}s`, ``);
   lines.push(`Real route handlers and planner, in-process, against a read-only snapshot (no browser, no writes, no model calls).`, ``);
-  lines.push(`**Profiles:** ${profiles.length} — ${tierCount("single")} single rules, ${tierCount("pair")} rule pairs, ${tierCount("real")} real-user combinations, ${tierCount("curated")} hand-built heavy combinations, 1 with every rule at once.`);
+  lines.push(`**Profiles:** ${profiles.length} — ${tierCount("single")} single rules, ${tierCount("pair")} rule pairs, ${tierCount("real")} real-user combinations, ${tierCount("curated")} hand-built heavy combinations, ${tierCount("random")} random 3–8-rule combinations (seed ${RANDOM_SEED}), 1 with every rule at once.`);
   lines.push(`Pairs run the light services only (What to buy, taste ingredients, Clara post-filter).`, ``);
   lines.push(`**Result: ${violations.length === 0 && errors.length === 0 ? "PASS" : "FAIL"}** — ${violations.length} violations, ${errors.length} service errors, ${suspects.size} distinct suspects for review.`, ``);
   lines.push(`| Service | Profiles | Items checked | Violations | Errors | Suspect hits |`, `|---|---:|---:|---:|---:|---:|`);

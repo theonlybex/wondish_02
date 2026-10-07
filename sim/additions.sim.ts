@@ -190,3 +190,77 @@ test("9 · every guidance entry reaches Clara's prompt for its live condition, S
   // The universe the main sweep uses still sees every rule.
   assert.ok(ruleUniverse(snap).all.includes("condition:Stroke"));
 });
+
+// ── 10. Live trials: blocked exactly in the enforced phases ──────────────────
+// The sweep models a finished trial ("likely trigger", always enforced). A
+// running trial moves BASELINE → ELIMINATION → EVALUATION → REINTRODUCTION →
+// WASHOUT → FINAL; the food must be off the list exactly when the phase is
+// enforced and back on during baseline and the reintroduction challenge.
+test("10 · an active trial blocks its food in exactly the enforced phases (shopping catalog and the engine every service uses)", async () => {
+  const { phaseFor, isEnforced, PHASE_ORDER, addDays } = await import("@/lib/trials/schedule");
+  const catalog = await import("@/app/api/pantry/catalog/route");
+  const { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile } = await import("@/lib/diet-match");
+  const cases: { condition: RuleKey; category: string; item: string }[] = [
+    { condition: "condition:Rosacea", category: "CINNAMALDEHYDE", item: "Ground cinnamon" },
+    { condition: "condition:IBS-D", category: "FODMAP_FRUCTANS", item: "Garlic" },
+    { condition: "condition:Migraine", category: "AGED_CHEESE", item: "Grated parmesan" },
+  ];
+  const today = new Date();
+  for (const c of cases) {
+    const rule = snap.rules.triggerRules.find((r) => r.category === c.category && r.condition.name === c.condition.slice("condition:".length)) ?? snap.rules.triggerRules.find((r) => r.category === c.category)!;
+    const seen = new Set<string>();
+    for (let offset = -10; offset <= 60; offset++) {
+      const startDate = addDays(today, -offset);
+      const { phase } = phaseFor(rule, startDate, today);
+      if (seen.has(phase)) continue;
+      seen.add(phase);
+      const patient = { ...makePatient(snap, profile([c.condition])), triggerTrials: [{ status: "ACTIVE" as const, classification: null, startDate, rule }] };
+      state.patient = patient;
+      const { categories } = await quietly(async () => json(await catalog.GET()));
+      const hit = categories.flatMap((x: any) => x.items).find((i: any) => i.name === c.item);
+      assert.ok(hit, `${c.item} not in the catalog — case is vacuous`);
+      const blocked = Boolean(hit.bannedBy?.length);
+      assert.equal(blocked, isEnforced(phase), `${c.category} in ${phase}: "${c.item}" blocked=${blocked}, enforced=${isEnforced(phase)}`);
+      const engineBlocks = !evaluateDishAgainstProfile([c.item], buildDietMatchers(derivePatientBans(patient as any, today)), [ingByName.get(c.item.toLowerCase())?.allergenGroups ?? []]).passed;
+      assert.equal(engineBlocks, isEnforced(phase), `${c.category} in ${phase}: engine disagrees`);
+    }
+    assert.deepEqual([...seen].sort(), [...PHASE_ORDER].sort(), `${c.category}: not every phase was reached`);
+  }
+  // A STOPPED trial bans nothing.
+  const stopped = { ...makePatient(snap, profile(["condition:Rosacea"])), triggerTrials: [{ status: "STOPPED" as const, classification: null, startDate: addDays(today, -10), rule: snap.rules.triggerRules.find((r) => r.category === "CINNAMALDEHYDE")! }] };
+  assert.ok(evaluateDishAgainstProfile(["Ground cinnamon"], buildDietMatchers(derivePatientBans(stopped as any, today))).passed);
+});
+
+// ── 11. Custom conditions ────────────────────────────────────────────────────
+test("11 · a user's own condition: its avoid list is enforced everywhere, its note reaches Clara, its trial behaves like a built-in", async () => {
+  const catalog = await import("@/app/api/pantry/catalog/route");
+  const cookable = await import("@/app/api/pantry/cookable/route");
+  const mealPlan = await import("@/lib/meal-plan");
+  const { buildFoodMapText } = await import("@/lib/food-map");
+  const { customTriggerRuleData } = await import("@/lib/custom-conditions");
+  const { addDays } = await import("@/lib/trials/schedule");
+  const custom = { condition: { name: "My gut thing", ownerPatientId: "sim-owner", guidance: "no mushrooms, please", bannedIngredients: [{ name: "mushrooms" }] } };
+  // Elimination: day 3 of a custom SPICY trial (custom rules use the workbook schedule).
+  const spicy = { ...customTriggerRuleData("SPICY", ["Heartburn"]), code: "CUST-TR-sim" };
+  const base = makePatient(snap, profile(["goal:Eat healthier"]));
+  const patient = { ...base, healthConditions: [...base.healthConditions, custom], triggerTrials: [{ status: "ACTIVE" as const, classification: null, startDate: addDays(new Date(), -2), rule: spicy }] };
+  state.patient = patient;
+
+  const { categories, bans } = await quietly(async () => json(await catalog.GET()));
+  const items = categories.flatMap((c: any) => c.items);
+  assert.deepEqual(items.find((i: any) => i.name === "Mushrooms")?.bannedBy, ["My gut thing"]);
+  assert.ok(items.find((i: any) => i.name === "Jalapeño peppers")?.bannedBy?.length, "custom SPICY trial not enforced");
+  assert.ok(bans.rules.some((r: any) => r.label === "My gut thing" && r.terms.includes("mushrooms")));
+
+  state.pantryIds = snap.ingredients.map((i) => i.id);
+  const ck = await quietly(async () => json(await cookable.GET()));
+  state.pantryIds = [];
+  const served = [...ck.ready, ...ck.almost].map((d: any) => d.id);
+  const week = await quietly(() => mealPlan.buildMealPlanMenus(patient.id, new Date("2026-10-05T00:00:00"), 1, { windowDays: 7 }));
+  const ids = new Set([...served, ...week.rows.map((r: any) => r.recipeId)]);
+  const withMushrooms = snap.recipes.filter((r) => ids.has(r.id) && r.ingredients.some((ri) => /mushroom/i.test(snap.ingredients.find((i) => i.id === ri.ingredientId)?.name ?? "")));
+  assert.deepEqual(withMushrooms.map((r) => r.name), []);
+
+  const prompt = buildFoodMapText({ ...patient, mealType: null } as any);
+  assert.match(prompt, /My gut thing \(the diner's own note\): "no mushrooms, please"/);
+});

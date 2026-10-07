@@ -5,7 +5,7 @@ import type { Snapshot } from "./fake-db";
 export type RuleKind = "allergy" | "avoid" | "condition" | "diet" | "goal" | "trial";
 export type RuleKey = `${RuleKind}:${string}`;
 export type Profile = { id: string; tier: Tier; rules: RuleKey[]; users?: number };
-export type Tier = "single" | "pair" | "real" | "curated" | "everything";
+export type Tier = "single" | "pair" | "real" | "curated" | "random" | "everything";
 
 export function ruleUniverse(snap: Snapshot) {
   const r = snap.rules;
@@ -104,7 +104,23 @@ const CURATED: RuleKey[][] = [
   ["trial:HISTAMINE_TYRAMINE_RICH", "trial:AGED_CHEESE", "trial:CURED_PROCESSED_MEAT", "trial:ALCOHOL"],
 ];
 
-export function buildProfiles(snap: Snapshot, opts: { pairs: boolean }): Profile[] {
+// Deterministic PRNG so a failing random profile reproduces run to run.
+function mulberry32(seed: number) {
+  return () => {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// 2^106 subsets cannot be enumerated. Pairs catch two-list interactions;
+// random 3–8-rule combinations (seeded) run through EVERY service, so larger
+// mixes get the heavy services too, not just the 29 hand-picked ones.
+export const RANDOM_COMBOS = 250;
+export const RANDOM_SEED = 20261007;
+
+export function buildProfiles(snap: Snapshot, opts: { pairs: boolean; random?: number }): Profile[] {
   const { all, banning } = ruleUniverse(snap);
   const out: Profile[] = [];
   for (const k of all) out.push({ id: `1:${slug([k])}`, tier: "single", rules: [k] });
@@ -122,6 +138,14 @@ export function buildProfiles(snap: Snapshot, opts: { pairs: boolean }): Profile
     if (bad.length) throw new Error(`curated profile names unknown rules: ${bad.join(", ")}`);
     out.push({ id: `cur${i}:${slug(rules)}`, tier: "curated", rules });
   });
+  const rnd = mulberry32(RANDOM_SEED);
+  for (let i = 0; i < (opts.random ?? 0); i++) {
+    const size = 3 + Math.floor(rnd() * 6);
+    const picked = new Set<RuleKey>();
+    while (picked.size < size) picked.add(banning[Math.floor(rnd() * banning.length)]);
+    const rules = Array.from(picked);
+    out.push({ id: `rnd${i}:${slug(rules)}`, tier: "random", rules });
+  }
   out.push({ id: "everything", tier: "everything", rules: all });
   return out;
 }
