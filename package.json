@@ -20,7 +20,9 @@
     "redis:install": "bash scripts/upstash-local/install-redis.sh",
     "redis:local": "node --import tsx scripts/upstash-local/server.ts",
     "rate-limit:check": "node --import tsx scripts/check-rate-limit-backend.ts",
-    "rate-limit:reset-user": "node --import tsx scripts/reset-user-rate-limits.ts"
+    "rate-limit:reset-user": "node --import tsx scripts/reset-user-rate-limits.ts",
+    "sim:snapshot": "node --env-file=.env.local --import tsx sim/snapshot.ts",
+    "sim:rules": "node --experimental-test-module-mocks --import tsx --test --test-reporter=dot sim/rules.sim.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

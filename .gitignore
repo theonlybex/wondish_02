@@ -34,3 +34,6 @@ Thumbs.db
 # clerk configuration (can include secrets)
 /.clerk/
 .env*
+
+# rule-compliance simulation snapshot (read from the shared DB)
+sim/.snapshot/

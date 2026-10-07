@@ -1,0 +1,127 @@
+// Simulated diners: one per rule, every pair of rules, every combination a
+// real user holds, hand-built heavy combinations, and everything at once.
+import type { Snapshot } from "./fake-db";
+
+export type RuleKind = "allergy" | "avoid" | "condition" | "diet" | "goal" | "trial";
+export type RuleKey = `${RuleKind}:${string}`;
+export type Profile = { id: string; tier: Tier; rules: RuleKey[]; users?: number };
+export type Tier = "single" | "pair" | "real" | "curated" | "everything";
+
+export function ruleUniverse(snap: Snapshot) {
+  const r = snap.rules;
+  const lists: Record<Exclude<RuleKind, "trial">, { name: string; bannedIngredients: { name: string }[] }[]> = {
+    allergy: r.allergies,
+    avoid: r.avoids,
+    condition: r.conditions,
+    diet: r.preferences,
+    goal: r.motivations,
+  };
+  const all: RuleKey[] = [];
+  const empty: RuleKey[] = []; // rules that ban nothing (prompt guidance only)
+  for (const [kind, rows] of Object.entries(lists)) {
+    for (const row of rows) {
+      const key = `${kind}:${row.name}` as RuleKey;
+      all.push(key);
+      // Allergies always ban their own name; Celiac bans a group.
+      if (kind !== "allergy" && kind !== "avoid" && row.bannedIngredients.length === 0 && row.name.toLowerCase() !== "celiac disease") empty.push(key);
+    }
+  }
+  for (const category of Array.from(new Set(r.triggerRules.map((t) => t.category)))) all.push(`trial:${category}`);
+  return { all, banning: all.filter((k) => !empty.includes(k)), empty, lists };
+}
+
+/** Build the diet graph the services read (PATIENT_DIET_INCLUDE shape) plus the body fields the planner needs. */
+export function makePatient(snap: Snapshot, profile: Profile) {
+  const { lists } = ruleUniverse(snap);
+  const pick = (kind: Exclude<RuleKind, "trial">) =>
+    profile.rules
+      .filter((k) => k.startsWith(`${kind}:`))
+      .map((k) => {
+        const name = k.slice(kind.length + 1);
+        const row = lists[kind].find((x) => x.name === name);
+        if (!row) throw new Error(`unknown rule ${k}`);
+        return row;
+      });
+  const trials = profile.rules
+    .filter((k) => k.startsWith("trial:"))
+    .map((k) => {
+      const category = k.slice("trial:".length);
+      const rule = snap.rules.triggerRules.find((t) => t.category === category)!;
+      // COMPLETED + LIKELY_TRIGGER is enforced on every date (enforcedTrials).
+      return { status: "COMPLETED" as const, classification: "LIKELY_TRIGGER", startDate: new Date("2026-01-01"), rule: { ...rule, category } };
+    });
+  const activity = snap.physicalActivities.find((a) => a.level === 2) ?? snap.physicalActivities[0];
+  return {
+    id: `sim-${profile.id}`,
+    accountId: `acc-${profile.id}`,
+    account: { clerkId: `clerk-${profile.id}`, email: null },
+    profileCompleted: true,
+    tasteCompleted: true,
+    // A plausible adult so the caloric engine runs its real path.
+    birthday: new Date("1988-05-04"),
+    sexAtBirth: "FEMALE",
+    gender: null,
+    genderId: null,
+    weight: 165, // lbs (storage unit)
+    weightUnit: "lbs",
+    height: 168, // cm
+    heightUnit: "cm",
+    goalWeight: 150,
+    goalWeightUnit: "lbs",
+    weeklyGoal: 0.5,
+    physicalActivity: activity,
+    physicalActivityId: activity?.id ?? null,
+    mealType: null,
+    mealTypeId: null,
+    mealPlanStartDate: new Date("2026-10-05"),
+    activePlanVersion: 1,
+    recentDishes: null,
+    ingredientPreferences: [],
+    foodAllergies: pick("allergy").map((food) => ({ food })),
+    foodToAvoid: pick("avoid").map((food) => ({ food })),
+    healthConditions: pick("condition").map((condition) => ({ condition: { ...condition, ownerPatientId: null } })),
+    foodPreferences: pick("diet").map((food) => ({ food })),
+    motivations: pick("goal").map((motivation) => ({ motivation })),
+    triggerTrials: trials,
+  };
+}
+
+const slug = (keys: string[]) => keys.map((k) => k.replace(/[^a-z0-9]+/gi, "_")).join("+").slice(0, 120);
+
+// Hand-built: the combinations most likely to break something — overlapping
+// lists, contradictions, a near-empty library.
+const CURATED: RuleKey[][] = [
+  ["diet:Vegan", "condition:Celiac Disease", "allergy:Tree nuts"],
+  ["diet:Vegan", "allergy:Soy", "allergy:Wheat", "allergy:Peanuts"],
+  ["diet:Vegetarian", "allergy:Eggs", "allergy:Dairy"],
+  ["diet:Pescatarian", "allergy:Fish", "allergy:Shellfish"],
+  ["diet:Keto", "allergy:Dairy", "allergy:Eggs", "allergy:Tree nuts"],
+  ["diet:Paleo", "diet:Vegan"],
+  ["condition:Chronic kidney disease – stage 3", "condition:Hypertension", "condition:Type 2 Diabetes", "condition:Heart Disease and Atherosclerosis"],
+  ["condition:Celiac Disease", "trial:FODMAP_FRUCTANS", "trial:FODMAP_LACTOSE", "trial:FODMAP_GOS"],
+  ["condition:Pregnancy", "allergy:Fish", "avoid:Raw foods", "avoid:Alcohol", "avoid:Caffeine"],
+  ["condition:Thyroid Disorder", "diet:Gluten-free", "allergy:Soy"],
+  ["trial:HISTAMINE_TYRAMINE_RICH", "trial:AGED_CHEESE", "trial:CURED_PROCESSED_MEAT", "trial:ALCOHOL"],
+];
+
+export function buildProfiles(snap: Snapshot, opts: { pairs: boolean }): Profile[] {
+  const { all, banning } = ruleUniverse(snap);
+  const out: Profile[] = [];
+  for (const k of all) out.push({ id: `1:${slug([k])}`, tier: "single", rules: [k] });
+  if (opts.pairs) {
+    for (let i = 0; i < banning.length; i++)
+      for (let j = i + 1; j < banning.length; j++) out.push({ id: `2:${slug([banning[i], banning[j]])}`, tier: "pair", rules: [banning[i], banning[j]] });
+  }
+  const known = new Set(all);
+  snap.realCombos.forEach((c, i) => {
+    const rules = c.rules.filter((k) => known.has(k as RuleKey)) as RuleKey[];
+    out.push({ id: `real${i}:${slug(rules)}`, tier: "real", rules, users: c.users });
+  });
+  CURATED.forEach((rules, i) => {
+    const bad = rules.filter((k) => !known.has(k));
+    if (bad.length) throw new Error(`curated profile names unknown rules: ${bad.join(", ")}`);
+    out.push({ id: `cur${i}:${slug(rules)}`, tier: "curated", rules });
+  });
+  out.push({ id: "everything", tier: "everything", rules: all });
+  return out;
+}
