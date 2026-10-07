@@ -41,3 +41,4 @@ sim/.snapshot/
 # data-script rollbacks/backups (local safety copies, not source)
 scripts/*.rollback-*.json
 scripts/*-backup-*.json
+workbooks-rollback-*.json
