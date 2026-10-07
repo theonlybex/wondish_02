@@ -6,6 +6,7 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import MultiSelectChips from "@/components/profile/MultiSelectChips";
+import ConditionPicker from "@/components/profile/ConditionPicker";
 import { apiFetch } from "@/lib/client-fetch";
 import {
   formatBmi,
@@ -605,8 +606,7 @@ export default function ProfileForm({
             selected={foodAllergyIds}
             onChange={setFoodAllergyIds}
           />
-          <MultiSelectChips
-            label="Health Conditions"
+          <ConditionPicker
             options={refData.healthConditions}
             selected={healthConditionIds}
             onChange={setHealthConditionIds}
