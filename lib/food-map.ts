@@ -46,10 +46,12 @@ export interface FoodMapPatient {
 // Hypertension profile 3 library dinners; sodium restriction is guidance.
 export const CONDITION_GUIDANCE: Record<string, string> = {
   hypertension: "keep sodium low — season with herbs, citrus and spices, only a pinch of salt, no cured meats or salty sauces",
-  "heart disease": "keep sodium and saturated fat low — minimal salt, lean proteins, olive oil over butter",
+  // Keys are the exact DB names (lowercased): "heart disease" and "kidney
+  // disease stage 1-2" were stale and never matched until 2026-10-07.
+  "heart disease and atherosclerosis": "keep sodium and saturated fat low — minimal salt, lean proteins, olive oil over butter",
   // Stage 1-2 (2026-09-11): potassium/phosphorus foods moved from hard bans to
   // portion guidance — NKF/KDIGO restrict them by lab values, not by stage.
-  "kidney disease stage 1-2": "keep sodium low — minimal salt, no processed or cured meats, canned soups or pickles; legumes, nuts, dairy and high-potassium fruit and vegetables in moderate portions rather than never",
+  "chronic kidney disease stage 1-2": "keep sodium low — minimal salt, no processed or cured meats, canned soups or pickles; legumes, nuts, dairy and high-potassium fruit and vegetables in moderate portions rather than never",
   "chronic kidney disease – stage 3": "low sodium, moderate protein portions, limit high-potassium and high-phosphorus foods",
   "high cholesterol": "favour unsaturated fats, fibre and lean proteins; limit saturated fat",
   "type 2 diabetes": "steady carbohydrates with fibre and protein; avoid added sugars and refined starches",
@@ -60,6 +62,10 @@ export const CONDITION_GUIDANCE: Record<string, string> = {
   "thyroid disorder": "cook cruciferous vegetables rather than serving them raw in quantity, keep soy moderate and away from medication time, avoid seaweed/kelp; do not restrict iodised salt without advice",
   "recovering after illness/surgery": "nutrient-dense, protein-forward, small frequent meals, soft textures if appetite is low, plenty of fluids; never cut calories during recovery",
   "hypertriglyceridemia": "limit added sugars, refined carbs and alcohol; favour fish, nuts and olive oil",
+  // AHA/ASA 2021 secondary prevention: limit sodium and/or a Mediterranean
+  // pattern — "limit" advice, so guidance rather than bans (as for
+  // Hypertension); docs/research/rule-ban-lists-2026-10-07.md.
+  stroke: "Mediterranean pattern — vegetables, fruit, whole grains, legumes, fish and olive oil over butter; keep sodium low — season with herbs, citrus and spices, only a pinch of salt, no cured meats or salty sauces",
   pregnancy: "no raw or undercooked fish, meat, eggs or sprouts, no unpasteurised dairy or soft cheeses, limit high-mercury fish, no alcohol; folate- and iron-rich foods",
 };
 

@@ -201,3 +201,14 @@ test("buildFoodMapText: a condition's own guidance is quoted as the diner's note
   assert.match(text, /Gout \(the diner's own note\): "no beer, small portions of red meat"/);
   assert.match(text, /keep sodium low — season with herbs/);
 });
+
+// Guidance is looked up by the condition's exact DB name. Two keys were stale
+// ("heart disease", "kidney disease stage 1-2") and silently never reached
+// Clara; lib/condition-groups lists every built-in name (pinned by its test).
+test("every CONDITION_GUIDANCE key names a real built-in condition; Stroke has guidance", async () => {
+  const { CONDITION_GUIDANCE } = await import("./food-map");
+  const { CONDITION_GROUPS } = await import("./condition-groups");
+  const names = new Set(CONDITION_GROUPS.flatMap((g) => g.conditions.map((c) => c.name.trim().toLowerCase())));
+  assert.deepEqual(Object.keys(CONDITION_GUIDANCE).filter((k) => !names.has(k)), []);
+  assert.match(CONDITION_GUIDANCE["stroke"] ?? "", /Mediterranean/);
+});
