@@ -39,6 +39,10 @@ export const TRIGGER_CATEGORY_TERMS: Record<string, CategoryTerms> = {
   COW_MILK: { terms: ["milk", "whole milk", "skim milk", "2% milk"] },
   WHEY_PROTEIN: { terms: ["whey protein", "whey", "protein powder"] },
   HIGH_SUGAR_DAIRY: { terms: ["ice cream", "chocolate milk", "sweetened yogurt", "milkshake", "condensed milk"] },
+  // Rosacea (National Rosacea Society): cinnamaldehyde foods. Tomato, citrus
+  // and chocolate carry it too but have their own categories; this one is
+  // the spice. Nothing else in the catalog is named cinnamon.
+  CINNAMALDEHYDE: { terms: ["cinnamon", "ground cinnamon", "cinnamon stick", "cinnamon sticks"] },
 };
 
 export function termsForCategory(category: string): CategoryTerms {

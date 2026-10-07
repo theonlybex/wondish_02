@@ -9,7 +9,7 @@ test("validateCustomCondition: triggers must be known category codes, up to 8", 
   assert.ok(!bad.ok && bad.field === "triggers" && bad.error.includes("PIZZA"));
   const many = validateCustomCondition({ name: "Gout", triggers: TRIGGER_CATEGORY_OPTIONS.slice(0, 9).map((t) => t.code) });
   assert.ok(!many.ok && many.error.includes("Up to 8"));
-  assert.equal(TRIGGER_CATEGORY_OPTIONS.length, 28);
+  assert.equal(TRIGGER_CATEGORY_OPTIONS.length, 29); // + CINNAMALDEHYDE (Rosacea, 2026-10-07)
   assert.equal(TRIGGER_CATEGORY_OPTIONS.find((t) => t.code === "ACIDIC_CITRUS")?.title, "Acidic citrus");
 });
 
