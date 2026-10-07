@@ -37,3 +37,7 @@ Thumbs.db
 
 # rule-compliance simulation snapshot (read from the shared DB)
 sim/.snapshot/
+
+# data-script rollbacks/backups (local safety copies, not source)
+scripts/*.rollback-*.json
+scripts/*-backup-*.json
