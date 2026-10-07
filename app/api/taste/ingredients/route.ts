@@ -5,6 +5,7 @@ import {
   derivePatientBans,
   buildDietMatchers,
   evaluateDishAgainstProfile,
+  hasAnyBan,
   PATIENT_DIET_INCLUDE,
 } from "@/lib/diet-match";
 import { tasteLevels } from "@/lib/ingredient-catalog";
@@ -24,10 +25,9 @@ export async function GET() {
   });
   if (!patient) return NextResponse.json({ levels: [] });
 
-  const { allergyNames, exactBanned } = derivePatientBans(patient);
-  const matchers = buildDietMatchers({ allergyNames, exactBanned });
-  const hasBans = matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
-  const isBanned = (name: string) => hasBans && !evaluateDishAgainstProfile([name], matchers).passed;
+  const bans = derivePatientBans(patient);
+  const matchers = buildDietMatchers(bans);
+  const hasBans = hasAnyBan(matchers);
 
   // Resolve every catalog item name → Ingredient id (batched find-or-create).
   const [idByName, prefs] = await Promise.all([
@@ -38,6 +38,13 @@ export async function GET() {
     }),
   ]);
   const likedById = new Map(prefs.map((p) => [p.ingredientId, p.liked]));
+  // Component tags too: a name-only check let BIG9-tagged items through.
+  const groupRows = hasBans
+    ? await prisma.ingredient.findMany({ where: { id: { in: Array.from(idByName.values()) } }, select: { id: true, allergenGroups: true } })
+    : [];
+  const groupsById = new Map(groupRows.map((r) => [r.id, r.allergenGroups]));
+  const isBanned = (name: string) =>
+    hasBans && !evaluateDishAgainstProfile([name], matchers, [groupsById.get(idByName.get(name) ?? "") ?? []]).passed;
 
   const levels = tasteLevels()
     .map((level) => ({

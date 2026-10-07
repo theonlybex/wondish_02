@@ -11,6 +11,7 @@ import {
   buildDietMatchers,
   evaluateDishAgainstProfile,
   ingredientGroupsOf,
+  hasAnyBan,
   PATIENT_DIET_INCLUDE,
 } from "@/lib/diet-match";
 import {
@@ -51,9 +52,9 @@ export async function GET() {
     return NextResponse.json({ ready: [], almost: [], pantryCount: 0 });
   }
 
-  const { allergyNames, exactBanned } = derivePatientBans(patient);
-  const matchers = buildDietMatchers({ allergyNames, exactBanned });
-  const hasBans = matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
+  const bans = derivePatientBans(patient);
+  const matchers = buildDietMatchers(bans);
+  const hasBans = hasAnyBan(matchers);
 
   // Single catalog load + in-memory scoring, same shape the meal-plan builder
   // uses (one query, not one per recipe).

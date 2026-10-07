@@ -1257,3 +1257,23 @@ test("a condiment is not a meal: never a snack, never the day's top-up, and 0 kc
   assert.ok(rows.length > 0);
   assert.ok(rows.every((r) => r.recipeId !== "condiment" && r.recipeId !== "zero"), "a condiment or a 0 kcal row was served");
 });
+
+// Big-9 component bans (Ingredient.allergenGroups) reach the swap gate and the
+// alternatives list. Both built matchers from { allergyNames, exactBanned }
+// only, so the group set was always empty and a wheat allergy was offered
+// oats the workbook tags BIG9-WHEAT (2026-10-07).
+test("swap: an ingredient tagged with a banned allergen group is rejected even when its name is clean", async () => {
+  const { validateSwapCandidate } = await modPromise;
+  const recipe = swapRecipe({ ingredients: [{ ingredient: { name: "Rolled oats", allergenGroups: ["BIG9-WHEAT"] } }] });
+  const res = validateSwapCandidate(withAllergy("Wheat"), { mealTypeId: "mt-lunch" }, recipe, []);
+  assert.equal((res as { code: string }).code, "BANNED_INGREDIENTS");
+});
+
+test("alternatives: candidates with a banned allergen-group ingredient are dropped", async () => {
+  const { findAlternatives } = await modPromise;
+  const oats = { id: "r-oats", name: "Oatmeal", ingredients: [{ ingredient: { name: "Rolled oats", allergenGroups: ["BIG9-WHEAT"] } }] };
+  const rice = { id: "r-rice", name: "Rice bowl", ingredients: [{ ingredient: { name: "Jasmine rice", allergenGroups: [] } }] };
+  const db = { findCandidates: async () => [oats, rice] } as unknown as Parameters<typeof findAlternatives>[2];
+  const out = await findAlternatives(withAllergy("Wheat"), { mealTypeId: "mt-lunch" }, db);
+  assert.deepEqual(out.map((r: { id: string }) => r.id), ["r-rice"]);
+});

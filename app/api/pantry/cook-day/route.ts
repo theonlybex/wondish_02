@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import {
   derivePatientBans,
   buildDietMatchers,
+  bannedNamesForPrompt,
   PATIENT_DIET_INCLUDE,
 } from "@/lib/diet-match";
 import {
@@ -187,9 +188,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No meal types configured." }, { status: 500 });
     }
 
-    const { allergyNames, exactBanned } = derivePatientBans(patient);
-    const matchers = buildDietMatchers({ allergyNames, exactBanned });
-    const bannedNames = [...allergyNames, ...exactBanned.map((b) => b.name)];
+    const bans = derivePatientBans(patient);
+    const matchers = buildDietMatchers(bans);
+    const bannedNames = bannedNamesForPrompt(bans);
     const onHandNames = pantry.map((p) => p.ingredient.name);
     const onHandLower = new Set(onHandNames.map((n) => n.toLowerCase()));
 

@@ -7,6 +7,7 @@ import { displayDishName } from "@/lib/dish-name";
 import {
   derivePatientBans,
   buildDietMatchers,
+  bannedNamesForPrompt,
   PATIENT_DIET_INCLUDE,
 } from "@/lib/diet-match";
 import {
@@ -228,9 +229,9 @@ export async function POST(
       dayFatBudgetG,
       tolerance: DAY_FAT_TOLERANCE,
     });
-  const { allergyNames, exactBanned } = derivePatientBans(patient);
-  const matchers = buildDietMatchers({ allergyNames, exactBanned });
-  const bannedNames = [...allergyNames, ...exactBanned.map((b) => b.name)];
+  const bans = derivePatientBans(patient);
+  const matchers = buildDietMatchers(bans);
+  const bannedNames = bannedNamesForPrompt(bans);
 
   // Basket constraint, same as week generation: a swapped dish must be
   // cookable from what the user owns (plus free staples). Before 2026-09-11

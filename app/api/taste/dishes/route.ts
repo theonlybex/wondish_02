@@ -3,7 +3,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, hasAnyBan, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 
 // DISHES-RETIRED (2026-09-07): the app now swipes INGREDIENTS
 // (/api/taste/ingredients + /api/taste/ingredient-swipe). This dish-swipe
@@ -34,8 +34,8 @@ export async function GET() {
   // Build banned ingredient list via the shared engine — full 5-source union
   // (this used to omit motivations; that omission is exactly the drift the
   // shared engine exists to end) plus word-boundary allergy matching.
-  const { allergyNames, exactBanned } = derivePatientBans(patient);
-  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const bans = derivePatientBans(patient);
+  const matchers = buildDietMatchers(bans);
 
   // Get already-swiped IDs
   const swiped = await prisma.patientDishPreference.findMany({
@@ -70,7 +70,7 @@ export async function GET() {
     take: 80,
   });
 
-  const hasBans = matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
+  const hasBans = hasAnyBan(matchers);
   const allowed = !hasBans
     ? candidates
     : candidates.filter(

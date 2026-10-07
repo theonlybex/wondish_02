@@ -21,7 +21,7 @@ import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
 import { dishProblem, catalogFoodVocabulary } from "@/lib/dish-plausibility";
 import { isCoveredByBasket, BASKET_STAPLES } from "@/lib/basket-coverage";
 import { ingredientTokens } from "@/lib/basket-match";
-import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, hasAnyBan, bannedNamesForPrompt, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 import { buildFoodMapText } from "@/lib/food-map";
 import { priceDish } from "@/lib/staple-density";
 // Type-only import (erased at runtime). The implementation is loaded lazily at
@@ -453,8 +453,8 @@ export async function buildMealPlanMenus(
   // Derivation + word-boundary allergy matching / exact-name non-allergy
   // matching now lives in lib/diet-match.ts (shared with the other four call
   // sites); behavior here is unchanged — this is a lift, not a rewrite.
-  const { allergyNames, exactBanned } = derivePatientBans(patient);
-  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const bans = derivePatientBans(patient);
+  const matchers = buildDietMatchers(bans);
   const { allergyMatchers } = matchers;
 
   const motivationNames = patient.motivations.map((pm) => pm.motivation.name);
@@ -580,7 +580,7 @@ export async function buildMealPlanMenus(
     select: { ...recipeSelect, mealTypeId: true, description: true },
   });
   // Allergy AND exact bans apply by word boundary against every ingredient name.
-  const hasBans = allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
+  const hasBans = hasAnyBan(matchers);
   const recipePoolBanFiltered = !hasBans
     ? recipePoolRaw
     : recipePoolRaw.filter(
@@ -782,7 +782,7 @@ export async function buildMealPlanMenus(
       const createdIds = await generateAndPersistRecipes({
         requests: thin,
         catalogFoodTokens,
-        bannedNames: [...allergyNames, ...exactBanned.map((b) => b.name)],
+        bannedNames: bannedNamesForPrompt(bans),
         matchers,
         existingNames,
         macroTarget,
@@ -1501,8 +1501,8 @@ export async function findAlternatives(
   q: { mealTypeId: string; excludeRecipeId?: string; currentCalories?: number },
   db: AlternativesDb = prismaAlternativesDb
 ): Promise<AlternativeRecipe[]> {
-  const { allergyNames, exactBanned } = derivePatientBans(patient);
-  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const bans = derivePatientBans(patient);
+  const matchers = buildDietMatchers(bans);
   const candidates = await db.findCandidates({
     mealTypeId: q.mealTypeId,
     excludeRecipeId: q.excludeRecipeId,
@@ -1510,7 +1510,7 @@ export async function findAlternatives(
       ? { calorieBand: { gte: q.currentCalories - 250, lte: q.currentCalories + 250 } }
       : {}),
   });
-  const hasBans = matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0;
+  const hasBans = hasAnyBan(matchers);
   return (
     !hasBans
       ? candidates
@@ -1571,8 +1571,8 @@ export function validateSwapCandidate(
     return { ok: false, code: "MEAL_TYPE_MISMATCH", message: "Recipe not suitable for this meal slot" };
   }
 
-  const { allergyNames, exactBanned } = derivePatientBans(patient);
-  const matchers = buildDietMatchers({ allergyNames, exactBanned });
+  const bans = derivePatientBans(patient);
+  const matchers = buildDietMatchers(bans);
   const { passed } = evaluateDishAgainstProfile(
     recipe.ingredients.map((ri) => ri.ingredient.name),
     matchers,

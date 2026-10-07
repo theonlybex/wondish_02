@@ -75,6 +75,9 @@ export interface DerivedBans {
 // matched case-insensitively after trimming (the DB once held "Wheat ").
 export const ALLERGY_GROUPS: Record<string, string[]> = {
   milk: ["BIG9-COW-MILK"],
+  // The allergy row is named "Dairy" in the DB (2026-10-07); keyed only as
+  // "milk", a dairy allergy never reached the cow-milk group.
+  dairy: ["BIG9-COW-MILK"],
   eggs: ["BIG9-EGG"],
   peanuts: ["BIG9-PEANUT"],
   "tree nuts": ["BIG9-TREE-NUT"],
@@ -350,6 +353,40 @@ export function buildDietMatchers({ allergyNames, exactBanned, allergyGroupCodes
   for (const g of conditionGroupCodes) groupSources.set(g, "condition");
   for (const g of allergyGroupCodes) groupSources.set(g, "allergy");
   return { allergyMatchers, exactBanned: dedupedExactBanned, bannedGroups: new Set(groupSources.keys()), groupSources };
+}
+
+/** Does the profile ban anything at all — names OR component groups? */
+export function hasAnyBan(matchers: DietMatchers): boolean {
+  return matchers.allergyMatchers.length > 0 || matchers.exactBanned.length > 0 || (matchers.bannedGroups?.size ?? 0) > 0;
+}
+
+// Plain words for the Big-9 groups, for model prompts. Clara-generated dishes
+// carry no allergenGroups, so the prompt's ban list is the only place a group
+// ban can reach them; built from names alone, a Celiac diner's prompt never
+// said "wheat".
+const GROUP_PROMPT_WORDS: Record<string, string> = {
+  "BIG9-COW-MILK": "milk",
+  "BIG9-CRUSTACEAN": "shellfish",
+  "BIG9-EGG": "egg",
+  "BIG9-FISH": "fish",
+  "BIG9-PEANUT": "peanut",
+  "BIG9-SESAME": "sesame",
+  "BIG9-SOY": "soy",
+  "BIG9-TREE-NUT": "tree nuts",
+  "BIG9-WHEAT": "wheat",
+};
+
+/** Every banned name for a model prompt: name bans, then each banned group's allergen word (deduped, case-insensitive). */
+export function bannedNamesForPrompt(bans: DerivedBans): string[] {
+  const groups = [...(bans.allergyGroupCodes ?? []), ...(bans.conditionGroupCodes ?? []), ...(bans.trialGroupCodes ?? [])];
+  const all = [...bans.allergyNames, ...bans.exactBanned.map((b) => b.name), ...groups.map((g) => GROUP_PROMPT_WORDS[g] ?? "").filter(Boolean)];
+  const seen = new Set<string>();
+  return all.filter((n) => {
+    const k = n.trim().toLowerCase();
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 // ── evaluateDishAgainstProfile ──────────────────────────────────────────────

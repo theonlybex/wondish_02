@@ -668,3 +668,54 @@ test("string-built ban patterns contain no \\b (the production minifier mangles 
     assert.ok(!_exactBan(name).source.includes("\\b"), `${name}: ${_exactBan(name).source}`);
   }
 });
+
+// ─── group bans reach callers (2026-10-07) ─────────────────────────────────
+
+import { hasAnyBan, bannedNamesForPrompt } from "./diet-match";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+test("a Dairy allergy (the DB's name) bans the cow-milk component group", () => {
+  const m = buildDietMatchers(derivePatientBans({ ...emptyPatient(), foodAllergies: [{ food: { name: "Dairy", bannedIngredients: [] } }] }));
+  assert.ok(m.bannedGroups.has("BIG9-COW-MILK"));
+});
+
+test("hasAnyBan counts a group-only ban (Celiac has no name list in this fixture)", () => {
+  const celiac = { ...emptyPatient(), healthConditions: [{ condition: { name: "Celiac disease", bannedIngredients: [] } }] };
+  assert.equal(hasAnyBan(buildDietMatchers(derivePatientBans(celiac))), true);
+  assert.equal(hasAnyBan(buildDietMatchers(derivePatientBans(emptyPatient()))), false);
+});
+
+test("bannedNamesForPrompt adds the plain allergen word for each banned group, once", () => {
+  const names = bannedNamesForPrompt(
+    derivePatientBans({
+      ...emptyPatient(),
+      foodAllergies: [{ food: { name: "Wheat", bannedIngredients: [{ name: "bread" }] } }],
+      healthConditions: [{ condition: { name: "Celiac disease", bannedIngredients: [{ name: "gluten" }] } }],
+    })
+  );
+  assert.deepEqual(names, ["Wheat", "bread", "gluten"]);
+  const celiacOnly = bannedNamesForPrompt(
+    derivePatientBans({ ...emptyPatient(), healthConditions: [{ condition: { name: "Celiac disease", bannedIngredients: [] } }] })
+  );
+  assert.deepEqual(celiacOnly, ["wheat"]);
+});
+
+// The bug pattern itself: picking two fields off derivePatientBans and handing
+// them to buildDietMatchers silently drops every group code. Pass the whole result.
+test("no caller builds matchers from a partial ban set", () => {
+  const offenders: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir)) {
+      if (entry === "node_modules" || entry.startsWith(".")) continue;
+      const p = join(dir, entry);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.tsx?$/.test(entry) && !entry.endsWith(".test.ts")) {
+        if (/buildDietMatchers\(\s*\{\s*allergyNames\s*,\s*exactBanned\s*\}\s*\)/.test(readFileSync(p, "utf8"))) offenders.push(p);
+      }
+    }
+  };
+  walk("app");
+  walk("lib");
+  assert.deepEqual(offenders, []);
+});
