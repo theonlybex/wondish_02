@@ -212,3 +212,12 @@ test("every CONDITION_GUIDANCE key names a real built-in condition; Stroke has g
   assert.deepEqual(Object.keys(CONDITION_GUIDANCE).filter((k) => !names.has(k)), []);
   assert.match(CONDITION_GUIDANCE["stroke"] ?? "", /Mediterranean/);
 });
+
+test("buildFoodMapText: the diner's 'not for me' ingredients reach Clara; favorites do not", () => {
+  const text = buildFoodMapText({
+    ...emptyPatient(),
+    ingredientPreferences: [{ liked: false, ingredient: { name: "Mushrooms" } }, { liked: true, ingredient: { name: "Broccoli" } }],
+  });
+  assert.match(text, /Not for me \(the diner's own dislikes — never include\): Mushrooms/);
+  assert.doesNotMatch(text, /Broccoli/);
+});

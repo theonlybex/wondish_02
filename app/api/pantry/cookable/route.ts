@@ -12,6 +12,7 @@ import {
   evaluateDishAgainstProfile,
   ingredientGroupsOf,
   hasAnyBan,
+  dislikedRecipeIds,
   PATIENT_DIET_INCLUDE,
 } from "@/lib/diet-match";
 import {
@@ -55,6 +56,7 @@ export async function GET() {
   const bans = derivePatientBans(patient);
   const matchers = buildDietMatchers(bans);
   const hasBans = hasAnyBan(matchers);
+  const disliked = dislikedRecipeIds(patient);
 
   // Single catalog load + in-memory scoring, same shape the meal-plan builder
   // uses (one query, not one per recipe).
@@ -85,6 +87,7 @@ export async function GET() {
 
   for (const r of recipes) {
     const names = r.ingredients.map((ri) => ri.ingredient.name);
+    if (disliked.has(r.id)) continue; // turned down: "not gonna try" / rated "Not for me"
     if (hasBans && !evaluateDishAgainstProfile(names, matchers, ingredientGroupsOf(r.ingredients)).passed) continue;
     // A one-ingredient row is a portion entry, not a dish — whatever it is
     // called. The first attempt at this only skipped rows whose NAME matched

@@ -10,7 +10,7 @@
 import { phaseFor, isEnforced } from "@/lib/trials/schedule";
 import { termsForCategory } from "@/lib/trials/category-terms";
 
-export type BanSource = "allergy" | "avoid" | "condition" | "preference" | "motivation" | "trial";
+export type BanSource = "allergy" | "avoid" | "condition" | "preference" | "motivation" | "trial" | "dislike";
 
 export interface ExactBan {
   name: string;
@@ -38,6 +38,33 @@ export interface PatientDietGraph {
   // Trigger trials (workbook 04). Optional: most callers/tests predate them.
   // Terms come from lib/trials/category-terms by rule.category.
   triggerTrials?: TrialGraphRow[];
+  // The diner's own dislikes (2026-10-07): an ingredient marked "not for me"
+  // is a rule like any diet ban; dishes swiped "not gonna try" and planned
+  // meals rated "Not for me" are never offered again (dislikedRecipeIds).
+  // Only liked === false rows count — callers may load favorites too.
+  ingredientPreferences?: { liked: boolean; ingredient: { name: string } }[];
+  dishPreferences?: { recipeId: string }[];
+  journalEntries?: { meals: { recipeId: string | null }[] }[];
+}
+
+// Grade and form words a catalog name carries that are not the food itself
+// (a subset of lib/basket-match DESCRIPTORS, which imports this module).
+// Varieties ("jasmine") and cuts ("breasts", "thighs") are kept on purpose.
+const DISLIKE_DESCRIPTORS = new Set([
+  "extra", "virgin", "large", "small", "medium", "boneless", "skinless", "fresh", "frozen", "canned",
+  "plain", "raw", "dried", "unsalted", "salted", "organic", "shredded", "grated", "crumbled", "sliced",
+  "chopped", "diced", "minced", "yellow",
+]);
+export function dislikeCore(name: string): string {
+  return name.toLowerCase().split(/[\s-]+/).filter((w) => w && !DISLIKE_DESCRIPTORS.has(w)).join(" ");
+}
+
+/** Recipes the diner turned down: "not gonna try" swipes + meals rated "Not for me". */
+export function dislikedRecipeIds(patient: Pick<PatientDietGraph, "dishPreferences" | "journalEntries">): Set<string> {
+  const ids = new Set<string>();
+  for (const d of patient.dishPreferences ?? []) ids.add(d.recipeId);
+  for (const e of patient.journalEntries ?? []) for (const m of e.meals) if (m.recipeId) ids.add(m.recipeId);
+  return ids;
 }
 
 export interface TrialGraphRow {
@@ -167,7 +194,9 @@ export interface Violation {
 //   - healthConditions → bannedIngredients children only                (exactBanned, source "condition")
 //   - foodPreferences  → bannedIngredients children only                (exactBanned, source "preference")
 //   - motivations      → bannedIngredients children only                (exactBanned, source "motivation")
-export function derivePatientBans(patient: PatientDietGraph, today: Date = new Date()): DerivedBans {
+// `dislikes: false` leaves the diner's "not for me" ingredients out — only the
+// taste screen wants that, so a dislike can still be seen and undone there.
+export function derivePatientBans(patient: PatientDietGraph, today: Date = new Date(), opts: { dislikes?: boolean } = {}): DerivedBans {
   const allergyNames = patient.foodAllergies.flatMap((a) => [
     a.food.name,
     ...a.food.bannedIngredients.map((b) => b.name),
@@ -219,6 +248,18 @@ export function derivePatientBans(patient: PatientDietGraph, today: Date = new D
     const { terms, groups } = termsForCategory(t.rule.category);
     for (const term of terms) exactBanned.push({ name: term, source: "trial" });
     for (const g of groups ?? []) if (!trialGroupCodes.includes(g)) trialGroupCodes.push(g);
+  }
+
+  // Dislikes: no gluten-free exemption (it's this food you don't want), and
+  // the food's core name too — disliking the catalog's "Extra virgin olive
+  // oil" means olive oil, which the library also lists plainly.
+  if (opts.dislikes !== false) {
+    for (const p of patient.ingredientPreferences ?? []) {
+      if (p.liked !== false) continue;
+      for (const name of new Set([p.ingredient.name, dislikeCore(p.ingredient.name)])) {
+        if (name) exactBanned.push({ name, source: "dislike", grainExempt: false });
+      }
+    }
   }
 
   const preferenceGroupCodes = Array.from(new Set(patient.foodPreferences.flatMap((fp) => groupsFor(PREFERENCE_GROUPS, fp.food.name))));
@@ -510,6 +551,10 @@ export const PATIENT_DIET_INCLUDE = {
   motivations:      { include: { motivation: { include: { bannedIngredients: true } } } },
   // Only trials that can ban today: ACTIVE (phase decides) or COMPLETED (likely trigger).
   triggerTrials:    { where: { status: { in: ["ACTIVE", "COMPLETED"] as ("ACTIVE" | "COMPLETED")[] } }, include: { rule: true } },
+  // Dislikes — only the "not for me" rows (dislikedRecipeIds, source "dislike").
+  ingredientPreferences: { where: { liked: false }, include: { ingredient: { select: { name: true } } } },
+  dishPreferences:  { where: { liked: false }, select: { recipeId: true } },
+  journalEntries:   { where: { meals: { some: { rating: { lt: 0 }, recipeId: { not: null } } } }, select: { meals: { where: { rating: { lt: 0 }, recipeId: { not: null } }, select: { recipeId: true } } } },
 } as const;
 
 // Convenience for Prisma rows: `ingredients[i].ingredient.allergenGroups` →

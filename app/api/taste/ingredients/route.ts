@@ -25,7 +25,8 @@ export async function GET() {
   });
   if (!patient) return NextResponse.json({ levels: [] });
 
-  const bans = derivePatientBans(patient);
+  // Without the diner's own dislikes: this is where a "not for me" is seen and undone.
+  const bans = derivePatientBans(patient, new Date(), { dislikes: false });
   const matchers = buildDietMatchers(bans);
   const hasBans = hasAnyBan(matchers);
 

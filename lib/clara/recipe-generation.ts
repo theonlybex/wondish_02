@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createAnthropic } from "@/lib/anthropic";
 import { prisma } from "@/lib/db";
 import { loadIngredientGroups } from "@/lib/ingredient-catalog-db";
-import { specifyCookingOil } from "@/lib/clara/oil";
+import { specifyCookingOil, oilAllowedBy } from "@/lib/clara/oil";
 import {
   validateFridgeRecipeSnapshot,
   applyAllergenFilter,
@@ -603,8 +603,12 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     rejected[why] = (rejected[why] ?? 0) + 1;
     if (process.env.AI_DEBUG) console.warn(`[recipe-generation] rejected (${why}): ${r.name}`);
   };
-  const groupsOf = await loadIngredientGroups(recipes.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
-  const filtered = applyAllergenFilter(recipes, args.matchers, groupsOf);
+  // Name the oil BEFORE the filter judges the dish, with an oil this diner
+  // may have — repairing after the filter could write in a banned or
+  // disliked oil the filter never saw.
+  const named = recipes.map((r) => specifyCookingOil(r, oilAllowedBy(args.matchers)));
+  const groupsOf = await loadIngredientGroups(named.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
+  const filtered = applyAllergenFilter(named, args.matchers, groupsOf);
   rejected.allergen = recipes.length - filtered.length;
   // Which ban terms did the rejecting, so a wipe-out is diagnosable from the
   // log line alone (e.g. {"salt":28} → a condition rule, not an allergy).

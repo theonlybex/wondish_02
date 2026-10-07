@@ -21,7 +21,7 @@ import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
 import { dishProblem, catalogFoodVocabulary } from "@/lib/dish-plausibility";
 import { isCoveredByBasket, BASKET_STAPLES } from "@/lib/basket-coverage";
 import { ingredientTokens } from "@/lib/basket-match";
-import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, hasAnyBan, bannedNamesForPrompt, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, hasAnyBan, bannedNamesForPrompt, dislikedRecipeIds, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 import { buildFoodMapText } from "@/lib/food-map";
 import { priceDish } from "@/lib/staple-density";
 // Type-only import (erased at runtime). The implementation is loaded lazily at
@@ -581,11 +581,14 @@ export async function buildMealPlanMenus(
   });
   // Allergy AND exact bans apply by word boundary against every ingredient name.
   const hasBans = hasAnyBan(matchers);
-  const recipePoolBanFiltered = !hasBans
-    ? recipePoolRaw
-    : recipePoolRaw.filter(
-        (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers, ingredientGroupsOf(r.ingredients)).passed
-      );
+  // Dishes the diner turned down are out like banned ones — removed here, so
+  // no later relaxation (cross-week repeats, slot fallbacks) can bring them back.
+  const disliked = dislikedRecipeIds(patient);
+  const recipePoolBanFiltered = recipePoolRaw.filter(
+    (r) =>
+      !disliked.has(r.id) &&
+      (!hasBans || evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers, ingredientGroupsOf(r.ingredients)).passed)
+  );
 
   // The catalog's food vocabulary — the words a dish title may only use when
   // the dish actually contains them. Derived from the pool that was just read
@@ -1511,23 +1514,26 @@ export async function findAlternatives(
       : {}),
   });
   const hasBans = hasAnyBan(matchers);
-  return (
-    !hasBans
-      ? candidates
-      : candidates.filter(
-          (r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers, ingredientGroupsOf(r.ingredients)).passed
-        )
-  ).slice(0, 3);
+  const disliked = dislikedRecipeIds(patient);
+  return candidates
+    .filter(
+      (r) =>
+        !disliked.has(r.id) &&
+        (!hasBans || evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers, ingredientGroupsOf(r.ingredients)).passed)
+    )
+    .slice(0, 3);
 }
 
 export type SwapRejection =
   | "MEAL_TYPE_MISMATCH"
+  | "DISLIKED"
   | "BANNED_INGREDIENTS"
   | "MACRO_MISALIGNED"
   | "FAMILY_CONFLICT"
   | "SUBFAMILY_CONFLICT";
 
 export interface SwapCandidateRecipe {
+  id?: string;
   mealTypeId?: string | null;
   calories: number | null;
   protein: number | null;
@@ -1569,6 +1575,9 @@ export function validateSwapCandidate(
 ): { ok: true } | { ok: false; code: SwapRejection; message: string } {
   if (menu.mealTypeId && recipe.mealTypeId !== menu.mealTypeId) {
     return { ok: false, code: "MEAL_TYPE_MISMATCH", message: "Recipe not suitable for this meal slot" };
+  }
+  if (recipe.id && dislikedRecipeIds(patient).has(recipe.id)) {
+    return { ok: false, code: "DISLIKED", message: "You marked this dish as not for you" };
   }
 
   const bans = derivePatientBans(patient);

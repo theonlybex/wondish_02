@@ -1,3 +1,5 @@
+import { evaluateDishAgainstProfile, type DietMatchers } from "@/lib/diet-match";
+
 // "Cooking oil" is not an ingredient you can buy. The free-staples line in
 // Clara's prompt offered it by that name, so Clara wrote it: 344 library
 // dishes list "cooking oil" and 433 tell the cook to heat it (2026-10-07).
@@ -26,19 +28,24 @@ const SPECIFIC_OIL = /\boil\b/i;
 
 const isGeneric = (s: string) => GENERIC.has(s.trim().toLowerCase());
 
-export function chooseOil(dish: OilDish): string {
-  const specific = [...dish.usesIngredients, ...dish.missingIngredients].find((i) => SPECIFIC_OIL.test(i) && !isGeneric(i));
+// `allowed` is the diner's rules (bans and "not for me"): the repair must
+// never write in an oil they cannot have. null = no allowed oil; the caller
+// leaves the dish as it is and the filter judges it.
+export function chooseOil(dish: OilDish, allowed: (oil: string) => boolean = () => true): string | null {
+  const specific = [...dish.usesIngredients, ...dish.missingIngredients].find((i) => SPECIFIC_OIL.test(i) && !isGeneric(i) && allowed(i));
   if (specific) return specific.trim();
-  return HIGH_HEAT.test([dish.name, ...dish.steps].join(" \n ")) ? "avocado oil" : "olive oil";
+  const order = HIGH_HEAT.test([dish.name, ...dish.steps].join(" \n ")) ? ["avocado oil", "olive oil"] : ["olive oil", "avocado oil"];
+  return [...order, "canola oil", "sunflower oil"].find(allowed) ?? null;
 }
 
-export function specifyCookingOil<T extends OilDish>(dish: T): T {
+export function specifyCookingOil<T extends OilDish>(dish: T, allowed?: (oil: string) => boolean): T {
   const lists = [...dish.usesIngredients, ...dish.missingIngredients];
   const mentions = lists.some(isGeneric) || dish.steps.some((s) => OIL_PHRASE.test(s) || SPRAY_PHRASE.test(s));
   OIL_PHRASE.lastIndex = SPRAY_PHRASE.lastIndex = 0;
   if (!mentions) return dish;
 
-  const oil = chooseOil(dish);
+  const oil = chooseOil(dish, allowed);
+  if (!oil) return dish;
   const fixList = (list: string[]) => {
     const out: string[] = [];
     for (const item of list) {
@@ -53,4 +60,9 @@ export function specifyCookingOil<T extends OilDish>(dish: T): T {
   const steps = dish.steps.map((s) => s.replace(SPRAY_PHRASE, `${oil} spray`).replace(OIL_PHRASE, oil));
   const amounts = dish.amounts?.map((a) => (isGeneric(a.name) ? { ...a, name: oil } : a));
   return { ...dish, usesIngredients, missingIngredients, steps, ...(dish.amounts ? { amounts } : {}) };
+}
+
+/** The `allowed` check for specifyCookingOil from a diner's matchers (bans + "not for me"). */
+export function oilAllowedBy(matchers: DietMatchers): (oil: string) => boolean {
+  return (oil) => evaluateDishAgainstProfile([oil], matchers).passed;
 }

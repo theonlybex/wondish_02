@@ -38,6 +38,8 @@ export interface FoodMapPatient {
   healthConditions: { condition: { name: string; guidance?: string | null; bannedIngredients: { name: string }[] } }[];
   motivations: { motivation: { name: string; bannedIngredients: { name: string }[] } }[];
   triggerTrials?: TrialGraphRow[];
+  // The diner's own "not for me" ingredients (liked === false rows count).
+  ingredientPreferences?: { liked: boolean; ingredient: { name: string } }[];
 }
 
 // Soft, prompt-level guidance per condition — the "how to cook for it" that a
@@ -92,6 +94,9 @@ export function buildFoodMapText(patient: FoodMapPatient | null | undefined): st
     const banned = patient.foodToAvoid.flatMap((f) => (f.food.bannedIngredients ?? []).map((b) => b.name));
     if (banned.length > 0) lines.push(`Restricted from foods to avoid: ${banned.join(", ")}`);
   }
+
+  const dislikes = (patient.ingredientPreferences ?? []).filter((p) => p.liked === false).map((p) => p.ingredient.name);
+  if (dislikes.length > 0) lines.push(`Not for me (the diner's own dislikes — never include): ${dislikes.join(", ")}`);
 
   if (patient.foodPreferences?.length > 0) {
     const names = patient.foodPreferences.map((p) => p.food.name).join(", ");

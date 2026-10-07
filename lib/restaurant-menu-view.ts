@@ -27,6 +27,7 @@ const SOURCE_LABEL: Record<BanSource, string> = {
   preference: "food preference",
   motivation: "your goal",
   trial: "your trigger trial",
+  dislike: "you marked it not for you",
 };
 
 export function describeViolation(v: Violation): string {

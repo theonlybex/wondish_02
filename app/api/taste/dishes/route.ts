@@ -3,7 +3,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, hasAnyBan, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
+import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, hasAnyBan, dislikedRecipeIds, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 
 // DISHES-RETIRED (2026-09-07): the app now swipes INGREDIENTS
 // (/api/taste/ingredients + /api/taste/ingredient-swipe). This dish-swipe
@@ -42,7 +42,8 @@ export async function GET() {
     where: { patientId: patient.id },
     select: { recipeId: true },
   });
-  const swipedIds = swiped.map((s) => s.recipeId);
+  // Swiped either way, plus planned meals rated "Not for me".
+  const swipedIds = Array.from(new Set([...swiped.map((s) => s.recipeId), ...dislikedRecipeIds(patient)]));
 
   // Fetch diverse unrated public recipes with content. Ban matching (allergy
   // AND exact sources) is word-boundary phrase matching, which can't be

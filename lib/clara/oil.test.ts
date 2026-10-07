@@ -52,3 +52,15 @@ test("medium-high heat and crisp-tender vegetables stay on olive oil", () => {
   const out = specifyCookingOil(dish({ name: "Chicken with Broccoli", steps: ["Heat cooking oil over medium-high heat.", "Cook broccoli until crisp-tender."] }));
   assert.ok(out.usesIngredients.includes("olive oil"));
 });
+
+test("the repair only picks an oil the diner may have — a disliked or banned oil is skipped", () => {
+  const noOlive = (n: string) => !/olive/i.test(n);
+  assert.ok(specifyCookingOil(dish(), noOlive).usesIngredients.includes("avocado oil"));
+  const onlyCanola = (n: string) => n === "canola oil";
+  assert.ok(specifyCookingOil(dish(), onlyCanola).usesIngredients.includes("canola oil"));
+  // Nothing allowed: leave the dish alone rather than inject a banned oil.
+  assert.deepEqual(specifyCookingOil(dish(), () => false), dish());
+  // The dish's own oil is skipped too when it is not allowed.
+  const own = dish({ usesIngredients: ["tofu", "toasted sesame oil", "cooking oil"] });
+  assert.ok(specifyCookingOil(own, (n) => !/sesame/i.test(n)).usesIngredients.includes("olive oil"));
+});

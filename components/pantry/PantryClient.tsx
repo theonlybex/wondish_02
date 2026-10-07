@@ -1090,6 +1090,7 @@ const BAN_KIND_LABEL: Record<BanRule["kind"], string> = {
   diet: "Diet",
   goal: "Goal",
   trial: "Trigger trial",
+  dislike: "Your choice",
 };
 
 // Wondish 03 Big-9 component groups, said the way a person would.

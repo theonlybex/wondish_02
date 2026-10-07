@@ -80,3 +80,13 @@ test("reasonsForMany matches reasonsFor item by item", () => {
   assert.deepEqual(check.reasonsForMany(items), items.map((i) => check.reasonsFor(i.name, i.allergenGroups)));
   assert.deepEqual(check.reasonsForMany(items), [["Vegetarian"], [], [], ["Vegetarian"]]);
 });
+
+test("ingredients marked 'not for me' are hidden and listed as their own rule", () => {
+  const check = ingredientBanCheck({
+    ...empty(),
+    ingredientPreferences: [{ liked: false, ingredient: { name: "Mushrooms" } }, { liked: true, ingredient: { name: "Broccoli" } }],
+  });
+  assert.deepEqual(check.rules, [{ kind: "dislike", label: "Not for me", terms: ["Mushrooms"], groups: [] }]);
+  assert.deepEqual(check.reasonsFor("Mushrooms"), ["Not for me"]);
+  assert.deepEqual(check.reasonsFor("Broccoli"), []);
+});

@@ -308,6 +308,9 @@ test("PATIENT_DIET_INCLUDE: shape matches the 5-source graph (allergies/avoid/co
     foodPreferences:  { include: { food: { include: { bannedIngredients: true } } } },
     motivations:      { include: { motivation: { include: { bannedIngredients: true } } } },
     triggerTrials:    { where: { status: { in: ["ACTIVE", "COMPLETED"] } }, include: { rule: true } },
+    ingredientPreferences: { where: { liked: false }, include: { ingredient: { select: { name: true } } } },
+    dishPreferences:  { where: { liked: false }, select: { recipeId: true } },
+    journalEntries:   { where: { meals: { some: { rating: { lt: 0 }, recipeId: { not: null } } } }, select: { meals: { where: { rating: { lt: 0 }, recipeId: { not: null } }, select: { recipeId: true } } } },
   });
 });
 
@@ -749,4 +752,55 @@ test("a grain-free list (Paleo bans wheat AND rice/corn) does not exempt gluten-
   assert.equal(passes(paleo, "Potato & tapioca gluten-free crackers"), false);
   const glutenFree = pref("Gluten-free", ["wheat", "gluten", "bread", "crackers"]);
   assert.equal(passes(glutenFree, "gluten-free bread"), true);
+});
+
+// ─── dislikes are rules (2026-10-07) ────────────────────────────────────────
+
+import { dislikedRecipeIds } from "./diet-match";
+
+test("an ingredient marked 'not for me' is banned like a diet rule; favorites are not", () => {
+  const g: PatientDietGraph = {
+    ...emptyPatient(),
+    ingredientPreferences: [
+      { liked: false, ingredient: { name: "Mushrooms" } },
+      { liked: false, ingredient: { name: "Sliced bread" } },
+      { liked: true, ingredient: { name: "Broccoli" } },
+    ],
+  };
+  const m = buildDietMatchers(derivePatientBans(g));
+  const check = (n: string) => evaluateDishAgainstProfile([n], m);
+  assert.deepEqual(check("Mushrooms").violations, [{ ingredient: "Mushrooms", term: "mushrooms", source: "dislike" }]);
+  assert.equal(check("sliced mushrooms").passed, false);
+  assert.equal(check("Broccoli").passed, true);
+  // A dislike is exact: no "gluten-free" exemption for the bread you don't want.
+  assert.equal(check("gluten-free sliced bread").passed, false);
+  // The taste screen must still show what you disliked, so you can change it.
+  assert.equal(evaluateDishAgainstProfile(["Mushrooms"], buildDietMatchers(derivePatientBans(g, new Date(), { dislikes: false }))).passed, true);
+});
+
+test("dislikedRecipeIds: 'not gonna try' swipes and meals rated 'Not for me', deduplicated", () => {
+  assert.deepEqual(
+    [...dislikedRecipeIds({
+      dishPreferences: [{ recipeId: "r1" }, { recipeId: "r2" }],
+      journalEntries: [{ meals: [{ recipeId: "r2" }, { recipeId: "r3" }] }, { meals: [{ recipeId: null }] }],
+    })].sort(),
+    ["r1", "r2", "r3"]
+  );
+  assert.equal(dislikedRecipeIds({}).size, 0);
+});
+
+test("a dislike covers the food, not just the catalog wording: grade/form words are dropped, varieties kept", () => {
+  const dislike = (name: string) =>
+    buildDietMatchers(derivePatientBans({ ...emptyPatient(), ingredientPreferences: [{ liked: false, ingredient: { name } }] }));
+  const banned = (m: ReturnType<typeof dislike>, n: string) => !evaluateDishAgainstProfile([n], m).passed;
+  const olive = dislike("Extra virgin olive oil");
+  assert.equal(banned(olive, "olive oil"), true);
+  assert.equal(banned(olive, "Avocado oil"), false);
+  const eggs = dislike("Large eggs");
+  assert.equal(banned(eggs, "egg"), true);
+  assert.equal(banned(eggs, "Eggplant"), false);
+  assert.equal(banned(dislike("Shredded cheddar"), "cheddar cheese"), true);
+  const jasmine = dislike("Jasmine rice");
+  assert.equal(banned(jasmine, "Basmati rice"), false); // a variety stays a variety
+  assert.equal(banned(dislike("Boneless chicken breasts"), "Chicken thighs"), false); // cuts stay distinct
 });

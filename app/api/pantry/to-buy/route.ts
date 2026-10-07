@@ -7,6 +7,7 @@ import {
   buildDietMatchers,
   evaluateDishAgainstProfile,
   ingredientGroupsOf,
+  dislikedRecipeIds,
   PATIENT_DIET_INCLUDE,
 } from "@/lib/diet-match";
 import { rankToBuy } from "@/lib/to-buy";
@@ -37,7 +38,7 @@ export async function GET() {
   const [recipesRaw, pantry, prefs] = await Promise.all([
     prisma.recipe.findMany({
       where: { isPublic: true, ingredients: { some: {} } },
-      select: { ingredients: { select: { ingredientId: true, ingredient: { select: { name: true, allergenGroups: true } } } } },
+      select: { id: true, ingredients: { select: { ingredientId: true, ingredient: { select: { name: true, allergenGroups: true } } } } },
     }),
     prisma.patientPantryItem.findMany({ where: { patientId: patient.id }, select: { ingredientId: true } }),
     prisma.patientIngredientPreference.findMany({
@@ -46,10 +47,12 @@ export async function GET() {
     }),
   ]);
 
-  const recipes = (hasBans
-    ? recipesRaw.filter((r) => evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers, ingredientGroupsOf(r.ingredients)).passed)
-    : recipesRaw
-  ).map((r) => ({ ingredients: r.ingredients.map((ri) => ({ ingredientId: ri.ingredientId, name: ri.ingredient.name })) }));
+  // Rank from dishes this diner would actually eat: not banned, not turned down.
+  const disliked = dislikedRecipeIds(patient);
+  const recipes = recipesRaw
+    .filter((r) => !disliked.has(r.id))
+    .filter((r) => !hasBans || evaluateDishAgainstProfile(r.ingredients.map((ri) => ri.ingredient.name), matchers, ingredientGroupsOf(r.ingredients)).passed)
+    .map((r) => ({ ingredients: r.ingredients.map((ri) => ({ ingredientId: ri.ingredientId, name: ri.ingredient.name })) }));
 
   // Every ingredient of a passing dish is allowed by construction; the
   // per-ingredient pass is the guarantee that nothing banned is offered even

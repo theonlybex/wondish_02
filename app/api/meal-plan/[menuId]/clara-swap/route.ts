@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anthropic";
 import { prisma } from "@/lib/db";
 import { loadIngredientGroups } from "@/lib/ingredient-catalog-db";
+import { specifyCookingOil, oilAllowedBy } from "@/lib/clara/oil";
 import { displayDishName } from "@/lib/dish-name";
 import {
   derivePatientBans,
@@ -322,8 +323,9 @@ export async function POST(
     // (about 45 minutes ahead)". dishProblem covers salt, seasoning quantities,
     // the breakfast ceiling and the title's promise; the two generation-only
     // checks apply here too, because Clara is in the loop and can be asked again.
-    const groupsOf = await loadIngredientGroups(parsed.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
-    const survivors = applyAllergenFilter(parsed, matchers, groupsOf);
+    const named = parsed.map((r) => specifyCookingOil(r, oilAllowedBy(matchers)));
+    const groupsOf = await loadIngredientGroups(named.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
+    const survivors = applyAllergenFilter(named, matchers, groupsOf);
     if (process.env.AI_DEBUG || survivors.length === 0) {
       console.info(`[clara-swap] parsed=${parsed.length} afterAllergen=${survivors.length}`);
     }

@@ -1277,3 +1277,21 @@ test("alternatives: candidates with a banned allergen-group ingredient are dropp
   const out = await findAlternatives(withAllergy("Wheat"), { mealTypeId: "mt-lunch" }, db);
   assert.deepEqual(out.map((r: { id: string }) => r.id), ["r-rice"]);
 });
+
+// Dishes the diner said "not gonna try" (taste swiper) or rated "Not for me"
+// (planned meal) are never offered again (2026-10-07).
+test("swap: a disliked dish is rejected", async () => {
+  const { validateSwapCandidate } = await modPromise;
+  const recipe = { ...swapRecipe(), id: "r-no" };
+  const res = validateSwapCandidate({ ...dietPatient, dishPreferences: [{ recipeId: "r-no" }] }, { mealTypeId: "mt-lunch" }, recipe, []);
+  assert.equal((res as { code: string }).code, "DISLIKED");
+});
+
+test("alternatives: disliked dishes are dropped", async () => {
+  const { findAlternatives } = await modPromise;
+  const a = { id: "r-a", name: "A", ingredients: [{ ingredient: { name: "Jasmine rice", allergenGroups: [] } }] };
+  const b = { id: "r-b", name: "B", ingredients: [{ ingredient: { name: "Jasmine rice", allergenGroups: [] } }] };
+  const db = { findCandidates: async () => [a, b] } as unknown as Parameters<typeof findAlternatives>[2];
+  const out = await findAlternatives({ ...dietPatient, journalEntries: [{ meals: [{ recipeId: "r-a" }] }] }, { mealTypeId: "mt-lunch" }, db);
+  assert.deepEqual(out.map((r: { id: string }) => r.id), ["r-b"]);
+});

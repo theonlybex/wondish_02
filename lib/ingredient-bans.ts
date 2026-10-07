@@ -21,7 +21,7 @@ import {
 } from "@/lib/diet-match";
 import { categoryTitle } from "@/lib/trials/category-terms";
 
-export type BanKind = "allergy" | "avoid" | "condition" | "diet" | "goal" | "trial";
+export type BanKind = "allergy" | "avoid" | "condition" | "diet" | "goal" | "trial" | "dislike";
 
 export interface BanRule {
   kind: BanKind;
@@ -78,6 +78,9 @@ export function ingredientBanCheck(patient: PatientDietGraph, today: Date = new 
     const graph = { ...EMPTY, triggerTrials: [t] };
     add("trial", `${categoryTitle(t.rule.category)} trial`, derivePatientBans(graph, today).exactBanned.map((b) => b.name), graph);
   }
+
+  const dislikes = (patient.ingredientPreferences ?? []).filter((p) => p.liked === false);
+  if (dislikes.length) add("dislike", "Not for me", dislikes.map((p) => p.ingredient.name), { ...EMPTY, ingredientPreferences: dislikes });
 
   const full = buildDietMatchers(derivePatientBans(patient, today));
   const perRule: { label: string; matchers: DietMatchers }[] = parts.map((p) => ({
