@@ -106,12 +106,17 @@ test("4 · the library no longer says 'cooking oil' (backfill applied)", () => {
 test("4 · the oil the repair picks is allowed for every diner, and Clara is never offered 'cooking oil'", async () => {
   const { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile } = await import("@/lib/diet-match");
   const { freeStaplesFor } = await import("@/lib/clara/recipe-generation");
+  const { chooseOil, oilAllowedBy } = await import("@/lib/clara/oil");
+  const dishes = [
+    { name: "Chicken and Rice", usesIngredients: ["chicken breast", "cooking oil"], missingIngredients: [], steps: ["Heat cooking oil."] },
+    { name: "Beef Stir-Fry", usesIngredients: ["beef", "cooking oil"], missingIngredients: [], steps: ["Stir-fry in cooking oil."] },
+  ];
   for (const p of PROFILES) {
     const matchers = buildDietMatchers(derivePatientBans(makePatient(snap, p) as any));
-    for (const oil of ["Extra virgin olive oil", "Avocado oil", "olive oil", "avocado oil"]) {
-      // "everything" bans whatever any list bans — only flag oils a real rule set forbids.
-      if (p.tier === "everything") continue;
-      assert.ok(evaluateDishAgainstProfile([oil], matchers, [ingByName.get(oil.toLowerCase())?.allergenGroups ?? []]).passed, `${p.id}: repair would inject banned "${oil}"`);
+    for (const d of dishes) {
+      const oil = chooseOil(d, oilAllowedBy(matchers));
+      // null = no allowed oil: the dish is left for the filter to judge, never repaired into a ban.
+      if (oil) assert.ok(evaluateDishAgainstProfile([oil], matchers).passed, `${p.id}: repair picked banned "${oil}"`);
     }
     assert.ok(!freeStaplesFor(matchers).includes("cooking oil"));
   }
@@ -263,4 +268,84 @@ test("11 · a user's own condition: its avoid list is enforced everywhere, its n
 
   const prompt = buildFoodMapText({ ...patient, mealType: null } as any);
   assert.match(prompt, /My gut thing \(the diner's own note\): "no mushrooms, please"/);
+});
+
+// ── 12. Dislikes are rules ───────────────────────────────────────────────────
+test("12 · dishes turned down and ingredients marked 'not for me' never come back, in any service", async () => {
+  const mealPlan = await import("@/lib/meal-plan");
+  const cookable = await import("@/app/api/pantry/cookable/route");
+  const tasteDishes = await import("@/app/api/taste/dishes/route");
+  const tasteIng = await import("@/app/api/taste/ingredients/route");
+  const catalog = await import("@/app/api/pantry/catalog/route");
+  const toBuy = await import("@/app/api/pantry/to-buy/route");
+  const { applyAllergenFilter } = await import("@/lib/fridge");
+  const { specifyCookingOil, oilAllowedBy } = await import("@/lib/clara/oil");
+  const { loadIngredientGroups } = await import("@/lib/ingredient-catalog-db");
+  const { derivePatientBans, buildDietMatchers } = await import("@/lib/diet-match");
+  const fake = (globalThis as any).prisma;
+
+  // Baseline: what this diner is served with no dislikes.
+  const base = asDiner(["goal:Eat healthier"]);
+  const before = await quietly(() => mealPlan.buildMealPlanMenus(base.id, new Date("2026-10-05T00:00:00"), 1, { windowDays: 7 }));
+  const served = Array.from(new Set(before.rows.map((r: any) => r.recipeId))) as string[];
+  assert.ok(served.length >= 8, "baseline week too small — case is vacuous");
+  const swipedNo = served.slice(0, 4); // "not gonna try" on the taste swiper
+  const ratedNo = served.slice(4, 8); // planned meal rated "Not for me"
+  const turnedDown = new Set([...swipedNo, ...ratedNo]);
+
+  const patient = {
+    ...base,
+    dishPreferences: swipedNo.map((recipeId) => ({ recipeId })),
+    journalEntries: [{ meals: ratedNo.map((recipeId) => ({ recipeId })) }],
+    ingredientPreferences: [
+      { liked: false, ingredient: { name: "Mushrooms" } },
+      { liked: false, ingredient: { name: "Extra virgin olive oil" } },
+    ],
+  };
+  state.patient = patient;
+  const usesDisliked = (id: string) =>
+    snap.recipes.find((r) => r.id === id)!.ingredients.some((ri) => /mushroom|olive oil/i.test(snap.ingredients.find((i) => i.id === ri.ingredientId)?.name ?? ""));
+
+  // Week plan (several start dates), alternatives, swap gate, cookable, taste swiper.
+  for (const start of ["2026-10-05", "2026-10-12", "2026-10-19"]) {
+    const week = await quietly(() => mealPlan.buildMealPlanMenus(patient.id, new Date(`${start}T00:00:00`), 1, { windowDays: 7 }));
+    for (const r of week.rows) {
+      assert.ok(!turnedDown.has(r.recipeId), `meal plan re-served a turned-down dish (${start})`);
+      assert.ok(!usesDisliked(r.recipeId), `meal plan served a dish with a "not for me" ingredient (${start})`);
+    }
+  }
+  for (const mt of snap.mealTypes) {
+    for (const r of await mealPlan.findAlternatives(patient as any, { mealTypeId: mt.id, currentCalories: 0 })) {
+      assert.ok(!turnedDown.has(r.id) && !usesDisliked(r.id), "alternatives offered a disliked dish");
+    }
+  }
+  const library = await fake.recipe.findMany({ where: { isPublic: true } });
+  for (const r of library.filter((x: any) => turnedDown.has(x.id))) {
+    assert.equal((mealPlan.validateSwapCandidate(patient as any, { mealTypeId: r.mealTypeId }, r, []) as any).code, "DISLIKED");
+  }
+  state.pantryIds = snap.ingredients.map((i) => i.id);
+  const ck = await quietly(async () => json(await cookable.GET()));
+  state.pantryIds = [];
+  for (const d of [...ck.ready, ...ck.almost]) assert.ok(!turnedDown.has(d.id) && !usesDisliked(d.id), `cookable offered "${d.name}"`);
+  for (let i = 0; i < 3; i++) {
+    for (const d of (await quietly(async () => json(await tasteDishes.GET()))).dishes) assert.ok(!turnedDown.has(d.id) && !usesDisliked(d.id), `taste swiper showed "${d.name}"`);
+  }
+
+  // What to buy hides them and says why; the taste picker still shows them (so they can be undone).
+  const { categories, bans } = await quietly(async () => json(await catalog.GET()));
+  const items = categories.flatMap((c: any) => c.items);
+  assert.deepEqual(items.find((i: any) => i.name === "Mushrooms")?.bannedBy, ["Not for me"]);
+  assert.ok(bans.rules.some((r: any) => r.kind === "dislike" && r.terms.includes("Mushrooms")));
+  const { items: buy } = await quietly(async () => json(await toBuy.GET()));
+  assert.ok(!buy.some((i: any) => /mushroom|olive oil/i.test(i.name)), "What to buy suggests a disliked ingredient");
+  const { levels } = await quietly(async () => json(await tasteIng.GET()));
+  assert.ok(levels.flatMap((l: any) => l.items).some((i: any) => i.name === "Mushrooms"), "taste picker hid a dislike — it could never be undone");
+
+  // Clara: a generic-oil dish gets an oil the diner may have; a mushroom dish is dropped.
+  const matchers = buildDietMatchers(derivePatientBans(patient as any));
+  const dish = (uses: string[]) => ({ id: "x", name: "Chef's bowl", description: "", emoji: "", usesIngredients: uses, missingIngredients: [], steps: ["Heat cooking oil, cook and serve."], mealType: "Lunch", servings: 1, perServing: { calories: 400, protein: 20, carbs: 40, fat: 10 }, fitsPlan: true, conflicts: [] });
+  const named = specifyCookingOil(dish(["chicken breast", "cooking oil"]), oilAllowedBy(matchers));
+  assert.ok(!named.usesIngredients.some((i) => /olive/i.test(i)), `oil repair wrote in a disliked oil: ${named.usesIngredients}`);
+  const groupsOf = await loadIngredientGroups(["mushrooms"]);
+  assert.equal(applyAllergenFilter([dish(["mushrooms", "rice"])] as any, matchers, groupsOf).length, 0);
 });

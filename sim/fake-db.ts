@@ -44,6 +44,7 @@ class UnsupportedQuery extends Error {}
 
 export function createFakePrisma(snap: Snapshot, state: SimState) {
   const ingById = new Map(snap.ingredients.map((i) => [i.id, i]));
+  const ingByNameLower = new Map(snap.ingredients.map((i) => [i.name.toLowerCase(), i]));
   // Recipes in the shape every caller selects: links carry the ingredient row.
   const recipes = snap.recipes.map((r) => ({
     ...r,
@@ -161,8 +162,16 @@ export function createFakePrisma(snap: Snapshot, state: SimState) {
     patientPantryItem: {
       findMany: async () => state.pantryIds.map((id) => ({ ingredientId: id, ingredient: ingById.get(id) })),
     },
-    patientIngredientPreference: { findMany: async () => [] },
-    patientDishPreference: { findMany: async () => [] },
+    // The diner's own rows, honouring the liked filter the caller asks for.
+    patientIngredientPreference: {
+      findMany: async (args: any) =>
+        (thePatient()?.ingredientPreferences ?? [])
+          .filter((p: any) => args?.where?.liked === undefined || p.liked === args.where.liked)
+          .map((p: any) => ({ ...p, ingredientId: ingByNameLower.get(p.ingredient.name.toLowerCase())?.id })),
+    },
+    patientDishPreference: {
+      findMany: async () => (thePatient()?.dishPreferences ?? []).map((d: any) => ({ recipeId: d.recipeId, liked: false })),
+    },
     menu: { findMany: async () => [] },
     ingredientUnitConversion: { findMany: async () => [] },
     $transaction: refuseWrite("$transaction"),

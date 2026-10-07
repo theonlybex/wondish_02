@@ -2,14 +2,19 @@
 // real user holds, hand-built heavy combinations, and everything at once.
 import type { Snapshot } from "./fake-db";
 
-export type RuleKind = "allergy" | "avoid" | "condition" | "diet" | "goal" | "trial";
+export type RuleKind = "allergy" | "avoid" | "condition" | "diet" | "goal" | "trial" | "dislike";
 export type RuleKey = `${RuleKind}:${string}`;
 export type Profile = { id: string; tier: Tier; rules: RuleKey[]; users?: number };
 export type Tier = "single" | "pair" | "real" | "curated" | "random" | "everything";
 
+// Ingredients a diner can mark "not for me" on the taste screen — common
+// library ingredients, olive oil included (the cooking-oil repair must not
+// write in an oil the diner disliked).
+export const DISLIKE_SAMPLE = ["Mushrooms", "Extra virgin olive oil", "Garlic", "Large eggs", "Boneless chicken breasts", "Jasmine rice", "Spinach", "Shredded cheddar"];
+
 export function ruleUniverse(snap: Snapshot) {
   const r = snap.rules;
-  const lists: Record<Exclude<RuleKind, "trial">, { name: string; bannedIngredients: { name: string }[] }[]> = {
+  const lists: Record<Exclude<RuleKind, "trial" | "dislike">, { name: string; bannedIngredients: { name: string }[] }[]> = {
     allergy: r.allergies,
     avoid: r.avoids,
     condition: r.conditions,
@@ -27,13 +32,14 @@ export function ruleUniverse(snap: Snapshot) {
     }
   }
   for (const category of Array.from(new Set(r.triggerRules.map((t) => t.category)))) all.push(`trial:${category}`);
+  for (const name of DISLIKE_SAMPLE) if (snap.ingredients.some((i) => i.name === name)) all.push(`dislike:${name}`);
   return { all, banning: all.filter((k) => !empty.includes(k)), empty, lists };
 }
 
 /** Build the diet graph the services read (PATIENT_DIET_INCLUDE shape) plus the body fields the planner needs. */
 export function makePatient(snap: Snapshot, profile: Profile) {
   const { lists } = ruleUniverse(snap);
-  const pick = (kind: Exclude<RuleKind, "trial">) =>
+  const pick = (kind: Exclude<RuleKind, "trial" | "dislike">) =>
     profile.rules
       .filter((k) => k.startsWith(`${kind}:`))
       .map((k) => {
@@ -76,7 +82,9 @@ export function makePatient(snap: Snapshot, profile: Profile) {
     mealPlanStartDate: new Date("2026-10-05"),
     activePlanVersion: 1,
     recentDishes: null,
-    ingredientPreferences: [],
+    ingredientPreferences: profile.rules.filter((k) => k.startsWith("dislike:")).map((k) => ({ liked: false, ingredient: { name: k.slice("dislike:".length) } })),
+    dishPreferences: [] as { recipeId: string }[],
+    journalEntries: [] as { meals: { recipeId: string | null }[] }[],
     foodAllergies: pick("allergy").map((food) => ({ food })),
     foodToAvoid: pick("avoid").map((food) => ({ food })),
     healthConditions: pick("condition").map((condition) => ({ condition: { ...condition, ownerPatientId: null } })),

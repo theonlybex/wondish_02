@@ -20,7 +20,10 @@ import { makeOracle, type Verdict } from "./oracle";
 
 type Served = { name: string; allergenGroups?: readonly string[]; via: string };
 type ServiceResult = { served: Served[]; note?: string };
-type Service = { key: string; label: string; heavy: boolean; run(p: Profile, patient: any): Promise<ServiceResult> };
+// `ratesDislikes`: the screen where a "not for me" is set and undone — it must
+// still show the diner's dislikes, so it is judged without them (every other
+// rule still applies).
+type Service = { key: string; label: string; heavy: boolean; ratesDislikes?: boolean; run(p: Profile, patient: any): Promise<ServiceResult> };
 
 const json = async (res: Response) => {
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${JSON.stringify(await res.json()).slice(0, 200)}`);
@@ -74,7 +77,7 @@ async function loadServices(): Promise<Service[]> {
       },
     },
     {
-      key: "taste-ingredients", label: "Taste · ingredient picker", heavy: false,
+      key: "taste-ingredients", label: "Taste · ingredient picker", heavy: false, ratesDislikes: true,
       run: async () => {
         const { levels } = await json(await tasteIng.GET());
         return { served: ingredientServed(levels.flatMap((l: any) => l.items.map((it: any) => it.id)), "taste") };
@@ -181,6 +184,7 @@ test("every service respects every rule, alone and combined", { timeout: 6 * 60 
     const patient = makePatient(snap, profile);
     state.patient = patient;
     const oracle = makeOracle(patient as any, profile.rules);
+    const oracleWithoutDislikes = makeOracle({ ...patient, ingredientPreferences: [] } as any, profile.rules.filter((k) => !k.startsWith("dislike:")));
     for (const svc of services) {
       if (svc.heavy && profile.tier === "pair") continue;
       const row = rows.get(svc.key)!;
@@ -198,7 +202,7 @@ test("every service respects every rule, alone and combined", { timeout: 6 * 60 
       }
       if (result.note && profile.tier !== "pair") notes.push({ profile: profile.id, service: svc.key, note: result.note });
       row.items += result.served.length;
-      const verdicts: Verdict[] = oracle.judgeMany(result.served);
+      const verdicts: Verdict[] = (svc.ratesDislikes ? oracleWithoutDislikes : oracle).judgeMany(result.served);
       result.served.forEach((item, i) => {
         const v = verdicts[i];
         const why = [

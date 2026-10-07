@@ -73,6 +73,7 @@ export function makeOracle(patient: PatientDietGraph & { [k: string]: any }, rul
   for (const c of patient.healthConditions) addTerms(`condition:${c.condition.name}`, c.condition.bannedIngredients.map((b) => b.name));
   for (const p of patient.foodPreferences) addTerms(`diet:${p.food.name}`, p.food.bannedIngredients.map((b) => b.name));
   for (const m of patient.motivations) addTerms(`goal:${m.motivation.name}`, m.motivation.bannedIngredients.map((b) => b.name));
+  for (const p of patient.ingredientPreferences ?? []) if (p.liked === false) addTerms(`dislike:${p.ingredient.name}`, [p.ingredient.name]);
 
   const expected = rules.flatMap((rule) => (EXPECTED_GROUPS[rule] ?? []).map((group) => ({ rule, group })));
 
