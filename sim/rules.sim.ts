@@ -4,42 +4,19 @@
 // browser, no network, no writes, no model calls.
 //
 //   npm run sim:snapshot     # read-only export from the shared DB (once)
-//   npm run sim:rules        # this file; SIM_PAIRS=0 skips the ~3k pair profiles
+//   npm run sim:rules        # this file + sim/additions.sim.ts; SIM_PAIRS=0 skips the ~2.7k pair profiles
 //
 // Each service's output is reduced to the ingredients it puts in front of the
 // diner and judged by sim/oracle.ts. Any violation fails the run; the report
 // lands in docs/qa/rule-compliance-sim.md.
-import { test, mock } from "node:test";
+import "./setup"; // mocks + snapshot + fake Prisma — must load before any service
+import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { createFakePrisma, type Snapshot, type SimState } from "./fake-db";
+import { snap, state, ingById, ingByName, recipeById, recipeItems } from "./setup";
 import { buildProfiles, makePatient, ruleUniverse, type Profile } from "./profiles";
 import { makeOracle, type Verdict } from "./oracle";
-
-// ── isolation: mocks and env BEFORE any service module loads ─────────────────
-const req = createRequire(__filename);
-const state: SimState = { patient: null, pantryIds: [] };
-mock.module(pathToFileURL(req.resolve("server-only")).href, { namedExports: {} });
-mock.module(pathToFileURL(req.resolve("@clerk/nextjs/server")).href, {
-  namedExports: { auth: async () => ({ userId: state.patient?.account.clerkId ?? null }) },
-});
-delete process.env.ANTHROPIC_API_KEY; // planner's Clara top-up returns [] without a key
-delete process.env.UPSTASH_REDIS_REST_URL; // in-memory rate limiter
-delete process.env.UPSTASH_REDIS_REST_TOKEN;
-delete process.env.RATE_LIMIT_ENFORCE_BACKEND;
-
-const snapFile = join(__dirname, ".snapshot", "snapshot.json");
-const snap: Snapshot = JSON.parse(readFileSync(snapFile, "utf8"));
-(globalThis as any).prisma = createFakePrisma(snap, state);
-
-const ingById = new Map(snap.ingredients.map((i) => [i.id, i]));
-const ingByName = new Map(snap.ingredients.map((i) => [i.name.trim().toLowerCase(), i]));
-const recipeById = new Map(snap.recipes.map((r) => [r.id, r]));
-const recipeItems = (id: string) =>
-  (recipeById.get(id)?.ingredients ?? []).map((ri) => ingById.get(ri.ingredientId)).filter(Boolean).map((i) => ({ name: i!.name, allergenGroups: i!.allergenGroups }));
 
 type Served = { name: string; allergenGroups?: readonly string[]; via: string };
 type ServiceResult = { served: Served[]; note?: string };

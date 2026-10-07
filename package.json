@@ -22,7 +22,7 @@
     "rate-limit:check": "node --import tsx scripts/check-rate-limit-backend.ts",
     "rate-limit:reset-user": "node --import tsx scripts/reset-user-rate-limits.ts",
     "sim:snapshot": "node --env-file=.env.local --import tsx sim/snapshot.ts",
-    "sim:rules": "node --experimental-test-module-mocks --import tsx --test --test-reporter=dot sim/rules.sim.ts"
+    "sim:rules": "node --experimental-test-module-mocks --import tsx --test --test-reporter=spec sim/rules.sim.ts sim/additions.sim.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
