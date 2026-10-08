@@ -9,6 +9,7 @@ import QuotaError from "@/components/ui/QuotaError";
 import { quotaCta, type QuotaCta } from "@/lib/quota-cta";
 import { buildCuisineChecklists } from "@/lib/cuisine-ingredients";
 import type { BanRule } from "@/lib/ingredient-bans";
+import KitchenBasics from "@/components/pantry/KitchenBasics";
 import { displayDishName, formatAmount } from "@/lib/dish-name";
 // Old "What to buy" design (reused the standalone GroceryListView). Replaced
 // (2026-09-07) by the inline shopping list below, which ticks bought items
@@ -760,6 +761,8 @@ export default function PantryClient({
             )}
           </div>
         </div>
+
+        <KitchenBasics />
 
         <p className="text-[9px] tracking-[0.22em] uppercase font-bold mb-2" style={{ color: "#ABA6A6" }}>
           Browse by category

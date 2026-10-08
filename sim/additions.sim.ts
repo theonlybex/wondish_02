@@ -412,3 +412,53 @@ test("14 · a user's own eating plan is enforced like a diet everywhere and its 
   assert.equal(applyAllergenFilter([dish] as any, matchers, () => []).length, 0);
   assert.match(buildFoodMapText({ ...patient, mealType: null } as any), /\(the diner's own plan\): "light dinners, nothing fried"/);
 });
+
+// ── 15. Kitchen basics ───────────────────────────────────────────────────────
+// A diner reported garlic powder in dishes though they never chose it: the
+// dried spices were assumed in every kitchen. Unticking a basic must take it
+// out of the week, "dishes you can cook" and Clara's free staples — and
+// leaving them all ticked must change nothing.
+test("15 · an unticked kitchen basic (garlic powder) is never assumed: week, cookable and Clara's staples", async () => {
+  const cookable = await import("@/app/api/pantry/cookable/route");
+  const mealPlan = await import("@/lib/meal-plan");
+  const { staplesFor } = await import("@/lib/kitchen-basics");
+  const { freeStaplesFor } = await import("@/lib/clara/recipe-generation");
+  const { derivePatientBans, buildDietMatchers } = await import("@/lib/diet-match");
+  const nameOf = (id: string) => snap.ingredients.find((i) => i.id === id)?.name.toLowerCase() ?? "";
+  const usesGarlicPowder = (id: string) => snap.recipes.find((r) => r.id === id)?.ingredients.some((ri) => nameOf(ri.ingredientId) === "garlic powder") ?? false;
+  // A pantry that covers a dozen garlic-powder dishes — all but the garlic
+  // powder (a whole-catalog pantry overflows cookable's 30-card cap).
+  const gpDishes = snap.recipes.filter((r) => r.isPublic !== false && usesGarlicPowder(r.id)).slice(0, 12);
+  const pantryIds = new Set(gpDishes.flatMap((r) => r.ingredients.map((ri) => ri.ingredientId)));
+  const pantry = snap.ingredients.filter((i) => pantryIds.has(i.id) && i.name.toLowerCase() !== "garlic powder");
+  const basket = new Set(pantry.map((i) => i.name.toLowerCase()));
+
+  const run = async (missingStaples: string[]) => {
+    const patient = { ...makePatient(snap, profile(["goal:Eat healthier"])), missingStaples };
+    state.patient = patient;
+    state.pantryIds = pantry.map((i) => i.id);
+    const ck = await quietly(async () => json(await cookable.GET()));
+    state.pantryIds = [];
+    const week = await quietly(() => mealPlan.buildMealPlanMenus(patient.id, new Date("2026-10-05T00:00:00"), 1, { windowDays: 7, basket }));
+    return {
+      ready: ck.ready.filter((d: any) => usesGarlicPowder(d.id)).map((d: any) => d.name),
+      almost: ck.almost.filter((d: any) => usesGarlicPowder(d.id)),
+      week: week.rows.filter((r: any) => usesGarlicPowder(r.recipeId)).map((r: any) => r.recipeId),
+      patient,
+    };
+  };
+
+  // Default: every basic assumed — the old behaviour, so garlic powder dishes show up (non-vacuity).
+  const assumed = await run([]);
+  assert.ok(assumed.ready.length > 0, "control: no garlic-powder dish counted ready — the check below would pass vacuously");
+  assert.ok(assumed.week.length > 0, "control: no garlic-powder dish in the basket week — the check below would pass vacuously");
+
+  const unticked = await run(["garlic-powder"]);
+  assert.deepEqual(unticked.ready, [], "cookable calls a garlic-powder dish ready");
+  assert.deepEqual(unticked.week, [], "the basket week uses garlic powder");
+  assert.ok(unticked.almost.every((d: any) => d.missing.some((m: string) => /garlic powder/i.test(m))), "an 'almost' dish hides that garlic powder is missing");
+
+  const matchers = buildDietMatchers(derivePatientBans(unticked.patient as any));
+  assert.ok(!freeStaplesFor(matchers, staplesFor(["garlic-powder"])).includes("garlic powder"), "Clara is told garlic powder is free");
+  assert.ok(freeStaplesFor(matchers, staplesFor([])).includes("garlic powder"));
+});
