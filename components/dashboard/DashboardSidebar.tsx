@@ -62,6 +62,7 @@ export default function DashboardSidebar({
     { href: "/admin/parameters/gender", label: t("parameters") },
     { href: "/admin/coupons", label: t("coupons") },
     { href: "/admin/clara-gaps", label: t("claraGaps") },
+    { href: "/admin/feedback", label: t("feedbackAdmin") },
   ];
 
   return (
