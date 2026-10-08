@@ -180,8 +180,8 @@ export function createFakePrisma(snap: Snapshot, state: SimState) {
     // Feedback reports (2026-10-07): the one place the simulation WRITES — to
     // this in-memory store only, never the snapshot. Callback transactions
     // run against the same store (no rollback is needed by the callers).
-    feedbackReport: feedbackModel("report"),
-    feedbackIssue: feedbackModel("issue"),
+    feedbackReport: faulty("feedbackReport", feedbackModel("report")),
+    feedbackIssue: faulty("feedbackIssue", feedbackModel("issue")),
     $transaction: async (arg: unknown) => {
       if (typeof arg === "function") return (arg as (tx: unknown) => unknown)(self);
       throw new UnsupportedQuery("fake-db: array $transaction refused (simulation is read-only)");
@@ -262,14 +262,46 @@ export function createFakePrisma(snap: Snapshot, state: SimState) {
         return (typeof args.take === "number" ? list.slice(0, args.take) : list).map((r) => withRelations(r, args));
       },
       count: async (args: any = {}) => rows.filter((r) => where(r, args.where)).length,
+      // Compare-and-swap claims and cleanup (deferred minors, 2026-10-07).
+      updateMany: async (args: any) => {
+        const hit = rows.filter((r) => where(r, args.where));
+        for (const r of hit) applyData(r, args.data);
+        return { count: hit.length };
+      },
+      delete: async (args: any) => {
+        const i = rows.findIndex((r) => r.id === args.where.id);
+        if (i < 0) throw new UnsupportedQuery(`fake-db: feedback ${kind} ${args.where.id} not found`);
+        return rows.splice(i, 1)[0];
+      },
+      deleteMany: async (args: any = {}) => {
+        const keep = rows.filter((r) => !where(r, args.where));
+        const count = rows.length - keep.length;
+        rows.splice(0, rows.length, ...keep);
+        return { count };
+      },
       project,
     };
   }
 }
 
 // In-memory feedback tables, shared by every fake client in the process.
-export const feedback = { reports: [] as any[], issues: [] as any[], seq: 0, tick: 0 };
+// `failNext` makes the next call to e.g. "feedbackIssue.findMany" throw once.
+export const feedback = { reports: [] as any[], issues: [] as any[], seq: 0, tick: 0, failNext: null as string | null };
+function faulty<T extends Record<string, any>>(model: string, impl: T): T {
+  const out: any = {};
+  for (const [op, fn] of Object.entries(impl)) {
+    out[op] = typeof fn !== "function" || op === "project" ? fn : async (...a: any[]) => {
+      if (feedback.failNext === `${model}.${op}`) {
+        feedback.failNext = null;
+        throw new Error(`injected failure: ${model}.${op}`);
+      }
+      return fn(...a);
+    };
+  }
+  return out;
+}
 export function resetFeedbackStore() {
   feedback.reports.length = 0;
   feedback.issues.length = 0;
+  feedback.failNext = null;
 }

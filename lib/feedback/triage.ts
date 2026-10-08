@@ -40,11 +40,31 @@ const withTimeout = <T,>(p: Promise<T>, ms: number) => {
 
 /** Categorise one saved report and attach it to an issue. Never throws. */
 export async function triageReport(reportId: string, call?: TriageCaller): Promise<"DONE" | "FAILED"> {
+  try {
+    return await triageOnce(reportId, call);
+  } catch (e) {
+    // A database error (not the model) — the report is already saved; mark it
+    // for retry rather than failing the user's request (deferred minor).
+    console.error("[feedback] triage failed", e);
+    await prisma.feedbackReport
+      .updateMany({ where: { id: reportId, triage: { not: "DONE" } }, data: { triage: "FAILED", triageNote: "triage error — will retry" } })
+      .catch(() => {});
+    return "FAILED";
+  }
+}
+
+async function triageOnce(reportId: string, call?: TriageCaller): Promise<"DONE" | "FAILED"> {
   const report = await prisma.feedbackReport.findUnique({ where: { id: reportId } });
   if (!report || report.triage === "DONE") return "DONE";
-  // Claim the attempt BEFORE calling the model: a call cut off by a function
-  // timeout still counts toward MAX_TRIES instead of retrying forever.
-  await prisma.feedbackReport.update({ where: { id: report.id }, data: { triageTries: { increment: 1 } } });
+  // Claim the attempt BEFORE calling the model — atomically (compare-and-swap
+  // on triageTries), so an admin retry racing the inline triage backs off
+  // instead of filing the report twice; and a call cut off by a function
+  // timeout still counts toward MAX_TRIES.
+  const claim = await prisma.feedbackReport.updateMany({
+    where: { id: report.id, triage: { not: "DONE" }, triageTries: report.triageTries },
+    data: { triageTries: { increment: 1 } },
+  });
+  if (claim.count === 0) return "FAILED"; // someone else is triaging it
   const openRows = await prisma.feedbackIssue.findMany({
     where: { status: { in: ["NEW", "INVESTIGATING"] } },
     orderBy: { updatedAt: "desc" },

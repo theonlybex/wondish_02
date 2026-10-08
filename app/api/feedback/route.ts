@@ -7,6 +7,8 @@ import { patientForClerk } from "@/lib/custom-conditions-server";
 import { uploadPrivateFile, deleteFile } from "@/lib/s3";
 import { validateFeedbackText, validateArea, sniffImage, FEEDBACK_MAX_IMAGE_BYTES, FEEDBACK_MAX_IMAGE_MB } from "@/lib/feedback/validate";
 import { triageReport } from "@/lib/feedback/triage";
+import { FEEDBACK_RATE_BUCKET } from "@/lib/feedback/validate";
+import { screenshotFailure } from "@/lib/feedback/storage";
 
 // Room for the 8 s inline triage plus the upload (Vercel default may be shorter).
 export const maxDuration = 30;
@@ -16,8 +18,6 @@ export const maxDuration = 30;
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { success } = await rateLimit("feedback-submit", userId, 10, 86400);
-  if (!success) return NextResponse.json({ error: "You've sent 10 reports today — thank you! Please try again tomorrow." }, { status: 429 });
   const patient = await patientForClerk(userId);
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
@@ -25,6 +25,12 @@ export async function POST(req: NextRequest) {
   try { form = await req.formData(); } catch { return NextResponse.json({ error: "Invalid form" }, { status: 400 }); }
   const t = validateFeedbackText(form.get("text"));
   if (!t.ok) return NextResponse.json({ error: t.error, field: "text" }, { status: 422 });
+  // After validation, so a rejected attempt doesn't use up the day's
+  // allowance; an "ai-" bucket because every report costs a model call, and
+  // spend buckets fall back to a per-instance counter on a Redis error
+  // instead of failing open (deferred minors, 2026-10-07).
+  const { success } = await rateLimit(FEEDBACK_RATE_BUCKET, userId, 10, 86400);
+  if (!success) return NextResponse.json({ error: "You've sent 10 reports today — thank you! Please try again tomorrow." }, { status: 429 });
 
   const context: Record<string, unknown> = {
     from: String(form.get("from") ?? "").slice(0, 200) || null,
@@ -44,8 +50,10 @@ export async function POST(req: NextRequest) {
     if (!type) return NextResponse.json({ error: "Please attach a PNG, JPEG or WebP image.", field: "screenshot" }, { status: 422 });
     try {
       screenshotKey = await uploadPrivateFile(buf, type, "feedback");
-    } catch {
-      context.screenshot = "not stored: storage not configured";
+    } catch (e) {
+      const f = screenshotFailure(e);
+      context.screenshot = f.note;
+      if (f.log) console.error("[feedback] screenshot upload failed", e);
     }
   }
 
@@ -61,8 +69,12 @@ export async function POST(req: NextRequest) {
     if (screenshotKey) await deleteFile(screenshotKey).catch(() => {});
     throw e;
   }
+  // The report is saved: from here on nothing may turn this into an error,
+  // or the user resends and the report is duplicated.
   const triage = await triageReport(report.id);
-  const row = await prisma.feedbackReport.findUnique({ where: { id: report.id }, select: { issue: { select: { status: true } } } });
+  const row = await prisma.feedbackReport
+    .findUnique({ where: { id: report.id }, select: { issue: { select: { status: true } } } })
+    .catch(() => null);
   return NextResponse.json({ report: { id: report.id, status: row?.issue?.status ?? "NEW", triaged: triage === "DONE" } }, { status: 201 });
 }
 

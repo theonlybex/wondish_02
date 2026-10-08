@@ -199,3 +199,49 @@ test("10 · the admin page never hangs on a dead model: retries run in parallel 
   // Each retry claimed its attempt before calling the model: 1 (submit) + 1 (retry).
   assert.deepEqual(feedback.reports.map((r) => r.triageTries), [2, 2, 2]);
 });
+
+// ── Deferred minors (2026-10-07) ─────────────────────────────────────────────
+
+test("11 · a database error after the report is saved still answers 201 — no 500, no duplicate on resend", async () => {
+  feedback.failNext = "feedbackIssue.findMany"; // triage's first read
+  const res = await post(user("dbfail"), "The trials page shows an error banner");
+  assert.equal(res.status, 201);
+  assert.equal(feedback.reports.length, 1);
+  assert.equal(feedback.reports[0].triage, "FAILED");
+});
+
+test("12 · two triages of the same report at once create ONE issue (atomic claim)", async () => {
+  const { triage } = await routes();
+  await stub(async () => { throw new Error("down"); });
+  await post(user("race"), "Clara keeps answering in Spanish");
+  const id = feedback.reports[0].id;
+  let calls = 0;
+  const slow = async () => { calls++; await new Promise((r) => setTimeout(r, 50)); return { category: "CLARA", severity: "MEDIUM", title: "Clara wrong language", duplicateOf: null, reasoning: "" }; };
+  await Promise.all([triage.triageReport(id, slow), triage.triageReport(id, slow)]);
+  assert.equal(feedback.issues.length, 1, `${feedback.issues.length} issues`);
+  assert.equal(calls, 1, "the model was called twice for one report");
+});
+
+test("13 · an issue left with no reports (moved away) disappears instead of listing '0 people'", async () => {
+  await post(user("move-a"), "The shopping list total is wrong");
+  const { report } = await routes();
+  as(user("admin"), true);
+  const res = await report.PATCH(new Request("http://localhost", { method: "PATCH", body: JSON.stringify({ moveTo: "new" }) }) as any, { params: { id: feedback.reports[0].id } });
+  assert.equal(res.status, 200);
+  assert.equal(feedback.issues.length, 1, "the emptied issue was left behind");
+  const view = await adminView();
+  assert.ok(view.open.every((i: any) => i.reporters > 0));
+});
+
+test("14 · rejected submissions don't use up the daily allowance", async () => {
+  const u = user("invalid-first");
+  for (let i = 0; i < 10; i++) assert.equal((await post(u, "short")).status, 422);
+  assert.equal((await post(u, "Now a real report about the meal plan")).status, 201);
+});
+
+test("15 · the admin view carries the Sentry org so event ids become links", async () => {
+  process.env.SENTRY_ORG = "wondish";
+  const view = await adminView();
+  delete process.env.SENTRY_ORG;
+  assert.equal(view.sentryOrg, "wondish");
+});

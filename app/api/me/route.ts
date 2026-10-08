@@ -1,5 +1,5 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { deleteFeedbackScreenshots } from "@/lib/feedback/cleanup";
+import { deleteFeedbackScreenshots, feedbackIssueIdsFor, deleteOrphanedIssues } from "@/lib/feedback/cleanup";
 import { NextResponse } from "next/server";
 import { AccountClaimConflictError, getOrCreateAccount } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
@@ -100,7 +100,10 @@ export async function DELETE() {
   // Feedback screenshots live in S3, outside the cascade: delete them while
   // their keys are still known (best effort; never blocks the deletion).
   await deleteFeedbackScreenshots(userId).catch((e) => console.error("[me] feedback screenshot cleanup failed", e));
+  const feedbackIssues = await feedbackIssueIdsFor(userId).catch(() => [] as string[]);
   // Cascades to Subscription/Patient/AccountRole/CouponRedemption via onDelete: Cascade.
   await prisma.account.deleteMany({ where: { clerkId: userId } });
+  // Issues only this user reported would keep their model-written titles.
+  await deleteOrphanedIssues(feedbackIssues).catch((e) => console.error("[me] orphaned feedback issue cleanup failed", e));
   return NextResponse.json({ ok: true });
 }

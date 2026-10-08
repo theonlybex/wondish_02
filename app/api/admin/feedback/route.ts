@@ -21,7 +21,9 @@ export async function GET() {
     const budget = Number(process.env.FEEDBACK_RETRY_BUDGET_MS ?? 9000);
     await Promise.race([retryPendingTriage(3).catch(() => 0), new Promise((r) => setTimeout(r, budget))]);
     const issues = await prisma.feedbackIssue.findMany({ include: { reports: { select: reportSelect, orderBy: { createdAt: "desc" } } } });
-    const ranked = rankIssues(issues, new Date());
+    // An issue whose reports were all moved away (or deleted with an account)
+    // is not a problem anyone has — never list it as "0 people".
+    const ranked = rankIssues(issues.filter((i) => i.reports.length > 0), new Date());
     const row = (i: (typeof ranked.open)[number]) => ({
       id: i.id, title: i.title, category: i.category, severity: i.severity, status: i.status,
       score: i.score, reporters: i.reporters, reportCount: i.reports.length, lastSeen: i.lastSeen, reports: i.reports.map(toReportRow),
@@ -32,6 +34,8 @@ export async function GET() {
       open: ranked.open.map(row),
       closed: ranked.closed.map(row),
       untriaged: untriaged.map(toReportRow),
+      // For links from a report's Sentry event id to the event.
+      sentryOrg: process.env.SENTRY_ORG ?? null,
     });
   } catch (err) {
     return adminErrorResponse(err);

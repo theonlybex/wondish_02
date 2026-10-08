@@ -1,4 +1,7 @@
 // Pure validation for user feedback reports (spec 2026-10-07-feedback-reports-design).
+// Rate-limit bucket: "ai-" so it is a spend bucket (lib/rate-limit fails it
+// closed per instance on a backend error, instead of open).
+export const FEEDBACK_RATE_BUCKET = "ai-feedback-submit";
 export const FEEDBACK_AREAS = ["meal-plan", "ingredients", "clara", "journal", "trials", "profile", "other"] as const;
 export const FEEDBACK_TEXT_MIN = 10;
 export const FEEDBACK_TEXT_MAX = 2000;

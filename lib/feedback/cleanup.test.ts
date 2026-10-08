@@ -20,3 +20,23 @@ test("account deletion removes screenshots BEFORE the cascade forgets their keys
   assert.ok(cleanup > 0, "DELETE /api/me does not delete feedback screenshots");
   assert.ok(cleanup < cascade, "screenshots must be deleted before the account cascade");
 });
+
+import { deleteOrphanedIssues } from "./cleanup";
+test("issues left with no reports after an account is deleted are removed; shared ones stay", async () => {
+  const removed: string[] = [];
+  const n = await deleteOrphanedIssues(["iss-mine", "iss-shared"], {
+    remaining: async (id) => (id === "iss-shared" ? 2 : 0),
+    remove: async (id) => { removed.push(id); },
+  });
+  assert.deepEqual(removed, ["iss-mine"]);
+  assert.equal(n, 1);
+});
+
+test("account deletion collects issue ids before the cascade and removes orphans after it", () => {
+  const src = readFileSync("app/api/me/route.ts", "utf8");
+  const collect = src.indexOf("feedbackIssueIdsFor(userId)");
+  const cascade = src.indexOf("prisma.account.deleteMany({ where: { clerkId: userId } })");
+  const orphans = src.indexOf("deleteOrphanedIssues(");
+  assert.ok(collect > 0 && orphans > 0, "DELETE /api/me does not clean up orphaned feedback issues");
+  assert.ok(collect < cascade && cascade < orphans, "collect before the cascade, delete orphans after it");
+});

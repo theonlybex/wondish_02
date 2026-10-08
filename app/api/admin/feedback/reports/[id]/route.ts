@@ -10,10 +10,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   try {
     await requireAdmin();
     const b = await req.json().catch(() => ({}));
-    const report = await prisma.feedbackReport.findUnique({ where: { id: params.id }, select: { id: true, text: true, issue: { select: { category: true, severity: true } } } });
+    const report = await prisma.feedbackReport.findUnique({ where: { id: params.id }, select: { id: true, text: true, issueId: true, issue: { select: { category: true, severity: true } } } });
     if (!report) return NextResponse.json({ error: "Report not found" }, { status: 404 });
+    // The issue this report leaves: deleted if nothing remains in it.
+    const dropIfEmpty = async () => {
+      if (!report.issueId) return;
+      const left = await prisma.feedbackReport.count({ where: { issueId: report.issueId } });
+      if (left === 0) await prisma.feedbackIssue.deleteMany({ where: { id: report.issueId } });
+    };
     if (b.retry === true) {
       await prisma.feedbackReport.update({ where: { id: report.id }, data: { triage: "PENDING", triageTries: 0, issueId: null } });
+      await dropIfEmpty();
       return NextResponse.json({ triage: await triageReport(report.id) });
     }
     if (b.moveTo === "new") {
@@ -25,12 +32,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         select: { id: true },
       });
       await prisma.feedbackReport.update({ where: { id: report.id }, data: { issueId: issue.id, triage: "DONE" } });
+      await dropIfEmpty();
       return NextResponse.json({ issueId: issue.id });
     }
     if (typeof b.moveTo === "string") {
       const target = await prisma.feedbackIssue.findUnique({ where: { id: b.moveTo }, select: { id: true } });
       if (!target) return NextResponse.json({ error: "Issue not found" }, { status: 404 });
       await prisma.feedbackReport.update({ where: { id: report.id }, data: { issueId: target.id, triage: "DONE" } });
+      if (target.id !== report.issueId) await dropIfEmpty();
       return NextResponse.json({ issueId: target.id });
     }
     return NextResponse.json({ error: "Nothing to change" }, { status: 422 });
