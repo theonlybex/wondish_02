@@ -42,6 +42,9 @@ const withTimeout = <T,>(p: Promise<T>, ms: number) => {
 export async function triageReport(reportId: string, call?: TriageCaller): Promise<"DONE" | "FAILED"> {
   const report = await prisma.feedbackReport.findUnique({ where: { id: reportId } });
   if (!report || report.triage === "DONE") return "DONE";
+  // Claim the attempt BEFORE calling the model: a call cut off by a function
+  // timeout still counts toward MAX_TRIES instead of retrying forever.
+  await prisma.feedbackReport.update({ where: { id: report.id }, data: { triageTries: { increment: 1 } } });
   const openRows = await prisma.feedbackIssue.findMany({
     where: { status: { in: ["NEW", "INVESTIGATING"] } },
     orderBy: { updatedAt: "desc" },
@@ -63,7 +66,7 @@ export async function triageReport(reportId: string, call?: TriageCaller): Promi
       if (!issueId) {
         issueId = (await tx.feedbackIssue.create({ data: { title: t.title, category: t.category, severity: t.severity }, select: { id: true } })).id;
       }
-      await tx.feedbackReport.update({ where: { id: report.id }, data: { issueId, triage: "DONE", triageNote: t.reasoning || null, triageTries: { increment: 1 } } });
+      await tx.feedbackReport.update({ where: { id: report.id }, data: { issueId, triage: "DONE", triageNote: t.reasoning || null } });
     });
     return "DONE";
   } catch (e) {
@@ -78,27 +81,26 @@ export async function triageReport(reportId: string, call?: TriageCaller): Promi
       });
       await prisma.feedbackReport.update({
         where: { id: report.id },
-        data: { issueId: issue.id, triage: "DONE", triageNote: `Filed by the safety rule; model failed: ${why}`, triageTries: { increment: 1 } },
+        data: { issueId: issue.id, triage: "DONE", triageNote: `Filed by the safety rule; model failed: ${why}` },
       });
       return "DONE";
     }
     await prisma.feedbackReport.update({
       where: { id: report.id },
-      data: { triage: "FAILED", triageNote: why, triageTries: { increment: 1 } },
+      data: { triage: "FAILED", triageNote: why },
     });
     return "FAILED";
   }
 }
 
-/** Retry untriaged reports (admin page load / "Retry triage"). */
-export async function retryPendingTriage(limit = 5, call?: TriageCaller): Promise<number> {
+/** Retry untriaged reports in parallel (admin page load). */
+export async function retryPendingTriage(limit = 3, call?: TriageCaller): Promise<number> {
   const rows = await prisma.feedbackReport.findMany({
     where: { triage: { in: ["PENDING", "FAILED"] }, triageTries: { lt: MAX_TRIES } },
     orderBy: { createdAt: "asc" },
     take: limit,
     select: { id: true },
   });
-  let done = 0;
-  for (const r of rows) if ((await triageReport(r.id, call)) === "DONE") done++;
-  return done;
+  const results = await Promise.allSettled(rows.map((r) => triageReport(r.id, call)));
+  return results.filter((r) => r.status === "fulfilled" && r.value === "DONE").length;
 }

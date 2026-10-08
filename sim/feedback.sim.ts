@@ -185,3 +185,17 @@ test("9 · a safety report is CRITICAL even when the triage model is down — co
   assert.equal(view.counts.openCritical, 1);
   assert.equal(view.counts.untriaged, 0);
 });
+
+test("10 · the admin page never hangs on a dead model: retries run in parallel within a budget, and each attempt is counted", async () => {
+  await stub(async () => { throw new Error("down"); });
+  for (let i = 0; i < 3; i++) await post(user(`dead${i}`), `The journal page is blank, attempt ${i}`);
+  await stub(() => new Promise(() => {})); // never answers
+  process.env.FEEDBACK_RETRY_BUDGET_MS = "300";
+  const t0 = Date.now();
+  await adminView();
+  const took = Date.now() - t0;
+  delete process.env.FEEDBACK_RETRY_BUDGET_MS;
+  assert.ok(took < 1500, `admin page took ${took} ms`);
+  // Each retry claimed its attempt before calling the model: 1 (submit) + 1 (retry).
+  assert.deepEqual(feedback.reports.map((r) => r.triageTries), [2, 2, 2]);
+});

@@ -8,6 +8,9 @@ import { uploadPrivateFile } from "@/lib/s3";
 import { validateFeedbackText, validateArea, sniffImage, FEEDBACK_MAX_IMAGE_BYTES } from "@/lib/feedback/validate";
 import { triageReport } from "@/lib/feedback/triage";
 
+// Room for the 8 s inline triage plus the upload (Vercel default may be shorter).
+export const maxDuration = 30;
+
 // POST /api/feedback — a user's bug report (multipart). GET — the caller's own reports.
 // Spec: docs/superpowers/specs/2026-10-07-feedback-reports-design.md
 export async function POST(req: NextRequest) {

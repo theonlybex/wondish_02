@@ -4,6 +4,9 @@ import { requireAdmin, adminErrorResponse } from "@/lib/admin";
 import { rankIssues } from "@/lib/feedback/rank";
 import { retryPendingTriage } from "@/lib/feedback/triage";
 
+// Room for the bounded retry plus the queries (Vercel default may be shorter).
+export const maxDuration = 30;
+
 // GET /api/admin/feedback — issues ranked by importance, with their reports.
 // Retries a few untriaged reports first (best effort, never blocks the page).
 const reportSelect = { id: true, patientId: true, text: true, area: true, createdAt: true, context: true, screenshotKey: true, triage: true, triageNote: true } as const;
@@ -13,7 +16,10 @@ const toReportRow = (r: ReportRowSrc) => ({ id: r.id, text: r.text, area: r.area
 export async function GET() {
   try {
     await requireAdmin();
-    await retryPendingTriage(5).catch(() => 0);
+    // Retries run in parallel and the page waits at most a fixed budget: a
+    // dead model must not hang the admin page (final review, 2026-10-07).
+    const budget = Number(process.env.FEEDBACK_RETRY_BUDGET_MS ?? 9000);
+    await Promise.race([retryPendingTriage(3).catch(() => 0), new Promise((r) => setTimeout(r, budget))]);
     const issues = await prisma.feedbackIssue.findMany({ include: { reports: { select: reportSelect, orderBy: { createdAt: "desc" } } } });
     const ranked = rankIssues(issues, new Date());
     const row = (i: (typeof ranked.open)[number]) => ({
