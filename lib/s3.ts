@@ -47,6 +47,19 @@ export async function uploadFile(
 }
 
 /**
+ * Upload and return the object KEY, never a URL: for private objects that are
+ * only ever read through getPresignedUrl (feedback screenshots can show a
+ * user's health data). Deliberately separate from uploadFile, whose public
+ * URL return value must never be produced for these.
+ */
+export async function uploadPrivateFile(buffer: Buffer, mimeType: string, folder: "feedback"): Promise<string> {
+  const ext = mimeType.split("/")[1] ?? "bin";
+  const key = `${folder}/${crypto.randomUUID()}.${ext}`;
+  await getClient().send(new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: buffer, ContentType: mimeType }));
+  return key;
+}
+
+/**
  * Generate a short-lived pre-signed URL for a private S3 object.
  */
 export async function getPresignedUrl(key: string, expiresIn = 3600): Promise<string> {
