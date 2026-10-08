@@ -191,10 +191,37 @@ export function createFakePrisma(snap: Snapshot, state: SimState) {
 
   function feedbackModel(kind: "report" | "issue") {
     const rows = kind === "report" ? feedback.reports : feedback.issues;
-    const withRelations = (r: any) =>
-      kind === "report"
-        ? { ...r, issue: r.issueId ? feedback.issues.find((i) => i.id === r.issueId) ?? null : null }
-        : { ...r, reports: feedback.reports.filter((x) => x.issueId === r.id).sort((a, b) => b.createdAt - a.createdAt) };
+    // Prisma semantics, not a superset: scalars by default, a relation only
+    // when `include`d or `select`ed, nested select/include/orderBy honoured.
+    // Returning everything let a route that dropped its include — or leaked a
+    // field past its select — pass the simulation (final review, 2026-10-07).
+    const relationOf = (r: any, key: string) => {
+      if (kind === "report" && key === "issue") return { kind: "issue" as const, value: r.issueId ? feedback.issues.find((i) => i.id === r.issueId) ?? null : null };
+      if (kind === "issue" && key === "reports") return { kind: "report" as const, value: feedback.reports.filter((x) => x.issueId === r.id) };
+      throw new UnsupportedQuery(`fake-db: feedback ${kind} has no relation "${key}"`);
+    };
+    const isRelation = (key: string) => (kind === "report" && key === "issue") || (kind === "issue" && key === "reports");
+    const projectRelated = (rel: { kind: "issue" | "report"; value: any }, spec: any) => {
+      const sub = feedbackModel(rel.kind);
+      if (rel.value === null) return null;
+      const arg = spec === true ? {} : spec;
+      return Array.isArray(rel.value) ? sub.project(order(rel.value, arg.orderBy), arg) : sub.project(rel.value, arg);
+    };
+    const project = (r: any, args: any = {}): any => {
+      if (Array.isArray(r)) return r.map((x) => project(x, args));
+      const out: any = {};
+      if (args.select) {
+        for (const [k, v] of Object.entries(args.select)) {
+          if (!v) continue;
+          out[k] = isRelation(k) ? projectRelated(relationOf(r, k), v) : r[k];
+        }
+        return out;
+      }
+      for (const [k, v] of Object.entries(r)) if (!isRelation(k)) out[k] = v;
+      for (const [k, v] of Object.entries(args.include ?? {})) if (v) out[k] = projectRelated(relationOf(r, k), v);
+      return out;
+    };
+    const withRelations = (r: any, args: any = {}) => project(r, args);
     const where = (r: any, w: any): boolean =>
       Object.entries(w ?? {}).every(([k, cond]) => scalarOk(r[k] ?? null, cond, `feedback${kind}`, k));
     const order = (list: any[], orderBy: any) => {
@@ -210,29 +237,32 @@ export function createFakePrisma(snap: Snapshot, state: SimState) {
       r.updatedAt = new Date(Date.now() + feedback.tick++);
     };
     return {
-      create: async ({ data }: any) => {
+      create: async (args: any) => {
+        const { data } = args;
         const now = new Date(Date.now() + feedback.tick++);
         const row = kind === "report"
           ? { id: `rep${++feedback.seq}`, issueId: null, area: null, screenshotKey: null, triage: "PENDING", triageNote: null, triageTries: 0, createdAt: now, ...data }
           : { id: `iss${++feedback.seq}`, status: "NEW", createdAt: now, updatedAt: now, ...data };
         rows.push(row);
-        return withRelations(row);
+        return withRelations(row, args);
       },
-      update: async ({ where: w, data }: any) => {
+      update: async (args: any) => {
+        const { where: w, data } = args;
         const row = rows.find((r) => r.id === w.id);
         if (!row) throw new UnsupportedQuery(`fake-db: feedback ${kind} ${w.id} not found`);
         applyData(row, data);
-        return withRelations(row);
+        return withRelations(row, args);
       },
-      findUnique: async ({ where: w }: any) => {
-        const row = rows.find((r) => r.id === w.id);
-        return row ? withRelations(row) : null;
+      findUnique: async (args: any) => {
+        const row = rows.find((r) => r.id === args.where.id);
+        return row ? withRelations(row, args) : null;
       },
       findMany: async (args: any = {}) => {
         const list = order(rows.filter((r) => where(r, args.where)), args.orderBy);
-        return (typeof args.take === "number" ? list.slice(0, args.take) : list).map(withRelations);
+        return (typeof args.take === "number" ? list.slice(0, args.take) : list).map((r) => withRelations(r, args));
       },
       count: async (args: any = {}) => rows.filter((r) => where(r, args.where)).length,
+      project,
     };
   }
 }
