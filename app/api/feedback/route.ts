@@ -5,7 +5,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { resolveAiTier } from "@/lib/ai-budget";
 import { patientForClerk } from "@/lib/custom-conditions-server";
 import { uploadPrivateFile } from "@/lib/s3";
-import { validateFeedbackText, validateArea, sniffImage, FEEDBACK_MAX_IMAGE_BYTES } from "@/lib/feedback/validate";
+import { validateFeedbackText, validateArea, sniffImage, FEEDBACK_MAX_IMAGE_BYTES, FEEDBACK_MAX_IMAGE_MB } from "@/lib/feedback/validate";
 import { triageReport } from "@/lib/feedback/triage";
 
 // Room for the 8 s inline triage plus the upload (Vercel default may be shorter).
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   let screenshotKey: string | null = null;
   const file = form.get("screenshot");
   if (file instanceof File && file.size > 0) {
-    if (file.size > FEEDBACK_MAX_IMAGE_BYTES) return NextResponse.json({ error: "Screenshots can be up to 5 MB.", field: "screenshot" }, { status: 422 });
+    if (file.size > FEEDBACK_MAX_IMAGE_BYTES) return NextResponse.json({ error: `Screenshots can be up to ${FEEDBACK_MAX_IMAGE_MB} MB.`, field: "screenshot" }, { status: 422 });
     const buf = Buffer.from(await file.arrayBuffer());
     const type = sniffImage(buf);
     if (!type) return NextResponse.json({ error: "Please attach a PNG, JPEG or WebP image.", field: "screenshot" }, { status: 422 });

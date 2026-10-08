@@ -2,7 +2,10 @@
 export const FEEDBACK_AREAS = ["meal-plan", "ingredients", "clara", "journal", "trials", "profile", "other"] as const;
 export const FEEDBACK_TEXT_MIN = 10;
 export const FEEDBACK_TEXT_MAX = 2000;
-export const FEEDBACK_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+// Vercel refuses request bodies over 4.5 MB (a non-JSON 413, before our code
+// runs): 4 MB leaves room for the text fields and multipart framing.
+export const FEEDBACK_MAX_IMAGE_MB = 4;
+export const FEEDBACK_MAX_IMAGE_BYTES = FEEDBACK_MAX_IMAGE_MB * 1024 * 1024;
 
 export function validateFeedbackText(raw: unknown): { ok: true; text: string } | { ok: false; error: string } {
   if (typeof raw !== "string") return { ok: false, error: "Tell us what went wrong." };

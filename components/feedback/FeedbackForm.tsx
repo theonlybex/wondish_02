@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import Button from "@/components/ui/Button";
-import { FEEDBACK_TEXT_MAX, FEEDBACK_TEXT_MIN, FEEDBACK_MAX_IMAGE_BYTES } from "@/lib/feedback/validate";
+import { FEEDBACK_TEXT_MAX, FEEDBACK_TEXT_MIN, FEEDBACK_MAX_IMAGE_BYTES, FEEDBACK_MAX_IMAGE_MB } from "@/lib/feedback/validate";
 import { USER_STATUS_LABEL, type UserStatus } from "@/lib/feedback/status";
 import { LAST_PAGE_KEY } from "@/lib/profile-exit";
 
@@ -66,7 +66,7 @@ export default function FeedbackForm() {
   const pickFile = (f: File | null) => {
     setError(null);
     if (f && f.size > FEEDBACK_MAX_IMAGE_BYTES) {
-      setError({ field: "screenshot", message: "Screenshots can be up to 5 MB." });
+      setError({ field: "screenshot", message: `Screenshots can be up to ${FEEDBACK_MAX_IMAGE_MB} MB.` });
       return;
     }
     setFile(f);
@@ -96,6 +96,11 @@ export default function FeedbackForm() {
       if (file) body.append("screenshot", file);
       const res = await fetch("/api/feedback", { method: "POST", body });
       const data = await res.json().catch(() => ({}));
+      // The platform's own body-size refusal is not JSON — say what to do.
+      if (res.status === 413) {
+        setError({ field: "screenshot", message: `That screenshot is too large — please attach one under ${FEEDBACK_MAX_IMAGE_MB} MB.` });
+        return;
+      }
       if (!res.ok) {
         setError({ field: data.field, message: data.error ?? "Could not send. Please try again." });
         if (data.field === "text") textRef.current?.focus();
@@ -176,7 +181,7 @@ export default function FeedbackForm() {
             </div>
           ) : (
             <label htmlFor="fb-shot" className="inline-flex items-center min-h-[44px] px-4 py-2 rounded-xl border-2 border-dashed border-[#EAE4CA] text-sm font-medium text-[#4A4646] cursor-pointer hover:border-primary hover:text-primary focus-within:ring-2 focus-within:ring-primary/30">
-              Attach an image (PNG, JPEG or WebP, up to 5 MB)
+              Attach an image (PNG, JPEG or WebP, up to {FEEDBACK_MAX_IMAGE_MB} MB)
             </label>
           )}
           {error?.field === "screenshot" && <p className="text-error text-xs mt-1.5" role="alert">{error.message}</p>}

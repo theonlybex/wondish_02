@@ -29,7 +29,7 @@ user (i18n key `feedback` in `messages/en|es|ru.json`).
 2. "Where were you?" — optional chips: Meal plan, Ingredients / What to buy,
    Clara, Journal, Trials, Profile, Something else. Pre-selected from the page
    the user came from (`?from=` set by the sidebar link from the current path).
-3. "Add a screenshot" — optional, one image (PNG/JPEG/WebP, ≤ 5 MB).
+3. "Add a screenshot" — optional, one image (PNG/JPEG/WebP, ≤ 4 MB — Vercel refuses request bodies over 4.5 MB).
 4. Send. Button shows a spinner; on success the form clears and a
    confirmation appears: "Thanks — we've got it. You'll see its status below."
 5. "Your reports" — the user's own reports, newest first: their text (first
