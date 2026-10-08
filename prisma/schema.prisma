@@ -173,6 +173,7 @@ model Patient {
   pantryItems       PatientPantryItem[]
 
   claraCapabilityRequests ClaraCapabilityRequest[]
+  feedbackReports         FeedbackReport[]
   supplements             Supplement[]
 
   restaurantPlanExchanges RestaurantPlanExchange[]
@@ -1273,6 +1274,78 @@ enum ClaraGapReason {
 /// skill cycle runs next (spec 2026-07-30-clara-full-service-assistant §5).
 /// Stores a model-written PARAPHRASE only — never the raw transcript.
 /// Retention: 180 days.
+enum FeedbackCategory {
+  SAFETY_FOOD
+  WRONG_FOOD
+  MEAL_PLAN
+  SHOPPING
+  CLARA
+  JOURNAL
+  TRIALS
+  PROFILE
+  BILLING
+  PERFORMANCE
+  UI
+  IDEA
+  OTHER
+}
+
+enum FeedbackSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum FeedbackStatus {
+  NEW
+  INVESTIGATING
+  FIXED
+  WONT_FIX
+}
+
+enum TriageState {
+  PENDING
+  DONE
+  FAILED
+}
+
+/// One problem; many user reports grouped into it by the triage bot.
+/// Spec: docs/superpowers/specs/2026-10-07-feedback-reports-design.md
+model FeedbackIssue {
+  id        String           @id @default(cuid())
+  title     String
+  category  FeedbackCategory
+  severity  FeedbackSeverity
+  status    FeedbackStatus   @default(NEW)
+  reports   FeedbackReport[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([status, severity])
+}
+
+/// What one user sent from the Feedback screen.
+model FeedbackReport {
+  id            String         @id @default(cuid())
+  patientId     String
+  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  issueId       String?
+  issue         FeedbackIssue? @relation(fields: [issueId], references: [id], onDelete: SetNull)
+  text          String
+  area          String?
+  context       Json
+  screenshotKey String?
+  triage        TriageState    @default(PENDING)
+  triageNote    String?
+  triageTries   Int            @default(0)
+  createdAt     DateTime       @default(now())
+
+  @@index([patientId, createdAt])
+  @@index([triage])
+  @@index([issueId])
+}
+
 model ClaraCapabilityRequest {
   id        String           @id @default(cuid())
   patientId String
