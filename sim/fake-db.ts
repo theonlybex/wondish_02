@@ -38,6 +38,8 @@ export type SnapRecipe = Record<string, any> & {
 export type SimState = {
   patient: Record<string, any> | null;
   pantryIds: string[];
+  // The current caller holds the SUPER role (requireAdmin / resolveAiTier).
+  isAdmin?: boolean;
 };
 
 class UnsupportedQuery extends Error {}
@@ -126,7 +128,7 @@ export function createFakePrisma(snap: Snapshot, state: SimState) {
     throw new UnsupportedQuery(`fake-db: write to ${model} refused (simulation is read-only)`);
   };
 
-  return {
+  const self: any = {
     patient: {
       findFirst: async (args: any) => (patientMatches(args?.where) ? thePatient() : null),
       findUnique: async (args: any) => (patientMatches(args?.where) ? thePatient() : null),
@@ -136,7 +138,8 @@ export function createFakePrisma(snap: Snapshot, state: SimState) {
       findUnique: async (args: any) => {
         const p = thePatient();
         if (!p) return null;
-        if (args?.where?.clerkId === p.account.clerkId || args?.where?.id === p.accountId) return { ...p.account, id: p.accountId };
+        if (args?.where?.clerkId === p.account.clerkId || args?.where?.id === p.accountId)
+          return { ...p.account, id: p.accountId, subscriptions: [], roles: state.isAdmin ? [{ role: { name: "SUPER" } }] : [] };
         return null;
       },
     },
@@ -174,6 +177,69 @@ export function createFakePrisma(snap: Snapshot, state: SimState) {
     },
     menu: { findMany: async () => [] },
     ingredientUnitConversion: { findMany: async () => [] },
-    $transaction: refuseWrite("$transaction"),
+    // Feedback reports (2026-10-07): the one place the simulation WRITES — to
+    // this in-memory store only, never the snapshot. Callback transactions
+    // run against the same store (no rollback is needed by the callers).
+    feedbackReport: feedbackModel("report"),
+    feedbackIssue: feedbackModel("issue"),
+    $transaction: async (arg: unknown) => {
+      if (typeof arg === "function") return (arg as (tx: unknown) => unknown)(self);
+      throw new UnsupportedQuery("fake-db: array $transaction refused (simulation is read-only)");
+    },
   };
+  return self;
+
+  function feedbackModel(kind: "report" | "issue") {
+    const rows = kind === "report" ? feedback.reports : feedback.issues;
+    const withRelations = (r: any) =>
+      kind === "report"
+        ? { ...r, issue: r.issueId ? feedback.issues.find((i) => i.id === r.issueId) ?? null : null }
+        : { ...r, reports: feedback.reports.filter((x) => x.issueId === r.id).sort((a, b) => b.createdAt - a.createdAt) };
+    const where = (r: any, w: any): boolean =>
+      Object.entries(w ?? {}).every(([k, cond]) => scalarOk(r[k] ?? null, cond, `feedback${kind}`, k));
+    const order = (list: any[], orderBy: any) => {
+      if (!orderBy) return list;
+      const [[k, dir]] = Object.entries(orderBy) as [string, string][];
+      return [...list].sort((a, b) => (a[k] < b[k] ? -1 : a[k] > b[k] ? 1 : 0) * (dir === "desc" ? -1 : 1));
+    };
+    const applyData = (r: any, data: any) => {
+      for (const [k, v] of Object.entries(data)) {
+        if (v && typeof v === "object" && "increment" in (v as any)) r[k] = (r[k] ?? 0) + (v as any).increment;
+        else r[k] = v;
+      }
+      r.updatedAt = new Date(Date.now() + feedback.tick++);
+    };
+    return {
+      create: async ({ data }: any) => {
+        const now = new Date(Date.now() + feedback.tick++);
+        const row = kind === "report"
+          ? { id: `rep${++feedback.seq}`, issueId: null, area: null, screenshotKey: null, triage: "PENDING", triageNote: null, triageTries: 0, createdAt: now, ...data }
+          : { id: `iss${++feedback.seq}`, status: "NEW", createdAt: now, updatedAt: now, ...data };
+        rows.push(row);
+        return withRelations(row);
+      },
+      update: async ({ where: w, data }: any) => {
+        const row = rows.find((r) => r.id === w.id);
+        if (!row) throw new UnsupportedQuery(`fake-db: feedback ${kind} ${w.id} not found`);
+        applyData(row, data);
+        return withRelations(row);
+      },
+      findUnique: async ({ where: w }: any) => {
+        const row = rows.find((r) => r.id === w.id);
+        return row ? withRelations(row) : null;
+      },
+      findMany: async (args: any = {}) => {
+        const list = order(rows.filter((r) => where(r, args.where)), args.orderBy);
+        return (typeof args.take === "number" ? list.slice(0, args.take) : list).map(withRelations);
+      },
+      count: async (args: any = {}) => rows.filter((r) => where(r, args.where)).length,
+    };
+  }
+}
+
+// In-memory feedback tables, shared by every fake client in the process.
+export const feedback = { reports: [] as any[], issues: [] as any[], seq: 0, tick: 0 };
+export function resetFeedbackStore() {
+  feedback.reports.length = 0;
+  feedback.issues.length = 0;
 }
