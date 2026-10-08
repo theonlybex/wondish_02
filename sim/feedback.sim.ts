@@ -173,3 +173,15 @@ test("5b · the model naming a CLOSED issue starts a new one — a regression mu
   assert.equal(view.open.length, 1);
   assert.equal(view.open[0].title, "Total wrong again");
 });
+
+test("9 · a safety report is CRITICAL even when the triage model is down — counted, ranked first, not left untriaged", async () => {
+  await stub(async () => ({ category: "MEAL_PLAN", severity: "HIGH", title: "Plan slow", duplicateOf: null, reasoning: "" }));
+  await post(user("busy"), "The meal plan takes a minute to load");
+  await stub(async () => { throw new Error("model down"); });
+  const res = await post(user("allergic"), "I'm allergic to peanuts and my lunch has peanut sauce");
+  assert.equal(res.status, 201);
+  const view = await adminView();
+  assert.deepEqual([view.open[0].category, view.open[0].severity], ["SAFETY_FOOD", "CRITICAL"]);
+  assert.equal(view.counts.openCritical, 1);
+  assert.equal(view.counts.untriaged, 0);
+});

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin";
 import { triageReport } from "@/lib/feedback/triage";
+import { isSafetyReport } from "@/lib/feedback/safety";
 
 // PATCH /api/admin/feedback/reports/[id] — { moveTo: issueId | "new" } fixes a
 // wrong grouping; { retry: true } re-runs the triage bot.
@@ -17,7 +18,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
     if (b.moveTo === "new") {
       const issue = await prisma.feedbackIssue.create({
-        data: { title: report.text.split("\n")[0].slice(0, 90), category: report.issue?.category ?? "OTHER", severity: report.issue?.severity ?? "MEDIUM" },
+        // A safety report stays CRITICAL wherever an admin moves it.
+        data: isSafetyReport(report.text)
+          ? { title: report.text.split("\n")[0].slice(0, 90), category: "SAFETY_FOOD", severity: "CRITICAL" }
+          : { title: report.text.split("\n")[0].slice(0, 90), category: report.issue?.category ?? "OTHER", severity: report.issue?.severity ?? "MEDIUM" },
         select: { id: true },
       });
       await prisma.feedbackReport.update({ where: { id: report.id }, data: { issueId: issue.id, triage: "DONE" } });

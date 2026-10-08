@@ -4,6 +4,7 @@
 import { prisma } from "@/lib/db";
 import { createAnthropic } from "@/lib/anthropic";
 import { TRIAGE_TOOL, buildTriageMessage, parseTriage, maxSeverity, type OpenIssueBrief } from "./triage-parse";
+import { isSafetyReport } from "./safety";
 
 export type TriageCaller = (message: string) => Promise<unknown>;
 const TRIAGE_TIMEOUT_MS = 8000;
@@ -66,9 +67,24 @@ export async function triageReport(reportId: string, call?: TriageCaller): Promi
     });
     return "DONE";
   } catch (e) {
+    const why = (e instanceof Error ? e.message : String(e)).slice(0, 200);
+    // The safety rule needs no model: an allergy/diet report is filed as
+    // CRITICAL even during an outage, so it is counted and ranked first
+    // instead of waiting in "Untriaged" (final review, 2026-10-07).
+    if (isSafetyReport(report.text)) {
+      const issue = await prisma.feedbackIssue.create({
+        data: { title: report.text.trim().split("\n")[0].slice(0, 90), category: "SAFETY_FOOD", severity: "CRITICAL" },
+        select: { id: true },
+      });
+      await prisma.feedbackReport.update({
+        where: { id: report.id },
+        data: { issueId: issue.id, triage: "DONE", triageNote: `Filed by the safety rule; model failed: ${why}`, triageTries: { increment: 1 } },
+      });
+      return "DONE";
+    }
     await prisma.feedbackReport.update({
       where: { id: report.id },
-      data: { triage: "FAILED", triageNote: (e instanceof Error ? e.message : String(e)).slice(0, 300), triageTries: { increment: 1 } },
+      data: { triage: "FAILED", triageNote: why, triageTries: { increment: 1 } },
     });
     return "FAILED";
   }
