@@ -531,15 +531,25 @@ test("calcBodyFatPct: Deurenberg formula with the male offset", () => {
   assert.ok(Math.abs(calcBodyFatPct(25, 30, "female") - calcBodyFatPct(25, 30, "male") - 10.8) < 1e-9);
 });
 
-test("getActivityMultiplier: the four levels plus out-of-range defaults", () => {
+test("getActivityMultiplier: the five DB levels; above range stays at the top, below at sedentary", () => {
   assert.equal(getActivityMultiplier(1), 1.2);
   assert.equal(getActivityMultiplier(2), 1.375);
   assert.equal(getActivityMultiplier(3), 1.55);
   assert.equal(getActivityMultiplier(4), 1.725);
+  // "Extremely Active" (level 5) fell through to Sedentary 1.2 — the most
+  // active diner got the LOWEST maintenance (QA 2026-10-07).
+  assert.equal(getActivityMultiplier(5), 1.9);
+  assert.equal(getActivityMultiplier(6), 1.9);   // above range → most active, never sedentary
   assert.equal(getActivityMultiplier(0), 1.2);   // below range → sedentary
-  assert.equal(getActivityMultiplier(5), 1.2);   // above range → sedentary
   assert.equal(getActivityMultiplier(-3), 1.2);
   assert.equal(getActivityMultiplier(NaN), 1.2);
+});
+
+test("maintenance never falls as activity rises, across all five levels", () => {
+  const tdee = (level: number) =>
+    computeAllMetrics({ sex: "female", birthday: new Date("1988-05-04"), heightValue: 168, heightUnit: "cm", cbwValue: 75, cbwUnit: "kg", activityLevel: level, utbwValue: 68, utbwUnit: "kg" }).tdeeCBW;
+  const values = [1, 2, 3, 4, 5].map(tdee);
+  for (let i = 1; i < values.length; i++) assert.ok(values[i] > values[i - 1], `level ${i + 1} maintenance ${values[i]} ≤ level ${i} ${values[i - 1]}`);
 });
 
 test("calcTDEE: plain product of BMR and multiplier", () => {
@@ -860,16 +870,17 @@ test("computeAllMetrics: calorie targets are floored at the sex-specific minimum
   assert.ok(male.dailyCalories >= 1500);
 });
 
-test("computeAllMetrics: activity level outside 1-4 falls back to sedentary", () => {
+test("computeAllMetrics: activity above 1-5 clamps to the most active level, below to sedentary", () => {
   const base = {
     sex: "female" as const, birthday,
     heightValue: 165, heightUnit: "cm" as const,
     cbwValue: 60, cbwUnit: "kg" as const,
   };
-  const bogus = computeAllMetrics({ ...base, activityLevel: 99 });
-  const sedentary = computeAllMetrics({ ...base, activityLevel: 1 });
-  assert.equal(bogus.activityMultiplier, 1.2);
-  assert.equal(bogus.tdeeCBW, sedentary.tdeeCBW);
+  const high = computeAllMetrics({ ...base, activityLevel: 99 });
+  assert.equal(high.activityMultiplier, 1.9);
+  assert.equal(high.tdeeCBW, computeAllMetrics({ ...base, activityLevel: 5 }).tdeeCBW);
+  const low = computeAllMetrics({ ...base, activityLevel: 0 });
+  assert.equal(low.tdeeCBW, computeAllMetrics({ ...base, activityLevel: 1 }).tdeeCBW);
 });
 
 test("computeAllMetrics: zero height degrades without crashing", () => {

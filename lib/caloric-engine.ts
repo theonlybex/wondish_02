@@ -307,28 +307,30 @@ export function calcBodyFatPct(cbmi: number, age: number, sex: Sex): number {
 }
 
 // ─── Activity Multiplier ────────────────────────────────────────────────────
-// Per the Wondish spec, only 4 activity levels are supported.
+// Five levels, matching the PhysicalActivity table. The spec once had four and
+// level 5 ("Extremely Active") fell through to the Sedentary default, so the
+// most active diner got the LOWEST maintenance (QA 2026-10-07). 1.9 is the
+// standard "extra active" Harris–Benedict factor.
 
 const ACTIVITY_MULTIPLIERS: Record<number, number> = {
   1: 1.2,     // Sedentary
-  2: 1.375,   // Low active
-  3: 1.55,    // Active
+  2: 1.375,   // Lightly active
+  3: 1.55,    // Moderately active
   4: 1.725,   // Very active
+  5: 1.9,     // Extremely active
 };
+const MAX_LEVEL = 5;
 
 /**
- * Maps a PhysicalActivity.level (1–4) to the corresponding multiplier.
- * Levels outside 1–4 default to Sedentary (1.2).
+ * Maps a PhysicalActivity.level (1–5) to its multiplier. Above the range
+ * clamps to the most active level (never to sedentary); below or invalid is
+ * Sedentary (1.2).
  */
 export function getActivityMultiplier(level: number): number {
+  if (Number.isFinite(level) && level > MAX_LEVEL) return ACTIVITY_MULTIPLIERS[MAX_LEVEL];
   return ACTIVITY_MULTIPLIERS[level] ?? 1.2;
 }
 
-// ─── TDEE ────────────────────────────────────────────────────────────────────
-
-/**
- * TDEE (Total Daily Energy Expenditure) = BMR × Activity Multiplier
- */
 export function calcTDEE(bmr: number, activityMultiplier: number): number {
   return bmr * activityMultiplier;
 }
@@ -386,7 +388,7 @@ export interface CaloricProfileInput {
   heightUnit: "cm" | "in";
   cbwValue: number;
   cbwUnit: "kg" | "lbs" | "lb";
-  activityLevel: number;         // PhysicalActivity.level (1–4)
+  activityLevel: number;         // PhysicalActivity.level (1–5)
   utbwValue?: number | null;     // User's Target Body Weight from profile
   utbwUnit?: "kg" | "lbs" | "lb" | null;
 }

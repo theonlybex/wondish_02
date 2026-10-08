@@ -21,7 +21,7 @@ export interface PredictionProfileInput {
   weightValue: number; // current body weight, in weightUnit
   weightUnit: "kg" | "lbs"; // also the display unit
   goalWeight: number; // normalized into weightUnit
-  activityLevel: number; // PhysicalActivity.level (1–4)
+  activityLevel: number; // PhysicalActivity.level (1–5)
 }
 
 export interface PredictionEstimate {

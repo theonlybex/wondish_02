@@ -8,11 +8,13 @@ import {
   type PredictionProfileInput,
 } from "@/lib/prediction-data";
 
-// Slider position (exercise days/week, 0–7) ↔ engine activity level (1–4).
+// Slider position (exercise days/week, 0–7) ↔ engine activity level (1–5).
+// Every day of the week is "Extremely active" (5); before 2026-10-07 the map
+// stopped at 4 and an extremely active profile opened the slider at 0 days.
 // The defaults are chosen so a round-trip lands on the profile's own level,
 // keeping the untouched card identical to the /prediction page.
-const daysToLevel = (d: number) => (d <= 0 ? 1 : d <= 3 ? 2 : d <= 5 ? 3 : 4);
-const LEVEL_TO_DAYS: Record<number, number> = { 1: 0, 2: 2, 3: 4, 4: 6 };
+const daysToLevel = (d: number) => (d <= 0 ? 1 : d <= 3 ? 2 : d <= 5 ? 3 : d <= 6 ? 4 : 5);
+const LEVEL_TO_DAYS: Record<number, number> = { 1: 0, 2: 2, 3: 4, 4: 6, 5: 7 };
 
 function goalDate(days: number): string {
   const d = new Date(Date.now() + days * 86400000);
