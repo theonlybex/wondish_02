@@ -186,7 +186,9 @@
     "claraGaps": "Demanda de Clara",
     "reviewQueue": "Cola de revisión",
     "ingredientRequests": "Solicitudes de ingredientes",
-    "signOut": "Cerrar sesión"
+    "signOut": "Cerrar sesión",
+    "feedback": "Comentarios",
+    "feedbackAdmin": "Comentarios"
   },
   "dashboardHeader": {
     "myProfile": "Perfil",

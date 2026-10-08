@@ -21,7 +21,8 @@ export default function DashboardSidebar({
   // Remember the last page that is not the profile, so "Save Profile" can
   // return there (lib/profile-exit). sessionStorage may be unavailable.
   useEffect(() => {
-    if (!pathname || pathname.startsWith("/profile")) return;
+    // Feedback reads it too (to know where the user came from), so neither records itself.
+    if (!pathname || pathname.startsWith("/profile") || pathname.startsWith("/feedback")) return;
     try {
       sessionStorage.setItem(LAST_PAGE_KEY, pathname + window.location.search);
     } catch {
@@ -44,6 +45,7 @@ export default function DashboardSidebar({
     { href: "/journey", label: t("myJourney") },
     ...(showTrials ? [{ href: "/trials", label: t("trials") }] : []),
     { href: "/taste", label: t("myTaste") },
+    { href: "/feedback", label: t("feedback") },
     // Grocery List merged into the Ingredients screen as a "What to buy" tab
     // (2026-09-07) — standalone nav entry removed.
     // { href: "/grocery-list", label: t("groceryList") },

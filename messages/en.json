@@ -186,7 +186,9 @@
     "claraGaps": "Clara demand",
     "reviewQueue": "Review queue",
     "ingredientRequests": "Ingredient requests",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "feedback": "Feedback",
+    "feedbackAdmin": "Feedback"
   },
   "dashboardHeader": {
     "myProfile": "Profile",

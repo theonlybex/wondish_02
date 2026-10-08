@@ -186,7 +186,9 @@
     "claraGaps": "Запросы Clara",
     "reviewQueue": "Очередь проверки",
     "ingredientRequests": "Запросы ингредиентов",
-    "signOut": "Выйти"
+    "signOut": "Выйти",
+    "feedback": "Обратная связь",
+    "feedbackAdmin": "Отзывы"
   },
   "dashboardHeader": {
     "myProfile": "Профиль",
