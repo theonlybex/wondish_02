@@ -2,7 +2,7 @@
 // real user holds, hand-built heavy combinations, and everything at once.
 import type { Snapshot } from "./fake-db";
 
-export type RuleKind = "allergy" | "avoid" | "condition" | "diet" | "goal" | "trial" | "dislike";
+export type RuleKind = "allergy" | "avoid" | "condition" | "diet" | "goal" | "trial" | "dislike" | "plan";
 export type RuleKey = `${RuleKind}:${string}`;
 export type Profile = { id: string; tier: Tier; rules: RuleKey[]; users?: number };
 export type Tier = "single" | "pair" | "real" | "curated" | "random" | "everything";
@@ -12,9 +12,13 @@ export type Tier = "single" | "pair" | "real" | "curated" | "random" | "everythi
 // write in an oil the diner disliked).
 export const DISLIKE_SAMPLE = ["Mushrooms", "Extra virgin olive oil", "Garlic", "Large eggs", "Boneless chicken breasts", "Jasmine rice", "Spinach", "Shredded cheddar"];
 
+// A user-made eating plan (custom plans, 2026-10-07): a FoodPreference row the
+// diner owns, with its own exclusions and a note — enforced like any diet.
+export const SAMPLE_PLAN = { name: "My weekday light plan", guidance: "light dinners, nothing fried", bannedIngredients: [{ name: "white rice" }, { name: "jasmine rice" }, { name: "bacon" }, { name: "potatoes" }] };
+
 export function ruleUniverse(snap: Snapshot) {
   const r = snap.rules;
-  const lists: Record<Exclude<RuleKind, "trial" | "dislike">, { name: string; bannedIngredients: { name: string }[] }[]> = {
+  const lists: Record<Exclude<RuleKind, "trial" | "dislike" | "plan">, { name: string; bannedIngredients: { name: string }[] }[]> = {
     allergy: r.allergies,
     avoid: r.avoids,
     condition: r.conditions,
@@ -33,13 +37,14 @@ export function ruleUniverse(snap: Snapshot) {
   }
   for (const category of Array.from(new Set(r.triggerRules.map((t) => t.category)))) all.push(`trial:${category}`);
   for (const name of DISLIKE_SAMPLE) if (snap.ingredients.some((i) => i.name === name)) all.push(`dislike:${name}`);
+  all.push(`plan:${SAMPLE_PLAN.name}`);
   return { all, banning: all.filter((k) => !empty.includes(k)), empty, lists };
 }
 
 /** Build the diet graph the services read (PATIENT_DIET_INCLUDE shape) plus the body fields the planner needs. */
 export function makePatient(snap: Snapshot, profile: Profile) {
   const { lists } = ruleUniverse(snap);
-  const pick = (kind: Exclude<RuleKind, "trial" | "dislike">) =>
+  const pick = (kind: Exclude<RuleKind, "trial" | "dislike" | "plan">) =>
     profile.rules
       .filter((k) => k.startsWith(`${kind}:`))
       .map((k) => {
@@ -88,7 +93,10 @@ export function makePatient(snap: Snapshot, profile: Profile) {
     foodAllergies: pick("allergy").map((food) => ({ food })),
     foodToAvoid: pick("avoid").map((food) => ({ food })),
     healthConditions: pick("condition").map((condition) => ({ condition: { ...condition, ownerPatientId: null } })),
-    foodPreferences: pick("diet").map((food) => ({ food })),
+    foodPreferences: [
+      ...pick("diet").map((food) => ({ food })),
+      ...(profile.rules.includes(`plan:${SAMPLE_PLAN.name}` as RuleKey) ? [{ food: { ...SAMPLE_PLAN, ownerPatientId: `sim-${profile.id}` } }] : []),
+    ],
     motivations: pick("goal").map((motivation) => ({ motivation })),
     triggerTrials: trials,
   };

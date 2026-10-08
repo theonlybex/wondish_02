@@ -349,3 +349,66 @@ test("12 · dishes turned down and ingredients marked 'not for me' never come ba
   const groupsOf = await loadIngredientGroups(["mushrooms"]);
   assert.equal(applyAllergenFilter([dish(["mushrooms", "rice"])] as any, matchers, groupsOf).length, 0);
 });
+
+// ── 13. Activity levels ──────────────────────────────────────────────────────
+// "Extremely Active" (level 5) fell through to Sedentary: the most active
+// diner got the LOWEST maintenance. Every level in the live table must raise
+// maintenance, and the planner must hand a level-5 diner a bigger week.
+test("13 · maintenance rises with every live activity level; an extremely active diner's week is bigger, not smaller", async () => {
+  const { computeAllMetrics } = await import("@/lib/caloric-engine");
+  const mealPlan = await import("@/lib/meal-plan");
+  const levels = [...snap.physicalActivities].sort((a, b) => a.level - b.level);
+  assert.ok(levels.some((a) => a.level === 5), "no level-5 activity in the live table — case is vacuous");
+  const tdee = levels.map((a) =>
+    computeAllMetrics({ sex: "female", birthday: new Date("1988-05-04"), heightValue: 168, heightUnit: "cm", cbwValue: 75, cbwUnit: "kg", activityLevel: a.level, utbwValue: 68, utbwUnit: "kg" }).tdeeCBW
+  );
+  for (let i = 1; i < tdee.length; i++) assert.ok(tdee[i] > tdee[i - 1], `${levels[i].name} maintenance ${Math.round(tdee[i])} ≤ ${levels[i - 1].name} ${Math.round(tdee[i - 1])}`);
+
+  const weekCalories = async (level: number) => {
+    const p = makePatient(snap, profile(["goal:Eat healthier"]));
+    const activity = snap.physicalActivities.find((a) => a.level === level)!;
+    const patient = { ...p, id: `${p.id}-L${level}`, physicalActivity: activity, physicalActivityId: activity.id, goalWeight: 165 }; // maintain: target = maintenance
+    state.patient = patient;
+    const out = await quietly(() => mealPlan.buildMealPlanMenus(patient.id, new Date("2026-10-05T00:00:00"), 1, { windowDays: 7 }));
+    return out.rows.reduce((s: number, r: any) => s + (snap.recipes.find((x) => x.id === r.recipeId)?.calories ?? 0), 0);
+  };
+  const sedentary = await weekCalories(1);
+  const extreme = await weekCalories(5);
+  assert.ok(extreme > sedentary, `extremely active week ${Math.round(extreme)} kcal ≤ sedentary ${Math.round(sedentary)} kcal`);
+});
+
+// ── 14. Custom plans ─────────────────────────────────────────────────────────
+test("14 · a user's own eating plan is enforced like a diet everywhere and its note reaches Clara", async () => {
+  const catalog = await import("@/app/api/pantry/catalog/route");
+  const cookable = await import("@/app/api/pantry/cookable/route");
+  const toBuy = await import("@/app/api/pantry/to-buy/route");
+  const mealPlan = await import("@/lib/meal-plan");
+  const { buildFoodMapText } = await import("@/lib/food-map");
+  const { applyAllergenFilter } = await import("@/lib/fridge");
+  const { derivePatientBans, buildDietMatchers } = await import("@/lib/diet-match");
+  const { SAMPLE_PLAN } = await import("./profiles");
+  const patient = asDiner([`plan:${SAMPLE_PLAN.name}` as RuleKey]);
+  const banned = /\b(white rice|jasmine rice|bacon|potato)/i;
+  const nameOf = (id: string) => snap.ingredients.find((i) => i.id === id)?.name ?? "";
+
+  const { categories, bans } = await quietly(async () => json(await catalog.GET()));
+  const items = categories.flatMap((c: any) => c.items);
+  assert.deepEqual(items.find((i: any) => i.name === "Jasmine rice")?.bannedBy, [SAMPLE_PLAN.name]);
+  assert.ok(items.find((i: any) => i.name === "Bacon")?.bannedBy, "plan does not hide bacon");
+  assert.ok(bans.rules.some((r: any) => r.kind === "diet" && r.label === SAMPLE_PLAN.name));
+
+  const week = await quietly(() => mealPlan.buildMealPlanMenus(patient.id, new Date("2026-10-05T00:00:00"), 1, { windowDays: 7 }));
+  state.pantryIds = snap.ingredients.map((i) => i.id);
+  const ck = await quietly(async () => json(await cookable.GET()));
+  state.pantryIds = [];
+  const ids = new Set([...week.rows.map((r: any) => r.recipeId), ...[...ck.ready, ...ck.almost].map((d: any) => d.id)]);
+  const leaks = snap.recipes.filter((r) => ids.has(r.id) && r.ingredients.some((ri) => banned.test(nameOf(ri.ingredientId))));
+  assert.deepEqual(leaks.map((r) => r.name), []);
+  const { items: buy } = await quietly(async () => json(await toBuy.GET()));
+  assert.ok(!buy.some((i: any) => banned.test(i.name)), "What to buy suggests food the plan leaves out");
+
+  const matchers = buildDietMatchers(derivePatientBans(patient as any));
+  const dish = { id: "x", name: "Chef's bowl", description: "", emoji: "", usesIngredients: ["bacon", "eggs"], missingIngredients: [], steps: ["Cook."], mealType: "Breakfast", servings: 1, perServing: { calories: 400, protein: 20, carbs: 10, fat: 25 }, fitsPlan: true, conflicts: [] };
+  assert.equal(applyAllergenFilter([dish] as any, matchers, () => []).length, 0);
+  assert.match(buildFoodMapText({ ...patient, mealType: null } as any), /\(the diner's own plan\): "light dinners, nothing fried"/);
+});
