@@ -137,7 +137,7 @@ export default function FeedbackForm() {
             className="w-full px-4 py-3 rounded-xl border-2 border-[#F5F1DD] bg-white text-base sm:text-sm text-[#1E1A1A] outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all resize-y"
           />
           <p id="fb-text-help" className="text-xs mt-1.5 tabular-nums" style={{ color: "#6B6767" }}>
-            What you did and what happened. {text.length}/{FEEDBACK_TEXT_MAX}
+            What you did and what happened — at least {FEEDBACK_TEXT_MIN} characters. {text.length}/{FEEDBACK_TEXT_MAX}
           </p>
           {error?.field === "text" && <p className="text-error text-xs mt-1.5" role="alert">{error.message}</p>}
         </div>

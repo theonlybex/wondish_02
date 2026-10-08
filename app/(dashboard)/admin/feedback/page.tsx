@@ -4,6 +4,7 @@
 // ranked by severity × distinct reporters × recency (lib/feedback/rank).
 // Spec: docs/superpowers/specs/2026-10-07-feedback-reports-design.md
 import { useCallback, useEffect, useState } from "react";
+import { sentryEventUrl } from "@/lib/feedback/sentry";
 
 type Report = {
   id: string;
@@ -27,7 +28,7 @@ type Issue = {
   lastSeen: string | null;
   reports: Report[];
 };
-type View = { counts: { openCritical: number; open: number; untriaged: number }; open: Issue[]; closed: Issue[]; untriaged: Report[] };
+type View = { counts: { openCritical: number; open: number; untriaged: number }; open: Issue[]; closed: Issue[]; untriaged: Report[]; sentryOrg: string | null };
 
 const SEVERITY: Record<Issue["severity"], { bg: string; fg: string }> = {
   CRITICAL: { bg: "#FBE4E4", fg: "#9B1C1C" },
@@ -53,8 +54,9 @@ function Badge({ severity }: { severity: Issue["severity"] }) {
   return <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full" style={{ background: s.bg, color: s.fg }}>{severity.toLowerCase()}</span>;
 }
 
-function ReportItem({ r, openIssues, onChanged }: { r: Report; openIssues: Issue[]; onChanged: () => void }) {
+function ReportItem({ r, openIssues, onChanged, sentryOrg }: { r: Report; openIssues: Issue[]; onChanged: () => void; sentryOrg: string | null }) {
   const [shot, setShot] = useState<string | null>(null);
+  const [moveTo, setMoveTo] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const ctx = r.context ?? {};
@@ -68,7 +70,16 @@ function ReportItem({ r, openIssues, onChanged }: { r: Report; openIssues: Issue
       <p className="text-sm text-[#1E1A1A] whitespace-pre-wrap break-words">{r.text}</p>
       <p className="text-xs mt-1" style={{ color: "#6B6767" }}>
         {fmt(r.createdAt)} · {r.area ?? "no area"} · from {String(ctx.from ?? "—")} · {String(ctx.viewport ?? "—")} · {String(ctx.tier ?? "—")} · v{String(ctx.appVersion ?? "—")}
-        {ctx.sentryEventId ? ` · Sentry ${String(ctx.sentryEventId)}` : ""}
+        {ctx.sentryEventId ? (
+          sentryEventUrl(sentryOrg, String(ctx.sentryEventId)) ? (
+            <>
+              {" · "}
+              <a href={sentryEventUrl(sentryOrg, String(ctx.sentryEventId))!} target="_blank" rel="noopener noreferrer" className="underline text-primary">
+                Sentry event<span className="sr-only"> (opens in a new tab)</span>
+              </a>
+            </>
+          ) : ` · Sentry ${String(ctx.sentryEventId)}`
+        ) : ""}
         {ctx.screenshot ? ` · ${String(ctx.screenshot)}` : ""}
       </p>
       {r.triage !== "DONE" && <p className="text-xs mt-1" style={{ color: "#8A4B12" }}>Triage {r.triage.toLowerCase()}{r.triageNote ? `: ${r.triageNote}` : ""}</p>}
@@ -79,15 +90,22 @@ function ReportItem({ r, openIssues, onChanged }: { r: Report; openIssues: Issue
             Show screenshot
           </button>
         )}
+        {/* Choosing does nothing until "Move": a keyboard user arrowing
+            through a closed select must not regroup by accident. */}
         <label className="text-xs" style={{ color: "#6B6767" }}>
-          <span className="sr-only">Move report to</span>
-          <select disabled={busy} defaultValue="" className="min-h-[36px] rounded-lg border border-[#EAE4CA] bg-white px-2 text-xs"
-            onChange={(e) => { const v = e.target.value; if (v) void run(() => patch(`/api/admin/feedback/reports/${r.id}`, { moveTo: v })); }}>
+          <span className="sr-only">Move the report &ldquo;{r.text.slice(0, 40)}&rdquo; to</span>
+          <select disabled={busy} value={moveTo} onChange={(e) => setMoveTo(e.target.value)} className="min-h-[36px] rounded-lg border border-[#EAE4CA] bg-white px-2 text-xs">
             <option value="">Move to…</option>
             <option value="new">New issue</option>
             {openIssues.map((i) => <option key={i.id} value={i.id}>{i.title.slice(0, 60)}</option>)}
           </select>
         </label>
+        {moveTo && (
+          <button type="button" disabled={busy} className="min-h-[36px] px-3 rounded-lg bg-primary text-white text-xs font-semibold"
+            onClick={() => run(() => patch(`/api/admin/feedback/reports/${r.id}`, { moveTo }))}>
+            Move
+          </button>
+        )}
         {r.triage !== "DONE" && (
           <button type="button" disabled={busy} className="min-h-[36px] px-3 rounded-lg border border-[#EAE4CA] text-xs font-semibold text-primary hover:bg-[#FBFAF5]"
             onClick={() => run(() => patch(`/api/admin/feedback/reports/${r.id}`, { retry: true }))}>
@@ -102,9 +120,13 @@ function ReportItem({ r, openIssues, onChanged }: { r: Report; openIssues: Issue
   );
 }
 
-function IssueRow({ issue, openIssues, onChanged }: { issue: Issue; openIssues: Issue[]; onChanged: () => void }) {
+function IssueRow({ issue, openIssues, onChanged, sentryOrg }: { issue: Issue; openIssues: Issue[]; onChanged: () => void; sentryOrg: string | null }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState(issue.title);
+  const [status, setStatus] = useState(issue.status);
+  // Re-sync after a reload brings new values (an admin elsewhere, the bot).
+  useEffect(() => setTitle(issue.title), [issue.title]);
+  useEffect(() => setStatus(issue.status), [issue.status]);
   const [err, setErr] = useState("");
   const save = async (body: Record<string, unknown>) => {
     setErr("");
@@ -124,12 +146,19 @@ function IssueRow({ issue, openIssues, onChanged }: { issue: Issue; openIssues: 
             {issue.reporters} {issue.reporters === 1 ? "person" : "people"} · {issue.reportCount} report{issue.reportCount === 1 ? "" : "s"} · last {fmt(issue.lastSeen)}
           </span>
         </button>
-        <label className="text-xs">
-          <span className="sr-only">Status</span>
-          <select value={issue.status} onChange={(e) => void save({ status: e.target.value })} className="min-h-[44px] rounded-lg border border-[#EAE4CA] bg-white px-2 text-sm">
-            {Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-        </label>
+        <div className="flex items-center gap-2">
+          <label className="text-xs">
+            <span className="sr-only">Status for &ldquo;{issue.title}&rdquo;</span>
+            <select value={status} onChange={(e) => setStatus(e.target.value as Issue["status"])} className="min-h-[44px] rounded-lg border border-[#EAE4CA] bg-white px-2 text-sm">
+              {Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </label>
+          {status !== issue.status && (
+            <button type="button" onClick={() => void save({ status })} className="min-h-[44px] px-3 rounded-lg bg-primary text-white text-xs font-semibold">
+              Save<span className="sr-only"> status for &ldquo;{issue.title}&rdquo;</span>
+            </button>
+          )}
+        </div>
       </div>
       {err && <p className="text-error text-xs px-4 pb-2" role="alert">{err}</p>}
       {open && (
@@ -147,7 +176,7 @@ function IssueRow({ issue, openIssues, onChanged }: { issue: Issue; openIssues: 
               </select>
             </label>
           </div>
-          <ul>{issue.reports.map((r) => <ReportItem key={r.id} r={r} openIssues={openIssues.filter((i) => i.id !== issue.id)} onChanged={onChanged} />)}</ul>
+          <ul>{issue.reports.map((r) => <ReportItem key={r.id} r={r} openIssues={openIssues.filter((i) => i.id !== issue.id)} onChanged={onChanged} sentryOrg={sentryOrg} />)}</ul>
         </div>
       )}
     </li>
@@ -193,19 +222,19 @@ export default function AdminFeedbackPage() {
           {view.open.length === 0 ? (
             <p className="text-sm mb-6" style={{ color: "#6B6767" }}>No open issues.</p>
           ) : (
-            <ol className="space-y-3 mb-8">{view.open.map((i) => <IssueRow key={i.id} issue={i} openIssues={view.open} onChanged={load} />)}</ol>
+            <ol className="space-y-3 mb-8">{view.open.map((i) => <IssueRow key={i.id} issue={i} openIssues={view.open} onChanged={load} sentryOrg={view.sentryOrg} />)}</ol>
           )}
           {view.untriaged.length > 0 && (
             <section className="mb-8" aria-labelledby="fb-untriaged">
               <h2 id="fb-untriaged" className="text-base font-semibold text-[#1E1A1A] mb-2">Untriaged</h2>
-              <ul className="bg-white rounded-2xl border border-[#EAE4CA] px-4 [&>li:first-child]:border-t-0">{view.untriaged.map((r) => <ReportItem key={r.id} r={r} openIssues={view.open} onChanged={load} />)}</ul>
+              <ul className="bg-white rounded-2xl border border-[#EAE4CA] px-4 [&>li:first-child]:border-t-0">{view.untriaged.map((r) => <ReportItem key={r.id} r={r} openIssues={view.open} onChanged={load} sentryOrg={view.sentryOrg} />)}</ul>
             </section>
           )}
           <section aria-labelledby="fb-closed">
             <button type="button" id="fb-closed" onClick={() => setShowClosed((v) => !v)} aria-expanded={showClosed} className="text-sm font-semibold text-primary min-h-[44px]">
               {showClosed ? "Hide" : "Show"} closed ({view.closed.length})
             </button>
-            {showClosed && <ol className="space-y-3 mt-2">{view.closed.map((i) => <IssueRow key={i.id} issue={i} openIssues={view.open} onChanged={load} />)}</ol>}
+            {showClosed && <ol className="space-y-3 mt-2">{view.closed.map((i) => <IssueRow key={i.id} issue={i} openIssues={view.open} onChanged={load} sentryOrg={view.sentryOrg} />)}</ol>}
           </section>
         </>
       )}
