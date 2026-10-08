@@ -31,7 +31,7 @@ export async function GET() {
       prisma.motivation.findMany({ orderBy: { name: "asc" } }),
       // Built-in only; a user's own conditions come from /api/patient/conditions.
       prisma.healthCondition.findMany({ where: { ownerPatientId: null }, orderBy: { name: "asc" } }),
-      prisma.foodPreference.findMany({ orderBy: { name: "asc" } }),
+      prisma.foodPreference.findMany({ where: { ownerPatientId: null }, orderBy: { name: "asc" } }),
       prisma.foodToAvoid.findMany({ orderBy: { name: "asc" } }),
       prisma.foodAllergy.findMany({ orderBy: { name: "asc" } }),
     ]);
@@ -140,7 +140,7 @@ export async function PATCH(req: NextRequest) {
       motivations:      { select: { motivationId: true } },
       foodAllergies:    { select: { foodId: true } },
       foodToAvoid:      { select: { foodId: true } },
-      foodPreferences:  { select: { foodId: true } },
+      foodPreferences:  { select: { foodId: true, food: { select: { ownerPatientId: true } } } },
       healthConditions: { select: { conditionId: true, condition: { select: { ownerPatientId: true } } } },
     },
   });
@@ -178,8 +178,20 @@ export async function PATCH(req: NextRequest) {
   const idList = (key: string, raw: unknown): string[] | undefined =>
     sent(key) ? (Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : []) : undefined;
   const motivationList = idList("motivationIds", motivationIds);
-  const conditionList = idList("healthConditionIds", healthConditionIds);
-  const preferenceList = idList("foodPreferenceIds", foodPreferenceIds);
+  // Only BUILT-IN conditions and diets are set here; a user's own conditions
+  // and plans are managed by /api/patient/conditions and /plans. Unknown ids —
+  // including another user's custom row — are dropped, not linked (before
+  // 2026-10-07 any condition id was accepted).
+  const builtIn = async (model: "healthCondition" | "foodPreference", ids: string[] | undefined) => {
+    if (!ids || ids.length === 0) return ids;
+    const rows = model === "healthCondition"
+      ? await prisma.healthCondition.findMany({ where: { id: { in: ids }, ownerPatientId: null }, select: { id: true } })
+      : await prisma.foodPreference.findMany({ where: { id: { in: ids }, ownerPatientId: null }, select: { id: true } });
+    const ok = new Set(rows.map((r) => r.id));
+    return ids.filter((id) => ok.has(id));
+  };
+  const conditionList = await builtIn("healthCondition", idList("healthConditionIds", healthConditionIds));
+  const preferenceList = await builtIn("foodPreference", idList("foodPreferenceIds", foodPreferenceIds));
   const avoidList = idList("foodToAvoidIds", foodToAvoidIds);
   const allergyList = idList("foodAllergyIds", foodAllergyIds);
   const heightUnitValue = sent("heightUnit") ? (heightUnit ?? "ftin") : undefined;
@@ -240,7 +252,8 @@ export async function PATCH(req: NextRequest) {
         : []),
       ...(preferenceList
         ? [
-            prisma.patientFoodPreference.deleteMany({ where: { patientId: patient.id } }),
+            // Built-in diets only: the user's own plans stay linked.
+            prisma.patientFoodPreference.deleteMany({ where: { patientId: patient.id, food: { ownerPatientId: null } } }),
             ...(preferenceList.length ? [prisma.patientFoodPreference.createMany({ data: preferenceList.map((id) => ({ patientId: patient.id, foodId: id })), skipDuplicates: true })] : []),
           ]
         : []),
@@ -288,7 +301,7 @@ export async function PATCH(req: NextRequest) {
     listChanged(existing.motivations.map((m) => m.motivationId), motivationList) ||
     listChanged(existing.foodAllergies.map((f) => f.foodId), allergyList) ||
     listChanged(existing.foodToAvoid.map((f) => f.foodId), avoidList) ||
-    listChanged(existing.foodPreferences.map((f) => f.foodId), preferenceList) ||
+    listChanged(existing.foodPreferences.filter((f) => f.food.ownerPatientId == null).map((f) => f.foodId), preferenceList) ||
     // Built-in links only: custom links are untouched by this route.
     listChanged(existing.healthConditions.filter((c) => c.condition.ownerPatientId == null).map((c) => c.conditionId), conditionList)
   );

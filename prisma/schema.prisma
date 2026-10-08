@@ -160,6 +160,7 @@ model Patient {
   foodAllergies     PatientFoodAllergy[]
   healthConditions  PatientHealthCondition[]
   customConditions  HealthCondition[]        @relation("CustomConditions")
+  customPlans       FoodPreference[]         @relation("CustomPlans")
   motivations       PatientMotivation[]
   dishPreferences   PatientDishPreference[]
   ingredientPreferences PatientIngredientPreference[]
@@ -225,9 +226,21 @@ model PatientMotivation {
 
 model FoodPreference {
   id                String                           @id @default(cuid())
-  name              String                           @unique
+  // Global rows are unique by name through a partial index
+  // ("FoodPreference_global_name_key", WHERE ownerPatientId IS NULL — raw SQL
+  // in migration 20261007120000_custom_plans); a user's own plans are unique
+  // per owner. Mirrors HealthCondition's custom conditions.
+  name              String
+  // Set on a user-made "custom plan"; null for the built-in diets.
+  ownerPatientId    String?
+  owner             Patient?                         @relation("CustomPlans", fields: [ownerPatientId], references: [id], onDelete: Cascade)
+  // The user's note for Clara on a custom plan.
+  guidance          String?
   patients          PatientFoodPreference[]
   bannedIngredients FoodPreferenceBannedIngredient[]
+
+  @@unique([ownerPatientId, name])
+  @@index([ownerPatientId])
 }
 
 model FoodPreferenceBannedIngredient {

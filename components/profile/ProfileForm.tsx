@@ -7,6 +7,11 @@ import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import MultiSelectChips from "@/components/profile/MultiSelectChips";
 import ConditionPicker from "@/components/profile/ConditionPicker";
+import CustomConditions from "@/components/profile/CustomConditions";
+import type { CustomConditionView } from "@/lib/custom-conditions-server";
+import CustomPlans from "@/components/profile/CustomPlans";
+import type { CustomPlanView } from "@/lib/custom-plans-server";
+import { profileExitPath, LAST_PAGE_KEY } from "@/lib/profile-exit";
 import { apiFetch } from "@/lib/client-fetch";
 import {
   formatBmi,
@@ -36,6 +41,10 @@ interface ProfileFormProps {
   refData: RefData;
   isOnboarding: boolean;
   accountData: { firstName: string; lastName: string; email: string };
+  // The user's own conditions, shown inside the Health Conditions picker.
+  customConditions?: CustomConditionView[];
+  // The user's own eating plans, shown under the Diets chips.
+  customPlans?: CustomPlanView[];
 }
 
 export default function ProfileForm({
@@ -43,6 +52,8 @@ export default function ProfileForm({
   refData,
   isOnboarding,
   accountData,
+  customConditions,
+  customPlans,
 }: ProfileFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -314,7 +325,15 @@ export default function ProfileForm({
         // its onboarding gate against the fresh data.
         window.location.href = "/prediction";
       } else {
+        // Saving closes the profile: back to where it was opened from.
         setSaved(true);
+        let previous: string | null = null;
+        try {
+          previous = sessionStorage.getItem(LAST_PAGE_KEY);
+        } catch {
+          /* fall back to Overview */
+        }
+        router.push(profileExitPath(previous, window.location.origin));
         router.refresh();
       }
     } catch (err) {
@@ -588,12 +607,15 @@ export default function ProfileForm({
       <section>
         <h2 className="text-base font-semibold text-navy mb-4">Dietary Preferences</h2>
         <div className="space-y-6">
-          <MultiSelectChips
-            label="Diets"
-            options={refData.foodPreferences}
-            selected={foodPreferenceIds}
-            onChange={setFoodPreferenceIds}
-          />
+          <div>
+            <MultiSelectChips
+              label="Diets"
+              options={refData.foodPreferences}
+              selected={foodPreferenceIds}
+              onChange={setFoodPreferenceIds}
+            />
+            {customPlans && <CustomPlans initial={customPlans} />}
+          </div>
           <MultiSelectChips
             label="Foods to Avoid"
             options={refData.foodToAvoid}
@@ -610,7 +632,10 @@ export default function ProfileForm({
             options={refData.healthConditions}
             selected={healthConditionIds}
             onChange={setHealthConditionIds}
-          />
+            customNames={(customConditions ?? []).map((c) => c.name)}
+          >
+            {customConditions && <CustomConditions initial={customConditions} embedded />}
+          </ConditionPicker>
         </div>
       </section>
 

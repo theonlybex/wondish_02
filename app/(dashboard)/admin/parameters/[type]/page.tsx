@@ -25,7 +25,7 @@ async function fetchItems(type: string): Promise<{ id: string; name: string }[]>
     "dish-type": () => prisma.dishType.findMany({ orderBy: { name: "asc" } }),
     ethnic: () => prisma.ethnic.findMany({ orderBy: { name: "asc" } }),
     motivation: () => prisma.motivation.findMany({ orderBy: { name: "asc" } }),
-    "food-preference": () => prisma.foodPreference.findMany({ orderBy: { name: "asc" } }),
+    "food-preference": () => prisma.foodPreference.findMany({ where: { ownerPatientId: null }, orderBy: { name: "asc" } }),
     "food-to-avoid": () => prisma.foodToAvoid.findMany({ orderBy: { name: "asc" } }),
     "food-allergy": () => prisma.foodAllergy.findMany({ orderBy: { name: "asc" } }),
     "health-condition": () => prisma.healthCondition.findMany({ where: { ownerPatientId: null }, orderBy: { name: "asc" } }),

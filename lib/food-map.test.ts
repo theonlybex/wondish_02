@@ -221,3 +221,13 @@ test("buildFoodMapText: the diner's 'not for me' ingredients reach Clara; favori
   assert.match(text, /Not for me \(the diner's own dislikes — never include\): Mushrooms/);
   assert.doesNotMatch(text, /Broccoli/);
 });
+
+test("buildFoodMapText: a custom plan's name, exclusions and quoted note reach Clara", () => {
+  const text = buildFoodMapText({
+    ...emptyPatient(),
+    foodPreferences: [{ food: { name: "My calm-gut plan", guidance: "small portions, nothing fried", bannedIngredients: [{ name: "onions" }] } }],
+  });
+  assert.match(text, /Food preferences: My calm-gut plan/);
+  assert.match(text, /Restricted from preferences: onions/);
+  assert.match(text, /Plan notes: My calm-gut plan \(the diner's own plan\): "small portions, nothing fried"/);
+});

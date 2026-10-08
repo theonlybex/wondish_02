@@ -8,8 +8,8 @@ import ProfileForm from "@/components/profile/ProfileForm";
 import OnboardingWizard from "@/components/onboarding/OnboardingWizard";
 import DeleteAccountSection from "@/components/profile/DeleteAccountSection";
 import PendingInviteBanner from "@/components/restaurant/PendingInviteBanner";
-import CustomConditions from "@/components/profile/CustomConditions";
 import { listCustomConditions } from "@/lib/custom-conditions-server";
+import { listCustomPlans } from "@/lib/custom-plans-server";
 
 export const metadata = { title: "Profile" };
 
@@ -41,7 +41,7 @@ export default async function ProfilePage({
       prisma.physicalActivity.findMany({ orderBy: { level: "asc" } }),
       prisma.motivation.findMany({ orderBy: { name: "asc" } }),
       prisma.healthCondition.findMany({ where: { ownerPatientId: null }, orderBy: { name: "asc" } }),
-      prisma.foodPreference.findMany({ orderBy: { name: "asc" } }),
+      prisma.foodPreference.findMany({ where: { ownerPatientId: null }, orderBy: { name: "asc" } }),
       prisma.foodToAvoid.findMany({ orderBy: { name: "asc" } }),
       prisma.foodAllergy.findMany({ orderBy: { name: "asc" } }),
     ]).then(
@@ -64,6 +64,7 @@ export default async function ProfilePage({
 
   // The user's own conditions (spec 2026-09-11-custom-conditions-design.md).
   const customConditions = patient && !isOnboarding ? await listCustomConditions(patient.id) : [];
+  const customPlans = patient && !isOnboarding ? await listCustomPlans(patient.id) : [];
 
   // Old accounts predate the onboarding flag. If the profile is already complete
   // but they were forced here, heal the cached flag and return them to the
@@ -146,8 +147,9 @@ export default async function ProfilePage({
                   ? { firstName: account.firstName, lastName: account.lastName, email: account.email }
                   : { firstName: "", lastName: "", email: "" }
               }
+              customConditions={customConditions}
+              customPlans={customPlans}
             />
-            <CustomConditions initial={customConditions} />
             <DeleteAccountSection />
           </div>
         </>

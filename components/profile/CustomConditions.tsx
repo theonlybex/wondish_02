@@ -17,7 +17,9 @@ const emptyDraft = (): Draft => ({ name: "", avoid: [], guidance: "", symptoms: 
 const toDraft = (c: CustomConditionView): Draft => ({ name: c.name, avoid: [...c.avoid], guidance: c.guidance ?? "", symptoms: c.symptoms.map((s) => s.label), triggers: [...c.triggers] });
 const triggerTitle = (code: string) => TRIGGER_CATEGORY_OPTIONS.find((t) => t.code === code)?.title ?? code;
 
-export default function CustomConditions({ initial }: { initial: CustomConditionView[] }) {
+// `embedded`: rendered as the last group inside the Health Conditions picker
+// (2026-10-07) rather than as its own section under the form.
+export default function CustomConditions({ initial, embedded = false }: { initial: CustomConditionView[]; embedded?: boolean }) {
   const router = useRouter();
   const [items, setItems] = useState<CustomConditionView[]>(initial);
   const [editing, setEditing] = useState<"new" | string | null>(null);
@@ -159,10 +161,15 @@ export default function CustomConditions({ initial }: { initial: CustomCondition
   );
 
   return (
-    <section className="max-w-2xl mt-10" aria-labelledby="cc-heading">
-      <h2 id="cc-heading" className="text-base font-semibold text-navy mb-1">My conditions</h2>
+    <section className={embedded ? "" : "max-w-2xl mt-10"} aria-labelledby="cc-heading">
+      {embedded ? (
+        <h3 id="cc-heading" className="text-xs font-semibold uppercase tracking-wide text-[#4A4646] mb-1">Your own conditions</h3>
+      ) : (
+        <h2 id="cc-heading" className="text-base font-semibold text-navy mb-1">My conditions</h2>
+      )}
       <p className="text-sm mb-4" style={{ color: "#848181" }}>
         Not in the list above? Add your own, with the ingredients it rules out, a note for Clara and the symptoms to track.
+        {embedded ? " Saved as soon as you add it." : ""}
       </p>
 
       {notice && <p className="text-sm mb-3 font-medium" style={{ color: "#5F1C35" }} role="status" aria-live="polite">{notice}</p>}

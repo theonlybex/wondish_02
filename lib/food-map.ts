@@ -32,7 +32,8 @@ export interface FoodMapPatient {
   mealType?: { name: string } | null;
   foodAllergies: { food: { name: string; bannedIngredients: { name: string }[] } }[];
   foodToAvoid: { food: { name: string; bannedIngredients?: { name: string }[] } }[];
-  foodPreferences: { food: { name: string; bannedIngredients: { name: string }[] } }[];
+  // `guidance` is set on a user's own plan (custom plans, 2026-10-07).
+  foodPreferences: { food: { name: string; guidance?: string | null; bannedIngredients: { name: string }[] } }[];
   // `guidance` is the DB column (custom conditions, or an admin override);
   // the code map below is the fallback for built-in rows.
   healthConditions: { condition: { name: string; guidance?: string | null; bannedIngredients: { name: string }[] } }[];
@@ -103,6 +104,9 @@ export function buildFoodMapText(patient: FoodMapPatient | null | undefined): st
     const banned = patient.foodPreferences.flatMap((p) => p.food.bannedIngredients.map((b) => b.name));
     lines.push(`Food preferences: ${names}`);
     if (banned.length > 0) lines.push(`Restricted from preferences: ${banned.join(", ")}`);
+    // A user's own plan note, quoted so the model reads it as the diner's words.
+    const notes = patient.foodPreferences.filter((p) => p.food.guidance?.trim()).map((p) => `${p.food.name} (the diner's own plan): "${p.food.guidance!.trim()}"`);
+    if (notes.length > 0) lines.push(`Plan notes: ${notes.join("; ")}`);
   }
 
   if (patient.healthConditions?.length > 0) {

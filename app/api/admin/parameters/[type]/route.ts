@@ -9,7 +9,10 @@ export async function GET(
   try {
     await requireAdmin();
 
+    // Built-in rows only: users' own conditions and plans are private to them.
+    const ownable = params.type === "health-condition" || params.type === "food-preference";
     const items = await getModel(params.type).findMany({
+      ...(ownable ? { where: { ownerPatientId: null } } : {}),
       orderBy: { name: "asc" },
     });
 

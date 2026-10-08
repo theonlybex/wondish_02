@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
+import { LAST_PAGE_KEY } from "@/lib/profile-exit";
 import { useTranslations } from "next-intl";
 import BrandLogo from "@/components/BrandLogo";
 
@@ -16,6 +18,16 @@ export default function DashboardSidebar({
   showTrials?: boolean;
 }) {
   const pathname = usePathname();
+  // Remember the last page that is not the profile, so "Save Profile" can
+  // return there (lib/profile-exit). sessionStorage may be unavailable.
+  useEffect(() => {
+    if (!pathname || pathname.startsWith("/profile")) return;
+    try {
+      sessionStorage.setItem(LAST_PAGE_KEY, pathname + window.location.search);
+    } catch {
+      /* private mode etc. — Save falls back to Overview */
+    }
+  }, [pathname]);
   const t = useTranslations("sidebar");
 
   const navItems = [

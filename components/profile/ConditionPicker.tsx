@@ -12,20 +12,24 @@ interface ConditionPickerProps {
   options: Option[];
   selected: string[];
   onChange: (ids: string[]) => void;
+  // The user's own conditions (always active) — counted in the summary, and
+  // their editor rendered as the last group inside the panel.
+  customNames?: string[];
+  children?: React.ReactNode;
 }
 
 // Health conditions behind one disclosure, grouped by body system (product
 // list, lib/condition-groups). 41 chips in one alphabetical cloud was the
 // longest block of the profile; collapsed, the header still says what is
 // selected, so nobody has to open it to check.
-export default function ConditionPicker({ options, selected, onChange }: ConditionPickerProps) {
+export default function ConditionPicker({ options, selected, onChange, customNames = [], children }: ConditionPickerProps) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const groups = useMemo(() => groupConditions(options), [options]);
   const labelById = useMemo(() => new Map(groups.flatMap((g) => g.options.map((o) => [o.id, o.label] as const))), [groups]);
 
   const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
-  const chosen = selected.map((id) => labelById.get(id)).filter((l): l is string => Boolean(l));
+  const chosen = [...selected.map((id) => labelById.get(id)).filter((l): l is string => Boolean(l)), ...customNames];
   const summary =
     chosen.length === 0 ? "None selected" : chosen.length <= 3 ? chosen.join(", ") : `${chosen.slice(0, 3).join(", ")} +${chosen.length - 3} more`;
 
@@ -95,6 +99,17 @@ export default function ConditionPicker({ options, selected, onChange }: Conditi
               </fieldset>
             );
           })}
+          {children && (
+            // Enter in the custom-condition fields must not submit the whole profile.
+            <div
+              className="border-t border-[#EAE4CA] pt-5"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && e.target instanceof HTMLInputElement) e.preventDefault();
+              }}
+            >
+              {children}
+            </div>
+          )}
         </div>
       )}
     </div>
