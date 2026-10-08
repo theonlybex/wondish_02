@@ -5,6 +5,7 @@ import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anth
 import { prisma } from "@/lib/db";
 import { loadIngredientGroups } from "@/lib/ingredient-catalog-db";
 import { specifyCookingOil, oilAllowedBy } from "@/lib/clara/oil";
+import { staplesFor } from "@/lib/kitchen-basics";
 import {
   derivePatientBans,
   buildDietMatchers,
@@ -199,7 +200,8 @@ export async function POST(req: Request) {
     const system = [
       `You are Clara, Wondish's nutrition assistant. Build ONE full day of home-cooked meals from ONLY what the user has at home.`,
       `On hand: ${onHandNames.join(", ")}.`,
-      `Free staples you may also use: salt, pepper, water.`,
+      // Only basics the diner kept (water is always assumed).
+      `Free staples you may also use: ${["salt", "pepper", "water"].filter((n) => staplesFor(patient.missingStaples).has(n)).join(", ")}.`,
       `Generate exactly one dish per meal type:`,
       ...slots.map(
         (s) => `- ${s.name}: target ≈${Math.round(mealCals[s.name.toLowerCase()] ?? dailyCalories / slots.length)} kcal per serving`
@@ -264,7 +266,8 @@ export async function POST(req: Request) {
     // Why each dish was turned away, so a "couldn't build a safe day" in
     // production can be explained from the log alone (the final bot saw two
     // in five runs for a vegan + hypertension + kidney profile, unexplained).
-    const named = recipes.map((r) => specifyCookingOil(r, oilAllowedBy(matchers)));
+    // Cook-my-day uses only what the diner has: a kept basic or an on-hand oil.
+    const named = recipes.map((r) => specifyCookingOil(r, oilAllowedBy(matchers, { staples: staplesFor(patient.missingStaples), basket: onHandNames })));
     const groupsOf = await loadIngredientGroups(named.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
     const allowed = applyAllergenFilter(named, matchers, groupsOf);
     const why: Record<string, number> = { generated: recipes.length, allergen: recipes.length - allowed.length };

@@ -64,3 +64,29 @@ test("the repair only picks an oil the diner may have — a disliked or banned o
   const own = dish({ usesIngredients: ["tofu", "toasted sesame oil", "cooking oil"] });
   assert.ok(specifyCookingOil(own, (n) => !/sesame/i.test(n)).usesIngredients.includes("olive oil"));
 });
+
+import { fitBasket, freeStaplesFor } from "./recipe-generation";
+import { staplesFor } from "../kitchen-basics";
+import { buildDietMatchers, derivePatientBans } from "../diet-match";
+test("Clara's free staples and basket fit respect the user's unticked basics", () => {
+  const m = buildDietMatchers(derivePatientBans({ foodAllergies: [], foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [] }));
+  const s = staplesFor(["garlic-powder", "butter"]);
+  assert.ok(!freeStaplesFor(m, s).includes("garlic powder"));
+  assert.ok(!freeStaplesFor(m, s).includes("butter"));
+  assert.ok(freeStaplesFor(m, s).includes("salt"));
+  const d: any = { ...dish(), usesIngredients: ["chicken breast", "garlic powder"], amounts: undefined };
+  assert.equal(fitBasket(d, ["Boneless chicken breasts"], s), false);
+  const ok: any = { ...dish(), usesIngredients: ["chicken breast", "onion powder"], amounts: undefined };
+  assert.equal(fitBasket(ok, ["Boneless chicken breasts"], s), true);
+});
+
+test("the repair only picks an oil the diner still has — a kept basic or one in their basket", async () => {
+  const { oilAllowedBy } = await import("./oil");
+  const m = buildDietMatchers(derivePatientBans({ foodAllergies: [], foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [] }));
+  const noOlive = oilAllowedBy(m, { staples: staplesFor(["olive-oil"]) });
+  assert.ok(specifyCookingOil(dish(), noOlive).usesIngredients.includes("avocado oil"));
+  const noOils = staplesFor(["olive-oil", "vegetable-oil", "avocado-oil"]);
+  assert.deepEqual(specifyCookingOil(dish(), oilAllowedBy(m, { staples: noOils })), dish()); // nothing to pick: left for the filter
+  const owned = oilAllowedBy(m, { staples: noOils, basket: ["Extra virgin olive oil"] });
+  assert.ok(specifyCookingOil(dish(), owned).usesIngredients.includes("olive oil"));
+});

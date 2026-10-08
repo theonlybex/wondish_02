@@ -1,4 +1,5 @@
 import { evaluateDishAgainstProfile, type DietMatchers } from "@/lib/diet-match";
+import { findBasketMatch } from "@/lib/basket-match";
 
 // "Cooking oil" is not an ingredient you can buy. The free-staples line in
 // Clara's prompt offered it by that name, so Clara wrote it: 344 library
@@ -62,7 +63,16 @@ export function specifyCookingOil<T extends OilDish>(dish: T, allowed?: (oil: st
   return { ...dish, usesIngredients, missingIngredients, steps, ...(dish.amounts ? { amounts } : {}) };
 }
 
-/** The `allowed` check for specifyCookingOil from a diner's matchers (bans + "not for me"). */
-export function oilAllowedBy(matchers: DietMatchers): (oil: string) => boolean {
-  return (oil) => evaluateDishAgainstProfile([oil], matchers).passed;
+/**
+ * The `allowed` check for specifyCookingOil: the diner's rules (bans and "not
+ * for me") and, when `kitchen` is given, what they have — a kitchen basic they
+ * kept or an oil in their basket (an unticked olive oil is never written in).
+ */
+export function oilAllowedBy(
+  matchers: DietMatchers,
+  kitchen?: { staples: ReadonlySet<string>; basket?: readonly string[] }
+): (oil: string) => boolean {
+  return (oil) =>
+    evaluateDishAgainstProfile([oil], matchers).passed &&
+    (!kitchen || findBasketMatch(oil, kitchen.basket ?? [], kitchen.staples) !== null);
 }

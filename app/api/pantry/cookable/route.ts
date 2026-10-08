@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 import { displayDishName } from "@/lib/dish-name";
-import { BASKET_STAPLES } from "@/lib/basket-coverage";
+import { staplesFor } from "@/lib/kitchen-basics";
 import { SNACK_MAX_KCAL } from "@/lib/dish-plausibility";
 import { getPlanDayCalories } from "@/lib/meal-plan";
 import { rateLimit } from "@/lib/rate-limit";
@@ -57,6 +57,8 @@ export async function GET() {
   const matchers = buildDietMatchers(bans);
   const hasBans = hasAnyBan(matchers);
   const disliked = dislikedRecipeIds(patient);
+  // Kitchen basics this diner has: an unticked one (garlic powder) counts as missing.
+  const staples = staplesFor(patient.missingStaples);
 
   // Single catalog load + in-memory scoring, same shape the meal-plan builder
   // uses (one query, not one per recipe).
@@ -134,7 +136,7 @@ export async function GET() {
     const missing = r.ingredients
       .filter((ri) => !onHand.has(ri.ingredientId))
       .map((ri) => ri.ingredient.name)
-      .filter((name) => !BASKET_STAPLES.has(name.trim().toLowerCase()));
+      .filter((name) => !staples.has(name.trim().toLowerCase()));
 
     const scored: Scored = {
       id: r.id,

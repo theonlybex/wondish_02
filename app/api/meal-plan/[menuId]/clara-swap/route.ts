@@ -39,6 +39,7 @@ import { guardAiSpend, remainingAiSpend, chargeAiSpend } from "@/lib/ai-budget";
 import { rateLimit } from "@/lib/rate-limit";
 import { buildFoodMapText } from "@/lib/food-map";
 import { fitBasket, freeStaplesFor } from "@/lib/clara/recipe-generation";
+import { staplesFor } from "@/lib/kitchen-basics";
 import { swapPushesDayFat } from "@/lib/swap-day-fat";
 
 // POST /api/meal-plan/[menuId]/clara-swap — the user asks Clara for something
@@ -240,7 +241,8 @@ export async function POST(
   // swaps ignored the basket and brought in lemon, tahini etc.
   const pantry = await prisma.patientPantryItem.findMany({ where: { patientId: patient.id }, select: { ingredient: { select: { name: true } } } });
   const basket = pantry.map((p) => p.ingredient.name);
-  const freeStaples = freeStaplesFor(matchers);
+  const staples = staplesFor(patient.missingStaples);
+  const freeStaples = freeStaplesFor(matchers, staples);
   const basketLine = basket.length > 0
     ? `- Every dish may use ONLY these ingredients${freeStaples.length ? ` (plus ${freeStaples.join(", ")})` : ""}: ${basket.join(", ")}. Use no other ingredient — if the request needs one you don't have, make the closest dish from this list.`
     : ``;
@@ -323,7 +325,7 @@ export async function POST(
     // (about 45 minutes ahead)". dishProblem covers salt, seasoning quantities,
     // the breakfast ceiling and the title's promise; the two generation-only
     // checks apply here too, because Clara is in the loop and can be asked again.
-    const named = parsed.map((r) => specifyCookingOil(r, oilAllowedBy(matchers)));
+    const named = parsed.map((r) => specifyCookingOil(r, oilAllowedBy(matchers, basket.length > 0 ? { staples, basket } : undefined)));
     const groupsOf = await loadIngredientGroups(named.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
     const survivors = applyAllergenFilter(named, matchers, groupsOf);
     if (process.env.AI_DEBUG || survivors.length === 0) {
@@ -351,7 +353,7 @@ export async function POST(
       const why =
         isTheSameDish(r)
           ? "same-dish-as-before"
-          : basket.length > 0 && !fitBasket(r, basket)
+          : basket.length > 0 && !fitBasket(r, basket, staples)
           ? "out-of-basket"
           : !passesSanity(r)
             ? "implausible-numbers"

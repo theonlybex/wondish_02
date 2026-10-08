@@ -63,3 +63,20 @@ test("a staple the user actually owns is still credited to their basket entry", 
   // With no oil in the basket it falls through to the staple list.
   assert.equal(findBasketMatch("olive oil", ["Brown rice"]), "");
 });
+
+// Kitchen basics (2026-10-08): a staple the user unticked is no longer free.
+import { staplesFor } from "./kitchen-basics";
+test("findBasketMatch: an unticked basic is not free; a kept one still is", () => {
+  const s = staplesFor(["garlic-powder"]);
+  assert.equal(findBasketMatch("garlic powder", [], s), null);
+  assert.equal(findBasketMatch("onion powder", [], s), "");
+  assert.equal(findBasketMatch("garlic powder", ["Garlic powder"], s), "Garlic powder"); // owned in the pantry
+});
+
+test("the generic staple 'oil' is not every oil: an unticked or unlisted specific oil is not free", () => {
+  const s = staplesFor(["olive-oil"]);
+  assert.equal(findBasketMatch("olive oil", [], s), null);
+  assert.equal(findBasketMatch("toasted sesame oil", []), null); // a real shopping item, not a staple
+  assert.equal(findBasketMatch("cooking oil", [], s), ""); // the generic word itself still is
+  assert.equal(findBasketMatch("extra virgin olive oil", []), ""); // the specific staple, kept by default
+});

@@ -21,6 +21,7 @@ import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
 import { dishProblem, catalogFoodVocabulary } from "@/lib/dish-plausibility";
 import { isCoveredByBasket, BASKET_STAPLES } from "@/lib/basket-coverage";
 import { ingredientTokens } from "@/lib/basket-match";
+import { staplesFor } from "@/lib/kitchen-basics";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, hasAnyBan, bannedNamesForPrompt, dislikedRecipeIds, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 import { buildFoodMapText } from "@/lib/food-map";
 import { priceDish } from "@/lib/staple-density";
@@ -584,6 +585,8 @@ export async function buildMealPlanMenus(
   // Dishes the diner turned down are out like banned ones — removed here, so
   // no later relaxation (cross-week repeats, slot fallbacks) can bring them back.
   const disliked = dislikedRecipeIds(patient);
+  // Kitchen basics this diner has (an unticked basic is never assumed).
+  const staples = staplesFor(patient.missingStaples);
   const recipePoolBanFiltered = recipePoolRaw.filter(
     (r) =>
       !disliked.has(r.id) &&
@@ -670,7 +673,7 @@ export async function buildMealPlanMenus(
   // behavior), so every read/push below is a no-op change when unset.
   const selectionPool: PoolRecipe[] = opts.basket
     ? recipePool.filter((r) =>
-        isCoveredByBasket(r.ingredients.map((ri) => ri.ingredient.name), opts.basket!)
+        isCoveredByBasket(r.ingredients.map((ri) => ri.ingredient.name), opts.basket!, staples)
       )
     : recipePool;
 
@@ -791,6 +794,7 @@ export async function buildMealPlanMenus(
         macroTarget,
         cuisine: opts.cuisine ?? null,
         allowedIngredients: opts.basket ? Array.from(opts.basket) : undefined,
+        staples,
         profileContext: buildFoodMapText(patient),
       });
       if (createdIds.length > 0) {

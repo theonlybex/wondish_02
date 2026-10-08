@@ -29,6 +29,11 @@ export function ingredientTokens(name: string): Set<string> {
   return out;
 }
 
+// Generic fat words match only as themselves. Through the token-subset rule
+// "oil" ⊆ every "X oil", so sesame oil, coconut oil — and an olive oil the
+// diner unticked in their kitchen basics — all passed as free (2026-10-08).
+const GENERIC_STAPLES = new Set(["oil", "cooking oil"]);
+
 const subset = (a: Set<string>, b: Set<string>) => [...a].every((t) => b.has(t));
 
 /**
@@ -36,7 +41,9 @@ const subset = (a: Set<string>, b: Set<string>) => [...a].every((t) => b.has(t))
  * tolerant token match), or "" when it is a free staple, or null when the
  * ingredient is outside the basket.
  */
-export function findBasketMatch(name: string, basket: readonly string[]): string | "" | null {
+// `staples`: what this user may be assumed to have (lib/kitchen-basics
+// staplesFor) — defaults to the full assumed list.
+export function findBasketMatch(name: string, basket: readonly string[], staples: ReadonlySet<string> = BASKET_STAPLES): string | "" | null {
   const lowered = name.trim().toLowerCase();
   if (!lowered) return null;
   // The basket is consulted before the staple list, exact match and tolerant
@@ -48,14 +55,14 @@ export function findBasketMatch(name: string, basket: readonly string[]): string
   const exact = basket.find((b) => b.trim().toLowerCase() === lowered);
   if (exact !== undefined) return exact;
   const tokens = ingredientTokens(lowered);
-  if (tokens.size === 0) return BASKET_STAPLES.has(lowered) ? "" : null;
+  if (tokens.size === 0) return staples.has(lowered) ? "" : null;
 
   // Is this name a seasoning/fat the kitchen is assumed to have?
   const isStaple =
-    BASKET_STAPLES.has(lowered) ||
-    [...BASKET_STAPLES].some((st) => {
+    staples.has(lowered) ||
+    [...staples].some((st) => {
       const stt = ingredientTokens(st);
-      return stt.size > 0 && subset(stt, tokens);
+      return stt.size > 0 && !GENERIC_STAPLES.has(st) && subset(stt, tokens);
     });
 
   // Prefer the basket entry sharing the most tokens; ties → shortest name.
@@ -98,10 +105,10 @@ export function findBasketMatch(name: string, basket: readonly string[]): string
   // One-directional on purpose (staple ⊆ ingredient): "extra virgin olive oil"
   // ⊇ {olive, oil} is olive oil, but a bare "oil" must not match the staple
   // "olive oil" — it is too vague to resolve to a specific fat.
-  if (BASKET_STAPLES.has(lowered)) return "";
-  for (const st of BASKET_STAPLES) {
+  if (staples.has(lowered)) return "";
+  for (const st of staples) {
     const stt = ingredientTokens(st);
-    if (stt.size > 0 && subset(stt, tokens)) return "";
+    if (stt.size > 0 && !GENERIC_STAPLES.has(st) && subset(stt, tokens)) return "";
   }
   return null;
 }

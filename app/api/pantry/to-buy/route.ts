@@ -11,6 +11,7 @@ import {
   PATIENT_DIET_INCLUDE,
 } from "@/lib/diet-match";
 import { rankToBuy } from "@/lib/to-buy";
+import { staplesFor } from "@/lib/kitchen-basics";
 import { ingredientBanCheck } from "@/lib/ingredient-bans";
 import { aggregateNeeds, toBase, formatPurchase } from "@/lib/grocery-quantities";
 
@@ -63,6 +64,8 @@ export async function GET() {
     recipes,
     pantry: new Set(pantry.map((p) => p.ingredientId)),
     liked: new Set(prefs.map((p) => p.ingredientId)),
+    // A basic the diner said they don't have may be suggested.
+    staples: staplesFor(patient.missingStaples),
     cap: 50,
   });
   const reasons = check.reasonsForMany(ranked.map((i) => ({ name: i.name, allergenGroups: groupsById.get(i.ingredientId) ?? [] })));

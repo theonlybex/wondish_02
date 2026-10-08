@@ -154,6 +154,9 @@ model Patient {
   // Rolling ~2-month log of dishes served, so weekly generation avoids repeats
   // until they roll out of the window: [{ id: recipeId, ts: epochMs }].
   recentDishes         Json?
+  // Kitchen basics the diner says they DON'T have (lib/kitchen-basics keys,
+  // e.g. "garlic-powder"). Empty = every basic assumed (the default).
+  missingStaples       String[]       @default([])
 
   foodPreferences   PatientFoodPreference[]
   foodToAvoid       PatientFoodToAvoid[]

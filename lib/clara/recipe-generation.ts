@@ -11,6 +11,7 @@ import {
 } from "@/lib/fridge";
 import { evaluateDishAgainstProfile, type DietMatchers } from "@/lib/diet-match";
 import { findBasketMatch, ingredientTokens } from "@/lib/basket-match";
+import { BASKET_STAPLES } from "@/lib/basket-coverage";
 import { priceDish, PRICING_COVERAGE_MIN, type PricedDish } from "@/lib/staple-density";
 import {
   dishProblem,
@@ -105,6 +106,9 @@ interface TopUpArgs {
   // ingredient names (plus free staples). Enforced in the prompt AND by a
   // deterministic post-filter (the model's claim is never trusted).
   allowedIngredients?: string[];
+  // The diner's kitchen basics (lib/kitchen-basics staplesFor): only these
+  // are free beyond the basket. Default: every assumed staple.
+  staples?: ReadonlySet<string>;
   // The diner's profile as the food map renders it (allergies, diets,
   // conditions + guidance). Until 2026-09-11 generation saw only the flat ban
   // list, so a GERD or IBS profile was cooked for like a healthy one.
@@ -128,8 +132,10 @@ const FREE_STAPLES = [
   "olive oil", "avocado oil", "butter",
   "garlic powder", "onion powder", "paprika", "cumin", "oregano", "thyme", "cinnamon",
 ] as const;
-export function freeStaplesFor(matchers: DietMatchers): string[] {
-  return FREE_STAPLES.filter((s) => evaluateDishAgainstProfile([s], matchers).passed);
+// `staples`: the user's kitchen basics (lib/kitchen-basics) — an unticked
+// basic is never offered as free.
+export function freeStaplesFor(matchers: DietMatchers, staples: ReadonlySet<string> = BASKET_STAPLES): string[] {
+  return FREE_STAPLES.filter((s) => staples.has(s) && evaluateDishAgainstProfile([s], matchers).passed);
 }
 
 // Protein sources that survive the profile's bans. A restrictive profile
@@ -185,7 +191,7 @@ function systemPrompt(args: TopUpArgs, total: number): string {
   const cuisine = args.cuisine
     ? `\n- EVERY dish must be authentic ${args.cuisine} cuisine.`
     : "";
-  const free = freeStaplesFor(args.matchers);
+  const free = freeStaplesFor(args.matchers, args.staples);
   const basket = args.allowedIngredients && args.allowedIngredients.length > 0
     ? `\n- Every dish may use ONLY these ingredients${free.length > 0 ? ` (plus ${free.join(", ")})` : ""}: ${args.allowedIngredients.join(", ")}. Use no other ingredient.`
     : "";
@@ -268,11 +274,11 @@ function systemPrompt(args: TopUpArgs, total: number): string {
  * names are rewritten IN PLACE to the basket's catalog spelling (amounts
  * follow), so the persisted dish points at the pantry's Ingredient rows.
  */
-export function fitBasket(r: FridgeRecipe, allowed: readonly string[]): boolean {
+export function fitBasket(r: FridgeRecipe, allowed: readonly string[], staples: ReadonlySet<string> = BASKET_STAPLES): boolean {
   const canonical: string[] = [];
   const rename = new Map<string, string>();
   for (const n of r.usesIngredients) {
-    const m = findBasketMatch(n, allowed);
+    const m = findBasketMatch(n, allowed, staples);
     if (m === null) return false;
     const target = m === "" ? n.trim() : m;
     rename.set(n.trim().toLowerCase(), target);
@@ -596,7 +602,7 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
   // What-to-buy and the allergen groups use — no fragment rows like
   // "olive oil" next to "Extra virgin olive oil".
   const allowed = args.allowedIngredients ?? null;
-  const withinBasket = (r: FridgeRecipe): boolean => (allowed ? fitBasket(r, allowed) : true);
+  const withinBasket = (r: FridgeRecipe): boolean => (allowed ? fitBasket(r, allowed, args.staples) : true);
   const accepted: { recipe: FridgeRecipe; mealTypeId: string }[] = [];
   const rejected: Record<string, number> = {};
   const reject = (why: string, r: FridgeRecipe) => {
@@ -606,7 +612,9 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
   // Name the oil BEFORE the filter judges the dish, with an oil this diner
   // may have — repairing after the filter could write in a banned or
   // disliked oil the filter never saw.
-  const named = recipes.map((r) => specifyCookingOil(r, oilAllowedBy(args.matchers)));
+  // In basket mode the oil must be one the diner has (a kept basic or a basket item).
+  const kitchen = args.allowedIngredients ? { staples: args.staples ?? BASKET_STAPLES, basket: args.allowedIngredients } : undefined;
+  const named = recipes.map((r) => specifyCookingOil(r, oilAllowedBy(args.matchers, kitchen)));
   const groupsOf = await loadIngredientGroups(named.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
   const filtered = applyAllergenFilter(named, args.matchers, groupsOf);
   rejected.allergen = recipes.length - filtered.length;
