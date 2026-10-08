@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { resolveAiTier } from "@/lib/ai-budget";
 import { patientForClerk } from "@/lib/custom-conditions-server";
-import { uploadPrivateFile } from "@/lib/s3";
+import { uploadPrivateFile, deleteFile } from "@/lib/s3";
 import { validateFeedbackText, validateArea, sniffImage, FEEDBACK_MAX_IMAGE_BYTES, FEEDBACK_MAX_IMAGE_MB } from "@/lib/feedback/validate";
 import { triageReport } from "@/lib/feedback/triage";
 
@@ -49,11 +49,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const report = await prisma.feedbackReport.create({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    data: { patientId: patient.id, text: t.text, area: validateArea(form.get("area")), context: context as any, screenshotKey },
-    select: { id: true },
-  });
+  let report: { id: string };
+  try {
+    report = await prisma.feedbackReport.create({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: { patientId: patient.id, text: t.text, area: validateArea(form.get("area")), context: context as any, screenshotKey },
+      select: { id: true },
+    });
+  } catch (e) {
+    // The image was uploaded but the report was not saved: don't orphan it.
+    if (screenshotKey) await deleteFile(screenshotKey).catch(() => {});
+    throw e;
+  }
   const triage = await triageReport(report.id);
   const row = await prisma.feedbackReport.findUnique({ where: { id: report.id }, select: { issue: { select: { status: true } } } });
   return NextResponse.json({ report: { id: report.id, status: row?.issue?.status ?? "NEW", triaged: triage === "DONE" } }, { status: 201 });
