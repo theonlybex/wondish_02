@@ -921,3 +921,13 @@ test("a name saying a food is ABSENT is not promising it", () => {
   assert.equal(categoryWithNoMember("Nut Butter Toast", ["Sliced bread", "jam"]), "nut");
   assert.equal(categoryWithNoMember("Cheese Toastie", ["Sliced bread", "Roma tomatoes"]), "cheese");
 });
+
+// A diner planned against 1,500 mg (heart and stroke, lib/sodium-limit) gets
+// half the seasoning allowance: four dishes at a quarter teaspoon is already
+// 2,325 mg of added salt alone.
+test("clampAddedSalt halves the allowance for a 1,500 mg diner", () => {
+  const rows = [{ name: "Salt", quantity: 0.25, unit: "teaspoon" }];
+  assert.equal(clampAddedSalt(rows, 620, 1500).ingredients[0].quantity, SEASONING_SALT_TSP / 2);
+  assert.equal(clampAddedSalt(rows, 210, 1500).ingredients[0].quantity, SEASONING_SALT_TSP_SMALL_DISH / 2);
+  assert.equal(clampAddedSalt(rows, 620, 2300).changed, false);
+});

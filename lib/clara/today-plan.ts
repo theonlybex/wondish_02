@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { displayDishName } from "@/lib/dish-name";
 import { dishSodiumMg } from "@/lib/meal-plan";
+import { dailySodiumLimitMg, DAILY_SODIUM_MAX_MG } from "@/lib/sodium-limit";
 
 /**
  * TOTAL dietary sodium for a dish, in mg — the added salt plus what the food
@@ -31,7 +32,7 @@ export async function buildTodaysPlanText(patientId: string, localDate: string):
 
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
-    select: { activePlanVersion: true },
+    select: { activePlanVersion: true, healthConditions: { select: { condition: { select: { name: true } } } } },
   });
   if (!patient) return "";
 
@@ -146,9 +147,12 @@ export async function buildTodaysPlanText(patientId: string, localDate: string):
   // itemisation came to 0.95 tsp and the rail said 2,210 mg. She was doing
   // arithmetic she should not have to do, and contradicting the screen.
   const sodiumMg = Math.round(menus.reduce((sum, m) => sum + dishSodium(m.recipe.ingredients ?? []), 0));
+  // 1,500 mg for any cardiovascular or cerebrovascular condition (lib/sodium-limit).
+  const limitMg = dailySodiumLimitMg((patient.healthConditions ?? []).map((hc) => hc.condition.name));
+  const limitText = limitMg.toLocaleString("en-US");
   const saltLine = sodiumMg > 0
-    ? `\nSODIUM FOR THE DAY: ${sodiumMg.toLocaleString()} mg — the added salt AND the sodium in the food itself, against a 2,300 mg daily guideline` +
-      `${sodiumMg > 2300 ? " — that is OVER the guideline, say so plainly" : ""}. Quote this figure, and the per-dish figures above, rather than converting teaspoons yourself — a teaspoon of salt WEIGHS about 6,000 mg but contains about 2,325 mg of sodium, and confusing the two overstates every answer by 2.5x. Never call a number over 2,300 mg "well within" anything.`
+    ? `\nSODIUM FOR THE DAY: ${sodiumMg.toLocaleString()} mg — the added salt AND the sodium in the food itself, against a ${limitText} mg daily ${limitMg < DAILY_SODIUM_MAX_MG ? "limit (this diner's heart/stroke condition: low-sodium)" : "guideline"}` +
+      `${sodiumMg > limitMg ? " — that is OVER the guideline, say so plainly" : ""}. Quote this figure, and the per-dish figures above, rather than converting teaspoons yourself — a teaspoon of salt WEIGHS about 6,000 mg but contains about 2,325 mg of sodium, and confusing the two overstates every answer by 2.5x. Never call a number over ${limitText} mg "well within" anything.`
     : "";
 
   const tomorrowLine =

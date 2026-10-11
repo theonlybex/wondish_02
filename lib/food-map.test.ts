@@ -231,3 +231,12 @@ test("buildFoodMapText: a custom plan's name, exclusions and quoted note reach C
   assert.match(text, /Restricted from preferences: onions/);
   assert.match(text, /Plan notes: My calm-gut plan \(the diner's own plan\): "small portions, nothing fried"/);
 });
+
+// Product call 2026-10-08: the daily sodium limit reaches every Clara prompt
+// (chat, swaps, cook-my-day, generation) through the food map.
+test("buildFoodMapText: heart and stroke diners are told their 1,500 mg sodium limit; others are not", () => {
+  const stroke = buildFoodMapText({ ...emptyPatient(), healthConditions: [{ condition: { name: "Stroke", guidance: null, bannedIngredients: [] } }] });
+  assert.match(stroke, /Daily sodium limit: 1,500 mg/);
+  const gout = buildFoodMapText({ ...emptyPatient(), healthConditions: [{ condition: { name: "Gout", guidance: null, bannedIngredients: [] } }] });
+  assert.doesNotMatch(gout, /Daily sodium limit/);
+});

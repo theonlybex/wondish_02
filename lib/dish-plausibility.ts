@@ -16,7 +16,7 @@
 // It is deliberately storage-shaped rather than model-shaped (names, units,
 // minutes) so a Prisma row and a freshly generated recipe both satisfy it.
 import { ingredientTokens } from "@/lib/basket-match";
-import { BASKET_STAPLES } from "@/lib/basket-coverage";
+import { SEASONINGS } from "@/lib/basket-coverage";
 import { displayDishName, formatAmount } from "@/lib/dish-name";
 import { macrosContradictAmounts, macrosDisagreeWithPricing, gramsOf } from "@/lib/staple-density";
 
@@ -116,9 +116,11 @@ export function saltRowTsp(quantity?: number | null, unit?: string | null): numb
  */
 export function clampAddedSalt<T extends { name: string; quantity?: number | null; unit?: string | null }>(
   ingredients: readonly T[],
-  calories?: number | null
+  calories?: number | null,
+  /** The diner's daily sodium limit (lib/sodium-limit); under 2,300 mg halves the allowance. */
+  sodiumLimitMg = 2300
 ): { ingredients: T[]; changed: boolean } {
-  const cap = addedSaltCapTsp(calories);
+  const cap = addedSaltCapTsp(calories) * (sodiumLimitMg < 2300 ? 0.5 : 1);
   let changed = false;
   const out = ingredients.map((i) => {
     if (!/\bsalt\b/i.test(i.name)) return i;
@@ -630,10 +632,10 @@ const PANTRY_MARKER =
 // "Extra virgin olive oil" still resolves ({olive, oil} both sides) because
 // ingredientTokens drops descriptor words.
 const isStapleName = (lowered: string): boolean => {
-  if (BASKET_STAPLES.has(lowered)) return true;
+  if (SEASONINGS.has(lowered)) return true;
   const tokens = ingredientTokens(lowered);
   if (tokens.size === 0) return false;
-  for (const st of BASKET_STAPLES) {
+  for (const st of SEASONINGS) {
     const stt = ingredientTokens(st);
     if (stt.size !== tokens.size) continue;
     if ([...stt].every((t) => tokens.has(t))) return true;
@@ -672,7 +674,7 @@ function seasoningQuantityOnFood(ing: PlausibleIngredient): boolean {
   // would have rejected by the hundred.
   const tokens = ingredientTokens(lowered);
   if (tokens.size === 0) return false;
-  for (const st of BASKET_STAPLES) {
+  for (const st of SEASONINGS) {
     const stt = ingredientTokens(st);
     if (stt.size === 0 || stt.size >= tokens.size) continue;
     if ([...stt].every((t) => tokens.has(t))) return true; // proper superset

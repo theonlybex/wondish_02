@@ -6,7 +6,8 @@ import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { regeneratePlan, clampPlanStartToToday, MealPlanBusyError, EmptyPlanError, ThinPlanError, PlanPreflightError } from "@/lib/meal-plan-runner";
 import { internalError } from "@/lib/api-error";
-import { getPlanDayCalories, deriveLoggedRecipeIds, dishSodiumMg, DAILY_SODIUM_MAX_MG } from "@/lib/meal-plan";
+import { getPlanDayCalories, deriveLoggedRecipeIds, dishSodiumMg } from "@/lib/meal-plan";
+import { dailySodiumLimitMg } from "@/lib/sodium-limit";
 import { computeDailyMacros, resolveMacroProfile } from "@/lib/caloric-engine";
 import { normalizeCuisine } from "@/lib/clara/recipe-generation";
 import { guardAiSpend, tierFor } from "@/lib/ai-budget";
@@ -193,7 +194,8 @@ export async function GET(req: NextRequest) {
     daySaltSodiumMg: Math.round(
       menus.reduce((sum, m) => sum + dishSodiumMg(m.recipe?.ingredients ?? []), 0)
     ),
-    dailySodiumGuidelineMg: DAILY_SODIUM_MAX_MG,
+    // 1,500 mg for any cardiovascular or cerebrovascular condition (lib/sodium-limit).
+    dailySodiumGuidelineMg: dailySodiumLimitMg(patient.healthConditions.map((hc) => hc.condition.name)),
     ...(exchanges ? { exchanges } : {}),
   });
 }

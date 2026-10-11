@@ -15,6 +15,7 @@ import { PATIENT_DIET_INCLUDE, derivePatientBans, type PatientDietGraph } from "
 import type { TrialGraphRow } from "@/lib/diet-match";
 import { phaseFor, isEnforced } from "@/lib/trials/schedule";
 import { termsForCategory, categoryTitle } from "@/lib/trials/category-terms";
+import { dailySodiumLimitMg, DAILY_SODIUM_MAX_MG } from "@/lib/sodium-limit";
 
 // ── PATIENT_FOOD_MAP_INCLUDE ────────────────────────────────────────────────
 // Composes the shared diet-graph include with `mealType: true` rather than
@@ -113,6 +114,11 @@ export function buildFoodMapText(patient: FoodMapPatient | null | undefined): st
     const names = patient.healthConditions.map((c) => c.condition.name).join(", ");
     const banned = patient.healthConditions.flatMap((c) => c.condition.bannedIngredients.map((b) => b.name));
     lines.push(`Health conditions: ${names}`);
+    // 1,500 mg for any cardiovascular or cerebrovascular condition (lib/sodium-limit).
+    const sodiumLimit = dailySodiumLimitMg(patient.healthConditions.map((c) => c.condition.name));
+    if (sodiumLimit < DAILY_SODIUM_MAX_MG) {
+      lines.push(`Daily sodium limit: ${sodiumLimit.toLocaleString("en-US")} mg (low-sodium for heart health — total sodium, the food's own plus added salt; keep added salt minimal and avoid salty sauces, stock cubes and cured meats)`);
+    }
     if (banned.length > 0) {
       // Attributed to the condition, and described as what the APP does.
       //

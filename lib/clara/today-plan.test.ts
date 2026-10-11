@@ -136,6 +136,22 @@ test("the per-dish figures sum to the day figure", async () => {
   assert.match(text, /SODIUM FOR THE DAY: 930 mg/);
 });
 
+// Product call 2026-10-08: a heart/stroke diner's day is judged against 1,500 mg.
+test("a heart or stroke diner's day is judged against 1,500 mg, not 2,300", async () => {
+  const { buildTodaysPlanText } = await modPromise;
+  db.patient = { activePlanVersion: 3, healthConditions: [{ condition: { name: "Stroke" } }] };
+  db.menus = [
+    menu("Breakfast", { ingredients: [{ note: null, quantity: 0.4, unit: "teaspoon", ingredient: { name: "Salt" } }] }),
+    menu("Lunch", { ingredients: [{ note: null, quantity: 0.3, unit: "teaspoon", ingredient: { name: "Salt" } }] }),
+  ];
+  const text = await buildTodaysPlanText("p1", "2026-09-24");
+  db.patient = { activePlanVersion: 3 };
+  // 0.7 tsp = 1,628 mg: under 2,300, over this diner's 1,500.
+  assert.match(text, /against a 1,500 mg daily limit/);
+  assert.match(text, /OVER the guideline, say so plainly/);
+  assert.doesNotMatch(text, /2,300/);
+});
+
 // Asked "what's in my plan tomorrow?" Clara said "I can only see today's meal
 // plan on my end" — honest about her context and wrong about the app's, which
 // holds the whole week (QA 2026-09-25). An obvious first question, and "check
