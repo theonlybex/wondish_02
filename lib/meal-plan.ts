@@ -19,9 +19,10 @@ import {
 import { macroDeviation } from "@/lib/macros";
 import { buildIngredientAffinity } from "@/lib/ingredient-affinity";
 import { dishProblem, catalogFoodVocabulary } from "@/lib/dish-plausibility";
-import { isCoveredByBasket, BASKET_STAPLES } from "@/lib/basket-coverage";
+import { isCoveredByBasket, SEASONINGS } from "@/lib/basket-coverage";
 import { ingredientTokens } from "@/lib/basket-match";
 import { staplesFor } from "@/lib/kitchen-basics";
+import { dailySodiumLimitMg, DAILY_SODIUM_MAX_MG as GENERAL_SODIUM_MAX_MG } from "@/lib/sodium-limit";
 import { derivePatientBans, buildDietMatchers, evaluateDishAgainstProfile, ingredientGroupsOf, hasAnyBan, bannedNamesForPrompt, dislikedRecipeIds, PATIENT_DIET_INCLUDE } from "@/lib/diet-match";
 import { buildFoodMapText } from "@/lib/food-map";
 import { priceDish } from "@/lib/staple-density";
@@ -100,7 +101,7 @@ type RecipeCandidate = {
 // dishes with the same signature are near-duplicates (same components) even
 // with different ids/names — used to keep a week varied beyond exact-id repeats
 // (e.g. "grilled chicken + roasted vegetables" appearing on two days).
-const SIG_STAPLES = BASKET_STAPLES;
+const SIG_STAPLES = SEASONINGS;
 function dishSignature(ings: { ingredient: { name: string } }[]): string {
   return Array.from(
     new Set(ings.map((i) => i.ingredient.name.trim().toLowerCase()).filter((n) => n && !SIG_STAPLES.has(n)))
@@ -163,7 +164,7 @@ export const MAX_SAME_DISH_PER_WEEK = 3;
  * (a day of four dishes). The residue is real, which is why the number is now
  * also shown to the user rather than only aimed at.
  */
-export const DAILY_SODIUM_MAX_MG = 2300;
+export const DAILY_SODIUM_MAX_MG = GENERAL_SODIUM_MAX_MG;
 
 /** Teaspoon of table salt in mg of sodium. */
 const SODIUM_MG_PER_TSP = 2325;
@@ -280,7 +281,9 @@ function pickByMotivation(
    * behaves exactly as it did before.
    */
   dayMacroTargetG: { protein: number; carbs: number; fat: number } | null = null,
-  todayMacroG: { protein: number; carbs: number; fat: number } = { protein: 0, carbs: 0, fat: 0 }
+  todayMacroG: { protein: number; carbs: number; fat: number } = { protein: 0, carbs: 0, fat: 0 },
+  /** This diner's daily sodium ceiling (lib/sodium-limit: 1,500 mg for heart and stroke). */
+  sodiumLimitMg: number = DAILY_SODIUM_MAX_MG
 ): RecipeCandidate {
   if (candidates.length === 1) return candidates[0];
 
@@ -348,7 +351,7 @@ function pickByMotivation(
     // Past ~60% of the day's sodium budget, salt starts to cost a dish points —
     // gently at first, hard once the day is over. Below that it is not a factor:
     // a dish is not worse for being seasoned.
-    const spent = sodiumSoFarMg / DAILY_SODIUM_MAX_MG;
+    const spent = sodiumSoFarMg / sodiumLimitMg;
     if (spent > 0.6) {
       const mg = dishSodiumMg(r.ingredients.map((ri) => ({ ...ri, ingredient: ri.ingredient })));
       score -= (mg / 100) * (spent > 1 ? 4 : 1.5);
@@ -533,6 +536,12 @@ export async function buildMealPlanMenus(
   endDate.setHours(23, 59, 59, 999);
 
   const healthConditionNames = patient.healthConditions.map((hc) => hc.condition.name);
+  // 1,500 mg for anyone with a cardiovascular or cerebrovascular condition.
+  const sodiumLimitMg = dailySodiumLimitMg(healthConditionNames);
+  // What the paced ceiling aims at. A low-sodium day keeps a 10% margin: the
+  // last tier may still overshoot when nothing fits, and at 1,500 mg without
+  // the margin 1-2 days a week landed at 1,510-1,660 mg (sim 2026-10-08).
+  const sodiumPacingMg = sodiumLimitMg < DAILY_SODIUM_MAX_MG ? sodiumLimitMg * 0.9 : sodiumLimitMg;
   const macroProfile = resolveMacroProfile(healthConditionNames, motivationNames);
   const macroTarget  = getMacroPercentages(macroProfile);
 
@@ -586,7 +595,7 @@ export async function buildMealPlanMenus(
   // no later relaxation (cross-week repeats, slot fallbacks) can bring them back.
   const disliked = dislikedRecipeIds(patient);
   // Kitchen basics this diner has (an unticked basic is never assumed).
-  const staples = staplesFor(patient.missingStaples);
+  const staples = staplesFor(patient.missingStaples, opts.basket);
   const recipePoolBanFiltered = recipePoolRaw.filter(
     (r) =>
       !disliked.has(r.id) &&
@@ -795,6 +804,7 @@ export async function buildMealPlanMenus(
         cuisine: opts.cuisine ?? null,
         allowedIngredients: opts.basket ? Array.from(opts.basket) : undefined,
         staples,
+        sodiumLimitMg,
         profileContext: buildFoodMapText(patient),
       });
       if (createdIds.length > 0) {
@@ -1047,7 +1057,7 @@ export async function buildMealPlanMenus(
         // calories. The guideline itself (DAILY_SODIUM_MAX_MG) is unchanged.
         const sodiumRoomLeft = (r: PoolRecipe): boolean => {
           const share = dayBudget > 0 ? Math.min(1, Math.max(0.35, (dayCalories + (r.calories ?? 0)) / dayBudget)) : 1;
-          return todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG * share;
+          return todaySodiumMg + dishSodiumMg(r.ingredients) <= sodiumPacingMg * share;
         };
         const carbBaseRoomLeft = (r: PoolRecipe): boolean => {
           const b = dishCarbBase(r.ingredients);
@@ -1104,7 +1114,17 @@ export async function buildMealPlanMenus(
           const matched = selectionPool.filter((r) => matches(r, relax));
           const onTarget = needsProteinMain ? matched.filter(proteinOnTarget) : [];
           const dense = needsProteinMain ? matched.filter(proteinDense) : matched;
-          const pool = onTarget.length > 0 ? onTarget : dense.length > 0 ? dense : matched;
+          const shaped = onTarget.length > 0 ? onTarget : dense.length > 0 ? dense : matched;
+          // The last tier relaxes the PACED sodium ceiling so a slot is never
+          // left empty — but it chose blind, and a heart diner's day (1,500 mg,
+          // lib/sodium-limit) went to 1,717 mg on an 86 kcal snack while snacks
+          // that fit were in the pool (sim 2026-10-08). Whatever still fits the
+          // whole day's limit goes first; only when nothing does is it relaxed.
+          const fitsDay = relax.sameDay ? shaped.filter((r) => todaySodiumMg + dishSodiumMg(r.ingredients) <= sodiumLimitMg) : shaped;
+          // A snack is optional: a low-sodium (1,500 mg) day leaves it out
+          // rather than go over — every over-limit heart day in the sim went
+          // over on the snack, by 3-170 mg. A meal still takes the least-bad dish.
+          const pool = fitsDay.length > 0 || (isSnack && sodiumLimitMg < DAILY_SODIUM_MAX_MG) ? fitsDay : shaped;
           if (pool.length > 0 && relax.sameDay && dayMacroTargetG.fat) {
             // The last tier relaxed the fat ceiling — and then chose as if fat
             // did not matter at all. Every day in cycle 19's measurement that
@@ -1119,7 +1139,7 @@ export async function buildMealPlanMenus(
             const leastFatAll = pool.filter((r) => over(r) <= least + 5);
             // …and the least-salty of those: this tier relaxes sodium too, and
             // choosing blind here is what spent the day's sodium by lunch.
-            const saltOver = (r: PoolRecipe) => Math.max(0, todaySodiumMg + dishSodiumMg(r.ingredients) - DAILY_SODIUM_MAX_MG);
+            const saltOver = (r: PoolRecipe) => Math.max(0, todaySodiumMg + dishSodiumMg(r.ingredients) - sodiumLimitMg);
             const leastSalt = Math.min(...leastFatAll.map(saltOver));
             const leastFat = leastFatAll.filter((r) => saltOver(r) <= leastSalt + 150);
             if (process.env.WONDISH_DEBUG_POOL) {
@@ -1162,7 +1182,7 @@ export async function buildMealPlanMenus(
       };
 
       const pick = (pool: RecipeCandidate[]) =>
-        pickByMotivation(pool, motivationNames, affinityMap, seenIngredientNames, macroTarget, todaySodiumMg, weekUseCounts, dayMacroTargetG, todayMacroG);
+        pickByMotivation(pool, motivationNames, affinityMap, seenIngredientNames, macroTarget, todaySodiumMg, weekUseCounts, dayMacroTargetG, todayMacroG, sodiumLimitMg);
 
       // ── Step 1: Try a complete meal ────────────────────────────────────────
       if (target !== null) {
@@ -1271,7 +1291,7 @@ export async function buildMealPlanMenus(
           // which is how a 25 kcal condiment got served as the snack.
           r.calories !== null && r.calories >= Math.max(minCals, MIN_MEAL_KCAL) && r.calories <= maxCals &&
           (r.family === null || !dailyFamilies.has(r.family)) &&
-          todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG &&
+          todaySodiumMg + dishSodiumMg(r.ingredients) <= sodiumLimitMg &&
           // The day's fat ceiling applies to padding too. Snacks are the
           // fattiest category in the catalog (median 54% of calories from fat),
           // so the slot that exists to close a calorie gap is the one most
@@ -1304,14 +1324,14 @@ export async function buildMealPlanMenus(
             const snacks = selectionPool.filter((r) => r.mealTypeId === snackMealType.id && !todayUsedIds.has(r.id));
             const inWindow = snacks.filter((r) => r.calories !== null && r.calories >= Math.max(minCals, MIN_MEAL_KCAL) && r.calories <= maxCals);
             const fatOk = inWindow.filter((r) => dayMacroTargetG.fat === 0 || todayMacroG.fat + (r.fat ?? 0) <= dayMacroTargetG.fat * ((r.calories ?? 0) > 0 && ((r.fat ?? 0) * 9) / (r.calories as number) <= 0.35 ? 1.35 : DAY_FAT_CEILING));
-            const saltOk = fatOk.filter((r) => todaySodiumMg + dishSodiumMg(r.ingredients) <= DAILY_SODIUM_MAX_MG);
+            const saltOk = fatOk.filter((r) => todaySodiumMg + dishSodiumMg(r.ingredients) <= sodiumLimitMg);
             console.log(`[topup] day${dayIndex} ${Math.round(dayCalories)}/${Math.round(weekCals)} kcal gap=${Math.round(calGap)} window=${Math.max(minCals, MIN_MEAL_KCAL)}-${maxCals} snacks=${snacks.length} inWindow=${inWindow.length} fatOk=${fatOk.length} sodiumOk=${saltOk.length}`);
           }
           break;
         }
         const extra = pickByMotivation(
           extraCandidates, motivationNames, affinityMap, seenIngredientNames, macroTarget, todaySodiumMg, weekUseCounts,
-          dayMacroTargetG, todayMacroG
+          dayMacroTargetG, todayMacroG, sodiumLimitMg
         );
         const extraCals = extra.calories ?? 0;
         if (extraCals <= 0) break; // no useful calorie contribution; further picks won't help

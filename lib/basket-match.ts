@@ -7,7 +7,7 @@
 // week with no lunches (2026-09-11). Two names match when, after dropping
 // descriptor words and singularising, one's token set contains the other's.
 import { singularize } from "@/lib/diet-match";
-import { BASKET_STAPLES } from "@/lib/basket-coverage";
+import { BASKET_STAPLES, SEASONINGS } from "@/lib/basket-coverage";
 
 // Words that describe a form or grade, not the food itself.
 const DESCRIPTORS = new Set([
@@ -57,13 +57,16 @@ export function findBasketMatch(name: string, basket: readonly string[], staples
   const tokens = ingredientTokens(lowered);
   if (tokens.size === 0) return staples.has(lowered) ? "" : null;
 
-  // Is this name a seasoning/fat the kitchen is assumed to have?
-  const isStaple =
-    staples.has(lowered) ||
-    [...staples].some((st) => {
+  // Is this name a seasoning/fat — assumed or not? Pepper is no longer
+  // assumed (2026-10-08) but is still a seasoning, and must still never be
+  // claimed by the user's "Bell peppers".
+  const seasoningIn = (set: ReadonlySet<string>) =>
+    set.has(lowered) ||
+    [...set].some((st) => {
       const stt = ingredientTokens(st);
       return stt.size > 0 && !GENERIC_STAPLES.has(st) && subset(stt, tokens);
     });
+  const isStaple = seasoningIn(staples) || seasoningIn(SEASONINGS);
 
   // Prefer the basket entry sharing the most tokens; ties → shortest name.
   //

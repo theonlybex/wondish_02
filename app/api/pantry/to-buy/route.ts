@@ -41,7 +41,7 @@ export async function GET() {
       where: { isPublic: true, ingredients: { some: {} } },
       select: { id: true, ingredients: { select: { ingredientId: true, ingredient: { select: { name: true, allergenGroups: true } } } } },
     }),
-    prisma.patientPantryItem.findMany({ where: { patientId: patient.id }, select: { ingredientId: true } }),
+    prisma.patientPantryItem.findMany({ where: { patientId: patient.id }, select: { ingredientId: true, ingredient: { select: { name: true } } } }),
     prisma.patientIngredientPreference.findMany({
       where: { patientId: patient.id, liked: true },
       select: { ingredientId: true },
@@ -65,7 +65,7 @@ export async function GET() {
     pantry: new Set(pantry.map((p) => p.ingredientId)),
     liked: new Set(prefs.map((p) => p.ingredientId)),
     // A basic the diner said they don't have may be suggested.
-    staples: staplesFor(patient.missingStaples),
+    staples: staplesFor(patient.missingStaples, pantry.map((p) => p.ingredient.name)),
     cap: 50,
   });
   const reasons = check.reasonsForMany(ranked.map((i) => ({ name: i.name, allergenGroups: groupsById.get(i.ingredientId) ?? [] })));

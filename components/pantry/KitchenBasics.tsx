@@ -80,6 +80,9 @@ export default function KitchenBasics() {
           <p className="text-xs mb-3" style={{ color: "#6B6767" }}>
             We assume you have these. Untick anything you don&apos;t — your meal plans, Clara and &ldquo;dishes you can cook&rdquo; will stop using it.
           </p>
+          <p className="text-xs mb-3" style={{ color: "#6B6767" }}>
+            Pepper and garlic powder aren&apos;t assumed — if you have them, add them from the categories below.
+          </p>
           <div className="flex flex-wrap gap-2">
             {basics.map((b) => {
               const has = !missing.has(b.key);

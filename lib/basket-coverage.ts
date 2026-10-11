@@ -22,7 +22,14 @@ import { ingredientTokens } from "@/lib/basket-match";
 // produce is not. Garlic, onions, lemons and fresh herbs stay out on purpose —
 // they are real shopping items, and freeing them would both silence the
 // grocery list and let plans assume food the user does not have.
-export const BASKET_STAPLES = new Set([
+//
+// SEASONINGS is what KIND of thing a name is (a seasoning or fat, not a food);
+// BASKET_STAPLES is what a diner is ASSUMED to own. They differ by pepper and
+// garlic powder: "not for everybody" (product call 2026-10-08), so a diner has
+// them only by listing them in What I have (lib/kitchen-basics OWNED_FAMILIES
+// then covers every spelling). They stay seasonings — "pepper" must still
+// never be read as the user's bell peppers, nor a food measured in pinches.
+export const SEASONINGS = new Set([
   // Seasoning
   "salt", "kosher salt", "sea salt", "table salt",
   "pepper", "black pepper", "black peppercorns", "white pepper", "ground black pepper",
@@ -40,6 +47,11 @@ export const BASKET_STAPLES = new Set([
   "bay leaf", "bay leaves", "cinnamon", "ground cinnamon",
   "turmeric", "ground turmeric", "ground ginger", "curry powder",
 ]);
+
+/** Seasonings never assumed — the diner must list them. */
+export const NOT_ASSUMED = new Set(["pepper", "black pepper", "black peppercorns", "white pepper", "ground black pepper", "garlic powder"]);
+
+export const BASKET_STAPLES = new Set([...SEASONINGS].filter((n) => !NOT_ASSUMED.has(n)));
 
 /**
  * Does the basket cover every ingredient this dish needs (staples free)?

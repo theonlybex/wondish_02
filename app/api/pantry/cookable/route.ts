@@ -46,7 +46,7 @@ export async function GET() {
 
   const pantry = await prisma.patientPantryItem.findMany({
     where: { patientId: patient.id },
-    select: { ingredientId: true },
+    select: { ingredientId: true, ingredient: { select: { name: true } } },
   });
   const onHand = new Set(pantry.map((p) => p.ingredientId));
   if (onHand.size === 0) {
@@ -57,8 +57,9 @@ export async function GET() {
   const matchers = buildDietMatchers(bans);
   const hasBans = hasAnyBan(matchers);
   const disliked = dislikedRecipeIds(patient);
-  // Kitchen basics this diner has: an unticked one (garlic powder) counts as missing.
-  const staples = staplesFor(patient.missingStaples);
+  // Kitchen basics this diner has: an unticked one counts as missing, and so
+  // do pepper and garlic powder unless they are on hand (any spelling).
+  const staples = staplesFor(patient.missingStaples, pantry.map((p) => p.ingredient.name));
 
   // Single catalog load + in-memory scoring, same shape the meal-plan builder
   // uses (one query, not one per recipe).

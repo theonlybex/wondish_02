@@ -52,7 +52,6 @@ import {
 // top-up and left slots filled by one repeated dish (2026-09-24).
 export const maxDuration = 300;
 
-const STAPLES = new Set(["salt", "pepper", "water", "black pepper"]);
 
 export async function POST(req: Request) {
   const { userId } = await auth();
@@ -196,12 +195,14 @@ export async function POST(req: Request) {
     const bannedNames = bannedNamesForPrompt(bans);
     const onHandNames = pantry.map((p) => p.ingredient.name);
     const onHandLower = new Set(onHandNames.map((n) => n.toLowerCase()));
+    // Kitchen basics kept, plus pepper / garlic powder only if on hand.
+    const staples = staplesFor(patient.missingStaples, onHandNames);
 
     const system = [
       `You are Clara, Wondish's nutrition assistant. Build ONE full day of home-cooked meals from ONLY what the user has at home.`,
       `On hand: ${onHandNames.join(", ")}.`,
       // Only basics the diner kept (water is always assumed).
-      `Free staples you may also use: ${["salt", "pepper", "water"].filter((n) => staplesFor(patient.missingStaples).has(n)).join(", ")}.`,
+      `Free staples you may also use: ${["salt", "water"].filter((n) => staples.has(n)).join(", ")}.`,
       `Generate exactly one dish per meal type:`,
       ...slots.map(
         (s) => `- ${s.name}: target ≈${Math.round(mealCals[s.name.toLowerCase()] ?? dailyCalories / slots.length)} kcal per serving`
@@ -267,7 +268,7 @@ export async function POST(req: Request) {
     // production can be explained from the log alone (the final bot saw two
     // in five runs for a vegan + hypertension + kidney profile, unexplained).
     // Cook-my-day uses only what the diner has: a kept basic or an on-hand oil.
-    const named = recipes.map((r) => specifyCookingOil(r, oilAllowedBy(matchers, { staples: staplesFor(patient.missingStaples), basket: onHandNames })));
+    const named = recipes.map((r) => specifyCookingOil(r, oilAllowedBy(matchers, { staples, basket: onHandNames })));
     const groupsOf = await loadIngredientGroups(named.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
     const allowed = applyAllergenFilter(named, matchers, groupsOf);
     const why: Record<string, number> = { generated: recipes.length, allergen: recipes.length - allowed.length };
@@ -280,7 +281,7 @@ export async function POST(req: Request) {
       // Pantry coverage: every ingredient on hand (staples free); allow at most
       // one miss so a near-perfect day isn't discarded — the miss is surfaced.
       const missing = r.usesIngredients.filter(
-        (n) => !onHandLower.has(n.trim().toLowerCase()) && !STAPLES.has(n.trim().toLowerCase())
+        (n) => !onHandLower.has(n.trim().toLowerCase()) && !staples.has(n.trim().toLowerCase())
       );
       if (missing.length > 1) { note("needs-2+-missing-ingredients"); continue; }
       filled.set(slot.id, { recipe: r, mealTypeId: slot.id });

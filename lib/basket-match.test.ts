@@ -46,10 +46,15 @@ test("ingredientTokens drops descriptors and singularises", () => {
 
 test("a staple is not swallowed by a look-alike basket entry", () => {
   const withBellPeppers = ["Bell peppers", "Boneless chicken breasts", "Brown rice"];
-  // The seasoning stays a free staple...
-  assert.equal(findBasketMatch("pepper", withBellPeppers), "");
-  assert.equal(findBasketMatch("black pepper", withBellPeppers), "");
-  assert.equal(findBasketMatch("freshly ground black pepper", withBellPeppers), "");
+  // The seasoning is never the vegetable. Pepper is no longer assumed
+  // (2026-10-08), so without it in the basket it is simply not owned...
+  assert.equal(findBasketMatch("pepper", withBellPeppers), null);
+  assert.equal(findBasketMatch("black pepper", withBellPeppers), null);
+  assert.equal(findBasketMatch("freshly ground black pepper", withBellPeppers), null);
+  // ...and a diner who lists peppercorns owns every spelling, still free.
+  const owned = staplesFor([], [...withBellPeppers, "Black peppercorns"]);
+  assert.equal(findBasketMatch("pepper", withBellPeppers, owned), "");
+  assert.equal(findBasketMatch("freshly ground black pepper", withBellPeppers, owned), "");
   // ...while the vegetable still resolves to the basket.
   assert.equal(findBasketMatch("bell pepper", withBellPeppers), "Bell peppers");
   assert.equal(findBasketMatch("bell peppers", withBellPeppers), "Bell peppers");

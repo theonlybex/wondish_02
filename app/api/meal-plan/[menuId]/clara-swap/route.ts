@@ -241,7 +241,7 @@ export async function POST(
   // swaps ignored the basket and brought in lemon, tahini etc.
   const pantry = await prisma.patientPantryItem.findMany({ where: { patientId: patient.id }, select: { ingredient: { select: { name: true } } } });
   const basket = pantry.map((p) => p.ingredient.name);
-  const staples = staplesFor(patient.missingStaples);
+  const staples = staplesFor(patient.missingStaples, basket);
   const freeStaples = freeStaplesFor(matchers, staples);
   const basketLine = basket.length > 0
     ? `- Every dish may use ONLY these ingredients${freeStaples.length ? ` (plus ${freeStaples.join(", ")})` : ""}: ${basket.join(", ")}. Use no other ingredient — if the request needs one you don't have, make the closest dish from this list.`

@@ -88,6 +88,9 @@ export interface TopUpRequest {
 
 interface TopUpArgs {
   requests: TopUpRequest[];
+  // The diner's daily sodium limit (lib/sodium-limit): 1,500 mg for heart and
+  // stroke conditions. Sets the prompt's salt rule and the salt clamp.
+  sodiumLimitMg?: number;
   bannedNames: string[]; // prompt-side exclusion (defense: filter re-checks after)
   matchers: DietMatchers; // deterministic post-filter
   existingNames: Set<string>; // lowercased catalog names, for dedupe
@@ -134,6 +137,15 @@ const FREE_STAPLES = [
 ] as const;
 // `staples`: the user's kitchen basics (lib/kitchen-basics) — an unticked
 // basic is never offered as free.
+// The prompt's salt rule, for this diner's daily sodium limit. Says the number
+// only — see the comment where it is used.
+export function saltRuleLine(sodiumLimitMg: number): string {
+  if (sodiumLimitMg < 2300) {
+    return `- Salt: this diner is on a LOW-SODIUM plan for heart health — an eighth of a teaspoon per serving is the maximum, and none is better where the dish does not need it. Avoid salty additions (soy sauce, stock cubes, bouillon, cured meats, salted cheese, pickles). A day is four of these dishes and has to stay under ${sodiumLimitMg.toLocaleString("en-US")} mg of sodium in total, counting the sodium already in the food.`;
+  }
+  return `- Salt: a quarter teaspoon per serving is plenty and half a teaspoon is the maximum — a day is four of these dishes and has to stay under ${sodiumLimitMg.toLocaleString("en-US")} mg of sodium in total.`;
+}
+
 export function freeStaplesFor(matchers: DietMatchers, staples: ReadonlySet<string> = BASKET_STAPLES): string[] {
   return FREE_STAPLES.filter((s) => staples.has(s) && evaluateDishAgainstProfile([s], matchers).passed);
 }
@@ -230,7 +242,7 @@ function systemPrompt(args: TopUpArgs, total: number): string {
     // Deliberately does NOT suggest "season with herbs and citrus instead":
     // that wording tripled title rejections, because Clara started naming
     // dishes "Lemon Herb …" and listing neither. Say the number only.
-    `- Salt: a quarter teaspoon per serving is plenty and half a teaspoon is the maximum — a day is four of these dishes and has to stay under 2,300 mg of sodium in total.`,
+    saltRuleLine(args.sodiumLimitMg ?? 2300),
     // Same argument as the salt line, and measured the same way: every dish was
     // individually reasonable and the DAY was not. 59% of all fat in the
     // generated catalog is added cooking oil — 432 of 912 fat rows are above a
@@ -669,7 +681,7 @@ export async function generateAndPersistRecipes(args: TopUpArgs): Promise<string
     // ceiling and three of them are a day's sodium guideline: a profile with no
     // conditions came out over 2,300 mg on 6 days of 7 with every dish passing
     // every gate (measured 2026-09-25). See SEASONING_SALT_TSP.
-    const salted = clampAddedSalt(prosed.amounts ?? [], prosed.perServing?.calories);
+    const salted = clampAddedSalt(prosed.amounts ?? [], prosed.perServing?.calories, args.sodiumLimitMg);
     // Cooking fat too, but only where the steps name no amount to contradict —
     // see clampCookingFat. Added oil is 59% of all fat in the catalog and the
     // reason a week came out at 44-55% of calories from fat. The prompt asks for

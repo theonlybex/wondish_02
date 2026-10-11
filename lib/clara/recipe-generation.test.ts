@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { passesSanity, chunkTopUpRequests, freeStaplesFor, proteinOptionsFor, titlePromisesMissingFood, breakfastIsQuickEnough, repairProse, repairForStorage, macroSplitLine } from "./recipe-generation";
+import { passesSanity, chunkTopUpRequests, freeStaplesFor, proteinOptionsFor, titlePromisesMissingFood, breakfastIsQuickEnough, repairProse, repairForStorage, macroSplitLine, saltRuleLine } from "./recipe-generation";
 import { buildDietMatchers, derivePatientBans } from "../diet-match";
 import { validateFridgeRecipeSnapshot, type FridgeRecipe } from "../fridge";
 
@@ -103,13 +103,15 @@ test("freeStaplesFor drops a staple the profile bans (Hypertension → no free s
   // water, a cooking fat and the dried spices. What matters here is that a
   // profile ban removes an item rather than the exact membership.
   const none = freeStaplesFor(buildDietMatchers(derivePatientBans(empty)));
-  for (const expected of ["salt", "pepper", "water", "olive oil", "butter"]) {
+  for (const expected of ["salt", "water", "olive oil", "butter"]) {
     assert.ok(none.includes(expected), `${expected} should be free by default`);
   }
+  // Garlic powder and pepper are never assumed (2026-10-08).
+  assert.ok(!none.includes("pepper") && !none.includes("garlic powder"));
   const hypertension = { ...empty, healthConditions: [{ condition: { bannedIngredients: [{ name: "salt" }, { name: "kosher salt" }] } }] };
   const banned = freeStaplesFor(buildDietMatchers(derivePatientBans(hypertension)));
   assert.ok(!banned.includes("salt"), "a hypertension profile must not be handed free salt");
-  assert.ok(banned.includes("pepper") && banned.includes("olive oil"));
+  assert.ok(banned.includes("paprika") && banned.includes("olive oil"));
 });
 
 // ── A dish name must not promise food the dish lacks ────────────────────────
@@ -397,4 +399,13 @@ test("the macro split reaches the prompt as percentages, not rounded fractions",
   // Both prompts printed Math.round(0.30) — "~0% protein" — until cycle 19.
   assert.equal(macroSplitLine({ protein: 0.3, carbs: 0.45, fat: 0.25 }), "~30% protein, ~45% carbs, ~25% fat");
   assert.equal(macroSplitLine({ protein: 30, carbs: 45, fat: 25 }), "~30% protein, ~45% carbs, ~25% fat");
+});
+
+// Product call 2026-10-08: heart and stroke diners are planned against 1,500 mg.
+test("the salt rule names the diner's own daily sodium limit", () => {
+  assert.match(saltRuleLine(2300), /quarter teaspoon per serving.*2,300 mg/);
+  const low = saltRuleLine(1500);
+  assert.match(low, /an eighth of a teaspoon per serving is the maximum/);
+  assert.match(low, /1,500 mg/);
+  assert.doesNotMatch(low, /2,300/);
 });

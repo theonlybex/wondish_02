@@ -12,12 +12,10 @@ export type KitchenBasic = { key: string; label: string; names: string[]; oil?: 
 
 export const KITCHEN_BASICS: KitchenBasic[] = [
   { key: "salt", label: "Salt", names: ["salt", "kosher salt", "sea salt", "table salt"] },
-  { key: "black-pepper", label: "Black pepper", names: ["pepper", "black pepper", "black peppercorns", "ground black pepper", "white pepper"] },
   { key: "olive-oil", label: "Olive oil", names: ["olive oil", "extra virgin olive oil"], oil: true },
   { key: "vegetable-oil", label: "Vegetable / canola / sunflower oil", names: ["vegetable oil", "canola oil", "sunflower oil"], oil: true },
   { key: "avocado-oil", label: "Avocado oil", names: ["avocado oil"], oil: true },
   { key: "butter", label: "Butter", names: ["butter", "unsalted butter"] },
-  { key: "garlic-powder", label: "Garlic powder", names: ["garlic powder"] },
   { key: "onion-powder", label: "Onion powder", names: ["onion powder"] },
   { key: "paprika", label: "Paprika", names: ["paprika", "smoked paprika"] },
   { key: "cumin", label: "Cumin", names: ["cumin", "ground cumin"] },
@@ -37,18 +35,34 @@ export const KITCHEN_BASICS: KitchenBasic[] = [
   { key: "curry-powder", label: "Curry powder", names: ["curry powder"] },
 ];
 
+// Not assumed at all — garlic and pepper are "not for everybody" (product call
+// 2026-10-08). A diner who lists one spelling in What I have owns them all:
+// the catalog offers "Black peppercorns" while recipes say "pepper", "Black
+// pepper" or "ground black pepper".
+const OWNED_FAMILIES: string[][] = [
+  ["pepper", "black pepper", "black peppercorns", "ground black pepper", "freshly ground black pepper", "cracked black pepper"],
+  ["garlic powder", "granulated garlic"],
+];
+
 // Generic cooking-fat words: assumed only while the user keeps SOME oil.
 const GENERIC_OIL = ["oil", "cooking oil", "cooking spray", "nonstick cooking spray"];
 const KEYS = new Set(KITCHEN_BASICS.map((b) => b.key));
 
-/** The staples this user may be assumed to have (lowercased names). */
-export function staplesFor(missing: readonly string[] | null | undefined): Set<string> {
+/**
+ * The staples this user may be assumed to have (lowercased names). `basket`:
+ * what they listed in What I have — owning one spelling of a family (pepper,
+ * garlic powder) makes every spelling free.
+ */
+export function staplesFor(missing: readonly string[] | null | undefined, basket?: Iterable<string>): Set<string> {
   const gone = new Set(missing ?? []);
-  if (gone.size === 0) return new Set(BASKET_STAPLES);
   const out = new Set(BASKET_STAPLES);
   for (const b of KITCHEN_BASICS) if (gone.has(b.key)) for (const n of b.names) out.delete(n);
   const keepsAnOil = KITCHEN_BASICS.some((b) => b.oil && !gone.has(b.key));
   if (!keepsAnOil) for (const n of GENERIC_OIL) out.delete(n);
+  if (basket) {
+    const have = new Set(Array.from(basket, (n) => n.trim().toLowerCase()));
+    for (const family of OWNED_FAMILIES) if (family.some((n) => have.has(n))) for (const n of family) out.add(n);
+  }
   return out;
 }
 

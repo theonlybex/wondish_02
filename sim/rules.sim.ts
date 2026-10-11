@@ -191,8 +191,11 @@ test("every service respects every rule, alone and combined", { timeout: 6 * 60 
       row.profiles++;
       let result: ServiceResult;
       console.log = console.warn = console.info = () => {};
+      const started = Date.now();
       try {
         result = await svc.run(profile, patient);
+        // SIM_SLOW=1: name any service call over 5 s (finds a planner slowdown fast).
+        if (process.env.SIM_SLOW && Date.now() - started > 5000) quiet.log(`  [slow] ${svc.key} ${Date.now() - started}ms · ${profile.id}`);
       } catch (e) {
         row.errors++;
         errors.push({ profile: profile.id, service: svc.label, message: e instanceof Error ? e.message : String(e) });
@@ -223,7 +226,7 @@ test("every service respects every rule, alone and combined", { timeout: 6 * 60 
         }
       });
     }
-    if (++done % 250 === 0) quiet.log(`  … ${done}/${profiles.length} profiles (${Math.round((Date.now() - t0) / 1000)}s)`);
+    if (++done % 250 === 0) quiet.log(`  … ${done}/${profiles.length} profiles (${Math.round((Date.now() - t0) / 1000)}s, heap ${Math.round(process.memoryUsage().heapUsed / 1e6)} MB)`);
   }
 
   // ── report ────────────────────────────────────────────────────────────────

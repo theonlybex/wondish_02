@@ -415,50 +415,99 @@ test("14 · a user's own eating plan is enforced like a diet everywhere and its 
 
 // ── 15. Kitchen basics ───────────────────────────────────────────────────────
 // A diner reported garlic powder in dishes though they never chose it: the
-// dried spices were assumed in every kitchen. Unticking a basic must take it
-// out of the week, "dishes you can cook" and Clara's free staples — and
-// leaving them all ticked must change nothing.
-test("15 · an unticked kitchen basic (garlic powder) is never assumed: week, cookable and Clara's staples", async () => {
+// dried spices were assumed in every kitchen. Since 2026-10-08 garlic powder
+// and pepper are never assumed (product call: "not for everybody"), any other
+// basic can be unticked, and listing one spelling of pepper owns them all.
+test("15 · garlic powder and pepper are used only when the diner has them; an unticked basic is never assumed", async () => {
   const cookable = await import("@/app/api/pantry/cookable/route");
   const mealPlan = await import("@/lib/meal-plan");
   const { staplesFor } = await import("@/lib/kitchen-basics");
   const { freeStaplesFor } = await import("@/lib/clara/recipe-generation");
   const { derivePatientBans, buildDietMatchers } = await import("@/lib/diet-match");
   const nameOf = (id: string) => snap.ingredients.find((i) => i.id === id)?.name.toLowerCase() ?? "";
-  const usesGarlicPowder = (id: string) => snap.recipes.find((r) => r.id === id)?.ingredients.some((ri) => nameOf(ri.ingredientId) === "garlic powder") ?? false;
-  // A pantry that covers a dozen garlic-powder dishes — all but the garlic
-  // powder (a whole-catalog pantry overflows cookable's 30-card cap).
-  const gpDishes = snap.recipes.filter((r) => r.isPublic !== false && usesGarlicPowder(r.id)).slice(0, 12);
-  const pantryIds = new Set(gpDishes.flatMap((r) => r.ingredients.map((ri) => ri.ingredientId)));
-  const pantry = snap.ingredients.filter((i) => pantryIds.has(i.id) && i.name.toLowerCase() !== "garlic powder");
-  const basket = new Set(pantry.map((i) => i.name.toLowerCase()));
+  const uses = (re: RegExp) => (id: string) => snap.recipes.find((r) => r.id === id)?.ingredients.some((ri) => re.test(nameOf(ri.ingredientId))) ?? false;
+  const GP = /^garlic powder$/;
+  const PEPPER = /^(pepper|black pepper|ground black pepper|black peppercorns|freshly ground black pepper)$/;
+  const ONION_POWDER = /^onion powder$/;
+  const usesGp = uses(GP), usesPepper = uses(PEPPER), usesOnionPowder = uses(ONION_POWDER);
+  // A pantry covering two dozen dishes that use garlic powder, pepper or onion
+  // powder — everything those dishes need EXCEPT those three.
+  const target = snap.recipes.filter((r) => r.isPublic !== false && (usesGp(r.id) || usesPepper(r.id) || usesOnionPowder(r.id))).slice(0, 24);
+  const ids = new Set(target.flatMap((r) => r.ingredients.map((ri) => ri.ingredientId)));
+  const base = snap.ingredients.filter((i) => ids.has(i.id) && !GP.test(i.name.toLowerCase()) && !PEPPER.test(i.name.toLowerCase()) && !ONION_POWDER.test(i.name.toLowerCase()));
+  const byName = (n: string) => snap.ingredients.find((i) => i.name === n)!;
 
-  const run = async (missingStaples: string[]) => {
+  const run = async (pantry: typeof base, missingStaples: string[]) => {
     const patient = { ...makePatient(snap, profile(["goal:Eat healthier"])), missingStaples };
     state.patient = patient;
     state.pantryIds = pantry.map((i) => i.id);
     const ck = await quietly(async () => json(await cookable.GET()));
     state.pantryIds = [];
+    const basket = new Set(pantry.map((i) => i.name.toLowerCase()));
     const week = await quietly(() => mealPlan.buildMealPlanMenus(patient.id, new Date("2026-10-05T00:00:00"), 1, { windowDays: 7, basket }));
-    return {
-      ready: ck.ready.filter((d: any) => usesGarlicPowder(d.id)).map((d: any) => d.name),
-      almost: ck.almost.filter((d: any) => usesGarlicPowder(d.id)),
-      week: week.rows.filter((r: any) => usesGarlicPowder(r.recipeId)).map((r: any) => r.recipeId),
-      patient,
-    };
+    const served = [...ck.ready.map((d: any) => d.id), ...week.rows.map((r: any) => r.recipeId)];
+    return { served, patient, almost: ck.almost };
   };
 
-  // Default: every basic assumed — the old behaviour, so garlic powder dishes show up (non-vacuity).
-  const assumed = await run([]);
-  assert.ok(assumed.ready.length > 0, "control: no garlic-powder dish counted ready — the check below would pass vacuously");
-  assert.ok(assumed.week.length > 0, "control: no garlic-powder dish in the basket week — the check below would pass vacuously");
+  // Not owned: no served dish uses garlic powder or pepper.
+  const without = await run(base, []);
+  assert.deepEqual(without.served.filter(usesGp).length, 0, "garlic powder used though not in What I have");
+  assert.deepEqual(without.served.filter(usesPepper).length, 0, "pepper used though not in What I have");
+  assert.ok(without.served.filter(usesOnionPowder).length > 0, "control: onion powder (a kept basic) should still be assumed");
+  for (const d of without.almost) if (usesGp(d.id)) assert.ok(d.missing.some((m: string) => /garlic powder/i.test(m)), `"${d.name}" hides missing garlic powder`);
 
-  const unticked = await run(["garlic-powder"]);
-  assert.deepEqual(unticked.ready, [], "cookable calls a garlic-powder dish ready");
-  assert.deepEqual(unticked.week, [], "the basket week uses garlic powder");
-  assert.ok(unticked.almost.every((d: any) => d.missing.some((m: string) => /garlic powder/i.test(m))), "an 'almost' dish hides that garlic powder is missing");
+  // Owned — the catalog's spellings ("Garlic powder", "Black peppercorns") — so every recipe spelling is covered.
+  const withThem = await run([...base, byName("Garlic powder"), byName("Black peppercorns")], []);
+  assert.ok(withThem.served.some(usesGp), "control: owning garlic powder never served a garlic-powder dish");
+  assert.ok(withThem.served.some(usesPepper), "control: owning peppercorns never served a pepper dish");
+  const spellings = new Set(withThem.served.filter(usesPepper).flatMap((id) => snap.recipes.find((r) => r.id === id)!.ingredients.map((ri) => nameOf(ri.ingredientId)).filter((n) => PEPPER.test(n))));
+  assert.ok([...spellings].some((n) => n !== "black peppercorns"), `peppercorns only covered its own spelling: ${[...spellings].join(", ")}`);
 
-  const matchers = buildDietMatchers(derivePatientBans(unticked.patient as any));
-  assert.ok(!freeStaplesFor(matchers, staplesFor(["garlic-powder"])).includes("garlic powder"), "Clara is told garlic powder is free");
-  assert.ok(freeStaplesFor(matchers, staplesFor([])).includes("garlic powder"));
+  // An unticked basic (onion powder) is gone too.
+  const unticked = await run(base, ["onion-powder"]);
+  assert.deepEqual(unticked.served.filter(usesOnionPowder).length, 0, "an unticked onion powder was assumed");
+
+  const matchers = buildDietMatchers(derivePatientBans(without.patient as any));
+  const free = freeStaplesFor(matchers, staplesFor([]));
+  assert.ok(!free.includes("garlic powder") && !free.includes("pepper"), "Clara is told garlic powder / pepper are free");
+});
+
+// ── 16. Sodium limit for heart and stroke ────────────────────────────────────
+// Product call 2026-10-08: anyone with a cardiovascular or cerebrovascular
+// condition is planned against 1,500 mg of sodium a day, not 2,300.
+test("16 · heart and stroke diners: no day of their week goes over 1,500 mg of sodium", async () => {
+  const mealPlan = await import("@/lib/meal-plan");
+  const { CONDITION_GROUPS } = await import("@/lib/condition-groups");
+  const heartNames = CONDITION_GROUPS.find((g) => g.title === "Cardiovascular and cerebrovascular")!.conditions.map((c) => c.name);
+  const live = new Set(snap.rules.conditions.map((c: any) => c.name));
+  assert.deepEqual(heartNames.filter((n) => !live.has(n)), [], "a heart/stroke group condition is missing from the DB");
+  const recipeById = new Map(snap.recipes.map((r) => [r.id, r]));
+  const dayTotals = async (rules: RuleKey[]) => {
+    const p = asDiner(rules);
+    const week = await quietly(() => mealPlan.buildMealPlanMenus(p.id, new Date("2026-10-05T00:00:00"), 1, { windowDays: 7 }));
+    const byDay = new Map<string, number>();
+    for (const row of week.rows) {
+      const r = recipeById.get(row.recipeId);
+      if (!r) continue;
+      const ings = r.ingredients.map((ri) => ({ ...ri, ingredient: snap.ingredients.find((i) => i.id === ri.ingredientId)! })).filter((ri) => ri.ingredient);
+      const day = new Date(row.date).toISOString().slice(0, 10);
+      byDay.set(day, (byDay.get(day) ?? 0) + mealPlan.dishSodiumMg(ings as any));
+    }
+    return [...byDay.values()];
+  };
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+
+  const general = await dayTotals(["goal:Eat healthier"]);
+  const report: string[] = [`general: mean ${Math.round(mean(general))} mg, max ${Math.round(Math.max(...general))}`];
+  for (const name of heartNames) {
+    const days = await dayTotals([`condition:${name}` as RuleKey]);
+    const over = days.filter((d) => d > 1500).length;
+    report.push(`${name}: mean ${Math.round(mean(days))} mg, max ${Math.round(Math.max(...days))}, days over 1,500: ${over}/${days.length}`);
+    assert.ok(days.length >= 7, `${name}: the week did not fill`);
+    assert.equal(over, 0, `${name}: ${over} day(s) over 1,500 mg (max ${Math.round(Math.max(...days))})`);
+  }
+  console.log("[sodium] " + report.join(" | "));
+  // Control: the general diner is not held to 1,500, so the check above is the limit at work.
+  assert.ok(Math.max(...general) > 1500, "control: the general week never passed 1,500 mg, so the check proves nothing");
+
 });

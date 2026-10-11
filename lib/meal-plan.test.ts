@@ -1135,6 +1135,31 @@ test("a day's sodium stays under the guideline, not just each dish", () => {
   });
 });
 
+// Product call 2026-10-08: anyone with a cardiovascular or cerebrovascular
+// condition is planned against 1,500 mg of sodium a day, not 2,300.
+test("a heart/stroke diner is planned against 1,500 mg: a dish that fits a 2,300 mg day does not fit theirs", async () => {
+  const dish = (id: string, tsp: number) => {
+    const r = makeRecipe({ id, mealTypeId: MT_L.id, calories: 500, ingredients: [`protein ${id}`] });
+    r.ingredients = [
+      { ingredient: { name: `protein ${id}` }, quantity: 150, unit: "g" },
+      { ingredient: { name: "Salt" }, quantity: tsp, unit: "teaspoon" },
+    ] as never;
+    return { ...r, name: `Dish ${id}`, tags: [] as string[], prepTime: 10, cookTime: 15 };
+  };
+  // Medium 0.3 tsp (~698 mg) fits the paced 2,300 mg ceiling at the first
+  // meal and not the 1,500 mg one; light 0.1 tsp (~233 mg) fits both.
+  const pool = () => [dish("m1", 0.3), dish("m2", 0.3), dish("m3", 0.3), dish("l1", 0.1), dish("l2", 0.1), dish("l3", 0.1)];
+  const heart = { healthConditions: [{ condition: { name: "Hypertension", bannedIngredients: [] } }] };
+  setDb(makePatient(heart), [MT_L, MT_D], pool());
+  const res = await build("p1", new Date("2026-09-24T00:00:00Z"), 1, { windowDays: 1 });
+  assert.equal(res.rows.length, 2, "the day still got filled");
+  assert.deepEqual(res.rows.filter((r: MenuRow) => r.recipeId.startsWith("m")).map((r: MenuRow) => r.recipeId), [], "a heart diner got a dish only a 2,300 mg day has room for");
+  // Control: the same pool for a diner without such a condition does take one.
+  setDb(makePatient(), [MT_L, MT_D], pool());
+  const plain = await build("p1", new Date("2026-09-24T00:00:00Z"), 1, { windowDays: 1 });
+  assert.ok(plain.rows.some((r: MenuRow) => r.recipeId.startsWith("m")), "control: the 2,300 mg diner never got the medium dish, so the check above proves nothing");
+});
+
 test("two slots a day may share a starch, not three", () => {
   // One QA week was rice 21 times out of 26 — every title distinct, every macro
   // correct, the same plate every day.
