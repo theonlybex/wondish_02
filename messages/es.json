@@ -35,13 +35,6 @@
     "assure3": "Comida real de todos los días",
     "assure4": "Cancela cuando quieras"
   },
-  "socialProof": {
-    "joinedBy": "Unido por",
-    "members": "miembros",
-    "rating": "de más de 2.400 reseñas",
-    "recipes": "recetas",
-    "freeTier": "Plan gratuito disponible"
-  },
   "howItWorks": {
     "eyebrow": "Cómo funciona",
     "headline": "Tres pasos fáciles para comer bien.",
@@ -278,30 +271,5 @@
     "learnMore": "Saber más",
     "noteBadge": "Una nota de cuidado",
     "note": "Wondish apoya tu salud pero no sustituye el consejo médico — siempre te recordaremos consultar a tu médico."
-  },
-  "quotes": {
-    "eyebrow": "Miembros reales, cambios reales",
-    "headline": "El hábito saludable más fácil de mantener.",
-    "q1": "He probado todas las dietas. Esta es la primera que no se sintió como dieta — perdí 9 kg y nunca pasé hambre ni me sentí privada.",
-    "q1Name": "Hannah M.",
-    "q1Meta": "−9 kg en 16 semanas",
-    "q2": "Como diabético tipo 2, planificar comidas era estresante. Wondish mantiene mi azúcar estable y la comida es genuinamente deliciosa. Tranquilidad total.",
-    "q2Name": "David O.",
-    "q2Meta": "Controlando diabetes tipo 2",
-    "q3": "Solo la lista de compras me ahorra una hora cada semana. Abro la app, cocino, y de algún modo como mejor que nunca.",
-    "q3Name": "Priya S.",
-    "q3Meta": "Mamá ocupada de dos",
-    "q4": "Al comenzar mi tratamiento contra el cáncer, vivía sola. Pedía comida a domicilio porque todo me resultaba demasiado difícil. Pero la mayoría de las veces empeoraba mis náuseas y no me sentía nada bien. Wondish y un chef personal lo cambiaron todo. Por fin tenía comidas con las que podía contar y podía comer lo que mi cuerpo necesitaba en esos días difíciles.",
-    "q4Name": "Melanie F.",
-    "q4Meta": "Durante el tratamiento contra el cáncer",
-    "q5": "Antes de Wondish, siempre tenía hambre. A menudo repetía plato porque nunca me sentía satisfecha. Ahora empiezo a sentirme llena antes de terminar de comer. Ha cambiado por completo mi forma de comer.",
-    "q5Name": "Martha N.",
-    "q5Meta": "Manejando una enfermedad autoinmune y pérdida de peso",
-    "q6": "Solo dos semanas después de eliminar los alimentos que llevaban años provocando mis síntomas, empecé a notar menos inflamación y menos dolor.",
-    "q6Name": "Sandra G.",
-    "q6Meta": "Manejando fibromialgia",
-    "q7": "Había comido de la misma manera toda mi vida. Nunca imaginé que mi comida pudiera estar causando mis síntomas. Wondish me ayudó a comer los alimentos que me hacen sentir mejor.",
-    "q7Name": "Javier M.",
-    "q7Meta": "Manejando gastritis y reflujo ácido"
   }
 }

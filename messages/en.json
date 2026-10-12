@@ -35,13 +35,6 @@
     "assure3": "Eat real, everyday food",
     "assure4": "Cancel anytime"
   },
-  "socialProof": {
-    "joinedBy": "Joined by",
-    "members": "members",
-    "rating": "from 2,400+ reviews",
-    "recipes": "recipes",
-    "freeTier": "Free tier available"
-  },
   "howItWorks": {
     "eyebrow": "How it works",
     "headline": "Three easy steps to eating well.",
@@ -278,30 +271,5 @@
     "learnMore": "Learn more",
     "noteBadge": "A note of care",
     "note": "Wondish supports your health journey but isn't a substitute for medical advice — we'll always nudge you to loop in your doctor."
-  },
-  "quotes": {
-    "eyebrow": "Real members, real change",
-    "headline": "The easiest healthy habit they've kept.",
-    "q1": "I've tried every diet going. This is the first one that didn't feel like a diet at all — I lost 9kg and never once felt hungry or deprived.",
-    "q1Name": "Hannah M.",
-    "q1Meta": "−9 kg in 16 weeks",
-    "q2": "As a type 2 diabetic, meal planning was stressful. Wondish keeps my sugars steady and the food is genuinely delicious. Total peace of mind.",
-    "q2Name": "David O.",
-    "q2Meta": "Managing type 2 diabetes",
-    "q3": "The grocery list alone saves me an hour every week. I open the app, cook, and somehow I'm eating better than I ever have.",
-    "q3Name": "Priya S.",
-    "q3Meta": "Busy mum of two",
-    "q4": "At the start of my cancer treatment, I was living alone. I was just ordering food because everything felt too hard to handle. But most of the time it made my nausea worse and I didn't feel well at all. Wondish and a personal chef changed everything. I finally had meals I could count on and could eat what my body needed during those difficult days.",
-    "q4Name": "Melanie F.",
-    "q4Meta": "During cancer treatment",
-    "q5": "Before Wondish, I was always hungry. I often went back for a second serving because I never felt satisfied. Now I start to feel full before I even finish my meal. It's completely changed the way I eat.",
-    "q5Name": "Martha N.",
-    "q5Meta": "Managing autoimmune disease and weight loss",
-    "q6": "Just two weeks after removing the foods that were triggering my symptoms for years, I started noticing less inflammation and less pain.",
-    "q6Name": "Sandra G.",
-    "q6Meta": "Managing fibromyalgia",
-    "q7": "I had been eating the same way my whole life. I never imagined my food could be causing my symptoms. Wondish helped me eat the foods that make me feel better.",
-    "q7Name": "Javier M.",
-    "q7Meta": "Managing gastritis and acid reflux"
   }
 }
