@@ -87,7 +87,7 @@
     "promoPlaceholder": "Introduce el código",
     "apply": "Aplicar",
     "invalidPromo": "Ese código no es válido.",
-    "codeSignIn": "Inicia sesión o crea una cuenta gratuita y luego introduce tu código.",
+    "codeSignIn": "Te llevamos a crear tu cuenta: tu código se aplicará cuando esté lista.",
     "betaActivatedUntil": "Acceso beta activado hasta el {date}.",
     "betaActivated": "Acceso beta activado.",
     "adminActivated": "Acceso de administrador concedido.",
@@ -275,5 +275,15 @@
     "learnMore": "Saber más",
     "noteBadge": "Una nota de cuidado",
     "note": "Wondish apoya tu salud pero no sustituye el consejo médico — siempre te recordaremos consultar a tu médico."
+  },
+  "couponClaim": {
+    "activatedUntil": "Tu código funcionó: el acceso beta está activo hasta el {date}.",
+    "activated": "Tu código funcionó: el acceso beta está activo.",
+    "already": "Ya usaste este código en tu cuenta.",
+    "paid": "Ya tienes Plus, así que el código no era necesario.",
+    "invalid": "No se pudo aplicar tu código: puede que haya caducado o que no queden usos.",
+    "stripe": "Es un código de descuento: vuelve a introducirlo en «¿Tienes un código promocional?» al elegir Plus.",
+    "error": "No pudimos aplicar tu código ahora. Inténtalo de nuevo en «Canjear cupón» del menú.",
+    "dismiss": "Cerrar"
   }
 }

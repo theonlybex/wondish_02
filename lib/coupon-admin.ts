@@ -10,7 +10,7 @@ export type CouponInput = {
   note: string | null;
 };
 
-const CODE_RE = /^[A-Z0-9_-]{4,24}$/;
+export const CODE_RE = /^[A-Z0-9_-]{4,24}$/;
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const NOTE_MAX = 200;
 

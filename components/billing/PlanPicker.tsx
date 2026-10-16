@@ -55,7 +55,10 @@ export default function PlanPicker({ defaultPlan = "sixmonth", labels }: { defau
   // a use. Blur therefore stays quiet about unknown codes.
   async function checkPromo(nextPlan: PlanKey = plan, redeem = false) {
     if (!code.trim()) { setPreview(null); setNotice(null); return; }
-    setChecking(true);
+    // Only an Apply press shows "…" and disables the button. The quiet blur
+    // check must not: tapping Apply blurs the input first, and a button that
+    // turned disabled in between swallowed that first tap.
+    if (redeem) setChecking(true);
     setNotice(null);
     try {
       const res = await apiFetch("/api/billing/promo", {
@@ -63,7 +66,7 @@ export default function PlanPicker({ defaultPlan = "sixmonth", labels }: { defau
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, plan: nextPlan }),
       });
-      if (res.status === 401) { setPreview(null); setNotice({ ok: false, text: labels.codeSignIn }); return; }
+      if (res.status === 401) { setPreview(null); if (redeem) carryToSignUp(); return; }
       const next: Preview = res.ok ? await res.json() : { valid: false };
       if (next.valid || !redeem) { setPreview(next.valid ? next : null); return; }
       setPreview(null);
@@ -74,6 +77,15 @@ export default function PlanPicker({ defaultPlan = "sixmonth", labels }: { defau
     } finally {
       setChecking(false);
     }
+  }
+
+  // Signed out: the code can't be checked or redeemed without an account, so
+  // /r/code parks it in a cookie and sends them to sign-up; /r/claim redeems
+  // it once the account exists (lib/pending-coupon.ts). Stripe codes take the
+  // same trip and come back as "invalid" there — they still apply at checkout.
+  function carryToSignUp() {
+    setNotice({ ok: true, text: labels.codeSignIn });
+    window.location.href = `/r/code/${encodeURIComponent(code.trim())}`;
   }
 
   async function redeemCoupon() {
@@ -94,7 +106,7 @@ export default function PlanPicker({ defaultPlan = "sixmonth", labels }: { defau
       // The pricing page renders differently for a beta holder; refresh it.
       setTimeout(() => router.refresh(), 1500);
     } else if (r.kind === "signIn") {
-      setNotice({ ok: false, text: labels.codeSignIn });
+      carryToSignUp();
     } else {
       setNotice({ ok: false, text: (r.kind === "error" && r.message) || labels.invalidPromo });
     }
@@ -185,6 +197,7 @@ export default function PlanPicker({ defaultPlan = "sixmonth", labels }: { defau
                 value={code}
                 onChange={(e) => { setCode(e.target.value.toUpperCase()); setPreview(null); setNotice(null); }}
                 onBlur={() => void checkPromo()}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void checkPromo(plan, true); } }}
                 placeholder={labels.promoPlaceholder}
                 autoCapitalize="characters"
                 autoComplete="off"

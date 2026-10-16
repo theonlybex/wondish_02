@@ -16,7 +16,7 @@ export const metadata = { title: "Profile" };
 export default async function ProfilePage({
   searchParams,
 }: {
-  searchParams: { onboarding?: string };
+  searchParams: { onboarding?: string; coupon?: string };
 }) {
   const { userId } = await auth();
   if (!userId) redirect("/login");
@@ -76,7 +76,8 @@ export default async function ProfilePage({
         data: { onboardingComplete: true },
       });
     }
-    redirect("/overview");
+    // Carry a pre-sign-up coupon's outcome (/r/claim) to where they land.
+    redirect(searchParams.coupon ? `/overview?coupon=${encodeURIComponent(searchParams.coupon)}` : "/overview");
   }
 
   return (

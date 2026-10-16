@@ -12,6 +12,7 @@ import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import MobileNav from "@/components/dashboard/MobileNav";
 import PastDueBanner from "@/components/billing/PastDueBanner";
 import CouponEndingBanner from "@/components/billing/CouponEndingBanner";
+import CouponClaimNotice from "@/components/billing/CouponClaimNotice";
 import { couponEndingSoon } from "@/lib/coupon";
 
 export default async function DashboardLayout({
@@ -149,6 +150,7 @@ export default async function DashboardLayout({
         />
         {account?.subscriptions?.some((s) => s.source === "STRIPE" && s.status === "PAST_DUE") && <PastDueBanner />}
         {couponEndsAt && <CouponEndingBanner endsAt={couponEndsAt} />}
+        <CouponClaimNotice />
         {/* PREMIUM GATE (parked 2026-09-17). Signing in now gets you the whole
             app; what free users run into is a per-feature allowance enforced
             server-side by guardAiSpend (lib/ai-budget.ts). To restore, re-add

@@ -87,7 +87,7 @@
     "promoPlaceholder": "Enter code",
     "apply": "Apply",
     "invalidPromo": "That code isn't valid.",
-    "codeSignIn": "Sign in or create a free account first, then enter your code.",
+    "codeSignIn": "Taking you to sign up — your code will be applied when your account is ready.",
     "betaActivatedUntil": "Beta access activated until {date}.",
     "betaActivated": "Beta access activated.",
     "adminActivated": "Admin access granted.",
@@ -275,5 +275,15 @@
     "learnMore": "Learn more",
     "noteBadge": "A note of care",
     "note": "Wondish supports your health journey but isn't a substitute for medical advice — we'll always nudge you to loop in your doctor."
+  },
+  "couponClaim": {
+    "activatedUntil": "Your code worked — beta access is on until {date}.",
+    "activated": "Your code worked — beta access is on.",
+    "already": "You've already used this code on your account.",
+    "paid": "You already have Plus, so the code wasn't needed.",
+    "invalid": "Your code couldn't be applied — it may have expired or run out of uses.",
+    "stripe": "That's a discount code — enter it again under “Have a promo code?” when you choose Plus.",
+    "error": "We couldn't apply your code just now. Try again under Redeem coupon in the menu.",
+    "dismiss": "Dismiss"
   }
 }
