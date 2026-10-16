@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PLANS, formatCents, perMonthCents, savingsPct, type PlanKey } from "@/lib/billing/plans";
 import { apiFetch } from "@/lib/client-fetch";
+import { couponRedeemResult } from "@/lib/billing/promo-entry";
 
 export interface PlanPickerLabels {
   monthly: string;
@@ -14,6 +15,10 @@ export interface PlanPickerLabels {
   promoPlaceholder: string;
   apply: string;
   invalidPromo: string;
+  codeSignIn: string;
+  betaActivatedUntil: string;
+  betaActivated: string;
+  adminActivated: string;
   today: string;
   then: string;
   cta: string;
@@ -22,6 +27,8 @@ export interface PlanPickerLabels {
 }
 
 type Preview = { valid: true; label: string; firstCharge: string; recurring: string } | { valid: false };
+// Anything the field says that isn't a Stripe discount preview.
+type Notice = { ok: boolean; text: string };
 
 // Monthly / 6-month toggle, the price, an in-app promo code with a live
 // preview, and the checkout CTA. Amounts come from the catalog; the server
@@ -32,6 +39,7 @@ export default function PlanPicker({ defaultPlan = "sixmonth", labels }: { defau
   const [promoOpen, setPromoOpen] = useState(false);
   const [code, setCode] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [checking, setChecking] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,20 +49,54 @@ export default function PlanPicker({ defaultPlan = "sixmonth", labels }: { defau
   const pct = savingsPct(selected, monthly);
   const period = selected.months === 1 ? "/ month" : "/ 6 months";
 
-  async function checkPromo(nextPlan: PlanKey = plan) {
-    if (!code.trim()) { setPreview(null); return; }
+  // Stripe promotion codes preview a discount; a code Stripe doesn't know may
+  // be an admin coupon (beta/admin access), which is redeemed in place — but
+  // only on an explicit Apply (`redeem`), never on blur, since redeeming burns
+  // a use. Blur therefore stays quiet about unknown codes.
+  async function checkPromo(nextPlan: PlanKey = plan, redeem = false) {
+    if (!code.trim()) { setPreview(null); setNotice(null); return; }
     setChecking(true);
+    setNotice(null);
     try {
       const res = await apiFetch("/api/billing/promo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, plan: nextPlan }),
       });
-      setPreview(res.ok ? await res.json() : { valid: false });
+      if (res.status === 401) { setPreview(null); setNotice({ ok: false, text: labels.codeSignIn }); return; }
+      const next: Preview = res.ok ? await res.json() : { valid: false };
+      if (next.valid || !redeem) { setPreview(next.valid ? next : null); return; }
+      setPreview(null);
+      await redeemCoupon();
     } catch {
-      setPreview({ valid: false });
+      setPreview(null);
+      setNotice({ ok: false, text: labels.invalidPromo });
     } finally {
       setChecking(false);
+    }
+  }
+
+  async function redeemCoupon() {
+    const res = await apiFetch("/api/coupon/redeem", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    const r = couponRedeemResult(res.status, await res.json().catch(() => null));
+    if (r.kind === "activated") {
+      const text = r.admin
+        ? labels.adminActivated
+        : r.until
+          ? labels.betaActivatedUntil.replace("{date}", new Date(r.until).toLocaleDateString())
+          : labels.betaActivated;
+      setNotice({ ok: true, text });
+      setCode("");
+      // The pricing page renders differently for a beta holder; refresh it.
+      setTimeout(() => router.refresh(), 1500);
+    } else if (r.kind === "signIn") {
+      setNotice({ ok: false, text: labels.codeSignIn });
+    } else {
+      setNotice({ ok: false, text: (r.kind === "error" && r.message) || labels.invalidPromo });
     }
   }
 
@@ -141,22 +183,25 @@ export default function PlanPicker({ defaultPlan = "sixmonth", labels }: { defau
               <input
                 id="promo"
                 value={code}
-                onChange={(e) => { setCode(e.target.value.toUpperCase()); setPreview(null); }}
+                onChange={(e) => { setCode(e.target.value.toUpperCase()); setPreview(null); setNotice(null); }}
                 onBlur={() => void checkPromo()}
                 placeholder={labels.promoPlaceholder}
                 autoCapitalize="characters"
                 autoComplete="off"
                 className="flex-1 min-w-0 min-h-[44px] rounded-xl px-3 text-sm text-[#1E1A1A] bg-white"
               />
-              <button type="button" onClick={() => void checkPromo()} disabled={checking || !code.trim()} className="min-h-[44px] px-4 rounded-xl text-sm font-semibold bg-white/15 disabled:opacity-50">
+              <button type="button" onClick={() => void checkPromo(plan, true)} disabled={checking || !code.trim()} className="min-h-[44px] px-4 rounded-xl text-sm font-semibold bg-white/15 disabled:opacity-50">
                 {checking ? "…" : labels.apply}
               </button>
             </div>
-            {preview && (
-              <p role="status" aria-live="polite" className="text-xs" style={{ color: preview.valid ? "#FDC221" : "#FFB4B4" }}>
-                {preview.valid
-                  ? `✓ ${preview.label} — ${labels.today.replace("{amount}", preview.firstCharge)}, ${labels.then.replace("{amount}", preview.recurring).replace("{period}", period)}`
-                  : `✗ ${labels.invalidPromo}`}
+            {preview?.valid && (
+              <p role="status" aria-live="polite" className="text-xs" style={{ color: "#FDC221" }}>
+                {`✓ ${preview.label} — ${labels.today.replace("{amount}", preview.firstCharge)}, ${labels.then.replace("{amount}", preview.recurring).replace("{period}", period)}`}
+              </p>
+            )}
+            {notice && (
+              <p role={notice.ok ? "status" : "alert"} aria-live="polite" className="text-xs" style={{ color: notice.ok ? "#FDC221" : "#FFB4B4" }}>
+                {`${notice.ok ? "✓" : "✗"} ${notice.text}`}
               </p>
             )}
           </div>
