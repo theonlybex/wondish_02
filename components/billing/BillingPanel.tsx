@@ -5,7 +5,10 @@ import Link from "next/link";
 import type { SubscriptionView } from "@/lib/billing/subscription-view";
 import { priceLabelFor } from "@/lib/billing/plans";
 import { apiFetch } from "@/lib/client-fetch";
-import RedeemCodeBox from "./RedeemCodeBox";
+// In-app code redemption is off (2026-10-17, user-directed): codes are entered
+// on /pricing ("Have a promo code?") or via the /r/code/[code] link, which use
+// the same /api/coupon/redeem. Uncomment to bring the box back.
+// import RedeemCodeBox from "./RedeemCodeBox";
 
 function fmtDate(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "—";
@@ -87,11 +90,12 @@ export default function BillingPanel({ initial, limits }: { initial: Subscriptio
         <Link href="/pricing" className="inline-flex min-h-[44px] items-center px-6 rounded-2xl bg-primary text-white font-bold text-sm">
           See plans →
         </Link>
+        {/* "Have an access code?" — off (see the note at the RedeemCodeBox import).
         <div className="mt-6 pt-5 border-t border-[#F5F1DD]">
           <p className="text-[#1E1A1A] font-semibold text-sm mb-1">Have an access code?</p>
           <p className="text-xs mb-3" style={{ color: "#848181" }}>Beta testers and invited members: enter it here to unlock beta access.</p>
           <RedeemCodeBox />
-        </div>
+        </div> */}
       </div>
     );
   }

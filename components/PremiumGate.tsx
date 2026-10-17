@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { PLANS, formatCents, perMonthCents } from "@/lib/billing/plans";
-import RedeemCodeBox from "@/components/billing/RedeemCodeBox";
+// In-app code redemption is off (2026-10-17, user-directed): codes are entered
+// on /pricing ("Have a promo code?") or via the /r/code/[code] link, which use
+// the same /api/coupon/redeem. Uncomment to bring the box back.
+// import RedeemCodeBox from "@/components/billing/RedeemCodeBox";
 
 export default function PremiumGate() {
   const fromPerMonth = formatCents(perMonthCents(PLANS.find((p) => p.key === "sixmonth")!)).replace(/\.00$/, "");
@@ -49,12 +52,13 @@ export default function PremiumGate() {
         </Link>
         <p className="text-xs text-[#848181] mt-3">Cancel anytime. Secure billing via Stripe.</p>
 
-        {/* Beta / gift codes: the place testers hit the wall is the place to enter one. */}
+        {/* Beta / gift codes: the place testers hit the wall is the place to enter one.
+            Off (see the note at the RedeemCodeBox import).
         <div className="mt-8 text-left bg-[#F8F7FA] border border-[#EAE4CA] rounded-2xl p-5">
           <p className="text-[#1E1A1A] font-semibold text-sm mb-1">Have an access code?</p>
           <p className="text-[#848181] text-xs mb-3">Beta testers and invited members: enter your code to unlock beta access.</p>
           <RedeemCodeBox />
-        </div>
+        </div> */}
       </div>
     </div>
   );

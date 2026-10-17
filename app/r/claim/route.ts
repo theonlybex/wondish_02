@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
 
 // Redeems the parked code; returns the `?coupon=` value. Never throws — a
 // failed redemption must not cost the sign-up (the user can still type the
-// code in Settings → Redeem code). Shares the redeem endpoint's rate-limit
+// code on /pricing). Shares the redeem endpoint's rate-limit
 // bucket so the cookie isn't a second, separate guessing allowance. ADMIN
 // codes are refused here: they must be typed by the person they are for.
 async function claimCoupon(userId: string, raw: string): Promise<string> {

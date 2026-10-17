@@ -23,6 +23,7 @@
     "rate-limit:reset-user": "node --import tsx scripts/reset-user-rate-limits.ts",
     "sim:snapshot": "node --env-file=.env.local --import tsx sim/snapshot.ts",
     "sim:coupons": "node --experimental-test-module-mocks --import tsx --test --test-reporter=spec sim/coupons.sim.ts",
+    "sim:stripe-promo": "node --experimental-test-module-mocks --import tsx sim/stripe-promo.sim.ts",
     "sim:rules": "node --experimental-test-module-mocks --import tsx --test --test-reporter=spec sim/rules.sim.ts sim/additions.sim.ts sim/feedback.sim.ts"
   },
   "dependencies": {

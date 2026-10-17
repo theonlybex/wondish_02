@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
-import RedeemCodeBox from "@/components/billing/RedeemCodeBox";
+// In-app code redemption is off (2026-10-17, user-directed): codes are entered
+// on /pricing ("Have a promo code?") or via the /r/code/[code] link, which use
+// the same /api/coupon/redeem. Uncomment to bring the box back.
+// import RedeemCodeBox from "@/components/billing/RedeemCodeBox";
 
 interface DashboardHeaderProps {
   email?: string | null;
@@ -16,20 +19,21 @@ interface DashboardHeaderProps {
   isNew?: boolean;
 }
 
-function CouponInput({ onClose }: { onClose: () => void }) {
-  const t = useTranslations("dashboardHeader");
-  return (
-    <div className="px-4 pb-4 pt-1">
-      <p className="text-[#848181] text-xs mb-3">{t("enterCoupon")}</p>
-      <RedeemCodeBox onDone={onClose} autoFocus compact />
-    </div>
-  );
-}
+// Settings → "Redeem coupon" panel; off with the import above.
+// function CouponInput({ onClose }: { onClose: () => void }) {
+//   const t = useTranslations("dashboardHeader");
+//   return (
+//     <div className="px-4 pb-4 pt-1">
+//       <p className="text-[#848181] text-xs mb-3">{t("enterCoupon")}</p>
+//       <RedeemCodeBox onDone={onClose} autoFocus compact />
+//     </div>
+//   );
+// }
 
 export default function DashboardHeader({ email, name, plan, onMenuToggle, isNew = false }: DashboardHeaderProps) {
   const t = useTranslations("dashboardHeader");
   const [open, setOpen] = useState(false);
-  const [showCoupon, setShowCoupon] = useState(false);
+  // const [showCoupon, setShowCoupon] = useState(false); // redeem panel off
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { signOut } = useClerk();
   const router = useRouter();
@@ -38,7 +42,7 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle, isNew
     function handler(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setOpen(false);
-        setShowCoupon(false);
+        // setShowCoupon(false);
       }
     }
     document.addEventListener("mousedown", handler);
@@ -88,7 +92,7 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle, isNew
 
         <div ref={dropdownRef} className="relative">
           <button
-            onClick={() => { setOpen((v) => !v); setShowCoupon(false); }}
+            onClick={() => { setOpen((v) => !v); /* setShowCoupon(false); */ }}
             className="touch-target px-3 py-1.5 rounded-xl bg-[#ffffff] border border-primary/20 text-primary font-semibold text-xs hover:border-primary/40 hover:bg-primary/10 transition-all"
           >
             Settings
@@ -100,7 +104,8 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle, isNew
                 <p className="text-[#1E1A1A] font-semibold text-sm">Settings</p>
               </div>
 
-              {!showCoupon ? (
+              {/* Was {!showCoupon ? ( <menu/> ) : ( <redeem panel/> )} — the
+                  redeem panel is off; the menu below is the old first branch. */}
                 <>
                   <div className="py-1.5">
                     <Link href="/profile" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors">
@@ -116,9 +121,10 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle, isNew
                     <Link href="/membership" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors">
                       <span className="text-base">⭐</span> {t("myMembership")}
                     </Link>
+                    {/* Redeem coupon — off (see the note at the RedeemCodeBox import).
                     <button onClick={() => setShowCoupon(true)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#4A4E5C] hover:bg-[#F8F7FA] transition-colors text-left">
                       <span className="text-base">🎟️</span> {t("redeemCoupon")}
-                    </button>
+                    </button> */}
                   </div>
                   <div className="border-t border-[#F0F0F2] py-1.5">
                     <button onClick={() => signOut(() => router.push("/"))} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors text-left">
@@ -126,7 +132,7 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle, isNew
                     </button>
                   </div>
                 </>
-              ) : (
+              {/* ) : (
                 <>
                   <div className="px-4 pt-3 pb-1 flex items-center gap-2">
                     <button onClick={() => setShowCoupon(false)} className="text-[#848181] hover:text-[#1E1A1A] transition-colors">←</button>
@@ -134,7 +140,7 @@ export default function DashboardHeader({ email, name, plan, onMenuToggle, isNew
                   </div>
                   <CouponInput onClose={() => { setOpen(false); setShowCoupon(false); }} />
                 </>
-              )}
+              )} */}
             </div>
           )}
         </div>

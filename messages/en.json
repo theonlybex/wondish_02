@@ -283,7 +283,7 @@
     "paid": "You already have Plus, so the code wasn't needed.",
     "invalid": "Your code couldn't be applied — it may have expired or run out of uses.",
     "stripe": "That's a discount code — enter it again under “Have a promo code?” when you choose Plus.",
-    "error": "We couldn't apply your code just now. Try again under Redeem coupon in the menu.",
+    "error": "We couldn't apply your code just now. Try it again on the Pricing page.",
     "dismiss": "Dismiss"
   }
 }

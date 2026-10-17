@@ -42,3 +42,4 @@ sim/.snapshot/
 scripts/*.rollback-*.json
 scripts/*-backup-*.json
 workbooks-rollback-*.json
+sim/.stripe-promo-sim.json

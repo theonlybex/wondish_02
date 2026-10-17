@@ -283,7 +283,7 @@
     "paid": "Ya tienes Plus, así que el código no era necesario.",
     "invalid": "No se pudo aplicar tu código: puede que haya caducado o que no queden usos.",
     "stripe": "Es un código de descuento: vuelve a introducirlo en «¿Tienes un código promocional?» al elegir Plus.",
-    "error": "No pudimos aplicar tu código ahora. Inténtalo de nuevo en «Canjear cupón» del menú.",
+    "error": "No pudimos aplicar tu código ahora. Vuelve a intentarlo en la página de Precios.",
     "dismiss": "Cerrar"
   }
 }
