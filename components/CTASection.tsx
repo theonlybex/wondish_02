@@ -4,7 +4,11 @@ import { getTranslations } from "next-intl/server";
 export default async function CTASection() {
   const t = await getTranslations("cta");
 
-  const trustBadges = [t("secureBilling"), t("cancelAnytime"), t("setupIn3min")];
+  // Billing badges are off with landing pricing (2026-10-17). The copy then
+  // read "Get started free" and "…Your first 14 days are completely free."
+  // (there was never a 14-day trial — don't restore that sentence).
+  // const trustBadges = [t("secureBilling"), t("cancelAnytime"), t("setupIn3min")];
+  const trustBadges = [t("setupIn3min")];
 
   return (
     <section

@@ -21,7 +21,10 @@ export default async function Hero() {
     { value: "18g", label: t("fat") },
   ];
 
-  const assure = [t("assure1"), t("assure2"), t("assure3"), t("assure4")];
+  // "Cancel anytime" (assure4) is off with landing pricing (2026-10-17); the
+  // CTA read "Build my free plan" then. Restore: add t("assure4") back.
+  // const assure = [t("assure1"), t("assure2"), t("assure3"), t("assure4")];
+  const assure = [t("assure1"), t("assure2"), t("assure3")];
 
   return (
     <header className="relative pt-[60px] pb-0 overflow-hidden">

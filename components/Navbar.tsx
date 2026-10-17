@@ -17,7 +17,8 @@ export default function Navbar() {
     { label: t("howItWorks"), href: "#how-it-works" },
     { label: t("whyItWorks"), href: "#benefits" },
     { label: t("healthNeeds"), href: "#conditions" },
-    { label: t("pricing"), href: "#pricing" },
+    // Off with the landing pricing section (see app/(main)/page.tsx).
+    // { label: t("pricing"), href: "#pricing" },
   ];
 
   const handleAnchorClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
