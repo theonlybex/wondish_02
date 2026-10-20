@@ -7,6 +7,7 @@ import { findClaimableInvites } from "@/lib/restaurant-pending-invites-server";
 import ProfileForm from "@/components/profile/ProfileForm";
 import OnboardingWizard from "@/components/onboarding/OnboardingWizard";
 import DeleteAccountSection from "@/components/profile/DeleteAccountSection";
+import SignOutSection from "@/components/profile/SignOutSection";
 import PendingInviteBanner from "@/components/restaurant/PendingInviteBanner";
 import { listCustomConditions } from "@/lib/custom-conditions-server";
 import { listCustomPlans } from "@/lib/custom-plans-server";
@@ -151,10 +152,15 @@ export default async function ProfilePage({
               customConditions={customConditions}
               customPlans={customPlans}
             />
+            <SignOutSection />
             <DeleteAccountSection />
           </div>
         </>
       )}
+
+      {/* Onboarding users reach no other sign-out now that the header is a
+          Profile link — give them one under the wizard. */}
+      {isOnboarding && <SignOutSection />}
     </div>
   );
 }
