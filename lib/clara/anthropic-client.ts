@@ -19,6 +19,18 @@ export const CLARA_MODEL = "claude-haiku-4-5";
 export const CLARA_MAX_TOKENS = 2048;
 
 /**
+ * One round's token counts. `input_tokens` is the UNCACHED input only; the two
+ * cache fields carry the rest (the system+tools prefix is cache-marked), so a
+ * cost estimate must add all three or it undercounts.
+ */
+export interface ClaraUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
+/**
  * The ONLY Anthropic-aware file in the runtime. Adapts the SDK's streaming
  * message API to the ModelClient port so every loop path stays unit-testable.
  *
@@ -30,7 +42,14 @@ export const CLARA_MAX_TOKENS = 2048;
  * length (~1024 tokens) simply will not cache: harmless, silent, and likely for
  * the no-toolbox variant.
  */
-export function createAnthropicClient(anthropic: Anthropic): ModelClient {
+export function createAnthropicClient(
+  anthropic: Anthropic,
+  /**
+   * Optional per-round token counts, read from the final message's `usage`.
+   * Omitted ⇒ no behaviour change. Used by the cost-measurement script.
+   */
+  onUsage?: (u: ClaraUsage) => void
+): ModelClient {
   return {
     async openRound(req: ModelRoundRequest): Promise<AsyncIterable<ModelRoundEvent>> {
       // AMENDMENT 2026-07-31 (user-directed): the `thinking` param is OMITTED,
@@ -84,6 +103,14 @@ export function createAnthropicClient(anthropic: Anthropic): ModelClient {
         // here, and the block list preserves real order and grouping (deltas
         // do not). The loop replays this content verbatim.
         const final = await stream.finalMessage();
+        if (onUsage && final.usage) {
+          onUsage({
+            input_tokens: final.usage.input_tokens,
+            output_tokens: final.usage.output_tokens,
+            cache_creation_input_tokens: final.usage.cache_creation_input_tokens ?? 0,
+            cache_read_input_tokens: final.usage.cache_read_input_tokens ?? 0,
+          });
+        }
         const content: ModelContentBlock[] = [];
         for (const block of final.content) {
           if (block.type === "text") {

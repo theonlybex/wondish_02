@@ -14,6 +14,7 @@ function fakeAnthropic(opts: {
   content?: unknown[];
   stopReason?: string | null;
   connectError?: Error;
+  usage?: Record<string, number>;
 }) {
   const sent: Record<string, unknown>[] = [];
   let aborted = false;
@@ -41,6 +42,7 @@ function fakeAnthropic(opts: {
             return {
               content: opts.content ?? deltas.map((text) => ({ type: "text", text })),
               stop_reason: opts.stopReason ?? "end_turn",
+              ...(opts.usage ? { usage: opts.usage } : {}),
             };
           },
         };
@@ -276,4 +278,29 @@ test("S3: runtime-only tool metadata (isWrite) is stripped from the wire payload
   for await (const _ of stream) void _;
   const wireTools = (sent[0] as { tools: Record<string, unknown>[] }).tools;
   assert.deepEqual(Object.keys(wireTools[0]).sort(), ["description", "input_schema", "name"]);
+});
+
+test("onUsage receives each round's input and output token counts", async () => {
+  const { anthropic } = fakeAnthropic({
+    deltas: ["hi"],
+    usage: { input_tokens: 1200, output_tokens: 80 },
+  });
+  const seen: unknown[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = createAnthropicClient(anthropic as any, (u) => seen.push(u));
+  await collect(await client.openRound({ system: "S", messages: [], tools: [] }));
+  assert.deepEqual(seen, [
+    { input_tokens: 1200, output_tokens: 80, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+  ]);
+});
+
+test("omitting onUsage changes nothing, even when usage is present", async () => {
+  const { anthropic } = fakeAnthropic({
+    deltas: ["hi"],
+    usage: { input_tokens: 5, output_tokens: 1 },
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = createAnthropicClient(anthropic as any);
+  const events = await collect(await client.openRound({ system: "S", messages: [], tools: [] }));
+  assert.equal(events.at(-1)!.type, "end");
 });
