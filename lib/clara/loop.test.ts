@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startClaraLoop, EMPTY_ANSWER_FALLBACK } from "./loop";
+import { ASK_CHOICES_TOOL, askChoicesSkill } from "./ask-choices";
 import type {
+  ClaraChoices,
   ModelClient,
   ModelContentBlock,
   ModelRoundEvent,
@@ -501,4 +503,251 @@ test("narration and the post-tool answer are separated when the narration has no
     await startClaraLoop({ client, system: "s", tools: [], messages: [], maxToolRounds: 2, execute: okTool })
   );
   assert.equal(out, "Let me check your dinner plan.\n\nNo — peanut butter is off-limits.");
+});
+
+// ─── ask_choices (answer boxes) ──────────────────────────────────────────────
+
+const ASK_DEF = askChoicesSkill.tools[0].def;
+const CHOICE_TOOLS = [
+  ASK_DEF,
+  { name: "plan_get", description: "d", input_schema: { type: "object" as const, properties: {} } },
+  { name: "x_write", description: "d", input_schema: { type: "object" as const, properties: {} }, isWrite: true },
+];
+const SWAP = { question: "Swap tonight's dinner?", options: ["Yes, swap it", "No, keep it"] };
+const askCall = (id: string, input: Record<string, unknown> = SWAP) => toolUse(id, ASK_CHOICES_TOOL, input);
+
+function recorder() {
+  const executed: string[] = [];
+  const choices: ClaraChoices[] = [];
+  return {
+    executed,
+    choices,
+    execute: async (name: string): Promise<ToolResult> => {
+      executed.push(name);
+      return { ok: true, data: null };
+    },
+    onChoices: (c: ClaraChoices) => choices.push(c),
+  };
+}
+
+test("ask_choices: streams the question, emits the choices once, and opens no further round", async () => {
+  const { client, seen } = stubClient([{ content: [askCall("c1")] }]);
+  const r = recorder();
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: CHOICE_TOOLS, messages: [], maxToolRounds: 2,
+      execute: r.execute, onChoices: r.onChoices,
+    })
+  );
+  assert.equal(out, "Swap tonight's dinner?");
+  assert.deepEqual(r.choices, [SWAP]);
+  assert.equal(seen.length, 1, "ask_choices is terminal");
+  assert.deepEqual(r.executed, [], "the ask_choices handler is never executed");
+});
+
+test("ask_choices: the question follows the \\n\\n separator rule after prose", async () => {
+  const { client } = stubClient([
+    { deltas: ["Tonight is the curry."], content: [textBlock("Tonight is the curry."), askCall("c1")] },
+  ]);
+  const out = await drain(
+    await startClaraLoop({ client, system: "s", tools: CHOICE_TOOLS, messages: [], maxToolRounds: 2, execute: okTool })
+  );
+  assert.equal(out, "Tonight is the curry.\n\nSwap tonight's dinner?");
+});
+
+test("ask_choices: no separator is added when the prose already ends in whitespace", async () => {
+  const { client } = stubClient([
+    { deltas: ["Tonight is the curry. "], content: [textBlock("Tonight is the curry. "), askCall("c1")] },
+  ]);
+  const out = await drain(
+    await startClaraLoop({ client, system: "s", tools: CHOICE_TOOLS, messages: [], maxToolRounds: 2, execute: okTool })
+  );
+  assert.equal(out, "Tonight is the curry. Swap tonight's dinner?");
+});
+
+test("ask_choices: the question is separated from narration streamed in an EARLIER round", async () => {
+  const { client, seen } = stubClient([
+    { deltas: ["Let me look."], content: [textBlock("Let me look."), toolUse("t1", "plan_get")] },
+    { content: [askCall("c1")] },
+  ]);
+  const r = recorder();
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: CHOICE_TOOLS, messages: [], maxToolRounds: 2,
+      execute: r.execute, onChoices: r.onChoices,
+    })
+  );
+  assert.equal(out, "Let me look.\n\nSwap tonight's dinner?");
+  assert.equal(seen.length, 2);
+  assert.equal(r.choices.length, 1);
+});
+
+test("ask_choices: other calls in the same round execute first, then the turn ends with choices", async () => {
+  // ask_choices listed FIRST: the other call must still run before the turn ends.
+  const { client, seen } = stubClient([{ content: [askCall("c1"), toolUse("p1", "plan_get")] }]);
+  const order: string[] = [];
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: CHOICE_TOOLS, messages: [], maxToolRounds: 2,
+      execute: async (name) => {
+        order.push(`exec:${name}`);
+        return { ok: true, data: null };
+      },
+      onChoices: () => order.push("choices"),
+    })
+  );
+  assert.deepEqual(order, ["exec:plan_get", "choices"]);
+  assert.equal(out, "Swap tonight's dinner?");
+  assert.equal(seen.length, 1);
+});
+
+test("ask_choices: a write in the same round still goes through the confirm guard", async () => {
+  const { client } = stubClient([{ content: [toolUse("w1", "x_write"), askCall("c1")] }]);
+  const r = recorder();
+  await drain(
+    await startClaraLoop({
+      client, system: "s", tools: CHOICE_TOOLS,
+      messages: [{ role: "user", content: "swap dinner" }],
+      maxToolRounds: 2, execute: r.execute, onChoices: r.onChoices,
+    })
+  );
+  assert.deepEqual(r.executed, [], "a first-turn write is refused even beside ask_choices");
+  assert.equal(r.choices.length, 1);
+});
+
+test("ask_choices: invalid input gets an INVALID_INPUT tool_result and the loop continues", async () => {
+  const { client, seen } = stubClient([
+    { content: [askCall("c1", { question: "Which one?", options: ["Only one"] })] },
+    { deltas: ["Which dinner would you like instead?"] },
+  ]);
+  const r = recorder();
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: CHOICE_TOOLS, messages: [], maxToolRounds: 2,
+      execute: r.execute, onChoices: r.onChoices,
+    })
+  );
+  assert.equal(out, "Which dinner would you like instead?");
+  assert.equal(seen.length, 2, "the model gets another round to retry");
+  assert.deepEqual(r.choices, []);
+  assert.deepEqual(r.executed, [], "invalid ask_choices is not handed to execute");
+  const block = (seen[1].messages.at(-1)!.content as { tool_use_id: string; content: string }[])[0];
+  assert.equal(block.tool_use_id, "c1");
+  assert.equal(JSON.parse(block.content).reason, "INVALID_INPUT");
+});
+
+test("ask_choices: a max_tokens round drops ask_choices with every other call", async () => {
+  const { client, seen } = stubClient([
+    { deltas: ["Shall I"], content: [textBlock("Shall I"), toolUse("p1", "plan_get"), askCall("c1")], stopReason: "max_tokens" },
+  ]);
+  const r = recorder();
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: CHOICE_TOOLS, messages: [], maxToolRounds: 2,
+      execute: r.execute, onChoices: r.onChoices, onError: () => {},
+    })
+  );
+  assert.equal(out, "Shall I");
+  assert.deepEqual(r.executed, []);
+  assert.deepEqual(r.choices, []);
+  assert.equal(seen.length, 1);
+});
+
+test("ask_choices: two calls in one round emit choices once", async () => {
+  const { client } = stubClient([
+    { content: [askCall("c1"), askCall("c2", { question: "Or lunch?", options: ["Lunch", "Dinner"] })] },
+  ]);
+  const r = recorder();
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: CHOICE_TOOLS, messages: [], maxToolRounds: 2,
+      execute: r.execute, onChoices: r.onChoices,
+    })
+  );
+  assert.equal(out, "Swap tonight's dinner?");
+  assert.deepEqual(r.choices, [SWAP]);
+});
+
+test("ask_choices: not intercepted when the route does not offer it (dish-checker unchanged)", async () => {
+  const { client, seen } = stubClient([{ content: [askCall("c1")] }, { deltas: ["done"] }]);
+  const r = recorder();
+  await drain(
+    await startClaraLoop({
+      client, system: "s", tools: TOOLS, messages: [], maxToolRounds: 2,
+      execute: r.execute, onChoices: r.onChoices,
+    })
+  );
+  assert.deepEqual(r.executed, [ASK_CHOICES_TOOL], "falls through to execute exactly as before");
+  assert.deepEqual(r.choices, []);
+  assert.equal(seen.length, 2);
+});
+
+// ─── writesAllowed: the explicit write guard (spec §3a) ─────────────────────
+
+const CONFIRMED_HISTORY = [
+  { role: "user" as const, content: "swap dinner" },
+  { role: "assistant" as const, content: "Swap tonight's curry for the salmon?" },
+  { role: "user" as const, content: "yes" },
+];
+
+test("writesAllowed false: a write is refused even with prior assistant turns", async () => {
+  const { client, seen } = stubClient([
+    { content: [toolUse("w1", "x_write")] },
+    { content: [askCall("c1")] },
+  ]);
+  const r = recorder();
+  await drain(
+    await startClaraLoop({
+      client, system: "s", tools: CHOICE_TOOLS, messages: CONFIRMED_HISTORY, maxToolRounds: 2,
+      execute: r.execute, onChoices: r.onChoices, writesAllowed: false,
+    })
+  );
+  assert.deepEqual(r.executed, []);
+  const block = (seen[1].messages.at(-1)!.content as { content: string }[])[0];
+  const result = JSON.parse(block.content);
+  assert.equal(result.reason, "CONFIRM_REQUIRED");
+  assert.match(result.message, /ask_choices/, "points the model at answer boxes when they are offered");
+});
+
+test("writesAllowed false: read tools still run", async () => {
+  const { client } = stubClient([{ content: [toolUse("p1", "plan_get")] }, { deltas: ["done"] }]);
+  const r = recorder();
+  await drain(
+    await startClaraLoop({
+      client, system: "s", tools: CHOICE_TOOLS, messages: CONFIRMED_HISTORY, maxToolRounds: 2,
+      execute: r.execute, writesAllowed: false,
+    })
+  );
+  assert.deepEqual(r.executed, ["plan_get"]);
+});
+
+test("writesAllowed true: a write executes even on a first turn", async () => {
+  const { client } = stubClient([{ content: [toolUse("w1", "x_write")] }, { deltas: ["Swapped."] }]);
+  const r = recorder();
+  await drain(
+    await startClaraLoop({
+      client, system: "s", tools: CHOICE_TOOLS,
+      messages: [{ role: "user", content: "Yes, swap it" }],
+      maxToolRounds: 2, execute: r.execute, writesAllowed: true,
+    })
+  );
+  assert.deepEqual(r.executed, ["x_write"]);
+});
+
+test("writesAllowed undefined: the CONFIRM_REQUIRED message is unchanged when ask_choices is not offered", async () => {
+  const { client, seen } = stubClient([{ content: [toolUse("w1", "x_write")] }, { deltas: ["ok"] }]);
+  await drain(
+    await startClaraLoop({
+      client, system: "s", tools: WRITE_TOOLS,
+      messages: [{ role: "user", content: "log it" }],
+      maxToolRounds: 2, execute: okTool,
+    })
+  );
+  const block = (seen[1].messages.at(-1)!.content as { content: string }[])[0];
+  assert.deepEqual(JSON.parse(block.content), {
+    ok: false,
+    reason: "CONFIRM_REQUIRED",
+    message:
+      "This change needs the user's explicit confirmation first. Propose it in plain words and wait for their yes.",
+  });
 });

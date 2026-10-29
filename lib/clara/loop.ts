@@ -1,4 +1,12 @@
-import type { ModelClient, ModelContentBlock, ModelMessage, ToolDef, ToolResult } from "./types";
+import type {
+  ClaraChoices,
+  ModelClient,
+  ModelContentBlock,
+  ModelMessage,
+  ToolDef,
+  ToolResult,
+} from "./types";
+import { ASK_CHOICES_INVALID_MESSAGE, ASK_CHOICES_TOOL, parseChoices } from "./ask-choices";
 
 export interface LoopParams {
   client: ModelClient;
@@ -10,7 +18,25 @@ export interface LoopParams {
   execute: (name: string, input: Record<string, unknown>, toolUseId: string) => Promise<ToolResult>;
   /** Server-side observability for mid-stream failures. */
   onError?: (err: unknown) => void;
+  /**
+   * Explicit confirm guard (spec §3a). When set, it REPLACES the first-turn
+   * `hasPriorAssistantTurn` check for `isWrite` tools: true lets writes run,
+   * false refuses them with CONFIRM_REQUIRED whatever the history holds.
+   * Omitted ⇒ the first-turn guard (what dish-checker relies on).
+   */
+  writesAllowed?: boolean;
+  /**
+   * Called once when a round ends the turn with answer boxes (`ask_choices`),
+   * after the question has been streamed as text. Only fires when the caller
+   * offers the ask_choices tool.
+   */
+  onChoices?: (choices: ClaraChoices) => void;
 }
+
+const CONFIRM_REQUIRED_MESSAGE =
+  "This change needs the user's explicit confirmation first. Propose it in plain words and wait for their yes.";
+const CONFIRM_REQUIRED_WITH_CHOICES_MESSAGE =
+  "This change needs the user's explicit confirmation first. Propose it in one sentence, then call ask_choices with a yes and a no option (e.g. \"Yes, swap it\" / \"No, keep it\") and wait for their answer.";
 
 /** What the user sees when a round fails after the response already started. */
 export const MID_STREAM_FALLBACK =
@@ -47,6 +73,14 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
   // at least one prior assistant message. Checked against params.messages, NOT
   // the loop's growing copy (which gains assistant turns every round).
   const hasPriorAssistantTurn = params.messages.some((m) => m.role === "assistant");
+  // An explicit decision from the route (spec §3a: writes only on the turn
+  // directly after a saved ask_choices message) overrides the structural check.
+  const writesAllowed = params.writesAllowed ?? hasPriorAssistantTurn;
+
+  // ask_choices is intercepted only when the route offers it. A route that
+  // does not (dish-checker) sees exactly the old behaviour, including for a
+  // model that hallucinates the tool name.
+  const offersChoices = params.tools.some((t) => t.name === ASK_CHOICES_TOOL);
 
   const firstRound = await params.client.openRound({
     system: params.system,
@@ -130,6 +164,10 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
 
       const results: ModelContentBlock[] = [];
       const seenCallIds = new Set<string>();
+      // Answer boxes are terminal, but the round's OTHER calls still run first
+      // (in their own order, through the same guard); the question is streamed
+      // and the turn ends only after this loop.
+      let choices: ClaraChoices | null = null;
       for (const call of calls) {
         // Two tool_result blocks sharing one tool_use_id is a 400 on the next
         // round; drop the duplicate rather than poison the turn.
@@ -137,12 +175,21 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
         seenCallIds.add(call.id);
         let result: ToolResult;
         const def = params.tools.find((t) => t.name === call.name);
-        if (def?.isWrite && !hasPriorAssistantTurn) {
+        if (offersChoices && call.name === ASK_CHOICES_TOOL) {
+          // Never executed. Valid ⇒ the first one wins and ends the turn;
+          // invalid ⇒ an ordinary failed tool result so the model can retry.
+          const parsed = parseChoices(call.input);
+          if (parsed) {
+            choices ??= parsed;
+            result = { ok: true, data: { shown: true } };
+          } else {
+            result = { ok: false, reason: "INVALID_INPUT", message: ASK_CHOICES_INVALID_MESSAGE };
+          }
+        } else if (def?.isWrite && !writesAllowed) {
           result = {
             ok: false,
             reason: "CONFIRM_REQUIRED",
-            message:
-              "This change needs the user's explicit confirmation first. Propose it in plain words and wait for their yes.",
+            message: offersChoices ? CONFIRM_REQUIRED_WITH_CHOICES_MESSAGE : CONFIRM_REQUIRED_MESSAGE,
           };
         } else {
           try {
@@ -161,6 +208,17 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
         });
       }
       messages.push({ role: "user", content: results });
+
+      if (choices) {
+        // Same separator rule as between rounds: the question is a new piece
+        // of text after whatever this or an earlier round streamed.
+        if (emitted && /\S$/.test(lastChar) && /^\S/.test(choices.question)) yield "\n\n";
+        emitted = true;
+        lastChar = choices.question.slice(-1);
+        yield choices.question;
+        params.onChoices?.(choices);
+        return;
+      }
 
       toolRoundsUsed += 1;
       const toolsForNextRound = toolRoundsUsed >= params.maxToolRounds ? [] : params.tools;
