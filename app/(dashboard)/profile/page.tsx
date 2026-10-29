@@ -8,6 +8,7 @@ import ProfileForm from "@/components/profile/ProfileForm";
 import OnboardingWizard from "@/components/onboarding/OnboardingWizard";
 import DeleteAccountSection from "@/components/profile/DeleteAccountSection";
 import SignOutSection from "@/components/profile/SignOutSection";
+import MemoryList from "@/components/clara/MemoryList";
 import PendingInviteBanner from "@/components/restaurant/PendingInviteBanner";
 import { listCustomConditions } from "@/lib/custom-conditions-server";
 import { listCustomPlans } from "@/lib/custom-plans-server";
@@ -152,6 +153,7 @@ export default async function ProfilePage({
               customConditions={customConditions}
               customPlans={customPlans}
             />
+            <MemoryList />
             <SignOutSection />
             <DeleteAccountSection />
           </div>
