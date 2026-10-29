@@ -79,6 +79,9 @@ export interface AiLimit {
 // (A previous note here claimed free worst case ≈ $0.55/week; that cannot be
 // right — Clara and fridge alone reach $0.84/week at the free limits — so it
 // has been re-derived rather than carried forward.)
+/** Clara app chat: messages per member per day, every tier. See AI_LIMITS.claraApp. */
+export const CLARA_SAFETY_CAP = 150;
+
 export const AI_LIMITS: Record<string, AiLimit> = {
   // Conversations with Clara (dish-checker).
   // Premium 20, not 25 (2026-09-25, user-directed): the $0.06/day it frees
@@ -121,7 +124,15 @@ export const AI_LIMITS: Record<string, AiLimit> = {
   // was one attempt; premium's attempts equal its allowance, because the $30
   // ceiling has no room for more cook-my-day calls (lib/ai-budget.test.ts).
   cookDayAttempt: { bucket: "ai-cookdayattempt", window: "day", free: 2, premium: 3, label: "cook-my-day attempts" },
-
+  // Clara app chat (the conversational route): a HIDDEN safety cap, not an
+  // allowance. Nobody is shown a count; it exists to bound an abusive or
+  // runaway client. One number for every tier. User decision 2026-10-28:
+  // cap 150/day, and the "$30/month worst case" rule is RELAXED for Clara —
+  // 150 x $0.0123 x 365/12 is about $56/month at the cap, pinned by its own
+  // test in lib/ai-budget.test.ts, which excludes claraApp from the $30 sum.
+  // Past it (or past Clara's own daily pool) the member hears CLARA_RESTING_COPY,
+  // never an upgrade prompt: see guardClaraAppSpend.
+  claraApp: { bucket: "ai-clara-app", window: "day", free: CLARA_SAFETY_CAP, premium: CLARA_SAFETY_CAP, label: "Clara messages" },
 } as const;
 
 export type AiGuardKind = keyof typeof AI_LIMITS;
@@ -154,6 +165,10 @@ export const AI_COST_CENTS: Record<AiGuardKind, number> = {
   swapAttempt: 2,
   cookDay: 0,
   cookDayAttempt: 2,
+  // Measured p90 per message with the full toolbox, 50 memories and 20 messages
+  // of history: 1.57c (scripts/clara-cost-measure.ts, 2026-10-28; mean 1.23c),
+  // rounded up to whole cents.
+  claraApp: 2,
 };
 
 // Daily AI budgets for the accounts that don't pay, in cents, one pool per
@@ -177,6 +192,19 @@ const POOLS: Partial<Record<AiTier, { bucket: string; cents: number }>> = {
   beta: { bucket: "ai-beta-pool", cents: BETA_AI_DAILY_CENTS },
 };
 
+// Clara app chat has pools of its own (2026-10-28), $10/day each, so a busy day
+// in the chat can never spend the budget that week builds and swaps rely on —
+// and the other way round. Paying members pass through here too.
+export const CLARA_FREE_AI_DAILY_CENTS = 1000;
+export const CLARA_BETA_AI_DAILY_CENTS = 1000;
+const CLARA_POOLS: Partial<Record<AiTier, { bucket: string; cents: number }>> = {
+  free: { bucket: "ai-clara-free-pool", cents: CLARA_FREE_AI_DAILY_CENTS },
+  beta: { bucket: "ai-clara-beta-pool", cents: CLARA_BETA_AI_DAILY_CENTS },
+};
+
+/** What the member hears when the chat is out of room. No upgrade or pricing wording. */
+export const CLARA_RESTING_COPY = "I need a short break. Let's pick this up again tomorrow.";
+
 /**
  * Spend one model request's cost from its tier's daily pool (Free and Beta
  * each have their own). Paying members pass straight through. Every Anthropic-billed request must go
@@ -184,12 +212,14 @@ const POOLS: Partial<Record<AiTier, { bucket: string; cents: number }>> = {
  * per-user allowance (week builds) call it directly, before the model runs.
  */
 export async function guardGlobalAiSpend(tier: AiTier, kind: AiGuardKind, limiter: Limiter = rateLimit): Promise<AiGuardResult> {
-  const p = POOLS[tier];
+  const isClara = kind === "claraApp";
+  const p = (isClara ? CLARA_POOLS : POOLS)[tier];
   if (!p) return { ok: true, tier };
   const cost = AI_COST_CENTS[kind];
   if (cost > 0) {
     const pool = await limiter(p.bucket, "ALL", p.cents, DAY, undefined, cost);
     if (!pool.success) {
+      if (isClara) return { ok: false, status: 429, error: CLARA_RESTING_COPY, body: { error: CLARA_RESTING_COPY } };
       const error = "Clara is very busy today — please try again tomorrow, or upgrade to Plus to skip the queue.";
       return { ok: false, status: 429, error, body: { error } };
     }
@@ -422,4 +452,30 @@ export async function guardAiSpend(
 
   // 2. The tier's shared daily budget (Free, Beta; Plus passes straight through).
   return guardGlobalAiSpend(t, kind, limiter);
+}
+
+export type ClaraAppGuardResult =
+  | { ok: true; tier: AiTier }
+  | { ok: false; status: 429; body: { error: string; code: "CLARA_RESTING" } };
+
+/**
+ * Gate one Clara app-chat message, BEFORE the model runs. Two checks, one
+ * refusal: the member's hidden daily cap (CLARA_SAFETY_CAP, every tier), then
+ * Clara's own pool for the tier. Either failing returns the same 429 with
+ * CLARA_RESTING_COPY and `code: "CLARA_RESTING"`; the client shows the words
+ * as they are. Never any upgrade wording, and no counts: the cap is hidden.
+ */
+export async function guardClaraAppSpend(
+  userId: string,
+  tier?: AiTier,
+  limiter: Limiter = rateLimit
+): Promise<ClaraAppGuardResult> {
+  const t = tier ?? (await resolveAiTier(userId));
+  const resting = { ok: false, status: 429, body: { error: CLARA_RESTING_COPY, code: "CLARA_RESTING" } } as const;
+  const { max, windowSec } = limitFor("claraApp", t);
+  const user = await limiter(`${AI_LIMITS.claraApp.bucket}-${t}`, userId, max, windowSec);
+  if (!user.success) return resting;
+  const pool = await guardGlobalAiSpend(t, "claraApp", limiter);
+  if (!pool.ok) return resting;
+  return { ok: true, tier: t };
 }

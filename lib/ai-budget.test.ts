@@ -1,6 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AI_COST_CENTS, AI_LIMITS, FREE_AI_DAILY_CENTS, guardAiSpend, limitFor, quotaExceededBody, tierFor, weekBuildKind } from "./ai-budget";
+import {
+  AI_COST_CENTS,
+  AI_LIMITS,
+  CLARA_BETA_AI_DAILY_CENTS,
+  CLARA_FREE_AI_DAILY_CENTS,
+  CLARA_RESTING_COPY,
+  CLARA_SAFETY_CAP,
+  FREE_AI_DAILY_CENTS,
+  guardAiSpend,
+  guardClaraAppSpend,
+  guardGlobalAiSpend,
+  limitFor,
+  quotaExceededBody,
+  tierFor,
+  weekBuildKind,
+} from "./ai-budget";
 
 test("a member's first week is onboarding, never a new week — Free (0 new weeks) must still get it", async () => {
   assert.equal(weekBuildKind({ hasAnyPlan: false, stale: false }), "planInit");
@@ -68,11 +83,16 @@ const COST_USD: Record<string, number> = {
   // Same shape: the tokens are spent per ATTEMPT, charging on delivery adds none.
   cookDay: 0,
   cookDayAttempt: 0.05,
+  // Clara app chat, measured p90 per message with the full toolbox, 50 memories
+  // and 20 messages of history (scripts/clara-cost-measure.ts, 2026-10-28:
+  // mean $0.0123, p90 $0.0157).
+  claraApp: 0.0123,
 };
 const DAYS_PER_MONTH = 365 / 12;
 
-function worstCaseUsdPerDay(tier: "free" | "beta" | "premium"): number {
+function worstCaseUsdPerDay(tier: "free" | "beta" | "premium", exclude: string[] = []): number {
   return Object.keys(AI_LIMITS).reduce((sum, k) => {
+    if (exclude.includes(k)) return sum;
     const { max, window } = limitFor(k as keyof typeof AI_LIMITS, tier);
     const perWindow = max * COST_USD[k];
     return sum + perWindow / { day: 1, week: 7, month: 30 }[window];
@@ -82,11 +102,33 @@ function worstCaseUsdPerDay(tier: "free" | "beta" | "premium"): number {
 test("a paying user who maxes every bucket every day costs at most $30/month", () => {
   // The hard budget (2026-09-17, user-directed) against $20/month of revenue.
   // Raising any premium limit without re-checking the arithmetic fails here.
-  const monthly = worstCaseUsdPerDay("premium") * DAYS_PER_MONTH;
+  //
+  // claraApp is EXCLUDED from this sum: user decision 2026-10-28, cap 150/day,
+  // $30 rule relaxed for Clara. Its hidden safety cap is an abuse backstop, not
+  // an allowance anyone is expected to reach; its own worst case is pinned by
+  // the next test instead, so it cannot drift unnoticed.
+  const monthly = worstCaseUsdPerDay("premium", ["claraApp"]) * DAYS_PER_MONTH;
   assert.ok(monthly <= 30, `premium worst case $${monthly.toFixed(2)}/month exceeds the $30 ceiling`);
   assert.ok(monthly > 25, `premium worst case $${monthly.toFixed(2)}/month — too far under, limits are stingier than intended`);
   // Free stays well clear of what a paying user can spend.
-  assert.ok(worstCaseUsdPerDay("free") < worstCaseUsdPerDay("premium") / 2);
+  assert.ok(worstCaseUsdPerDay("free", ["claraApp"]) < worstCaseUsdPerDay("premium", ["claraApp"]) / 2);
+});
+
+test("claraApp's own premium worst case is pinned: 150/day at $0.0123 is about $56.1/month, at most $57", () => {
+  // User decision 2026-10-28, cap 150/day, $30 rule relaxed for Clara.
+  assert.equal(CLARA_SAFETY_CAP, 150);
+  const monthly = limitFor("claraApp", "premium").max * COST_USD.claraApp * DAYS_PER_MONTH;
+  assert.ok(monthly <= 57, `claraApp worst case $${monthly.toFixed(2)}/month exceeds the $57 pin`);
+  assert.ok(monthly > 55, `claraApp worst case $${monthly.toFixed(2)}/month — pin is stale, tighten it`);
+});
+
+test("claraApp: one hidden cap for every tier, one daily window, its own bucket", () => {
+  assert.deepEqual(AI_LIMITS.claraApp, { bucket: "ai-clara-app", window: "day", free: 150, premium: 150, label: "Clara messages" });
+  for (const tier of ["free", "beta", "premium"] as const) assert.equal(limitFor("claraApp", tier).max, 150, tier);
+  assert.equal(AI_COST_CENTS.claraApp, 2);
+  // The dish-checker's allowance is untouched.
+  assert.equal(limitFor("claraChat", "free").max, 5);
+  assert.equal(limitFor("claraChat", "premium").max, 20);
 });
 
 test("beta is half of premium, floored at free, and never exceeds premium", () => {
@@ -114,7 +156,9 @@ test("beta is half of premium, floored at free, and never exceeds premium", () =
   // cookDayAttempt ties by design: beta's 2 attempts carry its 2 plans.
   // planRebuild ties by design: a rebuild repairs the week you have after a
   // profile change; one a week is what a real change needs, on either tier.
-  assert.deepEqual(ties, ["planInit", "planRebuild", "swapAttempt", "cookDayAttempt"], `beta/free ties changed: ${ties.join(", ")}`);
+  // claraApp ties by design: it is one hidden safety cap (150/day) for every
+  // tier, so free = beta = premium (user decision 2026-10-28).
+  assert.deepEqual(ties, ["planInit", "planRebuild", "swapAttempt", "cookDayAttempt", "claraApp"], `beta/free ties changed: ${ties.join(", ")}`);
 });
 
 test("every spend bucket carries the ai- prefix the rate limiter keys its fallback on", () => {
@@ -447,4 +491,74 @@ test("every metered kind has a measured cost; the ones charged on delivery cost 
   assert.equal(AI_COST_CENTS.cookDay, 0);
   // A week build is four Clara calls, ~10c measured (2026-09-27).
   assert.ok(AI_COST_CENTS.planInit >= 10);
+});
+
+// ── Clara app chat: hidden safety cap and its own pools (2026-10-28) ─────────
+
+test("guardClaraAppSpend: past the per-member cap it refuses with the resting copy and CLARA_RESTING", async () => {
+  assert.equal(CLARA_RESTING_COPY, "I need a short break. Let's pick this up again tomorrow.");
+  const { limiter } = fakeLimiter();
+  for (let i = 0; i < CLARA_SAFETY_CAP; i++) {
+    assert.equal((await guardClaraAppSpend("u-cap", "premium", limiter)).ok, true, `message ${i + 1}`);
+  }
+  const r = await guardClaraAppSpend("u-cap", "premium", limiter);
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.status, 429);
+    assert.deepEqual(r.body, { error: CLARA_RESTING_COPY, code: "CLARA_RESTING" });
+  }
+  // Another member is unaffected.
+  assert.equal((await guardClaraAppSpend("u-other", "premium", limiter)).ok, true);
+});
+
+test("guardClaraAppSpend draws from ai-clara-free-pool / ai-clara-beta-pool, never the shared pools", async () => {
+  assert.equal(CLARA_FREE_AI_DAILY_CENTS, 1000);
+  assert.equal(CLARA_BETA_AI_DAILY_CENTS, 1000);
+  const { limiter, calls } = fakeLimiter();
+  assert.equal((await guardClaraAppSpend("u-free", "free", limiter)).ok, true);
+  assert.equal((await guardClaraAppSpend("u-beta", "beta", limiter)).ok, true);
+  assert.ok(calls.some((c) => c.startsWith("ai-clara-free-pool|ALL:1000")), calls.join(" "));
+  assert.ok(calls.some((c) => c.startsWith("ai-clara-beta-pool|ALL:1000")), calls.join(" "));
+  assert.ok(!calls.some((c) => c.startsWith("ai-free-pool") || c.startsWith("ai-beta-pool")), "Clara must not touch the shared pools");
+  // Plus passes straight through: no pool consulted.
+  const before = calls.length;
+  assert.equal((await guardClaraAppSpend("u-plus", "premium", limiter)).ok, true);
+  assert.ok(!calls.slice(before).some((c) => /pool/.test(c)));
+});
+
+test("Clara's pools are separate from the shared ones, in both directions", async () => {
+  const { limiter } = fakeLimiter();
+  // A shared Free flood does not stop Clara…
+  await limiter("ai-free-pool", "ALL", FREE_AI_DAILY_CENTS, 86_400, undefined, FREE_AI_DAILY_CENTS);
+  assert.equal((await guardGlobalAiSpend("free", "claraChat", limiter)).ok, false);
+  assert.equal((await guardClaraAppSpend("u1", "free", limiter)).ok, true);
+  // …and Clara's pool running out does not stop the rest of the app.
+  const fresh = fakeLimiter().limiter;
+  await fresh("ai-clara-free-pool", "ALL", CLARA_FREE_AI_DAILY_CENTS, 86_400, undefined, CLARA_FREE_AI_DAILY_CENTS);
+  assert.equal((await guardGlobalAiSpend("free", "planInit", fresh)).ok, true);
+});
+
+test("when Clara's pool is spent the member sees the resting copy, with no upgrade or Plus wording", async () => {
+  const { limiter } = fakeLimiter();
+  await limiter("ai-clara-free-pool", "ALL", CLARA_FREE_AI_DAILY_CENTS, 86_400, undefined, CLARA_FREE_AI_DAILY_CENTS);
+  const r = await guardClaraAppSpend("u-busy", "free", limiter);
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.status, 429);
+    assert.deepEqual(r.body, { error: CLARA_RESTING_COPY, code: "CLARA_RESTING" });
+    assert.doesNotMatch(JSON.stringify(r), /upgrade|plus|busy/i);
+  }
+  // The lower-level pool guard speaks the same words for this kind.
+  const g = await guardGlobalAiSpend("free", "claraApp", limiter);
+  assert.equal(g.ok, false);
+  if (!g.ok) assert.equal(g.error, CLARA_RESTING_COPY);
+});
+
+test("the resting refusal never mentions upgrading, Plus, or premium", async () => {
+  assert.doesNotMatch(CLARA_RESTING_COPY, /upgrade|plus|premium|pric/i);
+  const { limiter } = fakeLimiter();
+  for (let i = 0; i < CLARA_SAFETY_CAP; i++) await guardClaraAppSpend("u-x", "free", limiter);
+  const r = await guardClaraAppSpend("u-x", "free", limiter);
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.doesNotMatch(JSON.stringify(r.body), /upgrade|plus|premium/i);
 });
