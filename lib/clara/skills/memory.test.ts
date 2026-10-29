@@ -237,6 +237,15 @@ test("prompt fragment carries the profile rule and the same-reply rule", () => {
   assert.match(f, /memory_forget/);
 });
 
+// User decision 2026-10-28: live QA showed "I work night shifts" mentioned in
+// three turns, used in every answer, never saved. A repeated fact is saved
+// without being asked.
+test("prompt fragment saves a fact the user mentions twice, unasked", () => {
+  const f = makeMemorySkill(fakeDeps().deps).promptFragment;
+  assert.match(f, /second time/i);
+  assert.match(f, /without being asked|even if they never ask/i);
+});
+
 test("appendMemoryBlock leaves the prompt identical when the block is empty", () => {
   assert.equal(appendMemoryBlock("PROMPT", ""), "PROMPT");
   assert.equal(appendMemoryBlock("PROMPT", buildMemoryBlock("Sam", [])), "PROMPT");
