@@ -3,6 +3,10 @@
 **Status: DRAFT for review. Not published.** `app/(main)/privacy/page.tsx` has not been edited.
 Needs a human (and ideally legal) read before it goes live.
 
+**Before publishing:** the automatic 180-day deletion is not running yet. It runs daily only once
+`CRON_SECRET` is configured in Vercel (see the reviewer notes). Don't publish the "deleted
+automatically" sentence until that is done.
+
 The live policy has six numbered sections, each an `<h2>` followed by one short paragraph, in plain
 second-person language ("we", "you"). The draft below keeps that tone and length. Nothing here changes
 who data is shared with.
@@ -49,7 +53,12 @@ Bump "Last updated" from March 2026 to the publish month.
 ## Notes for the reviewer
 
 - The 180-day figure matches `CONVERSATION_RETENTION_DAYS` in `lib/clara/retention.ts` (counted from the
-  chat's last activity, i.e. `updatedAt`), enforced by `/api/cron/clara-conversation-purge`.
+  chat's last activity, i.e. `updatedAt`). The deletion is done by the `/api/cron/clara-conversation-purge`
+  job, which `vercel.json` schedules daily at 04:30 UTC. **It is not running yet:** the route refuses to
+  run until `CRON_SECRET` is configured in Vercel (Vercel Cron then sends it as the bearer token). The
+  middleware now lets `/api/cron/*` through so the route's own check is reached. Once `CRON_SECRET` is
+  set, the job runs daily and the "deleted automatically" sentence becomes true; confirm one successful
+  run in the Vercel cron logs before publishing it.
 - Memories deliberately have no expiry: kept until the member deletes them (or the account is deleted).
   The conversation purge leaves them alone. Their link to the source chat is cleared, not the memory.
 - The existing policy says nothing about AI providers or health data processors. If Clara chat text is
