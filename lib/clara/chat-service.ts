@@ -158,10 +158,21 @@ export async function startClaraAppTurn(
 
   // Save what the member typed BEFORE the model runs: a dropped stream never
   // loses it (Review Focus 4).
+  //
+  // Retry de-duplication (ruling R10): when the newest saved row is a user
+  // message with the same trimmed text — a retry after a turn that failed
+  // before any model text — that row is reused rather than saved twice, and
+  // the model sees it once. writesAllowed above was computed from the history
+  // as it stood, so a reused row after answer boxes still refuses writes.
+  const reuseTrailingUser =
+    newest !== undefined &&
+    newest.role === "user" &&
+    typeof newest.content === "string" &&
+    newest.content.trim() === message;
   let conversationId: string;
   if (input.conversationId !== undefined) {
     conversationId = input.conversationId;
-    await deps.store.appendUser(conversationId, message, surface);
+    if (!reuseTrailingUser) await deps.store.appendUser(conversationId, message, surface);
   } else {
     conversationId = (await deps.store.create(patient.id, message, surface)).id;
   }
@@ -185,7 +196,7 @@ export async function startClaraAppTurn(
       client: deps.client,
       system,
       tools: buildToolDefs(skills),
-      messages: [...history.messages, { role: "user", content: message }],
+      messages: reuseTrailingUser ? history.messages : [...history.messages, { role: "user", content: message }],
       maxToolRounds: CLARA_APP_TOOL_ROUNDS,
       execute,
       onError,
@@ -204,27 +215,39 @@ export async function startClaraAppTurn(
   async function* events(): AsyncGenerator<ClaraEvent> {
     yield { type: "meta", conversationId };
     let text = "";
+    // Whether the model itself produced any text. The loop yields
+    // MID_STREAM_FALLBACK as its own chunk when a round's stream throws or a
+    // later round fails to connect — also when nothing was emitted before it
+    // (an overloaded_error during thinking, a round-2 connect failure after a
+    // tool-only round 1). That chunk is not model text.
+    let modelText = false;
+    let fellBack = false;
     try {
-      // The loop narrates its own failures (MID_STREAM_FALLBACK) and never
-      // ends without text; this catch is only for a bug that escapes it.
+      // The loop narrates its own failures and never ends without text; this
+      // catch is only for a bug that escapes it.
       for await (const chunk of generator) {
         if (chunk.length === 0) continue;
+        if (chunk === MID_STREAM_FALLBACK) fellBack = true;
+        else if (chunk.trim().length > 0) modelText = true;
         text += chunk;
         yield { type: "text", text: chunk };
       }
     } catch (err) {
       onError(err);
-      if (text.length > 0) {
-        text += MID_STREAM_FALLBACK;
-        yield { type: "text", text: MID_STREAM_FALLBACK };
-      }
+      fellBack = true;
+      text += MID_STREAM_FALLBACK;
+      yield { type: "text", text: MID_STREAM_FALLBACK };
     }
     // The generator is fully drained here, so `choices` is final.
     const finalChoices = choices as ClaraChoices | null;
     if (finalChoices) yield { type: "choices", question: finalChoices.question, options: finalChoices.options };
 
+    // Spec §2 / Review Focus 4: a reply that failed before any model text
+    // writes NO assistant row (messageId null), so the client offers retry.
+    // Partial text + the fallback is saved as it stands.
+    const failedBeforeText = fellBack && !modelText;
     let messageId: string | null = null;
-    if (text.length > 0) {
+    if (text.length > 0 && !failedBeforeText) {
       try {
         messageId = (await deps.store.appendAssistant(conversationId, text, finalChoices, surface)).id;
       } catch (err) {

@@ -531,3 +531,88 @@ test("claraAppSkills: CLARA_SKILLS filters product skills; gap_report, memory an
   assert.ok(full.includes("logs") && full.includes("plan"));
   assert.deepEqual(claraAppSkills("").map((s) => s.name), ["gap", "memory", "choices"]);
 });
+
+// ─── Fix round 1: no model text ⇒ no assistant row; retry de-duplication ───
+
+test("a stream that fails before any model text → fallback streamed, no assistant row, messageId null", async () => {
+  const { deps, rows } = setup({ rounds: [{ deltas: [], throwAfterDeltas: new Error("overloaded_error") }] });
+  const res = await turn(deps, "what's for dinner?");
+  assert.ok(res.ok);
+  const events = await collect(res.events);
+  assert.equal(textOf(events), MID_STREAM_FALLBACK);
+  assert.deepEqual(events.at(-1), { type: "done", messageId: null });
+  assert.deepEqual(rows[0].messages.map((m) => m.role), ["user"]);
+});
+
+test("a tool-only round 1 then a round-2 connect failure → no assistant row, messageId null", async () => {
+  const { deps, rows } = setup({
+    rounds: [
+      { content: [{ type: "tool_use", id: "t1", name: "memory_save", input: { text: "Cooks for three" } }] },
+      { connectError: new Error("boom") },
+    ],
+  });
+  const res = await turn(deps, "remember I cook for three");
+  assert.ok(res.ok);
+  const events = await collect(res.events);
+  assert.equal(textOf(events), MID_STREAM_FALLBACK);
+  assert.deepEqual(events.at(-1), { type: "done", messageId: null });
+  assert.deepEqual(rows[0].messages.map((m) => m.role), ["user"]);
+});
+
+test("retry after a round-1 failure: re-sending the same text reuses the saved user row", async () => {
+  const rows: Row[] = [
+    { id: "mine", patientId: "p1", title: "t", messages: [msg(1, "user", "hi"), msg(2, "assistant", "hello")] },
+  ];
+  const { deps, seen } = setup({ rows, rounds: [{ connectError: new Error("boom") }, { deltas: ["Salmon."] }] });
+  const failed = await turn(deps, "what's for dinner?", "mine");
+  assert.ok(!failed.ok);
+  const retry = await turn(deps, "  what's for dinner?  ", "mine");
+  assert.ok(retry.ok);
+  await collect(retry.events);
+  assert.deepEqual(
+    rows[0].messages.map((m) => [m.role, m.content]),
+    [["user", "hi"], ["assistant", "hello"], ["user", "what's for dinner?"], ["assistant", "Salmon."]]
+  );
+  // The model sees the message once, not twice.
+  assert.deepEqual(
+    seen[1].messages.map((m) => [m.role, m.content]),
+    [["user", "hi"], ["assistant", "hello"], ["user", "what's for dinner?"]]
+  );
+});
+
+test("after a round-1 failure, a different text appends normally", async () => {
+  const rows: Row[] = [
+    { id: "mine", patientId: "p1", title: "t", messages: [msg(1, "user", "hi"), msg(2, "assistant", "hello")] },
+  ];
+  const { deps } = setup({ rows, rounds: [{ connectError: new Error("boom") }, { deltas: ["Sure."] }] });
+  assert.ok(!(await turn(deps, "what's for dinner?", "mine")).ok);
+  const next = await turn(deps, "what about lunch?", "mine");
+  assert.ok(next.ok);
+  await collect(next.events);
+  assert.deepEqual(
+    rows[0].messages.map((m) => m.role + ":" + m.content),
+    ["user:hi", "assistant:hello", "user:what's for dinner?", "user:what about lunch?", "assistant:Sure."]
+  );
+});
+
+test("a reused trailing user row after boxes still refuses writes (ruling 1)", async () => {
+  const { skill, ran } = writeSkill();
+  const rows: Row[] = [
+    {
+      id: "mine",
+      patientId: "p1",
+      title: "t",
+      messages: [
+        msg(1, "user", "swap tonight's dinner"),
+        msg(2, "assistant", "Swap it?", { question: "Swap it?", options: ["Yes, swap it", "No, keep it"] }),
+        msg(3, "user", "Yes, swap it"),
+      ],
+    },
+  ];
+  const { deps } = setup({ rows, rounds: swapRounds(), extraSkills: [skill] });
+  const res = await turn(deps, "Yes, swap it", "mine");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.equal(ran.length, 0);
+  assert.equal(rows[0].messages.filter((m) => m.role === "user").length, 2, "no duplicate user row");
+});
