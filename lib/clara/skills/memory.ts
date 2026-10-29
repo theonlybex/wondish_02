@@ -97,7 +97,10 @@ const invalid = (message: string): ToolResult => ({ ok: false, reason: "INVALID_
 
 export function makeMemoryHandlers(deps: MemoryDeps = prismaMemoryDeps) {
   const save = async (ctx: ClaraContext, input: Record<string, unknown>): Promise<ToolResult> => {
-    const text = typeof input.text === "string" ? input.text.trim() : "";
+    // Every whitespace run (newlines included) becomes one space, so a saved
+    // note is always one line and can't pose as a second "[id] text" entry in
+    // the prompt's memory block.
+    const text = typeof input.text === "string" ? input.text.replace(/\s+/g, " ").trim() : "";
     if (text.length === 0) return invalid("text is required");
     if (text.length > MEMORY_MAX_CHARS) {
       return invalid(`text must be at most ${MEMORY_MAX_CHARS} characters — shorten it`);

@@ -145,11 +145,16 @@ const prismaConversationDeps: ConversationDeps = {
   },
 };
 
-/** First message → sidebar title: whitespace collapsed, at most 60 chars. */
+/**
+ * First message → sidebar title: whitespace collapsed, at most 60 characters.
+ * Counted and cut by code points, not UTF-16 units, so an emoji at the cut is
+ * kept whole — a lone surrogate would be rejected when the row is saved.
+ */
 export function titleFrom(message: string): string {
   const flat = message.replace(/\s+/g, " ").trim();
-  if (flat.length <= TITLE_MAX_CHARS) return flat;
-  return flat.slice(0, TITLE_MAX_CHARS - 1).trimEnd() + "…";
+  const chars = Array.from(flat);
+  if (chars.length <= TITLE_MAX_CHARS) return flat;
+  return chars.slice(0, TITLE_MAX_CHARS - 1).join("").trimEnd() + "…";
 }
 
 /**

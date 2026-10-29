@@ -101,6 +101,22 @@ test("titleFrom keeps 60 chars as-is and cuts longer text to 60 with an ellipsis
   assert.equal(cut, "b".repeat(59) + "…");
 });
 
+test("titleFrom cuts by code points, so an emoji straddling the cut is never split", () => {
+  // 58 ASCII chars put the emoji's surrogate pair at UTF-16 units 58-59, exactly
+  // where a code-unit slice(0, 59) would leave a lone high surrogate.
+  const text = "a".repeat(58) + "\u{1F600}" + "b".repeat(10);
+  const cut = titleFrom(text);
+  assert.equal(cut, "a".repeat(58) + "\u{1F600}" + "…");
+  assert.equal(Array.from(cut).length, 60);
+  // No lone surrogates anywhere in the title.
+  assert.equal(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(cut), false);
+});
+
+test("titleFrom keeps a 60-code-point title with emoji as-is", () => {
+  const sixty = "\u{1F600}".repeat(60);
+  assert.equal(titleFrom(sixty), sixty);
+});
+
 test("replayText appends options as '- option' lines, or returns content alone", () => {
   assert.equal(replayText("Pick one", null), "Pick one");
   assert.equal(
