@@ -192,8 +192,14 @@ test("buildMemoryBlock drops the OLDEST rows first when over 2,000 chars", () =>
   const first = Number(ids[0].slice(1));
   assert.deepEqual(ids, rows.slice(first).map((r) => r.id));
   // and it is the maximal suffix: one more older row would not fit
-  const withOneMore = buildMemoryBlock("Sam", rows.slice(first - 1));
-  assert.ok(first - 1 < 0 || withOneMore.length <= MEMORY_BLOCK_MAX_CHARS);
+  // Computed by hand (NOT via buildMemoryBlock, which always caps): adding the
+  // next-older row must overflow, otherwise the implementation kept too few.
+  assert.ok(first > 0, "some rows must have been dropped in this scenario");
+  const manual = ["What you remember about Sam", ...rows.slice(first - 1).map((r) => `[${r.id}] ${r.text}`)].join("\n");
+  assert.ok(
+    manual.length > MEMORY_BLOCK_MAX_CHARS,
+    `one more older row would still fit (${manual.length} <= ${MEMORY_BLOCK_MAX_CHARS})`
+  );
 });
 
 test("buildMemoryBlock sorts by createdAt so input order doesn't matter", () => {
