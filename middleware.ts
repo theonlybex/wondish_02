@@ -1,7 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-const isPublicRoute = createRouteMatcher([
+export const isPublicRoute = createRouteMatcher([
   "/",
   "/login(.*)",
   "/register(.*)",
@@ -22,6 +22,10 @@ const isPublicRoute = createRouteMatcher([
   // Cookie-only locale switch — signed-out visitors on public pages
   // previously got a middleware 401 when changing language (audit Task 18).
   "/api/set-locale",
+  // Vercel Cron calls these with no Clerk session, so the middleware must let
+  // them through. Every cron route enforces CRON_SECRET itself
+  // (isAuthorizedCron in lib/clara/retention.ts refuses when it is unset).
+  "/api/cron/(.*)",
 ]);
 
 const isAuthRoute = createRouteMatcher(["/login(.*)", "/register(.*)"]);

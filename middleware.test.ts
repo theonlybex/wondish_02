@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { config, loginRedirectUrl, wantsJson401 } from "./middleware";
+import { config, isPublicRoute, loginRedirectUrl, wantsJson401 } from "./middleware";
 
 // The default export (the middleware handler) is intentionally NOT tested:
 // it is created by clerkMiddleware() and requires a live Clerk auth context
@@ -215,5 +215,29 @@ test("API/XHR callers stay on the JSON 401 branch: no login redirect is built fo
   // that ordering by asserting the classification for the routes iOS uses.
   for (const p of ["/api/meal-log", "/api/billing/checkout", "/api/journal"]) {
     assert.equal(wantsJson401(p), true, `${p} must get a JSON 401, never a 307`);
+  }
+});
+
+// ── isPublicRoute ───────────────────────────────────────────────────────────
+// Vercel's cron requests carry no Clerk session, so /api/cron/* must skip the
+// middleware's 401. Each cron route checks CRON_SECRET itself (isAuthorizedCron
+// refuses when it is unset), so making the path public does not open it.
+
+const publicPath = (pathname: string) =>
+  isPublicRoute({ nextUrl: { pathname } } as unknown as Parameters<typeof isPublicRoute>[0]);
+
+test("cron routes are public at the middleware so their own CRON_SECRET check runs", () => {
+  for (const path of [
+    "/api/cron/clara-conversation-purge",
+    "/api/cron/clara-gap-purge",
+    "/api/cron/rate-limit-watch",
+  ]) {
+    assert.equal(publicPath(path), true, `expected ${path} to be public`);
+  }
+});
+
+test("other api routes stay behind auth", () => {
+  for (const path of ["/api/clara/chat", "/api/clara/conversations", "/api/me", "/api/cronjobs", "/api/admin/cron/x"]) {
+    assert.equal(publicPath(path), false, `expected ${path} to require auth`);
   }
 });
