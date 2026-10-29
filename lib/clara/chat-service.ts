@@ -5,19 +5,43 @@
 import { MAX_MESSAGE_CHARS } from "@/lib/chat-history";
 import { buildFoodMapText, type FoodMapPatient } from "@/lib/food-map";
 import { claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anthropic";
-import { startClaraLoop, MID_STREAM_FALLBACK } from "./loop";
+import { startClaraLoop, MID_STREAM_FALLBACK, TOOL_THREW_MESSAGE } from "./loop";
 import { ALL_SKILLS, resolveActiveSkills, buildToolDefs, buildSystemPrompt, findTool } from "./registry";
 import { memorySkill, buildMemoryBlock, type MemoryDeps } from "./skills/memory";
-import { askChoicesSkill } from "./ask-choices";
+import { askChoicesSkill, ASK_CHOICES_TOOL } from "./ask-choices";
 import { resolveToday } from "./dates";
 import { buildTodaysPlanText } from "./today-plan";
-import type { ConversationStore } from "./conversations";
+import type { ConversationStore, ToolTraceEntry } from "./conversations";
 import type { ClaraRequestOptions } from "./request";
 import type { ClaraEvent } from "./ndjson";
 import type { ClaraChoices, ClaraContext, ModelClient, ModelMessage, Skill, ToolResult } from "./types";
 
 /** Tool rounds on this route: the same for every tier (spec §2). */
 export const CLARA_APP_TOOL_ROUNDS = 5;
+
+/** At most this many executed calls are saved per assistant turn (the first ones). */
+export const TOOL_TRACE_MAX_CALLS = 8;
+/** Each saved `input` and `result` JSON string is cut to this many characters. */
+export const TOOL_TRACE_MAX_CHARS = 600;
+
+/**
+ * Cut by code points, not UTF-16 units: a lone surrogate at the cut would be
+ * rejected when the row is saved as JSONB (same reason as titleFrom).
+ */
+function cutForTrace(json: string): string {
+  if (json.length <= TOOL_TRACE_MAX_CHARS) return json;
+  const chars = Array.from(json);
+  return chars.length <= TOOL_TRACE_MAX_CHARS ? json : chars.slice(0, TOOL_TRACE_MAX_CHARS).join("");
+}
+
+/** JSON.stringify, but never throws and never yields undefined. */
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? "{}";
+  } catch {
+    return "{}";
+  }
+}
 
 export const PROFILE_INCOMPLETE_ERROR = "Finish setting up your profile to chat with Clara.";
 const UNAVAILABLE_ERROR = "Clara is unavailable right now";
@@ -177,11 +201,34 @@ export async function startClaraAppTurn(
     conversationId = (await deps.store.create(patient.id, message, surface)).id;
   }
 
-  const execute = async (name: string, toolInput: Record<string, unknown>, toolUseId: string): Promise<ToolResult> => {
+  const runTool = async (name: string, toolInput: Record<string, unknown>, toolUseId: string): Promise<ToolResult> => {
     const tool = findTool(skills, name);
     // Deliberately does not echo the model-supplied name back.
     if (!tool) return { ok: false, reason: "FAILED", message: "That tool does not exist." };
     return tool.handler(ctx, toolInput, toolUseId);
+  };
+
+  // Every call that reaches execute is recorded and saved on the assistant
+  // row, so the next turn replays it as real tool blocks (conversations.ts
+  // history()). Calls the loop answers itself — ask_choices (already saved as
+  // `choices`) and writes refused with CONFIRM_REQUIRED — never get here.
+  const toolTrace: ToolTraceEntry[] = [];
+  const record = (id: string, name: string, toolInput: unknown, result: ToolResult) => {
+    if (name === ASK_CHOICES_TOOL || toolTrace.length >= TOOL_TRACE_MAX_CALLS) return;
+    toolTrace.push({ id, name, input: cutForTrace(safeJson(toolInput)), result: cutForTrace(safeJson(result)) });
+  };
+  const execute = async (name: string, toolInput: Record<string, unknown>, toolUseId: string): Promise<ToolResult> => {
+    let result: ToolResult;
+    try {
+      result = await runTool(name, toolInput, toolUseId);
+    } catch (err) {
+      // The loop turns a throw into this exact result for the model; record
+      // what it will see, then let the loop handle the error as before.
+      record(toolUseId, name, toolInput, { ok: false, reason: "FAILED", message: TOOL_THREW_MESSAGE });
+      throw err;
+    }
+    record(toolUseId, name, toolInput, result);
+    return result;
   };
 
   // Only records the value — it must never throw inside the loop.
@@ -249,7 +296,9 @@ export async function startClaraAppTurn(
     let messageId: string | null = null;
     if (text.length > 0 && !failedBeforeText) {
       try {
-        messageId = (await deps.store.appendAssistant(conversationId, text, finalChoices, surface)).id;
+        messageId = (
+          await deps.store.appendAssistant(conversationId, text, finalChoices, surface, toolTrace.length > 0 ? toolTrace : null)
+        ).id;
       } catch (err) {
         onError(err);
       }

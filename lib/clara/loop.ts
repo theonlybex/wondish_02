@@ -12,7 +12,10 @@ export interface LoopParams {
   client: ModelClient;
   system: string;
   tools: ToolDef[];
-  /** The sanitized conversation so far. Never contains tool blocks. */
+  /**
+   * The conversation so far. Saved chats may replay earlier turns' completed
+   * tool calls as tool_use/tool_result pairs (without thinking blocks).
+   */
   messages: ModelMessage[];
   maxToolRounds: number;
   execute: (name: string, input: Record<string, unknown>, toolUseId: string) => Promise<ToolResult>;
@@ -37,6 +40,9 @@ const CONFIRM_REQUIRED_MESSAGE =
   "This change needs the user's explicit confirmation first. Propose it in plain words and wait for their yes.";
 const CONFIRM_REQUIRED_WITH_CHOICES_MESSAGE =
   "This change needs the user's explicit confirmation first. Propose it in one sentence, then call ask_choices with a yes and a no option (e.g. \"Yes, swap it\" / \"No, keep it\") and wait for their answer.";
+
+/** The tool_result message the model gets when a handler throws. */
+export const TOOL_THREW_MESSAGE = "The tool did not respond.";
 
 /** What the user sees when a round fails after the response already started. */
 export const MID_STREAM_FALLBACK =
@@ -198,7 +204,7 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
             // A handler that throws is a bug, not a user-facing event: log it and
             // hand the model a narratable result so the turn still completes.
             params.onError?.(err);
-            result = { ok: false, reason: "FAILED", message: "The tool did not respond." };
+            result = { ok: false, reason: "FAILED", message: TOOL_THREW_MESSAGE };
           }
         }
         results.push({

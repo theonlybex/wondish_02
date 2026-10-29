@@ -5,10 +5,12 @@ import {
   startClaraAppTurn,
   parseClaraChatBody,
   claraAppSkills,
+  TOOL_TRACE_MAX_CALLS,
+  TOOL_TRACE_MAX_CHARS,
   type ChatServiceDeps,
   type ClaraAppPatient,
 } from "./chat-service";
-import { makeConversationStore, type ConversationDeps, type StoredMessage } from "./conversations";
+import { makeConversationStore, type ConversationDeps, type HistoryRow, type StoredMessage, type ToolTraceEntry } from "./conversations";
 import { makeMemorySkill, type MemoryDeps, type MemoryRow } from "./skills/memory";
 import { askChoicesSkill, ASK_CHOICES_TOOL } from "./ask-choices";
 import { MID_STREAM_FALLBACK } from "./loop";
@@ -63,7 +65,7 @@ interface Row {
   id: string;
   patientId: string;
   title: string;
-  messages: StoredMessage[];
+  messages: HistoryRow[];
 }
 
 function fakeConversations(rows: Row[], log: string[]) {
@@ -89,11 +91,11 @@ function fakeConversations(rows: Row[], log: string[]) {
       const r = rows.find((x) => x.id === id);
       return r ? [...r.messages].reverse().slice(0, limit) : [];
     },
-    insertMessage: async ({ conversationId, role, content, choices }) => {
+    insertMessage: async ({ conversationId, role, content, choices, toolTrace }) => {
       log.push(`insert:${role}`);
       const r = rows.find((x) => x.id === conversationId)!;
       const id = `m${++seq}`;
-      r.messages.push({ id, role, content, choices, createdAt: new Date() });
+      r.messages.push({ id, role, content, choices, toolTrace: toolTrace ?? null, createdAt: new Date() });
       return { id };
     },
     listPage: async () => [],
@@ -615,4 +617,171 @@ test("a reused trailing user row after boxes still refuses writes (ruling 1)", a
   await collect(res.events);
   assert.equal(ran.length, 0);
   assert.equal(rows[0].messages.filter((m) => m.role === "user").length, 2, "no duplicate user row");
+});
+
+// ─── Tool traces: the saved row records what this turn actually did ─────────
+
+/** A read tool that returns whatever it is given, for trace-shape tests. */
+function echoSkill(data: unknown = { ok: 1 }) {
+  const skill: Skill = {
+    name: "echo",
+    promptFragment: "ECHO",
+    tools: [
+      {
+        def: { name: "echo_read", description: "echo", input_schema: { type: "object", properties: {} } },
+        handler: async (): Promise<ToolResult> => ({ ok: true, data }),
+      },
+    ],
+  };
+  return skill;
+}
+
+const savedTrace = (rows: Row[]) => rows[0].messages.at(-1)!.toolTrace as ToolTraceEntry[] | null | undefined;
+
+test("a turn that calls memory_save then answers saves the row with that call and its result", async () => {
+  const { deps, rows, seen } = setup({
+    rounds: [
+      {
+        deltas: [],
+        content: [{ type: "tool_use", id: "toolu_save1", name: "memory_save", input: { text: "Cooks for two" } }],
+      },
+      { deltas: ["Got it, I'll remember you cook for two."] },
+    ],
+  });
+  const res = await turn(deps, "I cook for two");
+  assert.ok(res.ok);
+  await collect(res.events);
+  const saved = rows[0].messages.at(-1)!;
+  assert.equal(saved.role, "assistant");
+  assert.equal(saved.content, "Got it, I'll remember you cook for two.");
+  const modelSaw = (seen[1].messages.at(-1)!.content as ModelContentBlock[])[0];
+  assert.ok(modelSaw.type === "tool_result");
+  assert.deepEqual(savedTrace(rows), [
+    { id: "toolu_save1", name: "memory_save", input: JSON.stringify({ text: "Cooks for two" }), result: modelSaw.content },
+  ]);
+});
+
+test("a turn with no tool calls saves no trace", async () => {
+  const { deps, rows } = setup({ rounds: [{ deltas: ["Hello Sam."] }] });
+  const res = await turn(deps, "hello");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.equal(savedTrace(rows) ?? null, null);
+});
+
+test("trace input and result are each cut to 600 characters (by code point)", async () => {
+  const big = "\u{1F600}".repeat(700);
+  const { deps, rows } = setup({
+    extraSkills: [echoSkill({ blob: big })],
+    rounds: [
+      { content: [{ type: "tool_use", id: "toolu_e1", name: "echo_read", input: { q: big } }] },
+      { deltas: ["Done."] },
+    ],
+  });
+  const res = await turn(deps, "go");
+  assert.ok(res.ok);
+  await collect(res.events);
+  const [entry] = savedTrace(rows)!;
+  assert.equal(TOOL_TRACE_MAX_CHARS, 600);
+  assert.equal(Array.from(entry.input).length, 600);
+  assert.equal(Array.from(entry.result).length, 600);
+  assert.ok(JSON.stringify({ q: big }).startsWith(entry.input));
+  assert.ok(JSON.stringify({ ok: true, data: { blob: big } }).startsWith(entry.result));
+  // No lone surrogates: the row must be storable as JSONB.
+  const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  assert.equal(lone.test(entry.input) || lone.test(entry.result), false);
+});
+
+test("the trace keeps only the first 8 calls of a turn", async () => {
+  const calls: ModelContentBlock[] = Array.from({ length: 10 }, (_, i) => ({
+    type: "tool_use" as const,
+    id: `toolu_${i}`,
+    name: "echo_read",
+    input: { i },
+  }));
+  const { deps, rows } = setup({
+    extraSkills: [echoSkill()],
+    rounds: [{ content: calls.slice(0, 6) }, { content: calls.slice(6) }, { deltas: ["All done."] }],
+  });
+  const res = await turn(deps, "go");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.equal(TOOL_TRACE_MAX_CALLS, 8);
+  assert.deepEqual(savedTrace(rows)!.map((e) => e.id), calls.slice(0, 8).map((c) => c.type === "tool_use" && c.id));
+});
+
+test("ask_choices and refused writes never reach execute, so they are not in the trace", async () => {
+  const { skill, ran } = writeSkill();
+  const choices = { question: "Anything else?", options: ["Yes", "No"] };
+  const { deps, rows } = setup({
+    extraSkills: [skill],
+    rounds: [
+      {
+        deltas: ["Saved."],
+        content: [
+          { type: "text", text: "Saved." },
+          { type: "tool_use", id: "toolu_m", name: "memory_save", input: { text: "Cooks for two" } },
+          { type: "tool_use", id: "toolu_w", name: "plan_swap", input: {} },
+          { type: "tool_use", id: "toolu_c", name: ASK_CHOICES_TOOL, input: choices },
+        ],
+      },
+    ],
+  });
+  const res = await turn(deps, "I cook for two"); // new conversation → writes refused
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.equal(ran.length, 0);
+  assert.deepEqual(rows[0].messages.at(-1)!.choices, choices);
+  assert.deepEqual(savedTrace(rows)!.map((e) => e.name), ["memory_save"]);
+});
+
+test("the next turn replays the saved trace to the model as real tool blocks", async () => {
+  const { deps, rows, seen } = setup({
+    rounds: [
+      { content: [{ type: "tool_use", id: "toolu_save1", name: "memory_save", input: { text: "Cooks for two" } }] },
+      { deltas: ["Got it, I'll remember you cook for two."] },
+      { deltas: ["Sure."] },
+    ],
+  });
+  const first = await turn(deps, "I cook for two");
+  assert.ok(first.ok);
+  await collect(first.events);
+  const second = await turn(deps, "what's for dinner?", rows[0].id);
+  assert.ok(second.ok);
+  await collect(second.events);
+  const replay = seen[2].messages;
+  assert.deepEqual(replay.map((m) => m.role), ["user", "assistant", "user", "assistant", "user"]);
+  assert.deepEqual(replay[1].content, [
+    { type: "tool_use", id: "toolu_save1", name: "memory_save", input: { text: "Cooks for two" } },
+  ]);
+  const result = (replay[2].content as ModelContentBlock[])[0];
+  assert.ok(result.type === "tool_result" && result.tool_use_id === "toolu_save1");
+  assert.equal(replay[3].content, "Got it, I'll remember you cook for two.");
+  assert.equal(replay[4].content, "what's for dinner?");
+});
+
+test("a handler that throws is recorded with the FAILED result the model was given", async () => {
+  const boom: Skill = {
+    name: "boom",
+    promptFragment: "BOOM",
+    tools: [
+      {
+        def: { name: "boom_read", description: "boom", input_schema: { type: "object", properties: {} } },
+        handler: async () => {
+          throw new Error("kaput");
+        },
+      },
+    ],
+  };
+  const { deps, rows, seen } = setup({
+    extraSkills: [boom],
+    rounds: [{ content: [{ type: "tool_use", id: "toolu_b", name: "boom_read", input: {} }] }, { deltas: ["Sorry."] }],
+  });
+  deps.onError = () => {};
+  const res = await turn(deps, "go");
+  assert.ok(res.ok);
+  await collect(res.events);
+  const modelSaw = (seen[1].messages.at(-1)!.content as ModelContentBlock[])[0];
+  assert.ok(modelSaw.type === "tool_result");
+  assert.deepEqual(savedTrace(rows), [{ id: "toolu_b", name: "boom_read", input: "{}", result: modelSaw.content }]);
 });

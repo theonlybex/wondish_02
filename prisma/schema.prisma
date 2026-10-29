@@ -1393,6 +1393,10 @@ model ClaraMessage {
   role           String
   content        String
   choices        Json?
+  /// This turn's executed tool calls [{ id, name, input, result }] (input and
+  /// result are JSON strings, each cut to 600 chars; at most 8 calls). Replayed
+  /// to the model as tool_use/tool_result blocks; never sent to clients.
+  toolTrace      Json?
   surface        String            @default("unknown")
   createdAt      DateTime          @default(now())
 

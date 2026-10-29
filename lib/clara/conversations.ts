@@ -3,8 +3,9 @@
 // a conversation id belonging to another member reads as "not found" and
 // nothing is loaded or deleted. Appends do NOT re-check ownership — the route
 // must call `owned()` first and 404 before it writes.
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import type { ClaraChoices, ModelMessage } from "./types";
+import type { ClaraChoices, ModelContentBlock, ModelMessage } from "./types";
 
 export type { ClaraChoices } from "./types";
 
@@ -18,6 +19,27 @@ export interface StoredMessage {
   content: string;
   choices: ClaraChoices | null;
   createdAt: Date;
+}
+
+/**
+ * One tool call an assistant turn actually executed, as saved on its row.
+ * `input` and `result` are JSON strings, already cut to size by the chat
+ * service — so `input` may no longer parse, and replays as {} if so.
+ */
+export interface ToolTraceEntry {
+  id: string;
+  name: string;
+  input: string;
+  result: string;
+}
+
+/**
+ * A row as the history window reads it: the client-facing message plus the
+ * raw stored tool trace, parsed defensively by the store. Never leaves the
+ * server — `get()` returns plain StoredMessages.
+ */
+export interface HistoryRow extends StoredMessage {
+  toolTrace?: unknown;
 }
 
 export interface ConversationSummary {
@@ -36,8 +58,8 @@ export interface ConversationDeps {
     firstMessage: string;
   }) => Promise<{ id: string }>;
   isOwned: (conversationId: string, patientId: string) => Promise<boolean>;
-  /** Newest first, at most `limit` rows. */
-  recentMessages: (conversationId: string, limit: number) => Promise<StoredMessage[]>;
+  /** Newest first, at most `limit` rows, each with its raw stored tool trace. */
+  recentMessages: (conversationId: string, limit: number) => Promise<HistoryRow[]>;
   /** Inserts a message and bumps the conversation's updatedAt. */
   insertMessage: (a: {
     conversationId: string;
@@ -45,6 +67,8 @@ export interface ConversationDeps {
     content: string;
     choices: ClaraChoices | null;
     surface: string;
+    /** Assistant rows only; null/absent ⇒ the column stays NULL. */
+    toolTrace?: ToolTraceEntry[] | null;
   }) => Promise<{ id: string }>;
   /** Newest updatedAt first; rows strictly after `cursor` (a conversation id). */
   listPage: (patientId: string, cursor: string | undefined, take: number) => Promise<ConversationSummary[]>;
@@ -64,6 +88,34 @@ function parseChoices(raw: unknown): ClaraChoices | null {
   if (typeof question !== "string" || !Array.isArray(options)) return null;
   if (!options.every((o) => typeof o === "string")) return null;
   return { question, options: options as string[] };
+}
+
+/**
+ * Reads the toolTrace Json column defensively: anything that is not an array
+ * counts as no trace, and malformed entries are skipped one by one.
+ */
+function parseToolTrace(raw: unknown): ToolTraceEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (e): e is ToolTraceEntry =>
+      !!e &&
+      typeof e === "object" &&
+      typeof (e as ToolTraceEntry).id === "string" &&
+      (e as ToolTraceEntry).id.length > 0 &&
+      typeof (e as ToolTraceEntry).name === "string" &&
+      typeof (e as ToolTraceEntry).input === "string" &&
+      typeof (e as ToolTraceEntry).result === "string"
+  );
+}
+
+/** A stored input that no longer parses to an object (it may have been cut) replays as {}. */
+function parseToolInput(input: string): Record<string, unknown> {
+  try {
+    const v: unknown = JSON.parse(input);
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
 }
 
 function toStored(r: {
@@ -103,12 +155,21 @@ const prismaConversationDeps: ConversationDeps = {
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit,
     });
-    return rows.map(toStored);
+    return rows.map((r) => ({ ...toStored(r), toolTrace: r.toolTrace }));
   },
-  insertMessage: async ({ conversationId, role, content, choices, surface }) => {
+  insertMessage: async ({ conversationId, role, content, choices, surface, toolTrace }) => {
     const [row] = await prisma.$transaction([
       prisma.claraMessage.create({
-        data: { conversationId, role, content, surface, ...(choices ? { choices: { ...choices } } : {}) },
+        data: {
+          conversationId,
+          role,
+          content,
+          surface,
+          ...(choices ? { choices: { ...choices } } : {}),
+          ...(toolTrace && toolTrace.length > 0
+            ? { toolTrace: toolTrace.map((e) => ({ ...e })) as Prisma.InputJsonValue }
+            : {}),
+        },
         select: { id: true },
       }),
       // @updatedAt only fires on a write to the row itself, so bump it explicitly.
@@ -174,9 +235,18 @@ export function makeConversationStore(deps: ConversationDeps = prismaConversatio
     owned: (conversationId: string, patientId: string) => deps.isOwned(conversationId, patientId),
 
     /**
-     * Plain-text turns only (no tool blocks), at most `limit`, oldest first,
-     * starting with a user message — the Messages API rejects a leading
-     * assistant turn.
+     * At most `limit` saved ROWS, oldest first, starting with a user message —
+     * the Messages API rejects a leading assistant turn. Both rules apply to
+     * rows; only then does each assistant row with a tool trace expand into
+     * three messages: assistant [tool_use…], user [tool_result…], assistant
+     * text. Without the calls, an earlier "Got it, I'll remember that" reads
+     * as the whole action, and later in a long chat the model imitates the
+     * words and skips the tool (live debugging 2026-10-28).
+     *
+     * No thinking blocks are replayed with the calls. The API requires them
+     * only within an in-progress tool-use turn; these turns are complete
+     * (each is followed by its text answer), and prior-turn thinking may be
+     * omitted. Clara runs Haiku 4.5 with thinking off anyway.
      */
     async history(
       conversationId: string,
@@ -186,20 +256,52 @@ export function makeConversationStore(deps: ConversationDeps = prismaConversatio
       const lastAssistantHadChoices = newestFirst.find((m) => m.role === "assistant")?.choices != null;
       const oldestFirst = [...newestFirst].reverse();
       while (oldestFirst.length > 0 && oldestFirst[0].role === "assistant") oldestFirst.shift();
-      return {
-        messages: oldestFirst.map((m) => ({
-          role: m.role,
-          content: m.role === "assistant" ? replayText(m.content, m.choices) : m.content,
-        })),
-        lastAssistantHadChoices,
+      // tool_use ids must be unique across the request. Anthropic ids already
+      // are; a repeat (a copied row, a fake) is prefixed with its row id.
+      const usedIds = new Set<string>();
+      const uniqueId = (id: string, rowId: string): string => {
+        let out = usedIds.has(id) ? `${rowId}_${id}` : id;
+        for (let n = 2; usedIds.has(out); n++) out = `${rowId}_${n}_${id}`;
+        usedIds.add(out);
+        return out;
       };
+      const messages: ModelMessage[] = [];
+      for (const m of oldestFirst) {
+        if (m.role !== "assistant") {
+          messages.push({ role: "user", content: m.content });
+          continue;
+        }
+        const calls = parseToolTrace(m.toolTrace);
+        if (calls.length > 0) {
+          const ids = calls.map((c) => uniqueId(c.id, m.id));
+          messages.push({
+            role: "assistant",
+            content: calls.map(
+              (c, i): ModelContentBlock => ({ type: "tool_use", id: ids[i], name: c.name, input: parseToolInput(c.input) })
+            ),
+          });
+          messages.push({
+            role: "user",
+            content: calls.map(
+              (c, i): ModelContentBlock => ({ type: "tool_result", tool_use_id: ids[i], content: c.result })
+            ),
+          });
+        }
+        messages.push({ role: "assistant", content: replayText(m.content, m.choices) });
+      }
+      return { messages, lastAssistantHadChoices };
     },
 
     appendUser: (conversationId: string, content: string, surface: string) =>
       deps.insertMessage({ conversationId, role: "user", content, choices: null, surface }),
 
-    appendAssistant: (conversationId: string, content: string, choices: ClaraChoices | null, surface: string) =>
-      deps.insertMessage({ conversationId, role: "assistant", content, choices, surface }),
+    appendAssistant: (
+      conversationId: string,
+      content: string,
+      choices: ClaraChoices | null,
+      surface: string,
+      toolTrace: ToolTraceEntry[] | null = null
+    ) => deps.insertMessage({ conversationId, role: "assistant", content, choices, surface, toolTrace }),
 
     async list(
       patientId: string,
@@ -212,7 +314,16 @@ export function makeConversationStore(deps: ConversationDeps = prismaConversatio
       return { items, nextCursor };
     },
 
-    get: (conversationId: string, patientId: string) => deps.getOwned(conversationId, patientId),
+    /**
+     * What GET /api/clara/conversations/:id returns. Messages are rebuilt as
+     * plain StoredMessages so the tool trace (raw tool inputs and results)
+     * never reaches a client, whatever the persistence layer hands back.
+     */
+    async get(conversationId: string, patientId: string) {
+      const row = await deps.getOwned(conversationId, patientId);
+      if (!row) return null;
+      return { id: row.id, title: row.title, messages: row.messages.map(toStored) };
+    },
 
     remove: (conversationId: string, patientId: string) => deps.deleteOwned(conversationId, patientId),
   };

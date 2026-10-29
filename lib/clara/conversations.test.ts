@@ -5,7 +5,9 @@ import {
   replayText,
   titleFrom,
   type ConversationDeps,
+  type HistoryRow,
   type StoredMessage,
+  type ToolTraceEntry,
 } from "./conversations";
 
 interface Row {
@@ -14,7 +16,7 @@ interface Row {
   title: string;
   surface: string;
   updatedAt: Date;
-  messages: StoredMessage[];
+  messages: HistoryRow[];
 }
 
 /** In-memory fake of the persistence port. No database, no network. */
@@ -42,11 +44,11 @@ function fakeDeps(rows: Row[] = []) {
       const r = rows.find((x) => x.id === id);
       return r ? [...r.messages].reverse().slice(0, limit) : [];
     },
-    insertMessage: async ({ conversationId, role, content, choices }) => {
+    insertMessage: async ({ conversationId, role, content, choices, toolTrace }) => {
       calls.push(`insert:${role}`);
       const r = rows.find((x) => x.id === conversationId)!;
       const id = `m${++seq}`;
-      r.messages.push({ id, role, content, choices, createdAt: new Date() });
+      r.messages.push({ id, role, content, choices, toolTrace: toolTrace ?? null, createdAt: new Date() });
       r.updatedAt = new Date();
       return { id };
     },
@@ -78,7 +80,7 @@ const msg = (
   choices: StoredMessage["choices"] = null
 ): StoredMessage => ({ id: `m${i}`, role, content, choices, createdAt: new Date(2026, 0, 1, 0, i) });
 
-const rowWith = (messages: StoredMessage[], over: Partial<Row> = {}): Row => ({
+const rowWith = (messages: HistoryRow[], over: Partial<Row> = {}): Row => ({
   id: "c1",
   patientId: "p1",
   title: "t",
@@ -250,4 +252,150 @@ test("list with exactly 30 conversations has no nextCursor, and never shows othe
   assert.equal(page.items.length, 30);
   assert.equal(page.nextCursor, null);
   assert.ok(!page.items.some((i) => i.id === "other"));
+});
+
+// ─── Tool traces: each assistant turn's executed tool calls are replayed ─────
+
+const trace = (id: string, name = "memory_save", input = '{"text":"Cooks for two"}', result = '{"ok":true,"data":{"saved":true}}'): ToolTraceEntry => ({
+  id,
+  name,
+  input,
+  result,
+});
+const traced = (i: number, content: string, entries: unknown, choices: StoredMessage["choices"] = null): HistoryRow => ({
+  ...msg(i, "assistant", content, choices),
+  toolTrace: entries,
+});
+
+test("history expands a traced assistant row into assistant(tool_use) → user(tool_result) → assistant(text)", async () => {
+  const choices = { question: "Anything else?", options: ["Yes", "No"] };
+  const messages: HistoryRow[] = [
+    msg(0, "user", "I cook for two"),
+    traced(1, "Got it, I'll remember you cook for two. Anything else?", [trace("toolu_1"), trace("toolu_2", "plan_today", "{}", '{"ok":true,"data":{"meals":[]}}')], choices),
+    msg(2, "user", "no thanks"),
+  ];
+  const { messages: h } = await makeConversationStore(fakeDeps([rowWith(messages)]).deps).history("c1");
+  assert.deepEqual(h, [
+    { role: "user", content: "I cook for two" },
+    {
+      role: "assistant",
+      content: [
+        { type: "tool_use", id: "toolu_1", name: "memory_save", input: { text: "Cooks for two" } },
+        { type: "tool_use", id: "toolu_2", name: "plan_today", input: {} },
+      ],
+    },
+    {
+      role: "user",
+      content: [
+        { type: "tool_result", tool_use_id: "toolu_1", content: '{"ok":true,"data":{"saved":true}}' },
+        { type: "tool_result", tool_use_id: "toolu_2", content: '{"ok":true,"data":{"meals":[]}}' },
+      ],
+    },
+    { role: "assistant", content: "Got it, I'll remember you cook for two. Anything else?\n- Yes\n- No" },
+    { role: "user", content: "no thanks" },
+  ]);
+});
+
+test("history leaves untraced rows (null, empty or absent trace) exactly as today", async () => {
+  const messages: HistoryRow[] = [
+    msg(0, "user", "hi"),
+    traced(1, "hello", null),
+    msg(2, "user", "and?"),
+    traced(3, "nothing", []),
+    msg(4, "user", "ok"),
+    msg(5, "assistant", "bye"),
+  ];
+  const { messages: h } = await makeConversationStore(fakeDeps([rowWith(messages)]).deps).history("c1");
+  assert.deepEqual(h, [
+    { role: "user", content: "hi" },
+    { role: "assistant", content: "hello" },
+    { role: "user", content: "and?" },
+    { role: "assistant", content: "nothing" },
+    { role: "user", content: "ok" },
+    { role: "assistant", content: "bye" },
+  ]);
+});
+
+test("history applies the window and the leading-user rule to ROWS, before expansion", async () => {
+  const messages: HistoryRow[] = [
+    msg(0, "user", "u0"),
+    traced(1, "a1", [trace("toolu_a")]),
+    msg(2, "user", "u2"),
+    traced(3, "a3", [trace("toolu_b")]),
+  ];
+  // Newest 3 rows = a1, u2, a3. a1 leads, so it is dropped; a3 expands to 3 messages.
+  const { messages: h } = await makeConversationStore(fakeDeps([rowWith(messages)]).deps).history("c1", 3);
+  assert.equal(h.length, 4);
+  assert.deepEqual(h[0], { role: "user", content: "u2" });
+  assert.deepEqual(h.map((m) => m.role), ["user", "assistant", "user", "assistant"]);
+  assert.deepEqual(h[3], { role: "assistant", content: "a3" });
+  assert.ok(!JSON.stringify(h).includes("toolu_a"), "the dropped leading row's trace is not replayed");
+});
+
+test("history replays an unparsable stored input as {} and skips malformed trace entries", async () => {
+  const messages: HistoryRow[] = [
+    msg(0, "user", "hi"),
+    traced(1, "done", [
+      trace("toolu_1", "memory_save", '{"text":"Cooks for tw'), // truncated at 600 → unparsable
+      trace("toolu_2", "memory_save", '["not","an","object"]'),
+      { id: 7, name: "memory_save", input: "{}", result: "{}" },
+      "garbage",
+    ]),
+  ];
+  const { messages: h } = await makeConversationStore(fakeDeps([rowWith(messages)]).deps).history("c1");
+  assert.deepEqual(h[1].content, [
+    { type: "tool_use", id: "toolu_1", name: "memory_save", input: {} },
+    { type: "tool_use", id: "toolu_2", name: "memory_save", input: {} },
+  ]);
+  assert.equal((h[2].content as unknown[]).length, 2);
+});
+
+test("history treats a trace that is not an array as no trace", async () => {
+  const messages: HistoryRow[] = [msg(0, "user", "hi"), traced(1, "hello", { id: "x" })];
+  const { messages: h } = await makeConversationStore(fakeDeps([rowWith(messages)]).deps).history("c1");
+  assert.deepEqual(h, [
+    { role: "user", content: "hi" },
+    { role: "assistant", content: "hello" },
+  ]);
+});
+
+test("history keeps tool_use ids unique: a repeated id is prefixed with its row id", async () => {
+  const messages: HistoryRow[] = [
+    msg(0, "user", "hi"),
+    traced(1, "one", [trace("toolu_dup")]),
+    msg(2, "user", "again"),
+    traced(3, "two", [trace("toolu_dup")]),
+  ];
+  const { messages: h } = await makeConversationStore(fakeDeps([rowWith(messages)]).deps).history("c1");
+  const uses = h.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).filter((b) => b.type === "tool_use");
+  const results = h.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).filter((b) => b.type === "tool_result");
+  assert.deepEqual(uses.map((b) => b.type === "tool_use" && b.id), ["toolu_dup", "m3_toolu_dup"]);
+  assert.deepEqual(results.map((b) => b.type === "tool_result" && b.tool_use_id), ["toolu_dup", "m3_toolu_dup"]);
+});
+
+test("lastAssistantHadChoices still reads the newest assistant ROW when it is traced", async () => {
+  const choices = { question: "Q", options: ["A", "B"] };
+  const r = rowWith([msg(0, "user"), traced(1, "Q", [trace("toolu_1")], choices)]);
+  const h = await makeConversationStore(fakeDeps([r]).deps).history("c1");
+  assert.equal(h.lastAssistantHadChoices, true);
+  assert.deepEqual(h.messages.at(-1), { role: "assistant", content: "Q\n- A\n- B" });
+});
+
+test("appendAssistant passes the tool trace through; appendUser and an untraced reply store none", async () => {
+  const { deps, rows } = fakeDeps([rowWith([msg(0, "user")])]);
+  const store = makeConversationStore(deps);
+  await store.appendUser("c1", "more", "web");
+  await store.appendAssistant("c1", "plain", null, "web");
+  await store.appendAssistant("c1", "saved it", null, "web", [trace("toolu_9")]);
+  assert.equal(rows[0].messages[1].toolTrace, null);
+  assert.equal(rows[0].messages[2].toolTrace, null);
+  assert.deepEqual(rows[0].messages[3].toolTrace, [trace("toolu_9")]);
+});
+
+test("get never exposes toolTrace, even when the stored row carries one", async () => {
+  const r = rowWith([msg(0, "user", "hi"), traced(1, "saved", [trace("toolu_1")])]);
+  const got = await makeConversationStore(fakeDeps([r]).deps).get("c1", "p1");
+  assert.equal(got?.messages.length, 2);
+  for (const m of got!.messages) assert.equal("toolTrace" in m, false);
+  assert.ok(!JSON.stringify(got).includes("toolu_1"));
 });
