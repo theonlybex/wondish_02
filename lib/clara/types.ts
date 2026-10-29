@@ -102,6 +102,16 @@ export type ModelContentBlock =
   | { type: "thinking"; thinking: string; signature: string }
   | { type: "redacted_thinking"; data: string };
 
+/**
+ * Answer boxes Clara offered on an `ask_choices` turn: 2-4 options. Clients add
+ * "Other" themselves. Lives here (types-only) so the loop can use it without
+ * importing the prisma-backed conversation store.
+ */
+export interface ClaraChoices {
+  question: string;
+  options: string[];
+}
+
 export interface ModelMessage {
   role: "user" | "assistant";
   content: string | ModelContentBlock[];
