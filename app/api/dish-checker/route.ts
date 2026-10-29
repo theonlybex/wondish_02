@@ -19,6 +19,7 @@ import {
   buildSystemPrompt,
   findTool,
 } from "@/lib/clara/registry";
+import { loadMemoryBlock, appendMemoryBlock } from "@/lib/clara/skills/memory";
 import type { ClaraContext, ToolResult } from "@/lib/clara/types";
 import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anthropic";
 
@@ -134,10 +135,16 @@ async function handleChat(req: NextRequest) {
       }
     : null;
 
-  const systemPrompt =
+  const basePrompt =
     buildSystemPrompt(firstName, buildFoodMapText(patient), activeSkills, promptToday) +
     // Give Clara today's dishes + steps so she can help with cooking.
     (patient ? await buildTodaysPlanText(patient.id, resolution.localDate) : "");
+  // Read-only: what Clara remembers about them, appended after the old prompt
+  // (no memory tools here). A failed read is logged inside and skipped; an
+  // empty block leaves the prompt byte-identical to before.
+  const systemPrompt = patient
+    ? appendMemoryBlock(basePrompt, await loadMemoryBlock(firstName, patient.id))
+    : basePrompt;
 
   const execute = async (
     name: string,

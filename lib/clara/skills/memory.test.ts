@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   makeMemorySkill,
   buildMemoryBlock,
+  loadMemoryBlock,
+  appendMemoryBlock,
   MEMORY_MAX_CHARS,
   MEMORY_CAP,
   MEMORY_BLOCK_MAX_CHARS,
@@ -215,4 +217,32 @@ test("prompt fragment carries the profile rule and the same-reply rule", () => {
   assert.match(f, /one-off/i);
   assert.match(f, /memory_save/);
   assert.match(f, /memory_forget/);
+});
+
+test("appendMemoryBlock leaves the prompt identical when the block is empty", () => {
+  assert.equal(appendMemoryBlock("PROMPT", ""), "PROMPT");
+  assert.equal(appendMemoryBlock("PROMPT", buildMemoryBlock("Sam", [])), "PROMPT");
+});
+
+test("appendMemoryBlock puts the block after the existing prompt", () => {
+  const out = appendMemoryBlock("PROMPT", buildMemoryBlock("Sam", [mem("m1", "Cooks for three")]));
+  assert.ok(out.startsWith("PROMPT\n\n"));
+  assert.ok(out.endsWith("[m1] Cooks for three"));
+});
+
+test("loadMemoryBlock returns the block, and '' when the read throws", async () => {
+  const ok = await loadMemoryBlock("Sam", "p1", async () => [mem("m1", "Cooks for three")]);
+  assert.match(ok, /What you remember about Sam/);
+  const none = await loadMemoryBlock("Sam", "p1", async () => []);
+  assert.equal(none, "");
+  const orig = console.error;
+  console.error = () => {};
+  try {
+    const failed = await loadMemoryBlock("Sam", "p1", async () => {
+      throw new Error("relation does not exist");
+    });
+    assert.equal(failed, "");
+  } finally {
+    console.error = orig;
+  }
 });

@@ -70,6 +70,29 @@ export function buildMemoryBlock(firstName: string, rows: MemoryRow[]): string {
   return [heading, ...kept].join("\n");
 }
 
+/**
+ * Read-only memory block for surfaces without memory tools (the old chat).
+ * Never throws: a failed read is logged and the caller proceeds without it,
+ * so memory can never break a chat.
+ */
+export async function loadMemoryBlock(
+  firstName: string,
+  patientId: string,
+  list: (patientId: string) => Promise<MemoryRow[]> = memoryStore.list
+): Promise<string> {
+  try {
+    return buildMemoryBlock(firstName, await list(patientId));
+  } catch (err) {
+    console.error("[clara-memory] could not read memories", err);
+    return "";
+  }
+}
+
+/** Appends the block after the existing prompt; an empty block changes nothing. */
+export function appendMemoryBlock(prompt: string, block: string): string {
+  return block === "" ? prompt : `${prompt}\n\n${block}`;
+}
+
 const invalid = (message: string): ToolResult => ({ ok: false, reason: "INVALID_INPUT", message });
 
 export function makeMemoryHandlers(deps: MemoryDeps = prismaMemoryDeps) {
