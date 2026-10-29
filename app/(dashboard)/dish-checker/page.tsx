@@ -31,7 +31,7 @@ export default async function DishCheckerPage() {
         </p>
         <h1 className="text-3xl font-bold text-[#1E1A1A]">Clara</h1>
         <p className="text-xs mt-1.5" style={{ color: "#848181" }}>
-          Your personal AI food advisor
+          Your AI food assistant. Your chats are saved.
         </p>
       </div>
 

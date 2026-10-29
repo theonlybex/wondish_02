@@ -110,9 +110,36 @@ test("PremiumGuard is not imported anywhere — the screen wall has no callers",
 const METERED_SURFACES: { file: string; why: string }[] = [
   { file: "components/meal-plan/DailyMealPlanView.tsx", why: "new weeks, plan setup, day rebuilds" },
   { file: "components/meal-plan/SwapMealModal.tsx", why: "dish swaps" },
-  { file: "components/dish-checker/DishCheckerClient.tsx", why: "Clara chat and the dish checker" },
   { file: "components/pantry/PantryClient.tsx", why: "cook-my-day" },
 ];
+
+// The web Clara chat left that list on 2026-10-28: it now talks to
+// /api/clara/chat, which has no allowance to sell past (a hidden safety cap
+// only, answered with Clara's own "short break" line). There, the rule flips:
+// no upgrade or pricing offer at all.
+const UNMETERED_CLARA_SURFACES = [
+  "components/dish-checker/DishCheckerClient.tsx",
+  "components/clara/ConversationList.tsx",
+  "components/clara/AnswerChoices.tsx",
+];
+
+test("the saved-chat Clara surfaces never offer an upgrade", () => {
+  const offenders: string[] = [];
+  for (const file of UNMETERED_CLARA_SURFACES) {
+    const path = join(REPO_ROOT, file);
+    assert.ok(existsSync(path), `${file} is gone — update UNMETERED_CLARA_SURFACES in this test`);
+    const sf = parse(path);
+    const calls = collect(sf, ts.isCallExpression).filter(
+      (c) => ts.isIdentifier(c.expression) && c.expression.text === "quotaCta"
+    );
+    const tags = collect(sf, (n): n is ts.JsxOpeningElement | ts.JsxSelfClosingElement =>
+      (ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) && n.tagName.getText() === "QuotaError"
+    );
+    const pricing = collect(sf, ts.isStringLiteralLike).filter((l) => /\/pricing|\bupgrade\b|\bPlus\b/i.test(l.text));
+    if (calls.length || tags.length || pricing.length) offenders.push(`  ${file}`);
+  }
+  assert.deepEqual(offenders, [], `Upgrade or pricing wording in the saved-chat Clara UI:\n${offenders.join("\n")}`);
+});
 
 // ── The half the first version of this test missed ───────────────────────────
 //
