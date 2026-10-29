@@ -5,6 +5,7 @@ import Link from "next/link";
 import { MAX_MESSAGE_CHARS } from "@/lib/chat-history";
 import { apiFetch } from "@/lib/client-fetch";
 import { readClaraEvents } from "@/lib/clara/ndjson-client";
+import { pickResumeId, retryableKey } from "@/lib/clara/chat-client";
 import ConversationList, { type ConversationSummary } from "@/components/clara/ConversationList";
 import AnswerChoices from "@/components/clara/AnswerChoices";
 
@@ -144,7 +145,7 @@ export default function DishCheckerClient({ firstName }: Props) {
   }, [messages, choices]);
 
   // ── List ──
-  const loadList = useCallback(async (cursor?: string) => {
+  const loadList = useCallback(async (cursor?: string): Promise<ConversationSummary[] | null> => {
     if (cursor) setLoadingMore(true);
     else {
       setListLoading(true);
@@ -157,18 +158,16 @@ export default function DishCheckerClient({ firstName }: Props) {
       const page: ConversationSummary[] = Array.isArray(data?.items) ? data.items : [];
       setItems((prev) => (cursor ? [...prev, ...page.filter((p) => !prev.some((x) => x.id === p.id))] : page));
       setNextCursor(typeof data?.nextCursor === "string" && data.nextCursor ? data.nextCursor : null);
+      return page;
     } catch {
       if (!cursor) setListError("Couldn't load your chats.");
       else setListNotice("Couldn't load older chats. Please try again.");
+      return null;
     } finally {
       if (cursor) setLoadingMore(false);
       else setListLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    void loadList();
-  }, [loadList]);
 
   /**
    * After a turn: the active chat moves to the top with the server's title and
@@ -207,6 +206,8 @@ export default function DishCheckerClient({ firstName }: Props) {
       const text = raw.trim();
       if (!text || busyRef.current) return;
       busyRef.current = true;
+      // The member moved on: a slower resume or open must not land on top.
+      loadTokenRef.current++;
 
       // Boxes vanish on the first tap (Review Focus 1).
       setChoices(null);
@@ -219,9 +220,13 @@ export default function DishCheckerClient({ firstName }: Props) {
       setMessages((prev) => {
         // A retry re-sends the same text into the same chat: the user bubble
         // is already there, only the failed reply goes.
+        // A new message retires every older "Try again" (retryableKey).
         const base = opts.retryOf
           ? prev.filter((m) => m.key !== opts.retryOf)
-          : [...prev, { key: nextKey(), role: "user" as const, content: text }];
+          : [
+              ...prev.map((m) => (m.retryText ? { ...m, retryText: undefined } : m)),
+              { key: nextKey(), role: "user" as const, content: text },
+            ];
         return [...base, { key: assistantKey, role: "assistant", content: "" }];
       });
       const patch = (fn: (m: ChatMessage) => ChatMessage) =>
@@ -368,6 +373,20 @@ export default function DishCheckerClient({ firstName }: Props) {
     inputRef.current?.focus();
   }, []);
 
+  /** Show a saved chat from GET /api/clara/conversations/:id. */
+  const applyConversation = useCallback((data: unknown) => {
+    const raw = (data as { messages?: unknown } | null)?.messages;
+    const saved: { role?: unknown; content?: unknown; choices?: unknown }[] = Array.isArray(raw) ? raw : [];
+    setMessages(
+      saved
+        .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+        .map((m) => ({ key: nextKey(), role: m.role as "user" | "assistant", content: m.content as string }))
+    );
+    // Boxes come back only when Clara's question is still the last word.
+    const last = saved[saved.length - 1];
+    setChoices(last?.role === "assistant" ? readChoices(last.choices) : null);
+  }, []);
+
   const openConversation = useCallback(async (id: string) => {
     if (busyRef.current) return;
     const token = ++loadTokenRef.current;
@@ -393,24 +412,42 @@ export default function DishCheckerClient({ firstName }: Props) {
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       if (token !== loadTokenRef.current) return;
-      const saved: { role?: unknown; content?: unknown; choices?: unknown }[] = Array.isArray(data?.messages)
-        ? data.messages
-        : [];
-      setMessages(
-        saved
-          .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
-          .map((m) => ({ key: nextKey(), role: m.role as "user" | "assistant", content: m.content as string }))
-      );
-      // Boxes come back only when Clara's question is still the last word.
-      const last = saved[saved.length - 1];
-      setChoices(last?.role === "assistant" ? readChoices(last.choices) : null);
+      applyConversation(data);
     } catch {
       if (token !== loadTokenRef.current) return;
       setThreadError({ text: "I couldn't open that chat.", retryId: id });
     } finally {
       if (token === loadTokenRef.current) setLoadingThread(false);
     }
-  }, []);
+  }, [applyConversation]);
+
+  // First load: list page 1, then reopen the newest chat if it was touched
+  // in the last 12 hours — the same rule as iOS resumeIfRecent. Quietly: no
+  // skeleton, and any error just leaves the member on a new chat. A send,
+  // New chat or open meanwhile bumps loadTokenRef, so this never lands on
+  // top of a chat the member started or picked.
+  useEffect(() => {
+    const token = loadTokenRef.current;
+    void (async () => {
+      const page = await loadList();
+      if (!page || token !== loadTokenRef.current || busyRef.current) return;
+      const id = pickResumeId(page, Date.now());
+      if (!id) return;
+      try {
+        const res = await apiFetch(`/api/clara/conversations/${encodeURIComponent(id)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (token !== loadTokenRef.current || busyRef.current) return;
+        conversationIdRef.current = id;
+        setActiveId(id);
+        setShowGreeting(false);
+        setThreadError(null);
+        applyConversation(data);
+      } catch {
+        /* non-fatal: stay on the new chat */
+      }
+    })();
+  }, [loadList, applyConversation]);
 
   const deleteConversation = useCallback(
     async (item: ConversationSummary) => {
@@ -442,6 +479,7 @@ export default function DishCheckerClient({ firstName }: Props) {
 
   const shadow = "0 1px 3px rgba(30,26,26,0.07), 0 0 0 1px rgba(30,26,26,0.04)";
   const last = messages[messages.length - 1];
+  const retryKey = retryableKey(messages);
   const showChoices = !!choices && !busy && last?.role === "assistant" && !last.error;
 
   const list = (
@@ -610,7 +648,7 @@ export default function DishCheckerClient({ firstName }: Props) {
                       Finish your profile →
                     </Link>
                   )}
-                  {msg.retryText && (
+                  {msg.retryText && msg.key === retryKey && (
                     <button
                       type="button"
                       onClick={() => msg.retryText && void send(msg.retryText, { retryOf: msg.key })}
