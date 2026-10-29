@@ -176,6 +176,8 @@ model Patient {
   pantryItems       PatientPantryItem[]
 
   claraCapabilityRequests ClaraCapabilityRequest[]
+  claraConversations      ClaraConversation[]
+  claraMemories           ClaraMemory[]
   feedbackReports         FeedbackReport[]
   supplements             Supplement[]
 
@@ -1364,4 +1366,50 @@ model ClaraCapabilityRequest {
   /// One row per user per category per day: ranking counts people, not volume.
   @@unique([patientId, category, localDate])
   @@index([category, createdAt])
+}
+
+/// A saved Clara chat thread. Surface is where it started: "web" | "ios" | "unknown".
+/// Retention: 180 days since updatedAt.
+model ClaraConversation {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  title     String
+  surface   String         @default("unknown")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  messages  ClaraMessage[]
+  memories  ClaraMemory[]
+
+  @@index([patientId, updatedAt])
+}
+
+/// One saved turn. role: "user" | "assistant". choices holds the ask_choices
+/// options (2-4 strings) when the assistant turn offered answer boxes, else null.
+model ClaraMessage {
+  id             String            @id @default(cuid())
+  conversationId String
+  conversation   ClaraConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        String
+  choices        Json?
+  surface        String            @default("unknown")
+  createdAt      DateTime          @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+/// A short fact Clara remembers about a member (text <= 200 chars, 50 per member).
+/// Survives deletion of the conversation it came from (conversationId becomes null).
+model ClaraMemory {
+  id             String             @id @default(cuid())
+  patientId      String
+  patient        Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  text           String
+  surface        String             @default("unknown")
+  conversationId String?
+  conversation   ClaraConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  createdAt      DateTime           @default(now())
+
+  @@index([patientId, createdAt])
 }
