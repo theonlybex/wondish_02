@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { resolveActiveSkills, buildToolDefs, buildSystemPrompt, findTool, ALL_SKILLS } from "./registry";
 import type { Skill, ToolResult, ClaraContext } from "./types";
@@ -304,4 +305,66 @@ test("S3: plan on / logs off — ate-planned row steers unplanned intake to gap_
   const prompt = buildSystemPrompt("Sam", "profile text", active, "2026-08-03");
   assert.match(prompt, /I ate the planned dish[\s\S]*plan_mark_done/);
   assert.match(prompt, /unplanned food you have no intake tools: gap_report \(LOGS\)/i);
+});
+
+// ─── Persona + extra context (chat upgrade, Task 6) ─────────────────────────
+
+const fakeSkill = (name: string): Skill => ({ name, promptFragment: `${name.toUpperCase()}-FRAGMENT`, tools: [] });
+const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+
+// dish-checker's prompt must not change byte-for-byte. These hashes were taken
+// from buildSystemPrompt BEFORE the persona/extra-context params existed
+// (2026-10-28). Fake skills with fixed fragments keep the pin about the base
+// text, the runtime rules and the tie-breakers — a real skill's fragment edit
+// must not break it. If this fails, dish-checker's prompt changed: that is a
+// product decision, not a test to refresh.
+test("dish-checker's prompt (default persona, no extra context) is byte-identical to before", () => {
+  const all = ["profile", "logs", "nutrition", "plan", "gap"].map(fakeSkill);
+  const chat = ["profile", "nutrition", "gap"].map(fakeSkill);
+  const cases: Array<[Skill[], string | null, string]> = [
+    [all, "2026-10-28", "aceee948d368a398194cab772cbeb061256233b3f1736ab8798aad13902b8e98"],
+    [chat, "2026-10-28", "cf2198c040729f9575b76d766f8eafe82f0c55e1f78f137a1b819e2e4da004d7"],
+    [chat, null, "47834f72872840d2b4da28c94a05b77380acb600fc64790d994513eaa19f2eb3"],
+    [[], null, "bdbfb3b3c436dcf92d5004160c71c7f216375ccd8f86cb7a24ef91ec4a1ff3d1"],
+  ];
+  for (const [active, today, hash] of cases) {
+    assert.equal(sha(buildSystemPrompt("Sam", "MY-FOOD-MAP", active, today)), hash);
+    assert.equal(sha(buildSystemPrompt("Sam", "MY-FOOD-MAP", active, today, "advisor")), hash);
+    assert.equal(sha(buildSystemPrompt("Sam", "MY-FOOD-MAP", active, today, "advisor", "")), hash);
+  }
+});
+
+const ADVISOR_LINE = "you do NOT log meals or change their meal plan yourself";
+const ASSISTANT_LINE =
+  "you can read and change their meal logs and meal plan with your tools, always proposing a change with answer boxes first";
+
+test("the assistant persona replaces the advisor line and rule 13; everything else is shared", () => {
+  const all = ["profile", "logs", "nutrition", "plan", "gap"].map(fakeSkill);
+  const advisor = buildSystemPrompt("Sam", "MY-FOOD-MAP", all, "2026-10-28");
+  const assistant = buildSystemPrompt("Sam", "MY-FOOD-MAP", all, "2026-10-28", "assistant");
+  assert.ok(advisor.includes(ADVISOR_LINE));
+  assert.ok(!assistant.includes(ADVISOR_LINE));
+  assert.ok(assistant.includes(ASSISTANT_LINE));
+  assert.ok(advisor.includes("You can see TODAY'S plan only"));
+  assert.ok(!assistant.includes("You can see TODAY'S plan only"));
+  assert.match(assistant, /\n13\. [^\n]*use the plan tools for any other day/);
+  // Shared: rules 12 and 14, the runtime rules, the fragments.
+  for (const shared of ["MOTIVATIONS ARE NOT RESTRICTIONS", "14. Never guess a weekday", "Rules that always apply:", "PLAN-FRAGMENT"]) {
+    assert.ok(assistant.includes(shared), shared);
+  }
+});
+
+test("extra context sits after the runtime rules and BEFORE the skill fragments", () => {
+  const active = ["profile", "gap", "memory"].map(fakeSkill);
+  const prompt = buildSystemPrompt("Sam", "MY-FOOD-MAP", active, "2026-10-28", "assistant", "EXTRA-CONTEXT");
+  const at = prompt.indexOf("EXTRA-CONTEXT");
+  assert.ok(at > prompt.indexOf("Rules that always apply:"));
+  assert.ok(at < prompt.indexOf("PROFILE-FRAGMENT"));
+  assert.ok(at < prompt.indexOf("MEMORY-FRAGMENT"));
+  assert.ok(prompt.includes("\n\nEXTRA-CONTEXT\n\nPROFILE-FRAGMENT"));
+});
+
+test("extra context is kept even when the toolbox is empty", () => {
+  const prompt = buildSystemPrompt("Sam", "MY-FOOD-MAP", [], null, "assistant", "EXTRA-CONTEXT");
+  assert.ok(prompt.endsWith("\n\nEXTRA-CONTEXT"));
 });
