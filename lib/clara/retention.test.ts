@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gapRetentionCutoff, isAuthorizedCron, GAP_RETENTION_DAYS } from "./retention";
+import { gapRetentionCutoff, isAuthorizedCron, GAP_RETENTION_DAYS, CONVERSATION_RETENTION_DAYS } from "./retention";
 
 test("retention is the 180 days the spec promised", () => {
   assert.equal(GAP_RETENTION_DAYS, 180);
@@ -24,4 +24,12 @@ test("only the exact bearer token is accepted", () => {
   assert.equal(isAuthorizedCron("Bearer wrong", "s3cret"), false);
   assert.equal(isAuthorizedCron("s3cret", "s3cret"), false, "scheme is required");
   assert.equal(isAuthorizedCron(null, "s3cret"), false);
+});
+
+test("saved Clara chats are kept 180 days after their last activity", () => {
+  assert.equal(CONVERSATION_RETENTION_DAYS, 180);
+  const now = new Date("2026-10-28T00:00:00Z");
+  const cutoff = gapRetentionCutoff(now, CONVERSATION_RETENTION_DAYS);
+  assert.equal(cutoff.toISOString(), "2026-05-01T00:00:00.000Z");
+  assert.equal(Math.round((now.getTime() - cutoff.getTime()) / 86_400_000), 180);
 });

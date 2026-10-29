@@ -10,6 +10,9 @@
 
 export const GAP_RETENTION_DAYS = 180;
 
+/** Saved Clara chats are deleted once idle (no new message) this long. */
+export const CONVERSATION_RETENTION_DAYS = 180;
+
 /** The cutoff instant: rows created strictly before this are past retention. */
 export function gapRetentionCutoff(now: Date, days: number = GAP_RETENTION_DAYS): Date {
   return new Date(now.getTime() - days * 86_400_000);

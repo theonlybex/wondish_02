@@ -13,6 +13,10 @@
       "schedule": "0 4 * * *"
     },
     {
+      "path": "/api/cron/clara-conversation-purge",
+      "schedule": "30 4 * * *"
+    },
+    {
       "path": "/api/cron/rate-limit-watch",
       "schedule": "0 5 * * *"
     }
