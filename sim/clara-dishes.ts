@@ -179,3 +179,57 @@ export function withGenericOil(d: ModelDish): ModelDish {
     steps: d.steps.map(swap),
   };
 }
+
+/** A model dish in the generator's structured-output item shape (lib/clara/dish-output.ts). */
+export function toOutputItem(d: ModelDish) {
+  const byName = new Map(d.amounts.map((a) => [a.name.toLowerCase(), a]));
+  return {
+    name: d.name,
+    description: d.description,
+    prepMinutes: d.prepMinutes,
+    cookMinutes: d.cookMinutes,
+    ingredients: d.usesIngredients.map((n) => {
+      const a = byName.get(n.toLowerCase());
+      return { name: n, quantity: a?.quantity ?? 0, unit: a?.unit ?? "" };
+    }),
+    steps: d.steps,
+    perServing: d.perServing,
+  };
+}
+
+export type FakeStreamMode =
+  | { kind: "dishes"; dishes: ModelDish[] }
+  | { kind: "garbage" } // not the schema: truncated, half-parsed text
+  | { kind: "hang" }; // never answers: only the deadline ends it
+
+/**
+ * The raw stream events the real SDK yields for `messages.create({stream: true})`
+ * with a JSON output format: message_start, text deltas in small chunks,
+ * message_delta, message_stop. Honours the abort signal like the SDK does.
+ */
+export async function* fakeDishStream(mode: FakeStreamMode, signal?: AbortSignal): AsyncGenerator<any> {
+  const aborted = () => {
+    const e = new Error("Request was aborted.");
+    e.name = "APIUserAbortError";
+    return e;
+  };
+  yield { type: "message_start", message: { usage: { input_tokens: 1500, output_tokens: 1 } } };
+  yield { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } };
+  if (mode.kind === "hang") {
+    await new Promise<void>((_, reject) => {
+      if (signal?.aborted) reject(aborted());
+      signal?.addEventListener("abort", () => reject(aborted()), { once: true });
+    });
+    return;
+  }
+  const text = mode.kind === "garbage"
+    ? '{"dishes":[{"name":"Broken","ingredients":[{"name":"rice","quantity":50,"g"}], "steps": "not a list", "perServing": {"calories": "lots"}}, {"name": "Cut off mid'
+    : JSON.stringify({ dishes: mode.dishes.map(toOutputItem) });
+  for (let i = 0; i < text.length; i += 40) {
+    if (signal?.aborted) throw aborted();
+    yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: text.slice(i, i + 40) } };
+  }
+  yield { type: "content_block_stop", index: 0 };
+  yield { type: "message_delta", delta: { stop_reason: mode.kind === "garbage" ? "max_tokens" : "end_turn" }, usage: { output_tokens: Math.ceil(text.length / 4) } };
+  yield { type: "message_stop" };
+}

@@ -25,12 +25,14 @@ import { snap, state, ingById, ingByName } from "./setup";
 import { createClaraStore } from "./fake-db";
 import { buildProfiles, makePatient, type Profile, type RuleKey } from "./profiles";
 import { makeOracle } from "./oracle";
-import { TEMPLATES, fromTemplate, fromLibrary, withSlippedIn, withGenericOil, type ModelDish } from "./clara-dishes";
+import { TEMPLATES, fromTemplate, fromLibrary, withSlippedIn, withGenericOil, fakeDishStream, type ModelDish } from "./clara-dishes";
 
 // ── isolation: the dish model, the clock, the store ─────────────────────────
 type FakeModelCall = { system: string; user: string; offered: ModelDish[] };
+// "garbage": output that is not the schema; "hang": no answer until the deadline aborts the call.
+type FakeAnswer = ModelDish[] | "garbage" | "hang";
 const fakeModel = {
-  decide: null as null | ((meal: string, servings: number, system: string) => ModelDish[]),
+  decide: null as null | ((meal: string, servings: number, system: string) => FakeAnswer),
   calls: [] as FakeModelCall[],
 };
 mock.module(pathToFileURL(join(__dirname, "..", "lib", "anthropic.ts")).href, {
@@ -38,17 +40,21 @@ mock.module(pathToFileURL(join(__dirname, "..", "lib", "anthropic.ts")).href, {
     // The only client the dish generator builds. It never leaves the process.
     createAnthropic: () => ({
       messages: {
-        create: async (params: any) => {
+        create: async (params: any, opts?: { signal?: AbortSignal }) => {
           const system = String(params.system ?? "");
           const user = String(params.messages?.[0]?.content ?? "");
           const meal = (user.match(/Suggest the \d+ (\w+) dishes/)?.[1] ?? "dinner").replace(/^./, (c) => c.toUpperCase());
           const servings = Number(system.match(/servings is (\d+)/)?.[1] ?? 1);
-          const offered = fakeModel.decide ? fakeModel.decide(meal, servings, system) : [];
+          const answer = fakeModel.decide ? fakeModel.decide(meal, servings, system) : [];
+          const offered = Array.isArray(answer) ? answer : [];
           fakeModel.calls.push({ system, user, offered });
-          return { content: [{ type: "tool_use", id: "toolu_sim", name: "suggest_recipes", input: { recipes: offered } }] };
+          // The dish generator streams a schema-constrained answer (lib/clara/dish-output.ts).
+          if (!params.stream || !params.output_config?.format) throw new Error("sim: the dish generator must stream structured output");
+          return fakeDishStream(answer === "garbage" ? { kind: "garbage" } : answer === "hang" ? { kind: "hang" } : { kind: "dishes", dishes: offered }, opts?.signal);
         },
       },
     }),
+    HAIKU_MODEL: "claude-haiku-5-5",
     claraBusyStatus: () => null,
     CLARA_BUSY_MESSAGE: "Clara is busy — try again in a moment.",
     ANTHROPIC_TIMEOUT_MS: 90_000,
@@ -436,7 +442,10 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
   const journal = await import("@/app/api/journal/route");
   const me = await import("@/app/api/me/route");
   const { makeConversationStore } = await import("@/lib/clara/conversations");
-  const { dishSkill } = await import("@/lib/clara/skills/dish");
+  const { dishSkill, dishTiming } = await import("@/lib/clara/skills/dish");
+  // The live budget is seconds; the fake model answers at once or hangs until
+  // aborted, so a short budget keeps the hang cases from slowing the run.
+  dishTiming.budgetMs = 150;
   const { defaultTracked } = await import("@/lib/level-catalogue");
   const { computeAllMetrics, computeWeeklyTarget, resolveDailyTargets } = await import("@/lib/caloric-engine");
   const { buildDietMatchers, derivePatientBans } = await import("@/lib/diet-match");
@@ -445,7 +454,7 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
   const planTool = dishSkill.tools.find((t) => t.def.name === "dish_plan_today")!.handler;
 
   const personas = buildPersonas();
-  const dishStats = { calls: 0, offered: 0, offeredViolating: 0, served: 0, couldntFit: 0, servedViolations: 0, repairsOffered: 0, slipsInSteps: 0, picturePath: 0, logsPath: 0, guests: 0, plans: 0 };
+  const dishStats = { modes: {} as Record<string, number>, servedGenerated: 0, servedLibrary: 0, libraryHadOne: 0, honestBothEmpty: 0, calls: 0, offered: 0, offeredViolating: 0, served: 0, couldntFit: 0, servedViolations: 0, repairsOffered: 0, slipsInSteps: 0, picturePath: 0, logsPath: 0, guests: 0, plans: 0 };
   const perPerson: { id: string; tier: string; flow: string; tz: string; requests: number; meals: number; findings: number }[] = [];
   const observations: string[] = [];
   const fibreStats = { responses: 0, little: 0, wordChanged: 0 };
@@ -990,6 +999,18 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
       }
       return out;
     };
+    const libraryCompliantCount = (mealType: string) => {
+      refreshOracle();
+      const meal = mealType[0].toUpperCase() + mealType.slice(1);
+      let n = 0;
+      for (const rec of libraryByMeal.get(meal) ?? []) {
+        if (rec.fiber == null || !Array.isArray(rec.steps) || rec.steps.length === 0 || rec.ingredients.length < 2) continue;
+        if (rec.ingredients.some((ri) => !(ri.quantity != null && ri.quantity > 0))) continue;
+        const items = rec.ingredients.map((ri) => ingById.get(ri.ingredientId)).filter(Boolean).map((i) => ({ name: i!.name, allergenGroups: i!.allergenGroups }));
+        if (oracle.judgeMany(items).every((v) => v.engine.length === 0 && v.groups.length === 0)) n++;
+      }
+      return n;
+    };
     const compliantTemplates = (meal: string, servings: number): ModelDish[] =>
       TEMPLATES.filter((x) => x.meal === meal).map((tp) => fromTemplate(tp, servings))
         .filter((d) => oracle.judgeMany(d.usesIngredients.map((n) => ({ name: n, allergenGroups: ingByName.get(n.toLowerCase())?.allergenGroups ?? [] }))).every((v) => !v.engine.length && !v.groups.length));
@@ -998,7 +1019,12 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
       refreshOracle();
       // A violating candidate always comes FIRST: a leaking gate would serve it.
       const out: ModelDish[] = [];
-      const mode = pick(r, ["mixed", "mixed", "slip", "allViolating", "library", "oil"]);
+      // nothing / garbage / hang: the model gives no usable dish at all (empty
+      // list, output that is not the schema, no answer before the deadline).
+      const mode = pick(r, ["mixed", "mixed", "slip", "allViolating", "library", "oil", "nothing", "garbage", "hang"]);
+      dishStats.modes[mode] = (dishStats.modes[mode] ?? 0) + 1;
+      if (mode === "garbage" || mode === "hang") return mode;
+      if (mode === "nothing") return [];
       const good = compliantTemplates(meal, servings);
       const bad = violators(meal, servings);
       const libRec = compliantLibrary(meal);
@@ -1080,7 +1106,23 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
       callsMark = fakeModel.calls.length;
       console.log = console.warn = console.info = () => {};
       try { res = await suggestTool(ctx() as any, input); } catch (e) { check("no-throw", false, () => `dish_suggest threw ${(e as Error).stack?.split("\n").slice(0, 3).join(" | ")}`); return null; } finally { Object.assign(console, quiet); }
-      if (!res.ok) { dishStats.couldntFit++; check("dish.fail-reason", res.reason === "FAILED" || res.reason === "INVALID_INPUT", () => JSON.stringify(res)); return null; }
+      // Always a dish: when the library holds plenty of complete recipes this
+      // person may eat (judged by the independent oracle), "couldn't make one"
+      // means the safety net failed. Time limits and guests narrow the library
+      // further, so the check covers the plain one-serving ask.
+      const libCount = libraryCompliantCount(String(input.mealType));
+      const plainAsk = !input.maxMinutes && !((input.servings as number) > 1);
+      if (plainAsk && libCount >= 10) dishStats.libraryHadOne++;
+      if (!res.ok) {
+        dishStats.couldntFit++;
+        check("dish.fail-reason", res.reason === "FAILED" || res.reason === "INVALID_INPUT", () => JSON.stringify(res));
+        check("dish.always-a-dish", !(plainAsk && libCount >= 10), () => `couldn't make one, yet ${libCount} complete library ${input.mealType} recipes pass this person's rules`);
+        if (libCount === 0) dishStats.honestBothEmpty++;
+        return null;
+      }
+      if (res.data.dish.source === "library") dishStats.servedLibrary++; else dishStats.servedGenerated++;
+      check("dish.source", res.data.dish.source === "generated" || res.data.dish.source === "library", () => JSON.stringify(res.data.dish));
+      check("honesty.library-not-made", res.data.dish.source !== "library" || /never say you made/.test(res.data.dish.note ?? ""), () => JSON.stringify(res.data.dish));
       const dish = res.parts.find((p: any) => p.kind === "dish");
       const levelsPart = res.parts.find((p: any) => p.kind === "levels");
       check("dish.picture-no-levels-part", !picture || !levelsPart, () => `answers path still emits a levels part`);
@@ -1112,6 +1154,7 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
       if (!picture && res.data.levels && !res.data.levels.enoughLogs) check("honesty.clara-levels-need-enough-logs", !(res.parts ?? []).some((p: any) => p.kind === "levels") && res.data.levels.little.length === 0 && res.data.levels.aLot.length === 0,
         () => `plan: not enough logs yet Clara is handed ${JSON.stringify(res.data.levels)}`);
       for (const p of res.parts ?? []) { judgeServed(p, `plan ${occasion}`); }
+      for (const d of res.data.dishes ?? []) { if (d.source === "library") dishStats.servedLibrary++; else dishStats.servedGenerated++; }
       check("dish.plan-skips-logged", (res.data.dishes ?? []).every((d: any) => !loggedToday.has(d.mealType)), () => `plan includes an already-logged meal: ${JSON.stringify(res.data.dishes.map((d: any) => d.mealType))} logged ${[...loggedToday]}`);
       if (occasion === "eating_out") check("dish.eating-out", (res.data.dishes ?? []).every((d: any) => d.mealType !== "dinner"), () => `eating out still plans dinner`);
       if (occasion === "guests") for (const d of res.data.dishes ?? []) check("dish.guests-dinner", d.mealType !== "dinner" || d.servings === 6, () => `guests dinner servings ${d.servings}`);
@@ -1444,7 +1487,7 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
   lines.push(`# Clara-first user simulation`, ``);
   lines.push(`Run ${new Date(Date.now()).toISOString().slice(0, 10)} (simulated clock) · snapshot ${snap.takenAt}`, ``);
   lines.push(`**People:** ${personas.length} (${personas.filter((p) => !p.oldApp).length} on the new app, ${personas.filter((p) => p.oldApp).length} on an old build) · **requests:** ${counts.requests} · **assertions:** ${counts.assertions} · **failed checks:** ${failures.length} in ${byId.size} invariants (${known.length} known findings, ${unknown.length} unexplained).`, ``);
-  lines.push(`Clara dish tools: ${dishStats.calls} calls (${dishStats.plans} day plans, ${dishStats.guests} for guests; ${dishStats.picturePath} from the starting picture, ${dishStats.logsPath} from logs), ${dishStats.offered} candidate dishes offered by the fake model of which ${dishStats.offeredViolating} broke the person's rules, ${dishStats.repairsOffered} said "cooking oil", ${dishStats.slipsInSteps} hid an allergen in a step only; ${dishStats.served} dishes served, ${dishStats.servedViolations} of them breaking a rule; ${dishStats.couldntFit} "couldn't make one that fits".`, ``);
+  lines.push(`Clara dish tools: ${dishStats.calls} calls (${dishStats.plans} day plans, ${dishStats.guests} for guests; ${dishStats.picturePath} from the starting picture, ${dishStats.logsPath} from logs), ${dishStats.offered} candidate dishes offered by the fake model of which ${dishStats.offeredViolating} broke the person's rules, ${dishStats.repairsOffered} said "cooking oil", ${dishStats.slipsInSteps} hid an allergen in a step only; ${dishStats.served} dishes served, ${dishStats.servedViolations} of them breaking a rule; ${dishStats.couldntFit} "couldn't make one that fits". Served ${dishStats.servedGenerated} generated and ${dishStats.servedLibrary} library dishes; fake-model answers by kind ${JSON.stringify(dishStats.modes)}; ${dishStats.libraryHadOne} plain asks had ≥10 complete rule-compliant library recipes (each must get a dish); ${dishStats.honestBothEmpty} "couldn't make one" with an empty library.`, ``);
   lines.push(`Fibre with unknown meals: ${fibreStats.responses} Numbers responses counted a meal without a fibre figure as 0 g; ${fibreStats.little} of them said "little"; in ${fibreStats.wordChanged} the word differs from the one the known meals alone give.`, ``);
   lines.push(`| Invariant | Failures | People | Example |`, `|---|---:|---:|---|`);
   for (const [id, fs] of [...byId.entries()].sort((a, b) => b[1].length - a[1].length))

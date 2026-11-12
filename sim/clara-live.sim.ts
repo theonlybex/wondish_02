@@ -34,14 +34,36 @@ mock.module(pathToFileURL(join(__dirname, "..", "lib", "anthropic.ts")).href, {
   namedExports: {
     createAnthropic: (o: { timeout?: number; maxRetries?: number } = {}) => {
       const real = new Anthropic({ apiKey: key, timeout: o.timeout ?? 90_000, maxRetries: o.maxRetries ?? 1 });
-      return { messages: { create: async (params: any) => {
+      return { messages: { create: async (params: any, opts?: any) => {
         const t0 = Date.now();
+        if (params.stream) {
+          // The dish generator streams a schema-constrained answer: record it as it passes.
+          const s: any = await real.messages.create(params, opts);
+          const spy: Spy = { usage: { input_tokens: 0, output_tokens: 0 }, candidates: null, stop: null, ms: 0, rawInput: null, system: String(params.system ?? "") };
+          spies.push(spy);
+          return (async function* () {
+            let text = "";
+            try {
+              for await (const ev of s) {
+                if (ev.type === "message_start") spy.usage.input_tokens = ev.message.usage.input_tokens;
+                if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") text += ev.delta.text;
+                if (ev.type === "message_delta") { spy.usage.output_tokens = ev.usage.output_tokens; spy.stop = ev.delta.stop_reason; }
+                yield ev;
+              }
+            } finally {
+              spy.ms = Date.now() - t0;
+              spy.rawInput = text;
+              try { spy.candidates = JSON.parse(text).dishes; } catch { spy.candidates = null; }
+            }
+          })();
+        }
         const msg = await real.messages.create(params);
         const tool = msg.content.find((b) => b.type === "tool_use") as any;
         spies.push({ usage: { input_tokens: msg.usage.input_tokens, output_tokens: msg.usage.output_tokens }, candidates: tool?.input?.recipes ?? null, stop: msg.stop_reason, ms: Date.now() - t0, rawInput: tool?.input ?? msg.content, system: String(params.system ?? "") });
         return msg;
       } } };
     },
+    HAIKU_MODEL: "claude-haiku-5-5",
     claraBusyStatus: () => null, CLARA_BUSY_MESSAGE: "Clara is busy — try again in a moment.", ANTHROPIC_TIMEOUT_MS: 90_000, ANTHROPIC_MAX_RETRIES: 1,
   },
 });
@@ -90,7 +112,7 @@ import { LIVE_PEOPLE as PEOPLE } from "./clara-live-people";
     if (spy) raw.push({ person: p.id, servings: p.servings ?? 1, system: spy.system, stop: spy.stop, output: spy.rawInput });
     const oracle = makeOracle(makePatient(snap, { id: p.id, tier: "curated", rules: p.rules }) as any, p.rules);
     const offered = Array.isArray(spy?.candidates) ? (spy!.candidates as any[]) : [];
-    const offeredBad = offered.filter((d) => oracle.judgeMany((d.usesIngredients ?? []).map((n: string) => ({ name: n, allergenGroups: ingByName.get(n.toLowerCase())?.allergenGroups ?? [] }))).some((v) => v.engine.length || v.groups.length));
+    const offeredBad = offered.filter((d) => oracle.judgeMany((d.usesIngredients ?? d.ingredients?.map((x: any) => x.name) ?? []).map((n: string) => ({ name: n, allergenGroups: ingByName.get(n.toLowerCase())?.allergenGroups ?? [] }))).some((v) => v.engine.length || v.groups.length));
     if (!res.ok) {
       rows.push(`| ${p.id} | — (${res.reason}: couldn't make one that fits) | — | ${offered.map((d) => d.name).join("; ")} (${offeredBad.length} broke a rule) | ${spy?.usage.input_tokens ?? 0}/${spy?.usage.output_tokens ?? 0} |`);
       continue;
@@ -106,7 +128,7 @@ import { LIVE_PEOPLE as PEOPLE } from "./clara-live-people";
   const tin = spies.reduce((a, s) => a + s.usage.input_tokens, 0), tout = spies.reduce((a, s) => a + s.usage.output_tokens, 0);
   const lines = [
     `# Clara live sample — the real dish generator`, ``,
-    `Run ${new Date().toISOString()} · ${PEOPLE.length} people · ${spies.length} model calls (claude-haiku-4-5, the product's CLARA_MODEL) · ${tin} input / ${tout} output tokens · ${served} dishes served, ${violations} breaking a rule (oracle).`, ``,
+    `Run ${new Date().toISOString()} · ${PEOPLE.length} people · ${spies.length} model calls (claude-haiku-5-5, the product's CLARA_MODEL) · ${tin} input / ${tout} output tokens · ${served} dishes served, ${violations} breaking a rule (oracle).`, ``,
     `In-memory store, no database. One dish_suggest per person; the product's own gates decide what is served.`, ``,
     `| Person | Served dish | What Clara is handed (levels, reasons, note) | Model's raw candidates | Tokens in/out |`, `|---|---|---|---|---|`, ...rows, ``,
   ];
