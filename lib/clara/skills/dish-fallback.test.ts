@@ -252,3 +252,21 @@ test("libraryToFridge: per-serving amounts from the stored rows, the stored step
   assert.deepEqual(r.steps, ["Cook the food for 10 minutes.", "Serve."]);
   assert.equal(r.id, "frg_x");
 });
+
+// I1: a multi-serving recipe's steps state WHOLE-recipe amounts ("add 1 teaspoon salt"); the card lists one
+// serving (¼ teaspoon). Served to one person, the steps and the card would disagree — in cook mode too.
+test("rankLibrary never offers one person a multi-serving recipe whose steps state amounts", () => {
+  const m = buildDietMatchers(derivePatientBans(graph({})));
+  const statesAmount = (s: string) => /\d+ (teaspoon|g)\b/.test(s);
+  const four = (id: string, steps: string[]) => lib(id, [["lentils"], ["spinach"]], { servings: 4, calories: 1600, carbs: 180, fiber: 24, steps });
+  const pool = [
+    four("amounts", ["Simmer 200 g lentils for 20 minutes.", "Add 1 teaspoon salt."]),
+    four("no amounts", ["Simmer the lentils for 20 minutes.", "Stir in the spinach."]),
+  ];
+  const one = rankLibrary(pool, { mealType: "dinner", little: [], aLot: [] }, { patient: {} as any, matchers: m, seed: "s" }, NONE, statesAmount);
+  assert.deepEqual(one.map((r) => r.id), ["no amounts"]);
+  const six = rankLibrary(pool, { mealType: "dinner", servings: 6, little: [], aLot: [] }, { patient: {} as any, matchers: m, seed: "s" }, NONE, statesAmount);
+  assert.deepEqual(six.map((r) => r.id), ["no amounts"], "for several people, steps never state amounts");
+  const single = lib("one serving", [["lentils"], ["spinach"]], { steps: ["Simmer 50 g lentils for 20 minutes.", "Serve."] });
+  assert.deepEqual(rankLibrary([single], { mealType: "dinner", little: [], aLot: [] }, { patient: {} as any, matchers: m, seed: "s" }, NONE, statesAmount).map((r) => r.id), ["one serving"], "a one-serving recipe's amounts are per serving: fine for one");
+});

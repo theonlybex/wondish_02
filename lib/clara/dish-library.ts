@@ -73,9 +73,9 @@ function hash(s: string): number {
  * (every amount, steps, a fibre figure — the card logs fibre, and 0 would be
  * a false number), and not one of their recent dishes. Then a score: a
  * fibre-rich ingredient when they get little fibre; nothing salty when they
- * get a lot of sodium; the asked time; for several servings, steps that state
- * no amount (the app scales per-serving amounts). Ties break by a hash of
- * person, day and meal.
+ * get a lot of sodium; the asked time. Steps that state amounts are allowed
+ * only for a one-serving recipe asked for one person (the app scales the
+ * card's per-serving amounts). Ties break by a hash of person, day and meal.
  */
 export function rankLibrary(
   pool: readonly LibraryRecipe[],
@@ -101,6 +101,10 @@ export function rankLibrary(
     if (banned && !evaluateDishAgainstProfile(names, person.matchers, ingredientGroupsOf(r.ingredients)).passed) continue;
 
     const per = r.servings && r.servings > 0 ? r.servings : 1;
+    // The card (and the cook-mode recipe sent back from it) lists ONE serving and the app scales it.
+    // Steps that state amounts are only right when they are already one serving's amounts: a
+    // one-serving recipe, for one person. Anything else is out, not just ranked lower.
+    if ((multi || per !== 1) && stepsOf(r).some(stepStatesAmount)) continue;
     let score = 0;
     if (ask.little.includes("fibre")) {
       if (fibreRichIngredient(names)) score += 3;
@@ -112,9 +116,7 @@ export function rankLibrary(
     }
     const minutes = (r.prepTime ?? 0) + (r.cookTime ?? 0);
     if (limit !== undefined && minutes > 0 && minutes <= limit) score += 2;
-    if (multi) score += stepsOf(r).some(stepStatesAmount) ? -10 : 3;
-    // Per-serving steps are only right for a one-serving recipe when one serving is asked.
-    if (!multi && per !== 1 && stepsOf(r).some(stepStatesAmount)) score -= 10;
+    if (multi) score += 3;
     scored.push({ r, score, tie: hash(`${person.seed}|${r.id}`) });
   }
   scored.sort((a, b) => b.score - a.score || a.tie - b.tie);
