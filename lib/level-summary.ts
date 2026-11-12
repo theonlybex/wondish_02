@@ -14,11 +14,39 @@ export async function loadLevelSummary(patientId: string, toDate: string, days: 
     select: { localDate: true, servings: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, sodium: true },
   });
 
-  const byDate = new Map<string, LevelDayInput>();
+  const dayInputs = levelDaysFromRows(rows);
+
+  const dayTarget = await getDayTarget(patientId, toDate, false);
+  const targets = dayTarget
+    ? { calories: dayTarget.calories, protein: dayTarget.protein, carbs: dayTarget.carbs, fat: dayTarget.fat }
+    : null;
+  return summarizeLevels(dayInputs, targets, { fromDate, toDate });
+}
+
+/** One MealLog row as the week's levels read it (per-serving numbers × servings). */
+export interface MealLevelRow {
+  localDate: string;
+  servings: number;
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  fiber: number | null;
+  sodium: number | null;
+}
+
+/**
+ * Groups a window's rows into days. A day's sodium is known only when EVERY
+ * meal that day carries it: sodium is a new column, and adding just the rows
+ * that have it would read a three-meal day as one dish's sodium ("within
+ * limit" for nearly everyone). summarizeLevels averages over known days only.
+ */
+export function levelDaysFromRows(rows: MealLevelRow[]): LevelDayInput[] {
+  const byDate = new Map<string, LevelDayInput & { sodiumComplete: boolean }>();
   for (const r of rows) {
     let d = byDate.get(r.localDate);
     if (!d) {
-      d = { localDate: r.localDate, meals: 0, calories: 0, protein: 0, carbs: 0, fat: 0, fibre: 0, sodium: null };
+      d = { localDate: r.localDate, meals: 0, calories: 0, protein: 0, carbs: 0, fat: 0, fibre: 0, sodium: 0, sodiumComplete: true };
       byDate.set(r.localDate, d);
     }
     const s = r.servings;
@@ -28,12 +56,8 @@ export async function loadLevelSummary(patientId: string, toDate: string, days: 
     d.carbs += (r.carbs ?? 0) * s;
     d.fat += (r.fat ?? 0) * s;
     d.fibre += (r.fiber ?? 0) * s;
-    if (r.sodium != null) d.sodium = (d.sodium ?? 0) + r.sodium * s;
+    if (r.sodium == null) d.sodiumComplete = false;
+    else d.sodium = (d.sodium ?? 0) + r.sodium * s;
   }
-
-  const dayTarget = await getDayTarget(patientId, toDate, false);
-  const targets = dayTarget
-    ? { calories: dayTarget.calories, protein: dayTarget.protein, carbs: dayTarget.carbs, fat: dayTarget.fat }
-    : null;
-  return summarizeLevels(Array.from(byDate.values()), targets, { fromDate, toDate });
+  return Array.from(byDate.values()).map(({ sodiumComplete, ...d }) => ({ ...d, sodium: sodiumComplete ? d.sodium : null }));
 }

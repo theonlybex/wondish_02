@@ -6,6 +6,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { ClaraChoices, ModelContentBlock, ModelMessage } from "./types";
+import { latestStepCount } from "./cook-dishes";
 
 export type { ClaraChoices } from "./types";
 
@@ -132,10 +133,12 @@ function parseToolTrace(raw: unknown): ToolTraceEntry[] {
   );
 }
 
-/** Steps in a stored recipe; anything malformed counts as none. */
+/**
+ * Steps in the most recently started dish (the column holds one recipe per
+ * dish now, or one recipe from older builds); anything malformed counts as none.
+ */
 function countSteps(recipe: unknown): number {
-  const steps = recipe && typeof recipe === "object" ? (recipe as { steps?: unknown }).steps : null;
-  return Array.isArray(steps) ? steps.length : 0;
+  return latestStepCount(recipe);
 }
 
 /** A stored input that no longer parses to an object (it may have been cut) replays as {}. */

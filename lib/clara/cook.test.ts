@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeCookService, parseCookBody, type CookDeps } from "./cook";
 import type { MealLogCreateData } from "@/lib/meal-log";
+import { cookDishesJson } from "./cook-dishes";
 
 const recipe = {
   name: "Lentil soup",
@@ -24,22 +25,24 @@ interface Row {
 
 function fake(rows: Row[] = [{ id: "c1", patientId: "p1", title: "x", dishName: null, recipe: null, cookedAt: null }]) {
   const logs: MealLogCreateData[] = [];
+  const find = (id: string, pid: string) => rows.find((x) => x.id === id && x.patientId === pid);
   const deps: CookDeps = {
     getCook: async (id, pid) => {
-      const r = rows.find((x) => x.id === id && x.patientId === pid);
-      return r ? { dishName: r.dishName, recipe: r.recipe } : null;
+      const r = find(id, pid);
+      return r ? { dishName: r.dishName, cookedAt: r.cookedAt, recipe: r.recipe } : null;
     },
-    saveStart: async (id, pid, v) => {
-      const r = rows.find((x) => x.id === id && x.patientId === pid);
-      if (!r) return false;
-      Object.assign(r, v);
-      return true;
-    },
-    markDone: async (id, pid, at) => {
-      const r = rows.find((x) => x.id === id && x.patientId === pid);
-      if (!r) return false;
-      r.cookedAt = at;
-      return true;
+    updateCook: async (id, pid, change) => {
+      const r = find(id, pid);
+      if (!r) return null;
+      // Round-trip through JSON like the Json column does.
+      const { write, result } = change({ dishName: r.dishName, cookedAt: r.cookedAt, recipe: JSON.parse(JSON.stringify(r.recipe)) });
+      if (write) {
+        if (write.title !== undefined) r.title = write.title;
+        if (write.dishName !== undefined) r.dishName = write.dishName;
+        r.cookedAt = write.cookedAt;
+        if (write.recipe !== undefined) r.recipe = JSON.parse(JSON.stringify(cookDishesJson(write.recipe)));
+      }
+      return result;
     },
     logOnce: async (data) => {
       if (logs.some((l) => l.patientId === data.patientId && l.clientRequestId === data.clientRequestId)) return;
@@ -127,7 +130,12 @@ test("start sets title and dishName (60-char cap) and stores the recipe", async 
   assert.deepEqual(res, { ok: true });
   assert.equal(f.rows[0].title.length, 60);
   assert.equal(f.rows[0].dishName, f.rows[0].title);
-  assert.deepEqual(f.rows[0].recipe, recipe);
+  const stored = f.rows[0].recipe as Record<string, { name: string; recipe: unknown; startedAt: string; cookedAt: string | null }>;
+  assert.deepEqual(Object.keys(stored), ["d1"], "kept per dish, keyed by the dishId it was started with");
+  assert.deepEqual(stored.d1.recipe, recipe);
+  assert.equal(stored.d1.name, f.rows[0].title);
+  assert.equal(stored.d1.cookedAt, null);
+  assert.equal(typeof stored.d1.startedAt, "string");
   assert.equal(f.logs.length, 0);
 });
 
@@ -192,7 +200,7 @@ test("ate logs the dish from the stored recipe", async () => {
   assert.equal(l.sodium, 300);
   assert.equal(l.estimated, false);
   assert.equal(l.incomplete, false);
-  assert.equal(l.clientRequestId, "cook-c1");
+  assert.equal(l.clientRequestId, "cook-c1-d1", "no dishId: the most recent dish, keyed by chat and dish");
 });
 
 test("ate defaults to dinner and the server date; null sodium is omitted", async () => {
@@ -215,4 +223,155 @@ test("ate twice (double tap, offline replay) creates one log and both answer ok"
   assert.deepEqual(await svc.apply("c1", "p1", a), { ok: true });
   await Promise.all([svc.apply("c1", "p1", a), svc.apply("c1", "p1", a)]);
   assert.equal(f.logs.length, 1);
+});
+
+// ─── Per dish: "Plan today's dishes" puts up to three cookable dishes in one chat ───
+
+const porridge = {
+  name: "Oat porridge",
+  servings: 1,
+  minutes: 10,
+  ingredients: [{ name: "oats", quantity: 50, unit: "g" }],
+  steps: ["Simmer the oats."],
+  perServing: { calories: 250, protein: 9, carbs: 40, fat: 5, fibre: 6, sodium: 80 as number | null },
+};
+const breakfast = { dishId: "dB", name: "Oat porridge", recipe: porridge };
+const lunch = { dishId: "dL", name: "Lentil soup", recipe };
+
+/** A clock that moves a minute per call, so starts are ordered. */
+function ticking(from = Date.parse("2026-11-12T08:00:00Z")) {
+  let t = from;
+  return () => new Date((t += 60_000));
+}
+
+test("parseCookBody: ate and done take an optional dishId", () => {
+  assert.deepEqual(parsed({ action: "ate", portion: 1, dishId: "dB" }), {
+    action: "ate", portion: 1, mealType: "dinner", today: undefined, dishId: "dB",
+  });
+  assert.deepEqual(parsed({ action: "done", dishId: "dB" }), { action: "done", dishId: "dB" });
+  assert.deepEqual(parsed({ action: "done" }), { action: "done" });
+  assert.equal(parseCookBody({ action: "ate", portion: 1, dishId: "" }).ok, false);
+  assert.equal(parseCookBody({ action: "ate", portion: 1, dishId: 7 }).ok, false);
+  assert.equal(parseCookBody({ action: "ate", portion: 1, dishId: "x".repeat(129) }).ok, false);
+  assert.equal(parseCookBody({ action: "done", dishId: " " }).ok, false);
+});
+
+test("two dishes cooked in one chat, both answered 'I ate it': two logs, each with its own dish", async () => {
+  const f = fake();
+  const svc = makeCookService(f.deps, ticking());
+  await svc.apply("c1", "p1", parsed({ action: "start", dish: breakfast }));
+  await svc.apply("c1", "p1", parsed({ action: "done", dishId: "dB" }));
+  await svc.apply("c1", "p1", parsed({ action: "start", dish: lunch }));
+  await svc.apply("c1", "p1", parsed({ action: "done", dishId: "dL" }));
+  assert.deepEqual(await svc.apply("c1", "p1", parsed({ action: "ate", portion: 1, dishId: "dB", mealType: "breakfast" })), { ok: true });
+  assert.deepEqual(await svc.apply("c1", "p1", parsed({ action: "ate", portion: 1, dishId: "dL", mealType: "lunch" })), { ok: true });
+  assert.equal(f.logs.length, 2);
+  const [b, l] = f.logs;
+  assert.deepEqual([b.name, b.calories, b.fiber, b.sodium, b.mealType, b.clientRequestId], ["Oat porridge", 250, 6, 80, "breakfast", "cook-c1-dB"]);
+  assert.deepEqual([l.name, l.calories, l.fiber, l.sodium, l.mealType, l.clientRequestId], ["Lentil soup", 400, 12, 300, "lunch", "cook-c1-dL"]);
+});
+
+test("lunch started before the breakfast check-in is answered: the breakfast answer logs breakfast", async () => {
+  const f = fake();
+  const svc = makeCookService(f.deps, ticking());
+  await svc.apply("c1", "p1", parsed({ action: "start", dish: breakfast }));
+  await svc.apply("c1", "p1", parsed({ action: "done", dishId: "dB" }));
+  await svc.apply("c1", "p1", parsed({ action: "start", dish: lunch }));
+  await svc.apply("c1", "p1", parsed({ action: "ate", portion: 0.5, dishId: "dB", mealType: "breakfast" }));
+  assert.equal(f.logs.length, 1);
+  assert.equal(f.logs[0].name, "Oat porridge");
+  assert.equal(f.logs[0].calories, 250);
+  assert.equal(f.logs[0].servings, 0.5);
+  // The chat itself reflects the most recently started dish.
+  assert.equal(f.rows[0].dishName, "Lentil soup");
+  assert.equal(f.rows[0].title, "Lentil soup");
+  assert.equal(f.rows[0].cookedAt, null, "lunch is not cooked yet");
+});
+
+test("the same dish answered twice (and raced) gives one row", async () => {
+  const f = fake();
+  const svc = makeCookService(f.deps, ticking());
+  await svc.apply("c1", "p1", parsed({ action: "start", dish: breakfast }));
+  await svc.apply("c1", "p1", parsed({ action: "start", dish: lunch }));
+  const a = parsed({ action: "ate", portion: 1, dishId: "dB" });
+  await svc.apply("c1", "p1", a);
+  await svc.apply("c1", "p1", a);
+  await Promise.all([svc.apply("c1", "p1", a), svc.apply("c1", "p1", a)]);
+  assert.equal(f.logs.length, 1);
+  assert.equal(f.logs[0].name, "Oat porridge");
+});
+
+test("an ate with and without dishId for the most recent dish share one row (old and new app builds)", async () => {
+  const f = fake();
+  const svc = makeCookService(f.deps, ticking());
+  await svc.apply("c1", "p1", parsed({ action: "start", dish: breakfast }));
+  await svc.apply("c1", "p1", parsed({ action: "start", dish: lunch }));
+  await svc.apply("c1", "p1", parsed({ action: "ate", portion: 1 }));
+  await svc.apply("c1", "p1", parsed({ action: "ate", portion: 1, dishId: "dL" }));
+  assert.equal(f.logs.length, 1);
+  assert.equal(f.logs[0].name, "Lentil soup", "no dishId logs the most recently started dish");
+});
+
+test("an ate for a dish never started in this chat is 409 and logs nothing", async () => {
+  const f = fake();
+  const svc = makeCookService(f.deps, ticking());
+  await svc.apply("c1", "p1", parsed({ action: "start", dish: breakfast }));
+  const r = await svc.apply("c1", "p1", parsed({ action: "ate", portion: 1, dishId: "dNever" }));
+  assert.ok(!r.ok && r.status === 409, JSON.stringify(r));
+  assert.match((r as { error: string }).error, /start cooking this dish/i);
+  assert.equal(f.logs.length, 0);
+});
+
+test("an old single-recipe stored value still logs, under the chat's old key", async () => {
+  const f = fake([{ id: "c1", patientId: "p1", title: "Lentil soup", dishName: "Lentil soup", recipe, cookedAt: new Date("2026-11-12T12:00:00Z") }]);
+  const svc = makeCookService(f.deps, ticking());
+  assert.deepEqual(await svc.apply("c1", "p1", parsed({ action: "ate", portion: 1 })), { ok: true });
+  // A newer build that does send a dishId still reaches the one stored dish, and the replay is the same row.
+  assert.deepEqual(await svc.apply("c1", "p1", parsed({ action: "ate", portion: 1, dishId: "d1" })), { ok: true });
+  assert.equal(f.logs.length, 1);
+  assert.equal(f.logs[0].name, "Lentil soup");
+  assert.equal(f.logs[0].calories, 400);
+  assert.equal(f.logs[0].clientRequestId, "cook-c1", "same key as before, so an earlier log is not repeated");
+});
+
+test("starting a new dish on an old single-recipe chat keeps the old dish loggable by an older build", async () => {
+  const cookedAt = new Date("2026-11-12T12:00:00Z");
+  const f = fake([{ id: "c1", patientId: "p1", title: "Lentil soup", dishName: "Lentil soup", recipe, cookedAt }]);
+  const svc = makeCookService(f.deps, ticking());
+  await svc.apply("c1", "p1", parsed({ action: "start", dish: breakfast }));
+  assert.equal(f.rows[0].dishName, "Oat porridge");
+  assert.equal(f.rows[0].cookedAt, null);
+  await svc.apply("c1", "p1", parsed({ action: "ate", portion: 1 }));
+  assert.equal(f.logs[0].name, "Oat porridge", "no dishId: the most recent dish");
+  const r = await svc.apply("c1", "p1", parsed({ action: "ate", portion: 1, dishId: "d1" }));
+  assert.ok(!r.ok && r.status === 409, "the old dish's id was never stored, and a newer dish exists");
+});
+
+test("done with a dishId marks that dish; the chat's cookedAt follows the most recent dish only", async () => {
+  const f = fake();
+  const clock = ticking();
+  const svc = makeCookService(f.deps, clock);
+  await svc.apply("c1", "p1", parsed({ action: "start", dish: breakfast }));
+  await svc.apply("c1", "p1", parsed({ action: "start", dish: lunch }));
+  await svc.apply("c1", "p1", parsed({ action: "done", dishId: "dB" }));
+  const stored = () => f.rows[0].recipe as Record<string, { cookedAt: string | null }>;
+  assert.equal(typeof stored().dB.cookedAt, "string");
+  assert.equal(stored().dL.cookedAt, null);
+  assert.equal(f.rows[0].cookedAt, null, "breakfast done does not mark the lunch chat cooked");
+  await svc.apply("c1", "p1", parsed({ action: "done", dishId: "dL" }));
+  const chatCookedAt = f.rows[0].cookedAt as Date | null;
+  assert.ok(chatCookedAt instanceof Date);
+  assert.equal(chatCookedAt.toISOString(), stored().dL.cookedAt);
+  const r = await svc.apply("c1", "p1", parsed({ action: "done", dishId: "dNever" }));
+  assert.ok(!r.ok && r.status === 409);
+});
+
+test("done without a dishId marks the most recent dish, as before", async () => {
+  const f = fake();
+  const at = new Date("2026-11-12T18:00:00Z");
+  const svc = makeCookService(f.deps, () => at);
+  await svc.apply("c1", "p1", parsed({ action: "start", dish }));
+  await svc.apply("c1", "p1", { action: "done" });
+  assert.equal(f.rows[0].cookedAt!.toISOString(), at.toISOString());
+  assert.equal((f.rows[0].recipe as Record<string, { cookedAt: string }>).d1.cookedAt, at.toISOString());
 });

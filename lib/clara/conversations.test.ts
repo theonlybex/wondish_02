@@ -452,3 +452,20 @@ test("list() with cook: a chat never cooked has null dishName/cookedAt and stepC
     { d: null, c: null, s: 0 }
   );
 });
+
+test("list() with cook: a chat holding several dishes counts the steps of the most recently started one", async () => {
+  const when = new Date(2026, 0, 1);
+  const { deps } = fakeDeps([rowWith([msg(1, "user")], { updatedAt: when })]);
+  const base = deps.listPage;
+  const recipe = {
+    dB: { name: "Oat porridge", recipe: { steps: ["a"] }, startedAt: "2026-11-12T08:00:00.000Z", cookedAt: "2026-11-12T08:20:00.000Z" },
+    dL: { name: "Lentil soup", recipe: { steps: ["a", "b", "c", "d"] }, startedAt: "2026-11-12T12:00:00.000Z", cookedAt: null },
+  };
+  deps.listPage = async (p, c, t, withCook) => {
+    const rows = await base(p, c, t, withCook);
+    return rows.map((r) => (withCook ? { ...r, dishName: "Lentil soup", cookedAt: null, recipe } : r));
+  };
+  const cook = await makeConversationStore(deps).list("p1", undefined, { cook: true });
+  assert.equal(cook.items[0].stepCount, 4);
+  assert.equal(cook.items[0].dishName, "Lentil soup");
+});

@@ -643,3 +643,25 @@ test("stepStatesAmount: times, temperatures, lengths, step numbers and counts of
     assert.ok(!stepStatesAmount(step), step);
   }
 });
+
+test("dish_suggest: a fractional step time becomes a whole number of minutes (the app decodes an integer)", async () => {
+  const half = lentils({ prepMinutes: 0, cookMinutes: 0, steps: ["Rinse the red lentils.", "Simmer 2.5 minutes.", "Stir in the spinach."] });
+  const res = await makeDishHandlers(spy({ recipes: [half] }).deps).suggest(CTX, { mealType: "dinner" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  const dish = res.parts!.find((p) => p.kind === "dish");
+  if (!dish || dish.kind !== "dish") return assert.fail("no dish part");
+  assert.ok(Number.isInteger(dish.minutes) && dish.minutes >= 1, `minutes ${dish.minutes}`);
+  assert.equal(dish.minutes, 3);
+  assert.equal(dish.recipe!.minutes, 3);
+});
+
+test("dish_suggest: a step time under half a minute still shows at least 1 minute", async () => {
+  const quick = lentils({ prepMinutes: 0, cookMinutes: 0, steps: ["Rinse the red lentils.", "Stir for 0.25 minutes.", "Serve."] });
+  const res = await makeDishHandlers(spy({ recipes: [quick] }).deps).suggest(CTX, { mealType: "dinner" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  const dish = res.parts!.find((p) => p.kind === "dish");
+  if (!dish || dish.kind !== "dish") return assert.fail("no dish part");
+  assert.equal(dish.minutes, 1);
+});

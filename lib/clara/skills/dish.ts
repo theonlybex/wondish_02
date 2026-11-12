@@ -329,8 +329,18 @@ interface BuiltDish {
   steps: Extract<ClaraPart, { kind: "steps" }>;
 }
 
-function minutesOf(r: FridgeRecipe, mealType: DishMealType): number {
+/** Stated (or step-implied) minutes; 0 when the dish names no time at all. May be fractional. */
+function rawMinutesOf(r: FridgeRecipe, mealType: DishMealType): number {
   return statedOrImpliedMinutes(toPlausibleDish(r, capitalize(mealType)));
+}
+
+/**
+ * The minutes the app shows: always a whole number of at least 1. The app
+ * decodes `minutes` as an integer, so "Simmer 2.5 minutes" sent as 2.5 would
+ * drop the whole dish card. Only call it for a dish that names a time.
+ */
+function minutesOf(r: FridgeRecipe, mealType: DishMealType): number {
+  return Math.max(1, Math.round(rawMinutesOf(r, mealType)));
 }
 
 /** The dish as the app shows and cooks it. Numbers per serving, priced from its own amounts. */
@@ -388,8 +398,8 @@ function buildDish(r: FridgeRecipe, ask: DishAsk): BuiltDish {
 function pickDish(recipes: FridgeRecipe[], ask: DishAsk): FridgeRecipe | null {
   const multi = (ask.servings ?? 1) > 1;
   for (const r of recipes) {
+    if (rawMinutesOf(r, ask.mealType) <= 0) continue; // names no time at all
     const minutes = minutesOf(r, ask.mealType);
-    if (minutes <= 0) continue;
     if (ask.maxMinutes !== undefined && minutes > ask.maxMinutes) continue;
     // Amounts are per serving and the app scales them; a step that names an
     // amount would tell a cook for six to use one person's portion.
