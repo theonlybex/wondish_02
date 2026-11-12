@@ -9,7 +9,8 @@ import { rateLimit } from "@/lib/rate-limit";
 import { getDayTarget, parseTodayParam } from "@/lib/meal-log";
 import { loadFullLevelData, loadLevelSummary } from "@/lib/level-summary";
 import { ageOn, buildFullNumbers } from "@/lib/numbers-full";
-import type { FullLevelKey } from "@/lib/level-catalogue";
+import { currentStartingPicture } from "@/lib/onboarding";
+import { resolveWeightUnit, weightInDisplayUnit, type WeightUnit } from "@/lib/weight-unit-pref";
 
 const DEFAULT_DAYS = 7;
 const MAX_DAYS = 31;
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
 
 // ─── full=1 — the Numbers screen's 21 levels, tracked set, goals and pills ───
 async function loadFull(
-  patient: { id: string; birthday: Date | null; sexAtBirth: string | null; weightGoal: string | null; goalWeight: number | null; weightUnit: string | null; startingPicture: unknown },
+  patient: { id: string; birthday: Date | null; sexAtBirth: string | null; weightGoal: string | null; goalWeight: number | null; weightUnit: string | null; heightUnit: string | null; displayWeightUnit: string | null; usualEating: unknown },
   today: string,
   days: number,
 ) {
@@ -60,17 +61,17 @@ async function loadFull(
     loadFullLevelData(patient.id, today, days),
     getDayTarget(patient.id, today, false),
     prisma.patientHealthCondition.findMany({ where: { patientId: patient.id }, select: { condition: { select: { name: true } } } }),
-    prisma.supplement.findMany({ where: { patientId: patient.id, deletedAt: null }, select: { contents: true, estimated: true } }),
+    prisma.supplement.findMany({ where: { patientId: patient.id, deletedAt: null }, select: { name: true, contents: true, estimated: true } }),
     prisma.trackedLevel.findMany({ where: { patientId: patient.id }, select: { levelKey: true, tracked: true, goal: true } }),
   ]);
 
   const showWeight = patient.weightGoal === "lose" || patient.weightGoal === "gain" || patient.goalWeight != null;
-  const weight = showWeight ? await loadWeight(patient.id, patient.weightUnit) : null;
-
-  const pic = patient.startingPicture as { little?: unknown; aLot?: unknown } | null;
-  const picture = pic && Array.isArray(pic.little) && Array.isArray(pic.aLot)
-    ? { little: pic.little as FullLevelKey[], aLot: pic.aLot as FullLevelKey[] }
+  const weight = showWeight
+    ? await loadWeight(patient.id, patient.weightUnit, resolveWeightUnit(patient.displayWeightUnit, patient.heightUnit))
     : null;
+
+  // Computed now from the answers and the live pills, not read from the stored column.
+  const picture = currentStartingPicture(patient.usualEating, supplements.map((s) => s.name));
 
   return buildFullNumbers({
     days: data.days,
@@ -81,7 +82,7 @@ async function loadFull(
       age: patient.birthday ? ageOn(patient.birthday.toISOString().slice(0, 10), today) : null,
     },
     conditionNames: conditions.map((c) => c.condition.name),
-    pills: supplements,
+    pills: supplements.map(({ contents, estimated }) => ({ contents, estimated })),
     trackedRows,
     picture,
     weight,
@@ -93,6 +94,7 @@ async function loadFull(
 async function loadWeight(
   patientId: string,
   weightUnit: string | null,
+  display?: WeightUnit,
 ): Promise<{ value: number; unit: "lbs" | "kg"; change: number | null } | null> {
   const entries = await prisma.journalEntry.findMany({
     where: { patientId, weight: { not: null } },
@@ -108,6 +110,7 @@ async function loadWeight(
   for (const w of weighIns.slice(1)) {
     if (!nearest || Math.abs(w.date.getTime() - target) < Math.abs(nearest.date.getTime() - target)) nearest = w;
   }
+  if (display) return weightInDisplayUnit(latest.weight, nearest ? nearest.weight : null, display);
   return {
     value: latest.weight,
     unit: weightUnit === "kg" ? "kg" : "lbs",

@@ -50,6 +50,9 @@ export interface PlanMenuRow {
      * typing cannot hide the omission again.
      */
     servings: number | null;
+    /** Whole-dish totals like the rest; every select must include them. */
+    saturatedFat?: number | null;
+    addedSugars?: number | null;
   };
 }
 

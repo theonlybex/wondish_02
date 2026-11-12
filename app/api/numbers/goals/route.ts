@@ -4,7 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { getDayTarget } from "@/lib/meal-log";
+import { getDayTarget, parseTodayParam } from "@/lib/meal-log";
 import { ageOn, rowsToMaterialize, validateGoalsBody } from "@/lib/numbers-full";
 
 export async function PUT(req: NextRequest) {
@@ -26,7 +26,10 @@ export async function PUT(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const today = new Date().toISOString().slice(0, 10);
+  // The client's local date (as GET /api/numbers takes it); the server date when absent.
+  const todayParam = parseTodayParam(new URL(req.url).searchParams.get("today"));
+  if (!todayParam.ok) return NextResponse.json({ error: todayParam.error }, { status: todayParam.status });
+  const today = todayParam.value;
   const conditionNames = patient.healthConditions.map((h) => h.condition.name);
   const dayTarget = await getDayTarget(patient.id, today, false);
   const parsed = validateGoalsBody(body, {

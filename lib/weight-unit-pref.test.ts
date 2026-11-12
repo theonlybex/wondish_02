@@ -12,3 +12,19 @@ test("the person's choice wins; a metric height stands in until they make one", 
   assert.equal(resolveWeightUnit(undefined, "ftin"), "lbs");
   assert.equal(resolveWeightUnit("stone", "in"), "lbs");
 });
+
+import { weightInDisplayUnit, lbsToKg } from "./weight-unit-pref";
+
+test("weightInDisplayUnit: lbs passes the stored numbers through as before", () => {
+  assert.deepEqual(weightInDisplayUnit(180.4, 182.1, "lbs"), { value: 180.4, unit: "lbs", change: -1.7 });
+  assert.deepEqual(weightInDisplayUnit(180.4, null, "lbs"), { value: 180.4, unit: "lbs", change: null });
+});
+
+test("weightInDisplayUnit: kg converts both weigh-ins first; change is the rounded difference", () => {
+  const r = weightInDisplayUnit(180, 182, "kg");
+  assert.equal(r.unit, "kg");
+  assert.equal(r.value, 81.6);
+  assert.equal(r.change, -0.9); // 2 lbs = 0.907 kg; not 81.6 - 82.6 from rounded values
+  assert.equal(weightInDisplayUnit(150, null, "kg").change, null);
+  assert.equal(lbsToKg(165), 74.8);
+});

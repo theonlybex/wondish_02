@@ -94,9 +94,9 @@ export function convertUnit(amount: number, from: LevelUnit, to: LevelUnit): num
   return (amount * UNIT_PER_MCG[from]) / UNIT_PER_MCG[to];
 }
 
-/** 1 decimal; micrograms under 1 keep 2 so small doses do not vanish. */
+/** 1 decimal; any amount under 1 keeps 2 so small doses do not vanish. */
 export function roundAmount(n: number, unit: LevelUnit): number {
-  const places = unit === "mcg" && Math.abs(n) < 1 ? 100 : 10;
+  const places = Math.abs(n) < 1 ? 100 : 10;
   return Math.round(n * places) / places;
 }
 

@@ -100,15 +100,18 @@ export async function PUT(req: NextRequest) {
         where: { accountId: a.account.id },
         create: { accountId: a.account.id },
         update: {},
-        select: { id: true, usualEating: true },
+        select: { id: true },
       });
       await tx.$queryRaw`SELECT "id" FROM "Patient" WHERE "id" = ${patient.id} FOR UPDATE`;
+      // The merge base is read AFTER the lock, so an overlapping PUT's committed
+      // answers are never dropped.
+      const locked = await tx.patient.findUniqueOrThrow({ where: { id: patient.id }, select: { usualEating: true } });
       const supplements = await tx.supplement.findMany({
         where: { patientId: patient.id, deletedAt: null },
-        select: { id: true, name: true, estimated: true },
+        select: { id: true, name: true, estimated: true, contents: true },
       });
       const { patientData, pillOps, removeBuiltInConditions } = planOnboardingPut(v.value, {
-        usualEating: patient.usualEating,
+        usualEating: locked.usualEating,
         supplements,
       });
       for (const name of pillOps.create) {
@@ -120,6 +123,12 @@ export async function PUT(req: NextRequest) {
             contents: TYPICAL_PILLS[name] as unknown as Prisma.InputJsonValue,
             estimated: true,
           },
+        });
+      }
+      for (const f of pillOps.fillContents) {
+        await tx.supplement.update({
+          where: { id: f.id },
+          data: { contents: TYPICAL_PILLS[f.name] as unknown as Prisma.InputJsonValue, estimated: true },
         });
       }
       if (pillOps.softDelete.length) {

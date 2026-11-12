@@ -767,3 +767,33 @@ test("parseStartingPicture: malformed or absent JSON is no picture", () => {
     aLot: ["sodium"],
   });
 });
+
+test("dish_suggest: a throwing loadStartingPicture does not fail the tool; falls back to the levels path", async () => {
+  const s = spy({ summary: NO_LOGS });
+  s.deps.loadStartingPicture = async () => {
+    throw new Error("db down");
+  };
+  const res = await makeDishHandlers(s.deps).suggest(CTX, { mealType: "dinner" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  assert.equal(s.asks[0].picture, undefined);
+  assert.doesNotMatch(JSON.stringify(res.data), /from your answers/);
+});
+
+test("dish_plan_today: a throwing loadStartingPicture does not fail the tool", async () => {
+  const s = spy({ summary: NO_LOGS });
+  s.deps.loadStartingPicture = async () => {
+    throw new Error("db down");
+  };
+  const res = await makeDishHandlers(s.deps).planToday(CTX, {});
+  assert.equal(res.ok, true);
+});
+
+test("dishSkill.promptFragment pins the wording rule: 'from your answers', never body state", () => {
+  const f = dishSkill.promptFragment;
+  assert.match(f, /from your answers/);
+  assert.doesNotMatch(f, /from what you logged/);
+  const sentence = f.split(/(?<=\.)\s/).find((x) => x.includes("from your answers")) ?? "";
+  assert.doesNotMatch(sentence, /is low|are low/);
+  assert.doesNotMatch(sentence, /from what you logged/);
+});

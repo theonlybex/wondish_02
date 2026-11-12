@@ -210,7 +210,8 @@ test("phosphorus is rejected without a kidney condition, accepted with one", () 
 });
 
 test("pillAmount and amount round the same way; 0.25 mg keeps its value", () => {
-  assert.equal(roundAmount(0.25, "mg"), 0.3);
+  assert.equal(roundAmount(0.25, "mg"), 0.25);
+  assert.equal(roundAmount(1.26, "mg"), 1.3);
   assert.equal(roundAmount(0.25, "mcg"), 0.25);
   assert.equal(roundAmount(2.44, "mcg"), 2.4);
   const out = buildFullNumbers(base({ pills: [{ contents: [{ key: "vitaminB12", amount: 0.00025, unit: "mg" }, { key: "magnesium", amount: 0.0003, unit: "g" }], estimated: false }] }));

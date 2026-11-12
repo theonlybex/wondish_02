@@ -6,6 +6,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
+import { resolveWeightUnit, lbsToKg } from "@/lib/weight-unit-pref";
 import { recordWeighIn, syncPatientWeightFromJournal, validateWeighInBody, weightUnitLabel } from "@/lib/weigh-in";
 
 export async function POST(req: NextRequest) {
@@ -42,6 +43,11 @@ export async function POST(req: NextRequest) {
     { patientId: patient.id, date: parsed.date, weight: parsed.weight },
   );
 
-  // The sync stores lbs on the patient, so this is what GET /api/numbers will report next.
-  return NextResponse.json({ weight: { value: parsed.weight, unit: weightUnitLabel("lbs") } });
+  // Stored in lbs; answered in the unit the person reads, as GET /api/numbers?full=1 will.
+  const display = resolveWeightUnit(patient.displayWeightUnit, patient.heightUnit);
+  return NextResponse.json({
+    weight: display === "kg"
+      ? { value: lbsToKg(parsed.weight), unit: "kg" as const }
+      : { value: parsed.weight, unit: weightUnitLabel("lbs") },
+  });
 }

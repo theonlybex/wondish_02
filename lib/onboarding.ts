@@ -172,7 +172,23 @@ export function commonConditions(all: { id: string; name: string }[]): Condition
   return [...chips, ...rest];
 }
 
-export interface PillRow { id: string; name: string; estimated: boolean }
+export interface PillRow { id: string; name: string; estimated: boolean; contents?: unknown }
+
+/** The catalogue pill a stored name stands for (folded match), or undefined. */
+export function catalogueNameOf(name: string): PillName | undefined {
+  return PILL_NAMES.find((n) => fold(n) === fold(name));
+}
+
+/**
+ * The starting picture as it is NOW: computed from the stored answers and the
+ * live catalogue pills, so pills changed elsewhere (e.g. /api/supplements)
+ * never leave a stale picture. Null when the person has never answered.
+ */
+export function currentStartingPicture(usualEating: unknown, liveSupplementNames: string[]): StartingPicture | null {
+  if (usualEating == null) return null;
+  const pills = liveSupplementNames.map(catalogueNameOf).filter((n): n is PillName => !!n);
+  return computeStartingPicture(normaliseUsualEating(usualEating), pills);
+}
 
 /**
  * Which pill rows to create and which to soft-delete so the live catalogue
@@ -206,14 +222,20 @@ export function planOnboardingPut(
   current: { usualEating: unknown; supplements: PillRow[] },
 ): {
   patientData: OnboardingPatientUpdate;
-  pillOps: { create: PillName[]; softDelete: string[] };
+  pillOps: { create: PillName[]; softDelete: string[]; fillContents: { id: string; name: PillName }[] };
   removeBuiltInConditions: boolean;
 } {
   const merged: UsualEating = { ...normaliseUsualEating(current.usualEating), ...(value.usualEating ?? {}) };
   const livePillNames = current.supplements
     .map((s) => PILL_NAMES.find((n) => fold(n) === fold(s.name)))
     .filter((n): n is PillName => !!n);
-  const pillOps = value.pills ? reconcilePills(current.supplements, value.pills) : { create: [], softDelete: [] };
+  const reconciled = value.pills ? reconcilePills(current.supplements, value.pills) : { create: [], softDelete: [] };
+  // A live catalogue-named pill with no contents gets the typical ones, so it counts on Numbers.
+  const fillContents = current.supplements.flatMap((s) => {
+    const name = catalogueNameOf(s.name);
+    return name && s.contents == null && !reconciled.softDelete.includes(s.id) ? [{ id: s.id, name }] : [];
+  });
+  const pillOps = { ...reconciled, fillContents };
   const finalPills: PillName[] = value.pills ?? livePillNames;
   const patientData: OnboardingPatientUpdate = { startingPicture: computeStartingPicture(merged, finalPills) };
   if (value.usualEating && Object.keys(value.usualEating).length > 0) patientData.usualEating = merged;
@@ -274,7 +296,7 @@ export function buildOnboardingResponse(input: {
   const conditions = commonConditions(input.conditions);
   const knownConditions = new Set(input.conditions.map((c) => c.id));
   const conditionIds = (patient?.conditionIds ?? []).filter((id) => knownConditions.has(id));
-  const stored = (patient?.startingPicture ?? null) as Partial<StartingPicture> | null;
+  const live = currentStartingPicture(patient?.usualEating, input.pills);
   const named = (keys: unknown) =>
     (Array.isArray(keys) ? keys : [])
       .filter((k): k is FullLevelKey => typeof k === "string" && LEVELS.some((l) => l.key === k))
@@ -299,8 +321,8 @@ export function buildOnboardingResponse(input: {
       allergyIds: patient?.allergyIds ?? [],
     },
     usualEating: normaliseUsualEating(patient?.usualEating),
-    pills: input.pills.filter((n): n is PillName => (PILL_NAMES as string[]).includes(n)),
+    pills: [...new Set(input.pills.map(catalogueNameOf).filter((n): n is PillName => !!n))],
     weightGoal: (patient?.weightGoal ?? null) as WeightGoal | null,
-    startingPicture: { little: named(stored?.little), aLot: named(stored?.aLot) },
+    startingPicture: { little: named(live?.little), aLot: named(live?.aLot) },
   };
 }

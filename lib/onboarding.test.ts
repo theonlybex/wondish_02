@@ -350,8 +350,8 @@ test("planOnboardingPut with only pills uses the stored answers", () => {
 });
 
 test("planOnboardingPut with an empty body keeps answers and pills but still recomputes", () => {
-  const plan = planOnboardingPut({}, { usualEating: null, supplements: [{ id: "a", name: "Iron", estimated: true }] });
-  assert.deepEqual(plan.pillOps, { create: [], softDelete: [] });
+  const plan = planOnboardingPut({}, { usualEating: null, supplements: [{ id: "a", name: "Iron", estimated: true, contents: [{ key: "iron", amount: 18, unit: "mg" }] }] });
+  assert.deepEqual(plan.pillOps, { create: [], softDelete: [], fillContents: [] });
   assert.deepEqual(plan.patientData.startingPicture, { little: [], aLot: [] });
   assert.equal("weightGoal" in plan.patientData, false);
 });
@@ -363,7 +363,7 @@ test("buildOnboardingResponse shapes the wire contract", () => {
     activities: [{ id: "ac1", name: "Light" }],
     patient: {
       birthday: new Date("1990-04-02T00:00:00Z"), sexAtBirth: "FEMALE", height: 170, weight: 154.3236,
-      physicalActivityId: "ac1", usualEating: { veg: 2 }, startingPicture: { little: ["fibre"], aLot: ["sodium"] },
+      physicalActivityId: "ac1", usualEating: { veg: 0, fruit: 0, beans: 0, grains: 0, packaged: 2 }, startingPicture: null,
       weightGoal: "keep", noCondition: false, conditionIds: ["c1", "gone"], allergyIds: ["al1"],
     },
     pills: ["Vitamin D", "Fish oil"],
@@ -374,13 +374,12 @@ test("buildOnboardingResponse shapes the wire contract", () => {
   assert.equal(r.profile.heightCm, 170);
   assert.equal(r.profile.birthday, "1990-04-02");
   assert.deepEqual(r.profile.conditionIds, ["c1"]);
-  assert.equal(r.usualEating.veg, 2);
-  assert.equal(r.usualEating.fruit, null);
+  assert.equal(r.usualEating.veg, 0);
+  assert.equal(r.usualEating.fish, null);
   assert.deepEqual(r.pills, ["Vitamin D"]);
-  assert.deepEqual(r.startingPicture, {
-    little: [{ key: "fibre", name: "Fibre" }],
-    aLot: [{ key: "sodium", name: "Sodium" }],
-  });
+  assert.equal(r.startingPicture.little[0].key, "fibre");
+  assert.equal(r.startingPicture.little[0].name, "Fibre");
+  assert.deepEqual(r.startingPicture.aLot, [{ key: "sodium", name: "Sodium" }]);
 });
 
 test("buildOnboardingResponse: noCondition only reports when no built-in links remain; height converts", () => {
@@ -402,4 +401,58 @@ test("buildOnboardingResponse with no patient is empty, not a crash", () => {
   assert.equal(r.profile.weightKg, null);
   assert.deepEqual(r.startingPicture, { little: [], aLot: [] });
   assert.equal(r.weightGoal, null);
+});
+
+// ─── final-review fixes ──────────────────────────────────────────────────────
+import { currentStartingPicture } from "./onboarding";
+
+const ANSWERED = { veg: 0, fruit: 0, beans: 0, grains: 0, fish: 0, meat: 0, dairy: 0, packaged: 0, sweet: 0 };
+
+test("currentStartingPicture: null when never answered; a Vitamin D pill removes vitaminD from little", () => {
+  assert.equal(currentStartingPicture(null, []), null);
+  assert.equal(currentStartingPicture(ANSWERED, [])!.little.includes("vitaminD"), true);
+  assert.equal(currentStartingPicture(ANSWERED, ["vitamin d"])!.little.includes("vitaminD"), false);
+  assert.equal(currentStartingPicture(ANSWERED, ["Vitamin D", "Other thing"])!.little.includes("vitaminD"), false);
+});
+
+test("currentStartingPicture: all-unanswered gives empty lists", () => {
+  const empty = Object.fromEntries(Object.keys(ANSWERED).map((k) => [k, null]));
+  assert.deepEqual(currentStartingPicture(empty, []), { little: [], aLot: [] });
+});
+
+test("buildOnboardingResponse: website pill 'vitamin d' shows ticked as 'Vitamin D', once; picture is live", () => {
+  const r = buildOnboardingResponse({
+    conditions: [], allergies: [], activities: [],
+    patient: {
+      birthday: null, sexAtBirth: null, height: null, weight: null, physicalActivityId: null,
+      usualEating: ANSWERED, startingPicture: { little: ["vitaminD"], aLot: [] },
+      weightGoal: null, noCondition: false, conditionIds: [], allergyIds: [],
+    },
+    pills: ["vitamin d", " Vitamin D ", "Something else"],
+  });
+  assert.deepEqual(r.pills, ["Vitamin D"]);
+  assert.equal(r.startingPicture.little.some((l) => l.key === "vitaminD"), false);
+});
+
+test("planOnboardingPut: a live catalogue pill with null contents is filled; others are not", () => {
+  const plan = planOnboardingPut(
+    {},
+    {
+      usualEating: null,
+      supplements: [
+        { id: "a", name: "vitamin d", estimated: false, contents: null },
+        { id: "b", name: "Iron", estimated: true, contents: [{ key: "iron", amount: 18, unit: "mg" }] },
+        { id: "c", name: "Fish oil thing", estimated: false, contents: null },
+      ],
+    },
+  );
+  assert.deepEqual(plan.pillOps.fillContents, [{ id: "a", name: "Vitamin D" }]);
+});
+
+test("planOnboardingPut: a pill being removed is not filled", () => {
+  const plan = planOnboardingPut(
+    { pills: [] },
+    { usualEating: null, supplements: [{ id: "a", name: "Iron", estimated: false, contents: null }] },
+  );
+  assert.deepEqual(plan.pillOps.fillContents, []);
 });

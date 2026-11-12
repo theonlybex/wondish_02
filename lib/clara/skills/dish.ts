@@ -17,6 +17,7 @@ import { specifyCookingOil, oilAllowedBy } from "@/lib/clara/oil";
 import { PATIENT_FOOD_MAP_INCLUDE, buildFoodMapText } from "@/lib/food-map";
 import { derivePatientBans, buildDietMatchers, bannedNamesForPrompt, type DietMatchers } from "@/lib/diet-match";
 import { dailySodiumLimitMg } from "@/lib/sodium-limit";
+import { currentStartingPicture } from "@/lib/onboarding";
 import { loadLevelSummary } from "@/lib/level-summary";
 import { LEVELS, type FullLevelKey } from "@/lib/level-catalogue";
 import { applyAllergenFilter, parseFridgeRecipes, SUGGEST_RECIPES_SCHEMA, type FridgeRecipe } from "@/lib/fridge";
@@ -318,8 +319,12 @@ const prismaDeps: DishDeps = {
   loadSummary: (patientId, today) => loadLevelSummary(patientId, today, 7),
   generate: generateGated,
   loadStartingPicture: async (patientId) => {
-    const row = await prisma.patient.findUnique({ where: { id: patientId }, select: { startingPicture: true } });
-    return parseStartingPicture(row?.startingPicture);
+    // Computed now from the answers and the live pills (the stored column can be stale).
+    const row = await prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { usualEating: true, supplements: { where: { deletedAt: null }, select: { name: true } } },
+    });
+    return parseStartingPicture(row && currentStartingPicture(row.usualEating, row.supplements.map((x) => x.name)));
   },
   loggedMealTypes: async (patientId, today) => {
     const rows = await prisma.mealLog.findMany({
@@ -557,7 +562,12 @@ const PICTURE_NOTE =
 /** The picture applies only while logs are not enough and it names at least one level. */
 async function pictureFor(deps: DishDeps, ctx: ClaraContext, summary: LevelSummary): Promise<StartingPicture | undefined> {
   if (summary.enoughLogs || !deps.loadStartingPicture) return undefined;
-  return (await deps.loadStartingPicture(ctx.patientId)) ?? undefined;
+  try {
+    return (await deps.loadStartingPicture(ctx.patientId)) ?? undefined;
+  } catch {
+    // A failed picture load must not fail the dish: fall back to the not-enough-logs path.
+    return undefined;
+  }
 }
 
 function pictureForModel(pic: StartingPicture) {
