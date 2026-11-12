@@ -207,3 +207,12 @@ test("a seasoning's sodium counts even though its calories do not", () => {
   const cheese = priceDish([{ name: "Feta cheese", quantity: 50, unit: "g" }], null);
   assert.ok(cheese && cheese.sodiumMg > 250, `50 g of cheese is ~350 mg, got ${cheese?.sodiumMg}`);
 });
+
+test("plural per-item breads price, and corn tortillas are tortillas not corn", () => {
+  const one = gramsOf("tortilla", 1, null);
+  assert.ok(one != null && one > 0);
+  assert.equal(gramsOf("corn tortillas", 2, null), 2 * (one as number));
+  for (const n of ["bagels", "muffins", "pitas", "english muffins", "whole wheat tortillas"]) {
+    assert.notEqual(gramsOf(n, 2, null), null, n);
+  }
+});

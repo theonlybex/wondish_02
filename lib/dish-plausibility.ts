@@ -1199,16 +1199,17 @@ const FORM_WORDS = new Set([
  * Countable foods whose bare count IS the measurement (see staple-density).
  * Plurals count too ("2 corn tortillas"), and garlic is counted in cloves —
  * the singular-only list dropped rule-compliant live dishes (QA 2026-11-12).
- * "garlic powder" is a measured spice, not a count.
+ * Only PLAIN garlic is a clove count; every garlic product is not.
  */
-const COUNTABLE = /\b(eggs?|bread|toast|muffins?|bagels?|tortillas?|pitas?|apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|carrots?|avocados?|lemons?|limes?|garlic(?! (?:powder|salt|granules|paste|oil))(?: cloves?)?)\b/i;
+const PLAIN_GARLIC = /^\s*(?:(?:fresh|whole|large|small|medium|peeled|minced|chopped|crushed|sliced|smashed|grated)\s+)*garlic(?:\s+cloves?)?\s*(?:,\s*(?:peeled|minced|chopped|crushed|sliced|smashed|grated|finely chopped))?\s*$/i;
+const COUNTABLE = /\b(eggs?|bread|toast|muffins?|bagels?|tortillas?|pitas?|apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|carrots?|avocados?|lemons?|limes?)\b/i;
 
 /** The word for one of something, when a recipe gives a bare count. */
 export function countUnitFor(name: string): string | null {
   if (/\bbread\b/i.test(name)) return "slice";
   if (/\b(muffins?|bagels?|tortillas?|pitas?|wraps?)\b/i.test(name)) return "whole";
   if (/\beggs?\b/i.test(name)) return "egg";
-  if (/\bgarlic\b(?! (?:powder|salt|granules|paste|oil))/i.test(name)) return "clove";
+  if (PLAIN_GARLIC.test(name)) return "clove";
   if (/\b(apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|avocados?|lemons?|limes?|carrots?)\b/i.test(name)) return "whole";
   return null;
 }
@@ -1216,7 +1217,7 @@ export function countUnitFor(name: string): string | null {
 export function unitIsUsable(name: string, unit: string | null | undefined): boolean {
   const u = (unit ?? "").trim();
   if (u.length > 0) return true;
-  return COUNTABLE.test(name);
+  return COUNTABLE.test(name) || PLAIN_GARLIC.test(name);
 }
 
 // Claims a reader acts on that the token rule structurally cannot see.

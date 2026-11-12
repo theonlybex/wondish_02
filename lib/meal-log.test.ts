@@ -231,14 +231,14 @@ test("resolveSnapshot: RECIPE prices server-side and IGNORES client macros", () 
   assert.equal(out.name, "Bowl");
 });
 
-test("resolveSnapshot: CUSTOM stores per-unit macros verbatim, fiber 0, no incomplete", () => {
+test("resolveSnapshot: CUSTOM stores per-unit macros verbatim, fibre unknown, no incomplete", () => {
   const parsed = parseMealLogInput({ localDate: "2026-07-19", mealType: "snack", source: "CUSTOM", customIngredientId: "c1", servings: 2 });
   assert.ok(parsed.ok);
   const out = resolveSnapshot(parsed.value, { customIngredient: { calories: 50, protein: 3, carbs: 1, fat: 0, name: "Almonds" } });
   // per-UNIT, NOT scaled by servings here (servings applied once at read)
   assert.equal(out.snapshot.calories, 50);
-  assert.equal(out.snapshot.fiber, 0);
   assert.equal(out.snapshot.incomplete, false);
+  assert.equal(out.fiberUnknown, true);
   assert.equal(out.name, "Almonds");
 });
 

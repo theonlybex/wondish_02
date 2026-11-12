@@ -131,3 +131,18 @@ export function birthdayError(raw: unknown, opts: { today?: string; now?: Date }
   const ageYears = ((opts.now ?? new Date()).getTime() - b.getTime()) / (365.25 * 86400000);
   return ageYears < 13 || ageYears > 120 ? BIRTHDAY_ERROR : null;
 }
+
+/**
+ * ?today= guard: a real calendar date (YYYY-MM-DD) within one day of the
+ * server's UTC date (covers every timezone). Returns an error or null.
+ */
+export function todayParamError(raw: string, now: Date = new Date()): string | null {
+  const bad = "today must be a real date within a day of the current date";
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!m) return bad;
+  const t = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  const d = new Date(t);
+  if (d.getUTCFullYear() !== +m[1] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) return bad;
+  const nowDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.abs(t - nowDay) > 86400000 ? bad : null;
+}

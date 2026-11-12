@@ -110,7 +110,7 @@ const DENSITY: {
   { match: /\b(tofu|tempeh)\b/i, carbs: 4, fat: 8, protein: 17, gramsPerCup: 250 },
   // Bread and dairy.
   { match: /\b(bread|toast)\b/i, carbs: 49, fat: 3, protein: 9, gramsPerCup: 120, gramsPerItem: 30 , sodium: 490},
-  { match: /\b(muffin|bagel|tortilla|pita)\b/i, carbs: 49, fat: 3, protein: 9, gramsPerCup: 120, gramsPerItem: 60 , sodium: 480},
+  { match: /\b(muffins?|bagels?|tortillas?|pitas?)\b/i, carbs: 49, fat: 3, protein: 9, gramsPerCup: 120, gramsPerItem: 60 , sodium: 480},
   { match: /\b(greek yogurt)\b/i, carbs: 4, fat: 4, protein: 9, gramsPerCup: 245 , volumeUnambiguous: true , sodium: 36},
   { match: /\b(yogurt|milk)\b/i, carbs: 5, fat: 3, protein: 3, gramsPerCup: 245 , volumeUnambiguous: true , sodium: 45},
   { match: /\b(cheddar|parmesan|feta|mozzarella|cheese)\b/i, carbs: 2, fat: 28, protein: 24, gramsPerCup: 110 , sodium: 700},

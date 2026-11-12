@@ -93,3 +93,11 @@ test("birthdayError without today keeps the old server-clock rule (web unchanged
   assert.ok(birthdayError("2013-11-13", { now }), "still 12.99 years by the server clock");
   assert.equal(birthdayError("1990-04-02", { now }), null);
 });
+
+import { todayParamError } from "./body-bounds";
+test("todayParamError: a real date within a day of the server's UTC date", () => {
+  const now = new Date("2026-11-12T19:00:00Z");
+  for (const d of ["2026-11-11", "2026-11-12", "2026-11-13"]) assert.equal(todayParamError(d, now), null, d);
+  for (const d of ["2026-11-14", "2026-11-10", "2099-01-01", "2026-13-45", "2026-02-30", "nope"])
+    assert.ok(todayParamError(d, now), d);
+});

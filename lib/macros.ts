@@ -265,7 +265,7 @@ export function snapshotFromCustomIngredient(ci: {
     protein:  ci.protein  ?? 0,
     carbs:    ci.carbs    ?? 0,
     fat:      ci.fat      ?? 0,
-    fiber: 0,
+    fiber: 0, // placeholder: no fibre column; resolveSnapshot flags fiberUnknown so it is stored NULL
     incomplete,
   };
 }

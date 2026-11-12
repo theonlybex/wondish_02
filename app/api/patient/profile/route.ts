@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { internalError } from "@/lib/api-error";
 import { convertWeight, convertHeight, calcCBMI } from "@/lib/caloric-engine";
 import { AccountClaimConflictError, getOrCreateAccount } from "@/lib/auth";
-import { CM_PER_IN, birthdayError, checkBodyMetrics, firstBodyMetricsError } from "@/lib/body-bounds";
+import { CM_PER_IN, birthdayError, todayParamError, checkBodyMetrics, firstBodyMetricsError } from "@/lib/body-bounds";
 import { parseTodayParam } from "@/lib/meal-log";
 
 export async function GET() {
@@ -82,6 +82,8 @@ export async function PATCH(req: NextRequest) {
   if (todayRaw != null) {
     const t = parseTodayParam(todayRaw);
     if (!t.ok) return NextResponse.json({ error: t.error }, { status: t.status });
+    const bound = todayParamError(t.value);
+    if (bound) return NextResponse.json({ error: bound }, { status: 400 });
     clientToday = t.value;
   }
   if (birthday) {

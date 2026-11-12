@@ -438,7 +438,8 @@ export function resolveSnapshot(
   if (input.source === MealLogSource.CUSTOM) {
     const ci = deps.customIngredient;
     if (!ci) throw new Error("resolveSnapshot: CUSTOM source requires a customIngredient dep");
-    return { snapshot: snapshotFromCustomIngredient(ci), name: input.name ?? ci.name };
+    // Custom foods carry no fibre column: unknown, not 0 g (stored NULL).
+    return { snapshot: snapshotFromCustomIngredient(ci), name: input.name ?? ci.name, fiberUnknown: true as const };
   }
   if (input.source === MealLogSource.RESTAURANT) {
     const dish = deps.restaurantDish;

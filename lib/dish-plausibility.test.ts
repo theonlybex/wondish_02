@@ -945,3 +945,19 @@ test("unitIsUsable: plural countable foods and garlic may be bare counts", () =>
   assert.equal(countUnitFor("garlic"), "clove");
   assert.equal(countUnitFor("garlic powder"), null);
 });
+
+test("plain-garlic allowlist: only plain garlic is a bare clove count", () => {
+  for (const n of ["garlic", "Garlic", "garlic cloves", "fresh garlic", "minced garlic", "garlic, minced"]) {
+    assert.equal(unitIsUsable(n, ""), true, n);
+    assert.equal(countUnitFor(n), "clove", n);
+  }
+  for (const n of [
+    "garlic-salt", "garlic  salt", "garlic sea salt", "garlic butter", "garlic sauce", "garlic chives",
+    "granulated garlic", "garlic, powdered", "garlic powder", "garlic salt", "garlic granules", "garlic paste",
+    "garlic oil", "garlic bread", "garlic seasoning", "roasted garlic hummus",
+  ]) {
+    assert.equal(countUnitFor(n) === "clove", false, `${n} clove`);
+    // bread is legitimately countable; every other name must not be a bare count
+    if (n !== "garlic bread") assert.equal(unitIsUsable(n, ""), false, n);
+  }
+});
