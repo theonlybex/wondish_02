@@ -180,6 +180,13 @@ model Patient {
   claraMemories           ClaraMemory[]
   feedbackReports         FeedbackReport[]
   supplements             Supplement[]
+  trackedLevels           TrackedLevel[]
+
+  // Clara first run + full numbers (additive)
+  usualEating     Json? // { veg, fruit, ... } each 0|1|2|null
+  startingPicture Json? // computed at onboarding save: { little: [...], aLot: [...] }
+  weightGoal      String? // "lose" | "keep" | "gain" | "none"
+  noCondition     Boolean @default(false)
 
   restaurantPlanExchanges RestaurantPlanExchange[]
   fridgePlanExchanges     FridgePlanExchange[]
@@ -573,6 +580,7 @@ model Recipe {
 model Ingredient {
   id             String                     @id @default(cuid())
   name           String                     @unique
+  nutrients      Json? // extra levels per unit, { key: amount }; empty until a USDA data run
   unit           String?
   calories       Float?
   protein        Float?
@@ -1101,6 +1109,8 @@ model Supplement {
   deletedAt DateTime? // soft delete: past journal days keep showing real intakes
   createdAt DateTime           @default(now())
   intakes   SupplementIntake[]
+  contents  Json? // [{ key, amount, unit }] what the pill gives, per intake
+  estimated Boolean            @default(false) // true when contents are a typical-dose estimate
 
   @@index([patientId])
 }
@@ -1152,6 +1162,7 @@ model MealLog {
   incomplete Boolean @default(false) // true when any macro was unpriceable (null→0)
   sodium     Float?
   estimated  Boolean @default(false) // true when Clara estimated the macros rather than a recipe or database
+  nutrients  Json? // per-serving levels beyond the columns above, { key: amount }
 
   // Provenance only — NEVER read for macro math.
   recipeId           String?
@@ -1180,6 +1191,20 @@ model MealLog {
   @@unique([patientId, clientRequestId]) // Postgres treats NULLs as distinct → manual logs unaffected
   @@index([patientId, localDate]) // hot day/range aggregation
   @@index([patientId, updatedAt]) // delta sync for iOS
+}
+
+model TrackedLevel {
+  id        String   @id @default(cuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  levelKey  String
+  tracked   Boolean  @default(true)
+  goal      Float?
+  direction String?
+  target    Float?
+  updatedAt DateTime @updatedAt
+
+  @@unique([patientId, levelKey])
 }
 
 // ─── Reference Data ───────────────────────────────────────────────────────────
