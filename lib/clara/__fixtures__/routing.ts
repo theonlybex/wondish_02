@@ -183,4 +183,20 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
       },
     ],
   },
+
+  // ── dish (Clara-first slice 1) ──
+  { utterance: "what should I eat tonight?", expect: "dish_suggest", note: "a NEW dish; 'what's for dinner tonight' stays plan_get" },
+  { utterance: "give me a dinner idea", expect: "dish_suggest" },
+  { utterance: "what should I cook for lunch? I only have 15 minutes", expect: "dish_suggest" },
+  {
+    utterance: "plan today's dishes for me",
+    expect: null,
+    expectTextMatch: "anything happening today",
+    note: "asks 'Anything happening today?' first (the eval has no ask_choices tool, so it is asked in text)",
+  },
+  {
+    utterance: "plan today's dishes, I've got guests coming for dinner",
+    expect: "dish_plan_today",
+    note: "they already said what today is like, so the question is skipped",
+  },
 ];

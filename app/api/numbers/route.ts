@@ -6,9 +6,8 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { addDays } from "@/lib/local-date";
-import { getDayTarget, parseTodayParam } from "@/lib/meal-log";
-import { summarizeLevels, type LevelDayInput } from "@/lib/levels";
+import { parseTodayParam } from "@/lib/meal-log";
+import { loadLevelSummary } from "@/lib/level-summary";
 
 const DEFAULT_DAYS = 7;
 const MAX_DAYS = 31;
@@ -38,36 +37,7 @@ export async function GET(req: NextRequest) {
 
   const today = parseTodayParam(new URL(req.url).searchParams.get("today"));
   if (!today.ok) return NextResponse.json({ error: today.error }, { status: today.status });
-  const toDate = today.value;
-  const fromDate = addDays(toDate, -(days - 1));
-
-  const rows = await prisma.mealLog.findMany({
-    where: { patientId: patient.id, localDate: { gte: fromDate, lte: toDate }, deletedAt: null },
-    select: { localDate: true, servings: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, sodium: true },
-  });
-
-  const byDate = new Map<string, LevelDayInput>();
-  for (const r of rows) {
-    let d = byDate.get(r.localDate);
-    if (!d) {
-      d = { localDate: r.localDate, meals: 0, calories: 0, protein: 0, carbs: 0, fat: 0, fibre: 0, sodium: null };
-      byDate.set(r.localDate, d);
-    }
-    const s = r.servings;
-    d.meals += 1;
-    d.calories += (r.calories ?? 0) * s;
-    d.protein += (r.protein ?? 0) * s;
-    d.carbs += (r.carbs ?? 0) * s;
-    d.fat += (r.fat ?? 0) * s;
-    d.fibre += (r.fiber ?? 0) * s;
-    if (r.sodium != null) d.sodium = (d.sodium ?? 0) + r.sodium * s;
-  }
-
-  const dayTarget = await getDayTarget(patient.id, toDate, false);
-  const targets = dayTarget
-    ? { calories: dayTarget.calories, protein: dayTarget.protein, carbs: dayTarget.carbs, fat: dayTarget.fat }
-    : null;
-  const summary = summarizeLevels(Array.from(byDate.values()), targets, { fromDate, toDate });
+  const summary = await loadLevelSummary(patient.id, today.value, days);
 
   // Weight: only for a patient with a goal weight. Change = latest weigh-in
   // minus the one nearest 7 days before it.

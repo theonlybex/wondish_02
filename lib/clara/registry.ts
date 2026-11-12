@@ -3,13 +3,14 @@ import { profileSkill } from "./skills/profile";
 import { logsSkill } from "./skills/logs";
 import { nutritionSkill } from "./skills/nutrition";
 import { planSkill } from "./skills/plan";
+import { dishSkill } from "./skills/dish";
 import { gapSkill } from "./gap";
 
 /**
  * Product skills — subject to CLARA_SKILLS. A skill cycle adds exactly one
  * import and one array entry here; nothing else in the runtime changes.
  */
-export const ALL_SKILLS: Skill[] = [profileSkill, logsSkill, nutritionSkill, planSkill];
+export const ALL_SKILLS: Skill[] = [profileSkill, logsSkill, nutritionSkill, planSkill, dishSkill];
 
 /**
  * Web "Clara" chat is narrowed to dish-check + Q&A (2026-09-07): READ-ONLY
@@ -83,11 +84,20 @@ function buildTieBreakers(active: Skill[]): string {
     : logsOn
       ? '- "I ate the planned dish" → find it with plan_get, then PROPOSE plan_mark_done and ask once about also logging intake via plan_log_eaten — either write only after their yes. Unplanned food they ate → the logs flow: propose an estimate, logs_create only after their yes.'
       : '- "I ate the planned dish" → find it with plan_get, then PROPOSE plan_mark_done — the write only after their yes. For unplanned food you have no intake tools: gap_report (LOGS).';
+  // Both dish tools are reads, so naming them here argues against no confirm rule.
+  const dishOn = active.some((s) => s.name === "dish");
+  const dishRows = dishOn
+    ? [
+        '- A NEW dish to cook — "what should I eat", "what should I eat tonight", "what should I cook", "give me a dinner idea" → dish_suggest (one dish, from what they ate this week). What is already on their meal plan stays with the PLANNED row.',
+        '- "Plan today\'s dishes", "plan my day", "what should I eat today" → dish_plan_today, after asking "Anything happening today?" once with ask_choices unless they already said.',
+      ]
+    : [];
   return [
     "Which domain owns the question (do not mix these up):",
     ateRow,
     plannedRow,
     ...(atePlannedRow ? [atePlannedRow] : []),
+    ...dishRows,
     "- How they FELT — mood, energy, sleep, symptoms, body weight notes → no journal tools yet: gap_report (JOURNAL).",
     leftRow,
     "- Whether a dish FITS their profile → no tool; answer from the profile above.",
