@@ -65,3 +65,10 @@ test("areas and pills reference real keys", () => {
   assert.equal(AREAS.length, 6);
   assert.equal(TYPICAL_PILLS.Multivitamin.length, 10);
 });
+
+test("groups follow the spec", () => {
+  const g = (name: string) => LEVELS.filter((l) => l.group === name).map((l) => l.key);
+  assert.deepEqual(g("food"), ["protein", "carbs", "fibre", "addedSugar", "saturatedFat", "sodium", "omega3"]);
+  assert.deepEqual(g("minerals"), ["potassium", "calcium", "iron", "magnesium", "zinc", "iodine", "phosphorus"]);
+  assert.deepEqual(g("vitamins"), ["vitaminA", "vitaminB6", "vitaminB12", "vitaminC", "vitaminD", "vitaminE", "vitaminK", "folate"]);
+});

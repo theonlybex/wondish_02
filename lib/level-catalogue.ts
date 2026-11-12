@@ -33,7 +33,7 @@ export const LEVELS: readonly LevelDef[] = [
   { key: "fibre", name: "Fibre", group: "food", unit: "g", direction: "enough", target: 28, upperLimit: null },
   { key: "addedSugar", name: "Added sugar", group: "food", unit: "g", direction: "under", target: 50, upperLimit: null },
   { key: "saturatedFat", name: "Saturated fat", group: "food", unit: "g", direction: "under", target: 20, upperLimit: null },
-  { key: "sodium", name: "Sodium", group: "minerals", unit: "mg", direction: "under", target: 2300, upperLimit: null },
+  { key: "sodium", name: "Sodium", group: "food", unit: "mg", direction: "under", target: 2300, upperLimit: null },
   { key: "omega3", name: "Omega-3", group: "food", unit: "mg", direction: "enough", target: 250, upperLimit: null },
   { key: "potassium", name: "Potassium", group: "minerals", unit: "mg", direction: "enough", target: 4700, upperLimit: null },
   { key: "calcium", name: "Calcium", group: "minerals", unit: "mg", direction: "enough", target: 1300, upperLimit: 2500 },
