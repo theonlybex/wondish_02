@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { LEVELS } from "@/lib/level-catalogue";
-import { validateTrackedBody } from "@/lib/numbers-full";
+import { isAvailable, validateTrackedBody } from "@/lib/numbers-full";
 
 export async function PUT(req: NextRequest) {
   const { userId } = await auth();
@@ -14,7 +14,7 @@ export async function PUT(req: NextRequest) {
   const { success } = await rateLimit("numbers-write", userId, 60, 60);
   if (!success) return NextResponse.json({ error: "Too many requests. Please slow down." }, { status: 429 });
 
-  const patient = await prisma.patient.findFirst({ where: { account: { clerkId: userId } }, select: { id: true } });
+  const patient = await prisma.patient.findFirst({ where: { account: { clerkId: userId } }, select: { id: true, healthConditions: { select: { condition: { select: { name: true } } } } } });
   if (!patient) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
   let body: unknown;
@@ -23,12 +23,13 @@ export async function PUT(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const parsed = validateTrackedBody(body);
+  const conditionNames = patient.healthConditions.map((h) => h.condition.name);
+  const parsed = validateTrackedBody(body, conditionNames);
   if (!parsed.ok) return NextResponse.json({ error: parsed.error, field: parsed.field }, { status: parsed.status });
 
   const on = new Set<string>(parsed.value);
   await prisma.$transaction(
-    LEVELS.map((l) =>
+    LEVELS.filter((l) => isAvailable(l.key, conditionNames)).map((l) =>
       prisma.trackedLevel.upsert({
         where: { patientId_levelKey: { patientId: patient.id, levelKey: l.key } },
         create: { patientId: patient.id, levelKey: l.key, tracked: on.has(l.key) },

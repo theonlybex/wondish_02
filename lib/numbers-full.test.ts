@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildFullNumbers,
   convertUnit,
+  roundAmount,
   validateGoalsBody,
   validateTrackedBody,
   rowsToMaterialize,
@@ -149,7 +150,7 @@ test("without full=1 the summary JSON is unchanged (golden)", () => {
   );
   // rows that also carry nutrients read the same
   const withNutrients = rows.map((x) => ({ ...x, nutrients: { saturatedFat: 1 } }));
-  assert.deepEqual(levelDaysFromRows(withNutrients).map(({ ...d }) => d), levelDaysFromRows(rows));
+  assert.deepEqual(levelDaysFromRows(withNutrients), levelDaysFromRows(rows));
 });
 
 test("validateTrackedBody", () => {
@@ -160,25 +161,60 @@ test("validateTrackedBody", () => {
   assert.equal(validateTrackedBody({}).ok, false);
 });
 
+const ctx = (person: { sexAtBirth: "MALE" | "FEMALE" | null; age: number | null }, extra: { macroTargets?: { protein: number; carbs: number } | null; conditionNames?: string[] } = {}) => ({
+  person, macroTargets: extra.macroTargets ?? null, conditionNames: extra.conditionNames ?? [],
+});
+
 test("validateGoalsBody: bounds, null clears, unknown key", () => {
   const p = { sexAtBirth: "MALE" as const, age: 30 };
-  assert.deepEqual(validateGoalsBody({ goals: [{ key: "fibre", amount: 30 }, { key: "zinc", amount: null }] }, p),
+  assert.deepEqual(validateGoalsBody({ goals: [{ key: "fibre", amount: 30 }, { key: "zinc", amount: null }] }, ctx(p)),
     { ok: true, value: [{ key: "fibre", amount: 30 }, { key: "zinc", amount: null }] });
   for (const amount of [0, -1, 85, NaN, "30", Infinity]) {
-    const r = validateGoalsBody({ goals: [{ key: "fibre", amount }] }, p);
+    const r = validateGoalsBody({ goals: [{ key: "fibre", amount }] }, ctx(p));
     assert.equal(r.ok, false, String(amount));
     if (!r.ok) assert.equal(r.status, 422);
   }
-  assert.equal(validateGoalsBody({ goals: [{ key: "fibre", amount: 84 }] }, p).ok, true);
+  assert.equal(validateGoalsBody({ goals: [{ key: "fibre", amount: 84 }] }, ctx(p)).ok, true);
   // male iron target is 8, so the cap is 24
-  assert.equal(validateGoalsBody({ goals: [{ key: "iron", amount: 25 }] }, p).ok, false);
-  const unk = validateGoalsBody({ goals: [{ key: "bogus", amount: 1 }] }, p);
+  assert.equal(validateGoalsBody({ goals: [{ key: "iron", amount: 25 }] }, ctx(p)).ok, false);
+  const unk = validateGoalsBody({ goals: [{ key: "bogus", amount: 1 }] }, ctx(p));
   assert.deepEqual(unk, { ok: false, status: 422, error: "Unknown level: bogus", field: "key" });
 });
 
-test("rowsToMaterialize writes all 22 defaults only when no rows exist", () => {
+test("rowsToMaterialize writes all 21 defaults only when no rows exist", () => {
   const rows = rowsToMaterialize([], []);
-  assert.equal(rows.length, 22);
+  assert.equal(rows.length, 21);
   assert.equal(rows.filter((r) => r.tracked).length, 6);
   assert.deepEqual(rowsToMaterialize([{ levelKey: "iron" }], []), []);
+});
+
+test("goal bound uses the shown macro target for protein and carbs", () => {
+  const p = { sexAtBirth: "MALE" as const, age: 30 };
+  const c = ctx(p, { macroTargets: { protein: 100, carbs: 200 } });
+  assert.equal(validateGoalsBody({ goals: [{ key: "protein", amount: 300 }] }, c).ok, true);
+  assert.equal(validateGoalsBody({ goals: [{ key: "protein", amount: 301 }] }, c).ok, false);
+  assert.equal(validateGoalsBody({ goals: [{ key: "carbs", amount: 600 }] }, c).ok, true);
+  // no macro target: catalogue target 50 -> cap 150
+  assert.equal(validateGoalsBody({ goals: [{ key: "protein", amount: 151 }] }, ctx(p)).ok, false);
+});
+
+test("phosphorus is rejected without a kidney condition, accepted with one", () => {
+  const p = { sexAtBirth: null, age: null };
+  const g = validateGoalsBody({ goals: [{ key: "phosphorus", amount: 1000 }] }, ctx(p));
+  assert.deepEqual(g, { ok: false, status: 422, error: "Unknown level: phosphorus", field: "key" });
+  assert.equal(validateGoalsBody({ goals: [{ key: "phosphorus", amount: 1000 }] }, ctx(p, { conditionNames: ["Kidney disease"] })).ok, true);
+  assert.equal(validateTrackedBody({ tracked: ["phosphorus"] }, []).ok, false);
+  assert.equal(validateTrackedBody({ tracked: ["phosphorus"] }, ["Chronic kidney disease"]).ok, true);
+  assert.equal(rowsToMaterialize([], []).some((r) => r.levelKey === "phosphorus"), false);
+  assert.equal(rowsToMaterialize([], ["Kidney disease"]).some((r) => r.levelKey === "phosphorus"), true);
+});
+
+test("pillAmount and amount round the same way; 0.25 mg keeps its value", () => {
+  assert.equal(roundAmount(0.25, "mg"), 0.3);
+  assert.equal(roundAmount(0.25, "mcg"), 0.25);
+  assert.equal(roundAmount(2.44, "mcg"), 2.4);
+  const out = buildFullNumbers(base({ pills: [{ contents: [{ key: "vitaminB12", amount: 0.00025, unit: "mg" }, { key: "magnesium", amount: 0.0003, unit: "g" }], estimated: false }] }));
+  assert.equal(lv(out, "vitaminB12").pillAmount, 0.25);
+  assert.equal(lv(out, "vitaminB12").amount, 0.25);
+  assert.equal(lv(out, "magnesium").pillAmount, lv(out, "magnesium").amount);
 });

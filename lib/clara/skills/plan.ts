@@ -107,7 +107,7 @@ const prismaDeps: PlanDeps = {
       where: { patientId, planVersion, date: { gte: start, lte: end } },
       include: {
         recipe: {
-          select: { id: true, name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, servings: true },
+          select: { id: true, name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, servings: true, saturatedFat: true, addedSugars: true },
         },
         mealType: { select: { name: true } },
       },
@@ -126,7 +126,7 @@ const prismaDeps: PlanDeps = {
       where: { id: menuId, patientId, planVersion },
       include: {
         recipe: {
-          select: { id: true, name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, servings: true },
+          select: { id: true, name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, servings: true, saturatedFat: true, addedSugars: true },
         },
         mealType: { select: { name: true } },
       },

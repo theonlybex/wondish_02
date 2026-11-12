@@ -45,29 +45,7 @@ export async function GET(req: NextRequest) {
 
   // Weight: only for a patient with a goal weight. Change = latest weigh-in
   // minus the one nearest 7 days before it.
-  let weight: { value: number; unit: "lbs" | "kg"; change: number | null } | null = null;
-  if (patient.goalWeight != null) {
-    const entries = await prisma.journalEntry.findMany({
-      where: { patientId: patient.id, weight: { not: null } },
-      select: { date: true, weight: true },
-      orderBy: { date: "desc" },
-      take: 60,
-    });
-    const weighIns = entries.filter((e): e is { date: Date; weight: number } => e.weight != null);
-    if (weighIns.length > 0) {
-      const latest = weighIns[0];
-      const target = latest.date.getTime() - 7 * 86400000;
-      let nearest: { date: Date; weight: number } | null = null;
-      for (const w of weighIns.slice(1)) {
-        if (!nearest || Math.abs(w.date.getTime() - target) < Math.abs(nearest.date.getTime() - target)) nearest = w;
-      }
-      weight = {
-        value: latest.weight,
-        unit: patient.weightUnit === "kg" ? "kg" : "lbs",
-        change: nearest ? Math.round((latest.weight - nearest.weight) * 10) / 10 : null,
-      };
-    }
-  }
+  const weight = patient.goalWeight != null ? await loadWeight(patient.id, patient.weightUnit) : null;
 
   return NextResponse.json({ summary, weight });
 }
@@ -86,29 +64,8 @@ async function loadFull(
     prisma.trackedLevel.findMany({ where: { patientId: patient.id }, select: { levelKey: true, tracked: true, goal: true } }),
   ]);
 
-  let weight = null;
-  if (patient.weightGoal === "lose" || patient.weightGoal === "gain" || patient.goalWeight != null) {
-    const entries = await prisma.journalEntry.findMany({
-      where: { patientId: patient.id, weight: { not: null } },
-      select: { date: true, weight: true },
-      orderBy: { date: "desc" },
-      take: 60,
-    });
-    const weighIns = entries.filter((e): e is { date: Date; weight: number } => e.weight != null);
-    if (weighIns.length > 0) {
-      const latest = weighIns[0];
-      const target = latest.date.getTime() - 7 * 86400000;
-      let nearest: { date: Date; weight: number } | null = null;
-      for (const w of weighIns.slice(1)) {
-        if (!nearest || Math.abs(w.date.getTime() - target) < Math.abs(nearest.date.getTime() - target)) nearest = w;
-      }
-      weight = {
-        value: latest.weight,
-        unit: (patient.weightUnit === "kg" ? "kg" : "lbs") as "lbs" | "kg",
-        change: nearest ? Math.round((latest.weight - nearest.weight) * 10) / 10 : null,
-      };
-    }
-  }
+  const showWeight = patient.weightGoal === "lose" || patient.weightGoal === "gain" || patient.goalWeight != null;
+  const weight = showWeight ? await loadWeight(patient.id, patient.weightUnit) : null;
 
   const pic = patient.startingPicture as { little?: unknown; aLot?: unknown } | null;
   const picture = pic && Array.isArray(pic.little) && Array.isArray(pic.aLot)
@@ -129,4 +86,31 @@ async function loadFull(
     picture,
     weight,
   });
+}
+
+// Latest weigh-in minus the one nearest 7 days before it. The caller decides
+// whether the person's goal makes the weight row show at all.
+async function loadWeight(
+  patientId: string,
+  weightUnit: string | null,
+): Promise<{ value: number; unit: "lbs" | "kg"; change: number | null } | null> {
+  const entries = await prisma.journalEntry.findMany({
+    where: { patientId, weight: { not: null } },
+    select: { date: true, weight: true },
+    orderBy: { date: "desc" },
+    take: 60,
+  });
+  const weighIns = entries.filter((e): e is { date: Date; weight: number } => e.weight != null);
+  if (weighIns.length === 0) return null;
+  const latest = weighIns[0];
+  const target = latest.date.getTime() - 7 * 86400000;
+  let nearest: { date: Date; weight: number } | null = null;
+  for (const w of weighIns.slice(1)) {
+    if (!nearest || Math.abs(w.date.getTime() - target) < Math.abs(nearest.date.getTime() - target)) nearest = w;
+  }
+  return {
+    value: latest.weight,
+    unit: weightUnit === "kg" ? "kg" : "lbs",
+    change: nearest ? Math.round((latest.weight - nearest.weight) * 10) / 10 : null,
+  };
 }

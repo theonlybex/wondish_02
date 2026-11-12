@@ -94,8 +94,11 @@ export function convertUnit(amount: number, from: LevelUnit, to: LevelUnit): num
   return (amount * UNIT_PER_MCG[from]) / UNIT_PER_MCG[to];
 }
 
-const round1 = (n: number) => Math.round(n * 10) / 10;
-const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+/** 1 decimal; micrograms under 1 keep 2 so small doses do not vanish. */
+export function roundAmount(n: number, unit: LevelUnit): number {
+  const places = unit === "mcg" && Math.abs(n) < 1 ? 100 : 10;
+  return Math.round(n * places) / places;
+}
 
 function mean(values: number[]): number | null {
   return values.length === 0 ? null : values.reduce((a, b) => a + b, 0) / values.length;
@@ -191,8 +194,8 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
       unit: def.unit,
       target,
       upperLimit: def.upperLimit,
-      amount: amount === null ? null : round1(amount),
-      pillAmount: round6(pillAmount),
+      amount: amount === null ? null : roundAmount(amount, def.unit),
+      pillAmount: roundAmount(pillAmount, def.unit),
       foodCounted,
       estimate,
       word,
@@ -224,12 +227,18 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
 
 export type Validated<T> = { ok: true; value: T } | { ok: false; status: 400 | 422; error: string; field?: string };
 
-export function validateTrackedBody(body: unknown): Validated<FullLevelKey[]> {
+/** Phosphorus exists only for a person with a kidney condition. */
+export function isAvailable(key: string, conditionNames: string[]): boolean {
+  const def = LEVEL_BY_KEY.get(key);
+  return !!def && (!def.kidneyOnly || showsPhosphorus(conditionNames));
+}
+
+export function validateTrackedBody(body: unknown, conditionNames: string[] = []): Validated<FullLevelKey[]> {
   const list = (body as { tracked?: unknown } | null)?.tracked;
   if (!Array.isArray(list)) return { ok: false, status: 400, error: "tracked must be a list of level keys", field: "tracked" };
   const keys = new Set<FullLevelKey>();
   for (const k of list) {
-    if (typeof k !== "string" || !LEVEL_BY_KEY.has(k)) {
+    if (typeof k !== "string" || !LEVEL_BY_KEY.has(k) || !isAvailable(k, conditionNames)) {
       return { ok: false, status: 422, error: `Unknown level: ${String(k)}`, field: "tracked" };
     }
     keys.add(k as FullLevelKey);
@@ -239,14 +248,18 @@ export function validateTrackedBody(body: unknown): Validated<FullLevelKey[]> {
 
 export function validateGoalsBody(
   body: unknown,
-  person: { sexAtBirth: "MALE" | "FEMALE" | null; age: number | null },
+  ctx: {
+    person: { sexAtBirth: "MALE" | "FEMALE" | null; age: number | null };
+    macroTargets: { protein: number; carbs: number } | null;
+    conditionNames: string[];
+  },
 ): Validated<{ key: FullLevelKey; amount: number | null }[]> {
   const list = (body as { goals?: unknown } | null)?.goals;
   if (!Array.isArray(list)) return { ok: false, status: 400, error: "goals must be a list", field: "goals" };
   const byKey = new Map<FullLevelKey, number | null>();
   for (const item of list) {
     const { key, amount } = (item ?? {}) as { key?: unknown; amount?: unknown };
-    if (typeof key !== "string" || !LEVEL_BY_KEY.has(key)) {
+    if (typeof key !== "string" || !isAvailable(key, ctx.conditionNames)) {
       return { ok: false, status: 422, error: `Unknown level: ${String(key)}`, field: "key" };
     }
     if (amount === null) {
@@ -254,7 +267,11 @@ export function validateGoalsBody(
       continue;
     }
     const def = LEVEL_BY_KEY.get(key)!;
-    const max = Math.min(3 * targetFor(def, person), MAX_GOAL);
+    const shown =
+      ctx.macroTargets && (def.key === "protein" || def.key === "carbs")
+        ? ctx.macroTargets[def.key]
+        : targetFor(def, ctx.person);
+    const max = Math.min(3 * shown, MAX_GOAL);
     if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0 || amount > max) {
       return { ok: false, status: 422, error: `${def.name} goal must be more than 0 and at most ${max}`, field: key };
     }
@@ -274,5 +291,5 @@ export function rowsToMaterialize(
 ): { levelKey: FullLevelKey; tracked: boolean }[] {
   if (existing.length > 0) return [];
   const on = new Set(defaultTracked(conditionNames));
-  return LEVELS.map((l) => ({ levelKey: l.key, tracked: on.has(l.key) }));
+  return LEVELS.filter((l) => !l.kidneyOnly || showsPhosphorus(conditionNames)).map((l) => ({ levelKey: l.key, tracked: on.has(l.key) }));
 }

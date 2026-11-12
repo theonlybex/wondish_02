@@ -339,6 +339,19 @@ test("log_eaten: recipe servings divide whole-dish macros (dashboard pricing par
   assert.equal(args.create.protein, 10);
 });
 
+test("log_eaten: recipe saturated fat and added sugar land in nutrients per serving", async () => {
+  const { deps, calls } = fakeDeps({
+    findMenuById: async () =>
+      menuRow({
+        recipe: { id: "rec-1", name: "Family stew", calories: 520, protein: 40, carbs: 60, fat: 20, fiber: 8, servings: 4, saturatedFat: 12, addedSugars: 8 } as never,
+      }),
+  });
+  const res = await makePlanHandlers(deps).logEaten(ctx, { menuId: "menu-1" }, "toolu_n1");
+  assert.equal(res.ok, true);
+  const args = calls.createMealLog?.[0] as unknown as { create: Record<string, unknown> };
+  assert.deepEqual(args.create.nutrients, { saturatedFat: 3, addedSugar: 2 });
+});
+
 test("log_eaten: calendar-invalid date is INVALID_INPUT, not a phantom row", async () => {
   const h = makePlanHandlers(fakeDeps().deps);
   const res = await h.logEaten(ctx, { menuId: "menu-1", date: "2026-02-30" }, "toolu_s5");
