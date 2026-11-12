@@ -192,3 +192,33 @@ test("tier distinguishes a beta coupon from a paid subscription", () => {
   assert.equal(me([]).tier, "free");
   assert.equal(me([]).isPremium, false);
 });
+
+test("needsWeightGoal: complete profile with a null weightGoal → true", () => {
+  const dto = serializeMe(account([]), { ...completeProfile(), weightGoal: null });
+  assert.equal(dto.needsWeightGoal, true);
+});
+
+test("needsWeightGoal: complete profile with an answered weightGoal (\"none\" or \"lose\") → false", () => {
+  for (const weightGoal of ["none", "lose"]) {
+    const dto = serializeMe(account([]), { ...completeProfile(), weightGoal });
+    assert.equal(dto.needsWeightGoal, false, weightGoal);
+  }
+});
+
+test("needsWeightGoal: incomplete profile → false even with a null weightGoal", () => {
+  const dto = serializeMe(account([]), { ...completeProfile(), weight: null, weightGoal: null });
+  assert.equal(dto.onboardingComplete, false);
+  assert.equal(dto.needsWeightGoal, false);
+});
+
+test("needsWeightGoal: no patient → false", () => {
+  assert.equal(serializeMe(account([]), null).needsWeightGoal, false);
+});
+
+test("needsWeightGoal is appended after the existing fields (order unchanged)", () => {
+  const keys = Object.keys(serializeMe(account([]), { ...completeProfile(), weightGoal: null }));
+  assert.deepEqual(keys, [
+    "id", "email", "firstName", "lastName", "photoUrl", "onboardingComplete",
+    "isPremium", "tier", "subscription", "needsWeightGoal",
+  ]);
+});

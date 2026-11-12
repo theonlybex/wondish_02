@@ -28,6 +28,12 @@ export type MeDTO = {
   /** What the user should be CALLED. Mirrors lib/plan-badge.ts planBadgeFor. */
   tier: "premium" | "beta" | "free";
   subscription: MeSubscriptionDTO;
+  /**
+   * True while the app should still ask the weight question: the profile is
+   * complete but `weightGoal` was never answered (null). "none" is an answer.
+   * Additive; older clients ignore it.
+   */
+  needsWeightGoal: boolean;
 };
 
 type SubRow = {
@@ -54,20 +60,21 @@ export function serializeMe(
     photoUrl: string | null;
     subscriptions: SubRow[];
   },
-  patient: ProfileCompletionInput | null
+  patient: (NonNullable<ProfileCompletionInput> & { weightGoal?: string | null }) | null
 ): MeDTO {
   const subs = account.subscriptions ?? [];
   // Shared with lib/billing/load-view.ts so iOS and the billing page always
   // describe the same row (paid beats coupon; live beats dead; Stripe beats
   // an expired coupon row).
   const active = primarySubscriptionRow(subs);
+  const onboardingComplete = patient ? isProfileComplete(patient) : false;
   return {
     id: account.id,
     email: account.email,
     firstName: account.firstName,
     lastName: account.lastName,
     photoUrl: account.photoUrl,
-    onboardingComplete: patient ? isProfileComplete(patient) : false,
+    onboardingComplete,
     isPremium: accountHasActivePremium(subs),
     // Same precedence as lib/ai-budget.ts tierFor: a live PAID row of any
     // source outranks a coupon; coupons alone are beta; nothing live is free.
@@ -88,5 +95,15 @@ export function serializeMe(
           canceledAt: active.canceledAt?.toISOString() ?? null,
         }
       : null,
+    needsWeightGoal: needsWeightGoal(patient, onboardingComplete),
   };
+}
+
+/** Complete profile + unanswered (null) weight goal. No patient → false. */
+export function needsWeightGoal(
+  patient: { weightGoal?: string | null } | null,
+  onboardingComplete: boolean
+): boolean {
+  if (!patient || !onboardingComplete) return false;
+  return patient.weightGoal == null;
 }
