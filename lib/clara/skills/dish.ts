@@ -15,12 +15,15 @@ import { CLARA_MODEL } from "@/lib/clara/anthropic-client";
 import { loadIngredientGroups } from "@/lib/ingredient-catalog-db";
 import { specifyCookingOil, oilAllowedBy } from "@/lib/clara/oil";
 import { PATIENT_FOOD_MAP_INCLUDE, buildFoodMapText } from "@/lib/food-map";
-import { derivePatientBans, buildDietMatchers, bannedNamesForPrompt, type DietMatchers } from "@/lib/diet-match";
+import { derivePatientBans, buildDietMatchers, bannedNamesForPrompt, type DerivedBans, type DietMatchers } from "@/lib/diet-match";
 import { dailySodiumLimitMg } from "@/lib/sodium-limit";
 import { currentStartingPicture } from "@/lib/onboarding";
 import { loadClaraLevelSummary } from "@/lib/level-summary";
 import { LEVELS, type FullLevelKey } from "@/lib/level-catalogue";
-import { applyAllergenFilter, parseFridgeRecipes, SUGGEST_RECIPES_SCHEMA, type FridgeRecipe } from "@/lib/fridge";
+import { applyAllergenFilter, parseFridgeRecipes, type FridgeRecipe } from "@/lib/fridge";
+import { DISH_OUTPUT_SCHEMA, DISH_UNITS, DishItemExtractor, toFridgeItem } from "@/lib/clara/dish-output";
+import { libraryToFridge, rankLibrary, type LibraryRecipe, type RecentDishes } from "@/lib/clara/dish-library";
+import crypto from "crypto";
 import { MAX_SERVINGS } from "@/lib/meal-log";
 import {
   passesSanity,
@@ -111,11 +114,40 @@ export function parseStartingPicture(raw: unknown): StartingPicture | null {
   return pic.little.length === 0 && pic.aLot.length === 0 ? null : pic;
 }
 
+/** What generateOne hands the generator: the deadline, and the test that lets it stop early. */
+export interface GenerateOptions {
+  /** Aborted when the time budget runs out: return what passed the gates so far. */
+  signal?: AbortSignal;
+  /**
+   * The card's own test (pickDish). The generator may stop reading the model
+   * as soon as one gated candidate passes it — the dish is served while the
+   * model would still be writing the others.
+   */
+  accept?: (r: FridgeRecipe) => boolean;
+  /** Simulation/diagnostics only: where each candidate ended up. */
+  trace?: (e: CandidateTrace) => void;
+}
+
+export type CandidateTrace = {
+  /** ms since the generator started. */
+  ms: number;
+  name: string;
+  stage: "parse" | "safety" | "gates" | "card" | "accepted";
+};
+
 /** Effects, injected so every handler path is unit-tested without a DB or a model. */
 export interface DishDeps {
   loadSummary(patientId: string, today: string): Promise<LevelSummary>;
   /** Candidates that have ALREADY passed every server-side gate; [] when none did. */
-  generate(ctx: ClaraContext, ask: DishAsk): Promise<FridgeRecipe[]>;
+  generate(ctx: ClaraContext, ask: DishAsk, opts?: GenerateOptions): Promise<FridgeRecipe[]>;
+  /**
+   * The safety net: library recipes that ALREADY passed the planner's rule
+   * filter and every gate a generated dish passes, best first; [] when none.
+   * Started alongside the model call, read only when no generated dish is served.
+   */
+  library?(ctx: ClaraContext, ask: DishAsk): Promise<FridgeRecipe[]>;
+  /** The model's time budget per dish, ms (DISH_BUDGET_MS when absent). */
+  budgetMs?: number;
   loggedMealTypes(patientId: string, today: string): Promise<string[]>;
   /** Optional so older callers keep working; used only while logs are not enough. */
   loadStartingPicture?(patientId: string): Promise<StartingPicture | null>;
@@ -187,12 +219,39 @@ export function gateGeneratedDishes(recipes: FridgeRecipe[], opts: GateOptions):
 // ─── the real generator ─────────────────────────────────────────────────────
 
 const CANDIDATES = 3;
+/**
+ * The model's time budget per dish. Measured in docs/qa/clara-fast-dishes.md:
+ * past it, the model call is aborted and the library dish (already chosen in
+ * parallel) is served instead, so the person always has an answer by then.
+ */
+export const DISH_BUDGET_MS = 9_000;
+/** After the budget, how long the generator may take to hand back what it already gated. */
+const ABORT_GRACE_MS = 300;
+/** Three lean dishes on Haiku 5.5's tokenizer, with room; the stream usually stops after the first. */
+const DISH_MAX_TOKENS = 4096;
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * The words no part of a generated dish may contain: the SAME ban data the
+ * safety gate judges with (bannedNamesForPrompt, plus every allergy matcher's
+ * term). Prompt-only: it saves candidates the gate would refuse ("coconut
+ * milk" for a dairy allergy), and the gate still has the final say.
+ */
+export function forbiddenWordsForPrompt(bans: DerivedBans, matchers: DietMatchers): string[] {
+  const seen = new Set<string>();
+  return [...bannedNamesForPrompt(bans), ...matchers.allergyMatchers.map((m) => m.term)].filter((w) => {
+    const k = w.trim().toLowerCase();
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
 
 export function dishSystemPrompt(a: {
   ask: DishAsk;
   foodMapText: string;
+  /** forbiddenWordsForPrompt: every banned name and allergy word. */
   bannedNames: string[];
   proteinOptions: string[];
   sodiumLimitMg: number;
@@ -214,10 +273,11 @@ export function dishSystemPrompt(a: {
       `- ${fromAnswers ? "From their answers they probably get a lot of sodium" : "They have had a lot of sodium this week"}: keep every serving at or under ${SODIUM_REASON_MAX_MG} mg of sodium — no soy sauce, stock cubes, bouillon, cured meats, salted cheese or pickles, and little or no added salt.`,
     );
   }
+  const units = DISH_UNITS.filter((u) => u !== "").join(", ");
   return [
-    `You are Clara, Wondish's nutrition assistant. Suggest ${CANDIDATES} different, realistic, home-cookable ${meal} dishes for this person to cook today. The app shows the first one that passes its checks.`,
+    `You are Clara, Wondish's nutrition assistant. Suggest ${CANDIDATES} different, realistic, home-cookable ${meal} dishes for this person to cook today. The app shows the first one that passes its checks, so put the simplest, surest fit first.`,
     `Rules:`,
-    `- mealType must be exactly "${meal}". servings is ${servings}; every amount and every perServing number is for ONE serving.`,
+    `- Every dish is a ${meal}. servings is ${servings}; every amount and every perServing number is for ONE serving.`,
     servings > 1
       ? `- The app scales the amounts to ${servings} people, so write the steps WITHOUT amounts: "add the lentils", never "add 1 cup lentils" or "stir in 2 tablespoons of oil".`
       : ``,
@@ -230,72 +290,192 @@ export function dishSystemPrompt(a: {
         ? `- This is a SNACK: small and quick, under ${SNACK_MAX_MINUTES} minutes in total, with no added salt. Fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip.`
         : `- Each dish is a complete meal (protein + carb + vegetables where sensible).`,
     ...leanInto,
-    `- Everyday dishes with common, individually named ingredients — no compound items, no brand names. usesIngredients lists EVERY ingredient; leave missingIngredients empty.`,
-    `- Name the oil you cook with (e.g. "olive oil") in the ingredients and the steps — never "cooking oil", "oil" or "cooking spray". If a step sears, fries, sautés or browns anything, that fat MUST be in usesIngredients with its amount.`,
-    `- amounts: one entry per usesIngredients item with the per-serving quantity and unit (g, oz, ml, cup, tablespoon, teaspoon, or "" only for naturally counted things like eggs). Same spelling as in usesIngredients. Grains, pasta and pulses in GRAMS of DRY weight.`,
-    `- steps: 4–8 clear instructions a home cook can follow. EVERY meat, poultry and fish must be cooked by a step that names it.`,
+    `- Everyday dishes with common, individually named ingredients — no compound items, no brand names.`,
+    `- ingredients: EVERY ingredient, each with its per-serving quantity and unit (${units}; "" only for eggs). Grains, pasta and pulses in GRAMS of DRY weight. Use the same ingredient name in the steps.`,
+    `- Name the oil you cook with (e.g. "olive oil") in the ingredients and the steps — never "cooking oil", "oil" or "cooking spray". If a step sears, fries, sautés or browns anything, that fat MUST be in ingredients with its amount.`,
+    `- steps: 4–6 short, clear instructions a home cook can follow. EVERY meat, poultry and fish must be cooked by a step that names it.`,
     `- perServing macros must be realistic: protein*4 + carbs*4 + fat*9 within 5% of the calories. Include fiber.`,
-    `- Name each dish by what is IN it and the method you actually use. The description may only mention food in usesIngredients. Every dish needs a distinct name.`,
+    `- Name each dish by what is IN it and the method you actually use. description is one short sentence and may only mention food in ingredients. Every dish needs a distinct name.`,
     saltRuleLine(a.sodiumLimitMg),
-    `- Cooking fat: one teaspoon per serving is normal and one tablespoon is the maximum; write the same amount in the steps as in amounts.`,
+    `- Cooking fat: one teaspoon per serving is normal and one tablespoon is the maximum; write the same amount in the steps as in ingredients.`,
     a.proteinOptions.length > 0 && a.bannedNames.length > 0
       ? `- Protein sources that fit this person — build every main around one of them: ${a.proteinOptions.join(", ")}.`
       : ``,
-    a.bannedNames.length > 0 ? `- NEVER include these ingredients or anything containing them: ${a.bannedNames.join(", ")}.` : ``,
+    a.bannedNames.length > 0
+      ? `- FORBIDDEN WORDS (this person's allergies and rules): no ingredient name, dish name, description or step may contain any of these words — not even inside a longer name or a plant-based, "-free" or "no …" phrase. If "milk" is forbidden, "coconut milk", "almond milk" and "milk-free" are out too; if "butter" is, "peanut butter" is out. Choose ingredients whose names contain none of them: ${a.bannedNames.join(", ")}.`
+      : ``,
     `\nTheir dietary profile (respect every line, especially condition guidance):\n${a.foodMapText}`,
-    `\nCall the suggest_recipes tool with valid JSON only.`,
   ]
     .filter((l) => l.length > 0)
     .join("\n");
 }
 
-/** One model call, then the fridge parser, the oil repair and every gate. [] on any failure. */
-async function generateGated(ctx: ClaraContext, ask: DishAsk): Promise<FridgeRecipe[]> {
+/** Everything about this person the generator and the library need, loaded once per request. */
+interface Person {
+  patient: NonNullable<Awaited<ReturnType<typeof loadPatient>>>;
+  bans: DerivedBans;
+  matchers: DietMatchers;
+  sodiumLimitMg: number;
+}
+
+function loadPatient(id: string) {
+  return prisma.patient.findFirst({ where: { id }, include: PATIENT_FOOD_MAP_INCLUDE });
+}
+
+// One load per tool call: dish_plan_today asks for up to three dishes with the
+// same ctx, and the generator and the library both need the person.
+const personMemo = new WeakMap<ClaraContext, Promise<Person | null>>();
+function personFor(ctx: ClaraContext): Promise<Person | null> {
+  let p = personMemo.get(ctx);
+  if (!p) {
+    p = (async () => {
+      const patient = await loadPatient(ctx.patientId);
+      if (!patient) return null;
+      // The person's own today decides which trigger trials are enforced.
+      const bans = derivePatientBans(patient, new Date(`${ctx.today}T12:00:00`));
+      return {
+        patient,
+        bans,
+        matchers: buildDietMatchers(bans),
+        sodiumLimitMg: dailySodiumLimitMg(patient.healthConditions.map((h) => h.condition.name)),
+      };
+    })();
+    personMemo.set(ctx, p);
+    p.catch(() => personMemo.delete(ctx));
+  }
+  return p;
+}
+
+/** A small in-process cache: the catalog and the library change rarely, and every dish reads them. */
+function cached<T>(ttlMs: number, load: () => Promise<T>): () => Promise<T> {
+  let at = 0;
+  let value: Promise<T> | null = null;
+  return () => {
+    if (!value || Date.now() - at > ttlMs) {
+      at = Date.now();
+      value = load();
+      value.catch(() => {
+        value = null;
+      });
+    }
+    return value;
+  };
+}
+
+const CACHE_MS = 10 * 60_000;
+const catalogTokens = cached(CACHE_MS, async () =>
+  catalogFoodVocabulary((await prisma.ingredient.findMany({ select: { name: true } })).map((i) => i.name)),
+);
+
+/**
+ * One candidate through the oil repair and every gate, alone. null when it
+ * fails; `trace` (diagnostics only) says where.
+ */
+async function gateOne(
+  item: unknown,
+  ask: DishAsk,
+  person: Person,
+  catalogFoodTokens: Set<string>,
+  seen: Set<string>,
+  note: (name: string, stage: CandidateTrace["stage"]) => void,
+): Promise<FridgeRecipe | null> {
+  const meal = capitalize(ask.mealType);
+  const raw = toFridgeItem(item, meal, ask.servings ?? 1);
+  const label = typeof (item as { name?: unknown })?.name === "string" ? String((item as { name: string }).name) : "?";
+  const parsed = raw ? parseFridgeRecipes([raw], 1, meal) ?? [] : [];
+  if (parsed.length === 0) {
+    note(label, "parse");
+    return null;
+  }
+  // Name the oil BEFORE the filter judges the dish, with an oil this person may have.
+  const named = specifyCookingOil(parsed[0], oilAllowedBy(person.matchers));
+  const groupsOf = await loadIngredientGroups([...named.usesIngredients, ...named.missingIngredients]);
+  const gated = gateGeneratedDishes([named], {
+    mealTypeName: meal,
+    matchers: person.matchers,
+    groupsOf,
+    catalogFoodTokens,
+    sodiumLimitMg: person.sodiumLimitMg,
+  });
+  const r = gated[0];
+  if (!r || seen.has(r.name.trim().toLowerCase())) {
+    note(label, applyAllergenFilter([named], person.matchers, groupsOf).length === 0 ? "safety" : "gates");
+    return null;
+  }
+  seen.add(r.name.trim().toLowerCase());
+  return readableAmounts(r);
+}
+
+/**
+ * ONE streamed model call with a schema-constrained answer, each dish gated
+ * the moment it is complete. Stops reading as soon as one gated dish passes
+ * `accept` (or the signal fires) and returns the gated dishes so far. [] on
+ * any failure. Never retries: the library is the fallback, not a second call.
+ */
+async function generateGated(ctx: ClaraContext, ask: DishAsk, opts: GenerateOptions = {}): Promise<FridgeRecipe[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
-  const patient = await prisma.patient.findFirst({ where: { id: ctx.patientId }, include: PATIENT_FOOD_MAP_INCLUDE });
-  if (!patient) return [];
-  // The person's own today decides which trigger trials are enforced.
-  const bans = derivePatientBans(patient, new Date(`${ctx.today}T12:00:00`));
-  const matchers = buildDietMatchers(bans);
-  const sodiumLimitMg = dailySodiumLimitMg(patient.healthConditions.map((h) => h.condition.name));
+  const t0 = Date.now();
+  const note = (name: string, stage: CandidateTrace["stage"]) => opts.trace?.({ ms: Date.now() - t0, name, stage });
+  const [person, catalogFoodTokens] = await Promise.all([personFor(ctx), catalogTokens()]);
+  if (!person || opts.signal?.aborted) return [];
   const meal = capitalize(ask.mealType);
 
-  let msg: Anthropic.Message;
-  try {
-    msg = await createAnthropic({ timeout: 45_000, maxRetries: 0 }).messages.create({
-      model: CLARA_MODEL,
-      max_tokens: 4096, // three dishes with their steps (the fridge route's measured budget)
-      thinking: { type: "disabled" },
-      system: dishSystemPrompt({
-        ask,
-        foodMapText: buildFoodMapText(patient),
-        bannedNames: bannedNamesForPrompt(bans),
-        proteinOptions: proteinOptionsFor(matchers),
-        sodiumLimitMg,
-      }),
-      tools: [
-        { name: "suggest_recipes", description: "Return the suggested dishes.", input_schema: SUGGEST_RECIPES_SCHEMA },
-      ],
-      tool_choice: { type: "tool", name: "suggest_recipes" },
-      messages: [{ role: "user", content: `Suggest the ${CANDIDATES} ${meal.toLowerCase()} dishes now.` }],
-    });
-  } catch (err) {
-    const e = err as { status?: number; message?: string };
-    console.warn(`[clara-dish] generation failed: ${e?.status ?? ""} ${e?.message ?? String(err)}`);
-    return [];
-  }
-  const toolUse = msg.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-  const parsed = parseFridgeRecipes((toolUse?.input as { recipes?: unknown } | undefined)?.recipes, CANDIDATES, meal) ?? [];
+  // Our own controller: aborted by the deadline, or by us once a dish is accepted.
+  const stop = new AbortController();
+  const onAbort = () => stop.abort();
+  opts.signal?.addEventListener("abort", onAbort, { once: true });
 
-  // Name the oil BEFORE the filter judges the dish, with an oil this person may have.
-  const named = parsed.map((r) => specifyCookingOil(r, oilAllowedBy(matchers)));
-  const groupsOf = await loadIngredientGroups(named.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
-  const catalogFoodTokens = catalogFoodVocabulary(
-    (await prisma.ingredient.findMany({ select: { name: true } })).map((i) => i.name),
-  );
-  const gated = gateGeneratedDishes(named, { mealTypeName: meal, matchers, groupsOf, catalogFoodTokens, sodiumLimitMg });
-  if (gated.length === 0) console.info(`[clara-dish] ${meal}: parsed=${parsed.length} accepted=0`);
-  return gated.map(readableAmounts);
+  const accepted: FridgeRecipe[] = [];
+  const seen = new Set<string>();
+  try {
+    const stream = await createAnthropic({ timeout: 45_000, maxRetries: 0 }).messages.create(
+      {
+        model: CLARA_MODEL,
+        max_tokens: DISH_MAX_TOKENS,
+        thinking: { type: "disabled" },
+        stream: true,
+        system: dishSystemPrompt({
+          ask,
+          foodMapText: buildFoodMapText(person.patient),
+          bannedNames: forbiddenWordsForPrompt(person.bans, person.matchers),
+          proteinOptions: proteinOptionsFor(person.matchers),
+          sodiumLimitMg: person.sodiumLimitMg,
+        }),
+        // Structured outputs: the answer always parses (no more malformed or stringified lists).
+        output_config: { format: { type: "json_schema", schema: DISH_OUTPUT_SCHEMA as unknown as Record<string, unknown> } },
+        messages: [{ role: "user", content: `Suggest the ${CANDIDATES} ${meal.toLowerCase()} dishes now.` }],
+      },
+      { signal: stop.signal },
+    );
+    const items = new DishItemExtractor();
+    let stopReason: string | null = null;
+    read: for await (const ev of stream) {
+      if (ev.type === "message_delta") stopReason = ev.delta.stop_reason ?? stopReason;
+      if (ev.type !== "content_block_delta" || ev.delta.type !== "text_delta") continue;
+      for (const item of items.push(ev.delta.text)) {
+        const r = await gateOne(item, ask, person, catalogFoodTokens, seen, note);
+        if (!r) continue;
+        accepted.push(r);
+        if (!opts.accept || opts.accept(r)) {
+          note(r.name, "accepted");
+          break read;
+        }
+        note(r.name, "card");
+      }
+      if (stop.signal.aborted) break;
+    }
+    if (stopReason === "refusal") console.warn(`[clara-dish] ${meal}: the model declined (refusal)`);
+  } catch (err) {
+    if (!stop.signal.aborted) {
+      const e = err as { status?: number; message?: string };
+      console.warn(`[clara-dish] generation failed: ${e?.status ?? ""} ${e?.message ?? String(err)}`);
+    }
+  } finally {
+    opts.signal?.removeEventListener("abort", onAbort);
+    stop.abort(); // ends the stream if we stopped early; a no-op after a full read
+  }
+  if (accepted.length === 0) console.info(`[clara-dish] ${meal}: accepted=0 in ${Date.now() - t0} ms`);
+  return accepted;
 }
 
 /**
@@ -317,10 +497,99 @@ function readableAmounts(r: FridgeRecipe): FridgeRecipe {
   };
 }
 
+// ─── the library safety net ─────────────────────────────────────────────────
+
+const LIBRARY_SELECT = {
+  id: true, name: true, steps: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, sodium: true,
+  prepTime: true, cookTime: true, servings: true,
+  ingredients: { select: { quantity: true, unit: true, ingredient: { select: { name: true, allergenGroups: true } } } },
+} as const;
+
+const mealTypeIds = cached(CACHE_MS, async () => new Map((await prisma.mealType.findMany()).map((m) => [m.name.toLowerCase(), m.id])));
+const poolByMeal = new Map<string, () => Promise<LibraryRecipe[]>>();
+function libraryPool(mealType: DishMealType): Promise<LibraryRecipe[]> {
+  let load = poolByMeal.get(mealType);
+  if (!load) {
+    load = cached(CACHE_MS, async () => {
+      const id = (await mealTypeIds()).get(mealType);
+      if (!id) return [];
+      return (await prisma.recipe.findMany({ where: { isPublic: true, mealTypeId: id }, select: LIBRARY_SELECT })) as unknown as LibraryRecipe[];
+    });
+    poolByMeal.set(mealType, load);
+  }
+  return load();
+}
+
+/** What they logged in the last 7 days: never offered again as the fallback. */
+async function recentDishes(patientId: string, today: string): Promise<RecentDishes> {
+  const from = new Date(`${today}T12:00:00Z`);
+  from.setUTCDate(from.getUTCDate() - 7);
+  const rows = await prisma.mealLog.findMany({
+    where: { patientId, localDate: { gte: from.toISOString().slice(0, 10) }, deletedAt: null },
+    select: { recipeId: true, name: true },
+  });
+  return {
+    recipeIds: new Set(rows.map((r) => r.recipeId).filter((x): x is string => !!x)),
+    names: new Set(rows.map((r) => r.name.trim().toLowerCase())),
+  };
+}
+
+/** How many ranked library recipes are gated at a time, until enough pass. */
+const LIBRARY_CHUNK = 12;
+const LIBRARY_KEEP = 3;
+
+/**
+ * Library recipes for this ask, ranked by rankLibrary (the planner's rule
+ * filter first) and then put through gateGeneratedDishes exactly like a
+ * generated dish, oil repair included. Keeps the first few that pass.
+ */
+async function libraryGated(ctx: ClaraContext, ask: DishAsk): Promise<FridgeRecipe[]> {
+  const [person, pool, recent, catalogFoodTokens] = await Promise.all([
+    personFor(ctx),
+    libraryPool(ask.mealType),
+    recentDishes(ctx.patientId, ctx.today),
+    catalogTokens(),
+  ]);
+  if (!person) return [];
+  const meal = capitalize(ask.mealType);
+  const ranked = rankLibrary(
+    pool,
+    {
+      mealType: ask.mealType,
+      maxMinutes: ask.maxMinutes,
+      servings: ask.servings,
+      little: ask.picture ? ask.picture.little : ask.summary.little,
+      aLot: ask.picture ? ask.picture.aLot : ask.summary.aLot,
+    },
+    { patient: person.patient, matchers: person.matchers, seed: `${ctx.patientId}|${ctx.today}|${ask.mealType}` },
+    recent,
+    stepStatesAmount,
+  );
+  const oil = oilAllowedBy(person.matchers);
+  const out: FridgeRecipe[] = [];
+  for (let i = 0; i < ranked.length && out.length < LIBRARY_KEEP; i += LIBRARY_CHUNK) {
+    const chunk = ranked
+      .slice(i, i + LIBRARY_CHUNK)
+      .map((r) => specifyCookingOil(libraryToFridge(r, meal, ask.servings ?? 1, `frg_${crypto.randomUUID()}`), oil));
+    // The stored rows carry their own groups; the catalog lookup is the same one a generated dish gets.
+    const groupsOf = await loadIngredientGroups(chunk.flatMap((r) => r.usesIngredients));
+    const gated = gateGeneratedDishes(chunk, { mealTypeName: meal, matchers: person.matchers, groupsOf, catalogFoodTokens, sodiumLimitMg: person.sodiumLimitMg });
+    for (const r of gated) if (pickDish([r], ask)) out.push(readableAmounts(r));
+  }
+  return out.slice(0, LIBRARY_KEEP);
+}
+
+/** The live budget. A mutable object only so the offline simulation can shorten it (sim/clara-first.sim.ts). */
+export const dishTiming = { budgetMs: DISH_BUDGET_MS };
+
 const prismaDeps: DishDeps = {
+  get budgetMs() {
+    return dishTiming.budgetMs;
+  },
   // Claims only where Numbers says the same (simulation finding 2).
   loadSummary: (patientId, today) => loadClaraLevelSummary(patientId, today, 7),
   generate: generateGated,
+  library: libraryGated,
   loadStartingPicture: async (patientId) => {
     // Computed now from the answers and the live pills (the stored column can be stale).
     const row = await prisma.patient.findUnique({
@@ -360,7 +629,11 @@ function levelsPart(summary: LevelSummary): ClaraPart | null {
   };
 }
 
+/** Where the served dish came from: made now by the model, or the public recipe library. */
+export type DishSource = "generated" | "library";
+
 interface BuiltDish {
+  source: DishSource;
   recipe: ClaraRecipe;
   dish: Extract<ClaraPart, { kind: "dish" }>;
   steps: Extract<ClaraPart, { kind: "steps" }>;
@@ -381,7 +654,7 @@ function minutesOf(r: FridgeRecipe, mealType: DishMealType): number {
 }
 
 /** The dish as the app shows and cooks it. Numbers per serving, priced from its own amounts. */
-function buildDish(r: FridgeRecipe, ask: DishAsk): BuiltDish {
+function buildDish(r: FridgeRecipe, ask: DishAsk, source: DishSource): BuiltDish {
   const priced = pricedMacros(r);
   const perServing = {
     calories: Math.round(priced?.calories ?? reconcileCalories(r) ?? r.perServing.calories),
@@ -407,6 +680,7 @@ function buildDish(r: FridgeRecipe, ask: DishAsk): BuiltDish {
     perServing,
   };
   return {
+    source,
     recipe,
     dish: {
       kind: "dish",
@@ -532,22 +806,65 @@ export function completeSodiumMg(r: FridgeRecipe): number | null {
   return priced.sodiumMg;
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * One dish for one ask, within the time budget, with no second model call:
+ *   - the library pick starts at once, alongside the model call;
+ *   - the model call stops at the first gated dish that fits the card, or at
+ *     the budget (then whatever it already gated still counts);
+ *   - no generated dish → the library dish, through the same card;
+ *   - neither → null, and the person hears "couldn't make one that fits".
+ */
 async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Promise<BuiltDish | null> {
-  let recipes: FridgeRecipe[];
+  const budget = deps.budgetMs ?? DISH_BUDGET_MS;
+  const started = Date.now();
+  const library: Promise<FridgeRecipe[]> = deps.library
+    ? deps.library(ctx, ask).catch((err) => {
+        console.warn(`[clara-dish] library failed: ${(err as Error)?.message ?? String(err)}`);
+        return [];
+      })
+    : Promise.resolve([]);
+
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), budget);
+  let recipes: FridgeRecipe[] = [];
   try {
-    recipes = await deps.generate(ctx, ask);
-  } catch (err) {
-    console.warn(`[clara-dish] generate threw: ${(err as Error)?.message ?? String(err)}`);
-    return null;
+    const generated = deps
+      .generate(ctx, ask, { signal: deadline.signal, accept: (r) => pickDish([r], ask) !== null })
+      .catch((err) => {
+        console.warn(`[clara-dish] generate threw: ${(err as Error)?.message ?? String(err)}`);
+        return [] as FridgeRecipe[];
+      });
+    // A generator that ignores the signal still cannot hold the person past the budget.
+    const late = new Promise<FridgeRecipe[]>((resolve) => {
+      deadline.signal.addEventListener("abort", () => void sleep(ABORT_GRACE_MS).then(() => resolve([])), { once: true });
+    });
+    recipes = await Promise.race([generated, late]);
+  } finally {
+    clearTimeout(timer);
   }
   const picked = pickDish(recipes, ask);
-  return picked ? buildDish(picked, ask) : null;
+  if (picked) return buildDish(picked, ask, "generated");
+
+  // The library had the whole budget to load; it gets a little more, never unbounded.
+  const waitMs = Math.max(0, started + budget + LIBRARY_GRACE_MS - Date.now());
+  const fromLibrary = pickDish(await Promise.race([library, sleep(waitMs).then(() => [] as FridgeRecipe[])]), ask);
+  return fromLibrary ? buildDish(fromLibrary, ask, "library") : null;
 }
 
+/** After the budget, how long a slow library load may still be waited for. */
+const LIBRARY_GRACE_MS = 1_500;
+
 /** What the model narrates from: the card's content, never the recipe itself. */
+export const LIBRARY_NOTE =
+  "This dish is from the Wondish recipe library, not made just now: never say you made, created or invented it for them. Say it is a recipe from the library that fits them.";
+
 function dishForModel(b: BuiltDish, mealType: DishMealType) {
   return {
     mealType,
+    source: b.source,
+    ...(b.source === "library" ? { note: LIBRARY_NOTE } : {}),
     dishId: b.dish.dishId,
     name: b.dish.name,
     minutes: b.dish.minutes,
@@ -638,7 +955,9 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
       ...(maxMinutes !== undefined ? { maxMinutes } : {}),
       ...(servings !== undefined ? { servings } : {}),
     };
-    const built = await generateOne(deps, ctx, ask);
+    // A fresh object per tool call: the person (and their rules) is loaded once
+    // for this call, never carried over from an earlier one.
+    const built = await generateOne(deps, { ...ctx }, ask);
     if (!built) return couldntFit();
     const levels = picture ? null : levelsPart(summary);
 
@@ -693,7 +1012,9 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
       ...(occasion === "little_time" ? { maxMinutes: LITTLE_TIME_MINUTES } : {}),
       ...(occasion === "guests" && mealType === "dinner" ? { servings: GUEST_SERVINGS } : {}),
     }));
-    const built = await Promise.all(asks.map((ask) => generateOne(deps, ctx, ask)));
+    // One ctx object for the whole call: the person loads once for all its dishes.
+    const call = { ...ctx };
+    const built = await Promise.all(asks.map((ask) => generateOne(deps, call, ask)));
     const made = asks.map((ask, i) => ({ ask, b: built[i] })).filter((x): x is { ask: DishAsk; b: BuiltDish } => x.b !== null);
     if (made.length === 0) return couldntFit();
 
@@ -713,6 +1034,9 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
 
   return { suggest, planToday };
 }
+
+/** The production effects, for the live simulation (sim/clara-fast-live.sim.ts) to wrap with a trace. */
+export const liveDishDeps: DishDeps = prismaDeps;
 
 const handlers = makeDishHandlers();
 
