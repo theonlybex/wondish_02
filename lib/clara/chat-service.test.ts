@@ -486,7 +486,7 @@ test("tools: memory and ask_choices are offered", async () => {
   assert.ok(names.includes(ASK_CHOICES_TOOL));
 });
 
-test("five tool rounds for everyone: the sixth round is forced tool-less", async () => {
+test("five tool rounds for everyone: the sixth round keeps its tools and is told to answer", async () => {
   const call = (i: number): ScriptedRound => ({
     deltas: [`Checking ${i}. `],
     content: [{ type: "text", text: `Checking ${i}. ` }, { type: "tool_use", id: `t${i}`, name: "memory_save", input: { text: `note ${i}` } }],
@@ -497,7 +497,9 @@ test("five tool rounds for everyone: the sixth round is forced tool-less", async
   await collect(res.events);
   assert.equal(seen.length, 6);
   assert.ok(seen[4].tools.length > 0);
-  assert.equal(seen[5].tools.length, 0);
+  // Same tools (Haiku 5.5 binds thinking blocks to them); the budget note is appended instead.
+  assert.deepEqual(seen[5].tools, seen[4].tools);
+  assert.match(JSON.stringify(seen[5].messages.at(-1)), /No more tool calls are possible/);
 });
 
 // ─── Body validation and the skill set ──────────────────────────────────────

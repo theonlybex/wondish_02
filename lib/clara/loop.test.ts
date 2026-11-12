@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { startClaraLoop, EMPTY_ANSWER_FALLBACK } from "./loop";
+import { startClaraLoop, EMPTY_ANSWER_FALLBACK, TOOL_BUDGET_SPENT_NOTE } from "./loop";
 import { ASK_CHOICES_TOOL, askChoicesSkill } from "./ask-choices";
 import type {
   ClaraChoices,
@@ -148,7 +148,12 @@ test("tool results are appended as a user tool_result block for the next round",
   assert.equal(block.tool_use_id, "t1");
 });
 
-test("the budget is spent on tool rounds, and the final round is offered no tools", async () => {
+// Haiku 5.5 binds each thinking block to the exact `system`, `tools` and
+// earlier messages that produced it; a later round in the same turn that
+// changes `tools` and replays those blocks is a 400. So the final round keeps
+// the same tools, the budget note is APPENDED (never an edit), and the hard
+// stop below enforces the budget locally.
+test("the budget is spent on tool rounds; the final round keeps the same tools and is told to answer", async () => {
   const { client, seen } = stubClient([
     { content: [toolUse("t1", "x_get")] },
     { content: [toolUse("t2", "x_get")] },
@@ -163,7 +168,36 @@ test("the budget is spent on tool rounds, and the final round is offered no tool
   assert.equal(seen.length, 3);
   assert.deepEqual(seen[0].tools.map((t) => t.name), ["x_get"]);
   assert.deepEqual(seen[1].tools.map((t) => t.name), ["x_get"]);
-  assert.deepEqual(seen[2].tools, []); // budget spent ⇒ forced final answer
+  assert.deepEqual(seen[2].tools, seen[0].tools, "tools identical on every round of a turn");
+  // The note is the last block of the last (tool_result) message: appended, nothing earlier edited.
+  const last = seen[2].messages.at(-1)!;
+  assert.equal(last.role, "user");
+  const blocks = last.content as ModelContentBlock[];
+  assert.equal(blocks[0].type, "tool_result");
+  assert.deepEqual(blocks.at(-1), { type: "text", text: TOOL_BUDGET_SPENT_NOTE });
+  // Every earlier message is byte-identical to what round 2 was sent.
+  assert.deepEqual(seen[2].messages.slice(0, seen[1].messages.length), seen[1].messages);
+});
+
+test("a tool call on the final round is not executed, and the person still gets the round's words", async () => {
+  const { client, seen } = stubClient([
+    { content: [toolUse("t1", "x_get")] },
+    { deltas: ["Here is what I found."], content: [textBlock("Here is what I found."), toolUse("t2", "x_get")] },
+  ]);
+  let executed = 0;
+  const errors: unknown[] = [];
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: TOOLS, messages: [], maxToolRounds: 1,
+      execute: async () => { executed += 1; return { ok: true, data: { hits: 1 } }; },
+      onError: (e) => errors.push(e),
+    })
+  );
+  assert.equal(executed, 1, "only the in-budget call ran");
+  assert.equal(seen.length, 2);
+  assert.deepEqual(seen[1].tools, seen[0].tools);
+  assert.equal(out, "Here is what I found.");
+  assert.equal(errors.length, 1);
 });
 
 // Regression: `tools: []` only ASKS the model not to call tools. A client that

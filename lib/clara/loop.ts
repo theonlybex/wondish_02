@@ -54,6 +54,10 @@ const CONFIRM_REQUIRED_MESSAGE =
 const CONFIRM_REQUIRED_WITH_CHOICES_MESSAGE =
   "This change needs the user's explicit confirmation first. Propose it in one sentence, then call ask_choices with a yes and a no option (e.g. \"Yes, swap it\" / \"No, keep it\") and wait for their answer.";
 
+/** Appended after the last tool results once the tool-round budget is spent. */
+export const TOOL_BUDGET_SPENT_NOTE =
+  "(No more tool calls are possible this turn. Answer now with what you have, without calling any tool.)";
+
 /** The tool_result message the model gets when a handler throws. */
 export const TOOL_THREW_MESSAGE = "The tool did not respond.";
 
@@ -79,8 +83,17 @@ export const EMPTY_ANSWER_FALLBACK =
  * narrated as prose.
  *
  * Budget: `maxToolRounds` rounds may call tools. When it is spent the loop runs
- * one more round with an empty tools array, so the model must answer with what
- * it has instead of dangling on a tool call it cannot make.
+ * one more round, with the SAME tools and TOOL_BUDGET_SPENT_NOTE appended after
+ * the last tool results, so the model answers with what it has; a tool call on
+ * that round is never executed (the hard stop below).
+ *
+ * Why not `tools: []` (the old way): on Haiku 5.5 each thinking block is bound
+ * to the exact system, tools and earlier messages that produced it, and this
+ * round replays the turn's thinking blocks — a changed tools array is a 400.
+ * The note is a text block after the tool_result blocks rather than a
+ * mid-conversation `role: "system"` message: the claude-api migration guide
+ * gives both as append-only, but the system role is a 400 on models without
+ * it (Haiku 4.5, Sonnet 5), and a text block cannot 400 on any model.
  */
 export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator<string>> {
   // Copy: the caller's history array is theirs, and the loop appends to its own.
@@ -185,7 +198,7 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
         return;
       }
 
-      // HARD STOP. Passing `tools: []` only *asks* the model not to call tools;
+      // HARD STOP. The budget note only *asks* the model not to call tools;
       // it does not make it impossible. Without this the loop would keep
       // executing and re-opening rounds forever on a client that ignores it —
       // an unbounded spend loop in a paid path, guarded only by a remote
@@ -257,6 +270,12 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
           content: JSON.stringify(forModel),
         });
       }
+      toolRoundsUsed += 1;
+      // Budget spent: the note goes at the END of this new message (appended,
+      // so nothing already sent changes), and the tools stay the same.
+      if (toolRoundsUsed >= params.maxToolRounds && !choices) {
+        results.push({ type: "text", text: TOOL_BUDGET_SPENT_NOTE });
+      }
       messages.push({ role: "user", content: results });
 
       if (choices) {
@@ -272,14 +291,11 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
         return;
       }
 
-      toolRoundsUsed += 1;
-      const toolsForNextRound = toolRoundsUsed >= params.maxToolRounds ? [] : params.tools;
-
       try {
         stream = await params.client.openRound({
           system: params.system,
           messages,
-          tools: toolsForNextRound,
+          tools: params.tools,
         });
       } catch (err) {
         params.onError?.(err);
