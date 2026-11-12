@@ -48,3 +48,16 @@ export function weightInDisplayUnit(
     change: comparisonLbs != null ? round1(latest - comparisonLbs * KG_PER_LB) : null,
   };
 }
+
+/**
+ * Before the first weigh-in, the profile weight (lbs) stands in for the Numbers
+ * weight row, with no change. Null when the profile has no weight either.
+ */
+export function profileWeightRow(
+  profileLbs: number | null | undefined,
+  display: WeightUnit,
+): { value: number; unit: WeightUnit; change: null } | null {
+  if (profileLbs == null || !Number.isFinite(profileLbs) || profileLbs <= 0) return null;
+  const r = weightInDisplayUnit(profileLbs, null, display);
+  return { value: r.value, unit: r.unit, change: null };
+}

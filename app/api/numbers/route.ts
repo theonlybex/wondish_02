@@ -10,7 +10,7 @@ import { getDayTarget, parseTodayParam } from "@/lib/meal-log";
 import { loadFullLevelData, loadLevelSummary } from "@/lib/level-summary";
 import { ageOn, buildFullNumbers } from "@/lib/numbers-full";
 import { currentStartingPicture } from "@/lib/onboarding";
-import { resolveWeightUnit, weightInDisplayUnit, type WeightUnit } from "@/lib/weight-unit-pref";
+import { resolveWeightUnit, weightInDisplayUnit, profileWeightRow, type WeightUnit } from "@/lib/weight-unit-pref";
 
 const DEFAULT_DAYS = 7;
 const MAX_DAYS = 31;
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
 
 // ─── full=1 — the Numbers screen's 21 levels, tracked set, goals and pills ───
 async function loadFull(
-  patient: { id: string; birthday: Date | null; sexAtBirth: string | null; weightGoal: string | null; goalWeight: number | null; weightUnit: string | null; heightUnit: string | null; displayWeightUnit: string | null; usualEating: unknown },
+  patient: { id: string; birthday: Date | null; sexAtBirth: string | null; weightGoal: string | null; goalWeight: number | null; weightUnit: string | null; weight: number | null; heightUnit: string | null; displayWeightUnit: string | null; usualEating: unknown },
   today: string,
   days: number,
 ) {
@@ -67,7 +67,7 @@ async function loadFull(
 
   const showWeight = patient.weightGoal === "lose" || patient.weightGoal === "gain" || patient.goalWeight != null;
   const weight = showWeight
-    ? await loadWeight(patient.id, patient.weightUnit, resolveWeightUnit(patient.displayWeightUnit, patient.heightUnit))
+    ? await loadWeight(patient.id, patient.weightUnit, resolveWeightUnit(patient.displayWeightUnit, patient.heightUnit), patient.weight)
     : null;
 
   // Computed now from the answers and the live pills, not read from the stored column.
@@ -95,6 +95,7 @@ async function loadWeight(
   patientId: string,
   weightUnit: string | null,
   display?: WeightUnit,
+  profileLbs?: number | null, // full=1 only: stands in before the first weigh-in
 ): Promise<{ value: number; unit: "lbs" | "kg"; change: number | null } | null> {
   const entries = await prisma.journalEntry.findMany({
     where: { patientId, weight: { not: null } },
@@ -103,7 +104,7 @@ async function loadWeight(
     take: 60,
   });
   const weighIns = entries.filter((e): e is { date: Date; weight: number } => e.weight != null);
-  if (weighIns.length === 0) return null;
+  if (weighIns.length === 0) return display ? profileWeightRow(profileLbs, display) : null;
   const latest = weighIns[0];
   const target = latest.date.getTime() - 7 * 86400000;
   let nearest: { date: Date; weight: number } | null = null;
