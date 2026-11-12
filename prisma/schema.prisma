@@ -1150,6 +1150,8 @@ model MealLog {
   fat        Float?
   fiber      Float?
   incomplete Boolean @default(false) // true when any macro was unpriceable (null→0)
+  sodium     Float?
+  estimated  Boolean @default(false) // true when Clara estimated the macros rather than a recipe or database
 
   // Provenance only — NEVER read for macro math.
   recipeId           String?
@@ -1376,6 +1378,9 @@ model ClaraConversation {
   patient   Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
   title     String
   surface   String         @default("unknown")
+  dishName  String?
+  cookedAt  DateTime?
+  recipe    Json?
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
   messages  ClaraMessage[]
