@@ -103,6 +103,8 @@ export interface ParsedMealLog {
   planExchangeId?: string;
   note?: string;
   clientRequestId?: string;
+  sodium?: number; // mg per serving; optional input, read only by /api/numbers
+  estimated?: boolean; // true when Clara estimated the macros; read only by /api/log
 }
 
 export interface ParsedBatch {
@@ -212,6 +214,17 @@ function validateItem(raw: unknown, localDate: string, mealType: MealType): Pars
     note: optionalString(raw.note),
     clientRequestId: optionalString(raw.clientRequestId),
   };
+
+  if (raw.sodium !== undefined && raw.sodium !== null) {
+    if (typeof raw.sodium !== "number" || !Number.isFinite(raw.sodium) || raw.sodium < 0 || raw.sodium > 100000) {
+      return fail("sodium must be a number of mg between 0 and 100000");
+    }
+    item.sodium = raw.sodium;
+  }
+  if (raw.estimated !== undefined && raw.estimated !== null) {
+    if (typeof raw.estimated !== "boolean") return fail("estimated must be a boolean");
+    item.estimated = raw.estimated;
+  }
 
   // planExchangeId drives eaten-state on the plan-exchange overlay, so a
   // malformed value is a hard 400 — unlike echo-only provenance fields,
@@ -465,6 +478,10 @@ export interface MealLogCreateData {
   planExchangeId: string | null;
   note: string | null;
   clientRequestId: string | null;
+  // Present only when the caller supplied them, so existing create payloads
+  // are unchanged.
+  sodium?: number;
+  estimated?: boolean;
 }
 
 export function buildMealLogCreateData(
@@ -500,6 +517,8 @@ export function buildMealLogCreateData(
     planExchangeId: input.planExchangeId ?? null,
     note: input.note ?? null,
     clientRequestId: input.clientRequestId ?? null,
+    ...(input.sodium !== undefined ? { sodium: input.sodium } : {}),
+    ...(input.estimated !== undefined ? { estimated: input.estimated } : {}),
   };
 }
 
