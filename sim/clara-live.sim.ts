@@ -28,7 +28,7 @@ const key = (globalThis as any).__simLiveKey as string | undefined;
 if (!key) { console.log("No ANTHROPIC_API_KEY in .env.local — live sample skipped."); process.exit(0); }
 process.env.ANTHROPIC_API_KEY = key;
 
-type Spy = { usage: { input_tokens: number; output_tokens: number }; candidates: unknown; stop: string | null; ms: number };
+type Spy = { usage: { input_tokens: number; output_tokens: number }; candidates: unknown; stop: string | null; ms: number; rawInput: unknown; system: string };
 const spies: Spy[] = [];
 mock.module(pathToFileURL(join(__dirname, "..", "lib", "anthropic.ts")).href, {
   namedExports: {
@@ -38,7 +38,7 @@ mock.module(pathToFileURL(join(__dirname, "..", "lib", "anthropic.ts")).href, {
         const t0 = Date.now();
         const msg = await real.messages.create(params);
         const tool = msg.content.find((b) => b.type === "tool_use") as any;
-        spies.push({ usage: { input_tokens: msg.usage.input_tokens, output_tokens: msg.usage.output_tokens }, candidates: tool?.input?.recipes ?? null, stop: msg.stop_reason, ms: Date.now() - t0 });
+        spies.push({ usage: { input_tokens: msg.usage.input_tokens, output_tokens: msg.usage.output_tokens }, candidates: tool?.input?.recipes ?? null, stop: msg.stop_reason, ms: Date.now() - t0, rawInput: tool?.input ?? msg.content, system: String(params.system ?? "") });
         return msg;
       } } };
     },
@@ -48,16 +48,7 @@ mock.module(pathToFileURL(join(__dirname, "..", "lib", "anthropic.ts")).href, {
 const store = createClaraStore(snap);
 (globalThis as any).prisma = store.client;
 
-const PEOPLE: { id: string; rules: RuleKey[]; servings?: number; eating?: Record<string, number>; logs?: boolean }[] = [
-  { id: "allergies+CKD3", rules: ["allergy:Peanuts", "allergy:Tree nuts", "allergy:Shellfish", "condition:Chronic kidney disease – stage 3"], logs: true },
-  { id: "vegan+celiac", rules: ["diet:Vegan", "condition:Celiac Disease"], eating: { veg: 2, fruit: 1, beans: 2, grains: 0, fish: 0, meat: 0, dairy: 0, packaged: 1, sweet: 0 } },
-  { id: "pregnancy+fish allergy", rules: ["condition:Pregnancy", "allergy:Fish"], eating: { veg: 0, fruit: 1, beans: 0, grains: 1, fish: 0, meat: 1, dairy: 1, packaged: 2, sweet: 1 } },
-  { id: "T2D+hypertension", rules: ["condition:Type 2 Diabetes", "condition:Hypertension"], logs: true },
-  { id: "empty profile", rules: [] },
-  { id: "guests=4 sesame+soy", rules: ["allergy:Sesame", "allergy:Soy"], servings: 4, logs: true },
-  { id: "vegetarian no eggs/dairy", rules: ["diet:Vegetarian", "allergy:Eggs", "allergy:Dairy"] },
-  { id: "CKD1-2+HTN+vegan+tree nuts", rules: ["allergy:Tree nuts", "condition:Chronic Kidney Disease stage 1-2", "condition:Hypertension", "diet:Vegan"], servings: 4 },
-];
+import { LIVE_PEOPLE as PEOPLE } from "./clara-live-people";
 
 (async () => {
   const { NextRequest } = await import("next/server");
@@ -71,7 +62,11 @@ const PEOPLE: { id: string; rules: RuleKey[]; servings?: number; eating?: Record
   const today = "2026-11-12";
   const rows: string[] = [];
   let violations = 0, served = 0;
+  // SIM_LIVE_ONLY="vegan+celiac,…" runs just those people (still at most 8 calls).
+  const only = process.env.SIM_LIVE_ONLY?.split(",").map((x) => x.trim());
+  const raw: { person: string; servings: number; system: string; stop: string | null; output: unknown }[] = [];
   for (const [i, p] of PEOPLE.slice(0, 8).entries()) {
+    if (only && !only.includes(p.id)) continue;
     const clerkId = `clerk_live_${i}`;
     store.seedAccount(clerkId, `${clerkId}@sim.invalid`);
     state.patient = { account: { clerkId } };
@@ -92,6 +87,7 @@ const PEOPLE: { id: string; rules: RuleKey[]; servings?: number; eating?: Record
     const before = spies.length;
     const res: any = await suggest(ctx as any, { mealType: "dinner", ...(p.servings ? { servings: p.servings } : {}) });
     const spy = spies[before];
+    if (spy) raw.push({ person: p.id, servings: p.servings ?? 1, system: spy.system, stop: spy.stop, output: spy.rawInput });
     const oracle = makeOracle(makePatient(snap, { id: p.id, tier: "curated", rules: p.rules }) as any, p.rules);
     const offered = Array.isArray(spy?.candidates) ? (spy!.candidates as any[]) : [];
     const offeredBad = offered.filter((d) => oracle.judgeMany((d.usesIngredients ?? []).map((n: string) => ({ name: n, allergenGroups: ingByName.get(n.toLowerCase())?.allergenGroups ?? [] }))).some((v) => v.engine.length || v.groups.length));
@@ -114,6 +110,8 @@ const PEOPLE: { id: string; rules: RuleKey[]; servings?: number; eating?: Record
     `In-memory store, no database. One dish_suggest per person; the product's own gates decide what is served.`, ``,
     `| Person | Served dish | What Clara is handed (levels, reasons, note) | Model's raw candidates | Tokens in/out |`, `|---|---|---|---|---|`, ...rows, ``,
   ];
-  writeFileSync(join(__dirname, "..", "docs", "qa", "clara-live-sample.md"), lines.join("\n"));
+  // The model's raw tool input per person, for offline replay through the gates (sim/clara-gate-replay.ts).
+  writeFileSync(join(__dirname, ".snapshot", "clara-live-raw.json"), JSON.stringify(raw, null, 1));
+  if (!only) writeFileSync(join(__dirname, "..", "docs", "qa", "clara-live-sample.md"), lines.join("\n"));
   console.log(lines.join("\n"));
 })().catch((e) => { console.error(e); process.exit(1); });

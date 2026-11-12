@@ -11,21 +11,24 @@ repair and every server-side gate. No database is written; the only database acc
 in this work was the read-only `npm run sim:snapshot`.
 
 **Result: no safety violation, no 5xx, no thrown error, no contract mismatch.
-8 findings (0 Critical, 2 Important, 6 Minor).**
+8 findings (0 Critical, 2 Important, 6 Minor). Fixed the same day: both Important ones
+and 3 Minor ones (1, 2, 5, 8 on the server; 7 on the server, the app still has to use it),
+plus two dish-generator defects found from the live sample. Open: 3, 4, 6 and the app half of 7.
+See "Fixes" below; the numbers in this table are from the run after the fixes.**
 
 | | |
 |---|---|
 | People | 80: 77 on the new app (44 with a website profile first, 33 app-only), 3 on an old app build |
 | Rule sets | the 19 combinations real users hold, 11 curated heavy combinations, 24 single rules, 6 random 3–8-rule mixes, 12 app-only mixes (their conditions + allergies), "every rule at once", 5 empty profiles |
 | Journeys | 80 (day 0 first run, then 10 simulated days each) |
-| Requests | 9,217 (status 200×6,974, 201×1,554, 404×187, 409×36, 422×148 — every 4xx asserted as expected) |
-| Assertions | 494,732 |
-| Clara dish calls | 318 (77 day plans, 88 for guests; 42 from the starting picture, 199 from logged levels) |
-| Candidate dishes from the fake model | 757, of which 301 broke the person's rules (natural violators, a banned ingredient slipped into the list, an allergen named only in a step, "cooking oil") |
-| Dishes served | 196 — **0 breaking a rule** (oracle: engine + independent Big-9 group table + allergen text scan); 98 "couldn't make one that fits" |
+| Requests | 9,207 (status 200×6,964, 201×1,554, 404×187, 409×37, 422×147 — every 4xx asserted as expected) |
+| Assertions | 492,625 |
+| Clara dish calls | 318 (77 day plans, 89 for guests; 43 from the starting picture, 198 from logged levels); Clara's claims compared with Numbers 146 times (always equal) |
+| Candidate dishes from the fake model | 742, of which 303 broke the person's rules (natural violators, a banned ingredient slipped into the list, an allergen named only in a step, "cooking oil") |
+| Dishes served | 188 — **0 breaking a rule** (oracle: engine + independent Big-9 group table + allergen text scan); 104 "couldn't make one that fits" |
 
 Old simulation on this code (`SIM_PAIRS=0 npm run sim:rules`): **PASS** — 394 profiles,
-0 violations, 0 service errors, 35/35 tests, 603 s (`docs/qa/rule-compliance-sim.md`, regenerated).
+0 violations, 0 service errors, 35/35 tests, 603 s (`docs/qa/rule-compliance-sim.md`, regenerated). Re-run after the fixes: PASS again, 394 profiles, 0 violations, 35/35.
 
 ## What each person did
 
@@ -86,16 +89,18 @@ ones the EU DST change).
 
 ## Findings
 
+Status after the fixes: **1 fixed · 2 fixed · 3 open (left by ruling) · 4 open (left by ruling) · 5 fixed · 6 open · 7 fixed on the server, open in the app · 8 fixed on the server (the app must send `?today=`)**. Fixed findings are now hard assertions in `sim/clara-first.sim.ts`; open ones stay listed in `KNOWN_FINDINGS`.
+
 | # | Severity | What a person would experience | Reproduction (sim invariant) | Suspected cause | Suggested fix |
 |---|---|---|---|---|---|
-| 1 | Important | Numbers and Clara count a meal with **no fibre figure as 0 g**. 901 of 3,391 library recipes (27 %) have no fibre, and estimates often have none. The fibre amount is an undercount shown as fact; in the run, 750 Numbers responses said fibre was "little" while part of the week's fibre was unknown, and in 117 the word differs from the one the known meals alone give. Clara then says "you've had little fibre this week". Same for protein/carbs on the 37 recipes without them. | `honesty.fibre-unknown-as-zero` (77 people). Log any library recipe with `fiber: null` plus one with fibre for 3 days × 2 meals → `fibre.foodCounted: true`, amount halved, word "little". | `lib/macros.ts:221` (`recipe.fiber ?? 0`), `lib/level-summary.ts:75` (`r.fiber ?? 0`), `lib/numbers-full.ts:159,182` (fibre always "counted" when any day is) | Treat fibre like sodium: a day's fibre is known only when every meal carries it (`levelDaysFromRows`), and `foodCounted` false otherwise; or show "partly counted" and withhold the word. Decide whether the plan's "fibre counts whenever days are counted" ruling stands. |
-| 2 | Important | With **one logged day** (often one meal) and no onboarding answers, Clara is handed `little: ["fibre"]`, shows the levels chip and says "Brown rice is rich in fibre, and you've had little this week." Numbers says nothing (word null, not enough logs) — the two screens disagree, and Clara's claim rests on a single day. | `honesty.clara-levels-need-enough-logs` (26 people; 27 of 28 cases had 1 logged day). New person, answers nothing, logs one meal, asks "What should I eat?". | `lib/levels.ts:61,81` gives fibre/sodium words with no `enoughLogs` gate; `lib/clara/skills/dish.ts:621,627` passes them to the model and the card when there is no picture | When `enoughLogs` is false and no picture exists, hand the model empty `little`/`aLot` plus a "not enough logged yet" note and build no reasons (the plan said "behaviour unchanged" here; slice-1 Review Focus 2 suggests otherwise). |
-| 3 | Minor | A pill the person entered **on the website** (e.g. "vitamin d") shows ticked in the app but adds nothing on Numbers — no contents until they re-tick it in the first run, which website people never see (they go straight to the tabs). | `pills.catalogue-pill-counts` (8 website people). Website `POST /api/supplements {name:"vitamin d"}`, then `GET /api/numbers?full=1` → vitaminD `pillAmount 0`. | `lib/onboarding.ts:237` fills contents only on a PUT that ticks the pill; `lib/numbers-full.ts:150` reads no contents | On read (or in a one-off backfill), give catalogue-named pills with `contents: null` the typical contents with `estimated: true`. |
-| 4 | Minor | Someone who closes the app on step 4 ("Is weight part of this?") never sees it again: after step 3 `me.onboardingComplete` is true, so the app opens the tabs; `weightGoal` stays null and the weight row stays hidden (until they find "Conditions and eating" in Account). | `onboarding.resume-step4` (5 people). Steps 1–3, then `GET /api/me` → `onboardingComplete: true`. | `lib/me.ts:70` = basics only; app `FirstRunViewModel.swift:132` | Either count `weightGoal` in the first-run completeness the app gates on, or accept it and note it in the spec (Review Focus 5 covers step 2 only). |
-| 5 | Minor | Logging a library recipe drops its sodium even when the recipe has it (51 recipes do), so any day with such a log has sodium "not counted". Cooked dishes carry sodium, library logs never do. | `meallog.recipe-sodium` (9 people). `POST /api/meal-log {source:"RECIPE", recipeId:<recipe with sodium>}` → row `sodium: null`. | `app/api/meal-log/route.ts:71` does not select `sodium`; `lib/meal-log.ts:424` (resolveSnapshot RECIPE) never sets it | Select `Recipe.sodium` and store it per serving for RECIPE logs. |
-| 6 | Minor | Re-saving untouched basics ("Conditions and eating" → Continue) moves the stored weight by 0.1 lb (e.g. 158.9 → 159.0), because the server sends `weightKg` rounded to 0.1 kg and the app converts it back. Harmless once, but it rewrites BMI and can mark a meal plan stale near the drift threshold. | `units.untouched-weight-stable` (8 people). | `lib/onboarding.ts:324`; app `FirstRunViewModel.swift:228–231` | Send the stored pounds too (or `weightKg` unrounded), and have the app resend the stored pounds when the field is untouched. |
-| 7 | Minor | Editing basics from Account resets the weight unit to the phone's locale: a person who reads kg on a US-locale phone is switched to lbs (and vice versa). | `units.edit-keeps-weight-unit` (2 people). | App `FirstRunViewModel.swift:358` sends `usesMetric` from `Locale`; `GET /api/onboarding` does not carry `displayWeightUnit` | Add `displayWeightUnit` to the onboarding profile and start the toggle from it. |
-| 8 | Minor | On their 13th birthday, a person east of UTC (Auckland morning) passes the app's age check but the server answers "Birthday must be a valid past date (age 13–120)" until later that day. | `onboarding.age13-accepted` (1 person). PATCH birthday = today − 13 years at 08:00 NZDT. | `app/api/patient/profile/route.ts:78` (365.25-day years from UTC midnight) | Compare calendar dates (`ageOn` in `lib/numbers-full.ts`) against the client's local date. |
+| 1 | Important — **fixed** | Numbers and Clara count a meal with **no fibre figure as 0 g**. 901 of 3,391 library recipes (27 %) have no fibre, and estimates often have none. The fibre amount is an undercount shown as fact; in the run, 750 Numbers responses said fibre was "little" while part of the week's fibre was unknown, and in 117 the word differs from the one the known meals alone give. Clara then says "you've had little fibre this week". Same for protein/carbs on the 37 recipes without them. | `honesty.fibre-unknown-as-zero` (77 people). Log any library recipe with `fiber: null` plus one with fibre for 3 days × 2 meals → `fibre.foodCounted: true`, amount halved, word "little". | `lib/macros.ts:221` (`recipe.fiber ?? 0`), `lib/level-summary.ts:75` (`r.fiber ?? 0`), `lib/numbers-full.ts:159,182` (fibre always "counted" when any day is) | Treat fibre like sodium: a day's fibre is known only when every meal carries it (`levelDaysFromRows`), and `foodCounted` false otherwise; or show "partly counted" and withhold the word. Decide whether the plan's "fibre counts whenever days are counted" ruling stands. |
+| 2 | Important — **fixed** | With **one logged day** (often one meal) and no onboarding answers, Clara is handed `little: ["fibre"]`, shows the levels chip and says "Brown rice is rich in fibre, and you've had little this week." Numbers says nothing (word null, not enough logs) — the two screens disagree, and Clara's claim rests on a single day. | `honesty.clara-levels-need-enough-logs` (26 people; 27 of 28 cases had 1 logged day). New person, answers nothing, logs one meal, asks "What should I eat?". | `lib/levels.ts:61,81` gives fibre/sodium words with no `enoughLogs` gate; `lib/clara/skills/dish.ts:621,627` passes them to the model and the card when there is no picture | When `enoughLogs` is false and no picture exists, hand the model empty `little`/`aLot` plus a "not enough logged yet" note and build no reasons (the plan said "behaviour unchanged" here; slice-1 Review Focus 2 suggests otherwise). |
+| 3 | Minor — open (ruling) | A pill the person entered **on the website** (e.g. "vitamin d") shows ticked in the app but adds nothing on Numbers — no contents until they re-tick it in the first run, which website people never see (they go straight to the tabs). | `pills.catalogue-pill-counts` (8 website people). Website `POST /api/supplements {name:"vitamin d"}`, then `GET /api/numbers?full=1` → vitaminD `pillAmount 0`. | `lib/onboarding.ts:237` fills contents only on a PUT that ticks the pill; `lib/numbers-full.ts:150` reads no contents | On read (or in a one-off backfill), give catalogue-named pills with `contents: null` the typical contents with `estimated: true`. |
+| 4 | Minor — open (ruling) | Someone who closes the app on step 4 ("Is weight part of this?") never sees it again: after step 3 `me.onboardingComplete` is true, so the app opens the tabs; `weightGoal` stays null and the weight row stays hidden (until they find "Conditions and eating" in Account). | `onboarding.resume-step4` (5 people). Steps 1–3, then `GET /api/me` → `onboardingComplete: true`. | `lib/me.ts:70` = basics only; app `FirstRunViewModel.swift:132` | Either count `weightGoal` in the first-run completeness the app gates on, or accept it and note it in the spec (Review Focus 5 covers step 2 only). |
+| 5 | Minor — **fixed** | Logging a library recipe drops its sodium even when the recipe has it (51 recipes do), so any day with such a log has sodium "not counted". Cooked dishes carry sodium, library logs never do. | `meallog.recipe-sodium` (9 people). `POST /api/meal-log {source:"RECIPE", recipeId:<recipe with sodium>}` → row `sodium: null`. | `app/api/meal-log/route.ts:71` does not select `sodium`; `lib/meal-log.ts:424` (resolveSnapshot RECIPE) never sets it | Select `Recipe.sodium` and store it per serving for RECIPE logs. |
+| 6 | Minor — open | Re-saving untouched basics ("Conditions and eating" → Continue) moves the stored weight by 0.1 lb (e.g. 158.9 → 159.0), because the server sends `weightKg` rounded to 0.1 kg and the app converts it back. Harmless once, but it rewrites BMI and can mark a meal plan stale near the drift threshold. | `units.untouched-weight-stable` (8 people). | `lib/onboarding.ts:324`; app `FirstRunViewModel.swift:228–231` | Send the stored pounds too (or `weightKg` unrounded), and have the app resend the stored pounds when the field is untouched. |
+| 7 | Minor — **server fixed, app open** | Editing basics from Account resets the weight unit to the phone's locale: a person who reads kg on a US-locale phone is switched to lbs (and vice versa). | `units.edit-keeps-weight-unit` (2 people). | App `FirstRunViewModel.swift:358` sends `usesMetric` from `Locale`; `GET /api/onboarding` does not carry `displayWeightUnit` | Add `displayWeightUnit` to the onboarding profile and start the toggle from it. |
+| 8 | Minor — **fixed (app must send `?today=`)** | On their 13th birthday, a person east of UTC (Auckland morning) passes the app's age check but the server answers "Birthday must be a valid past date (age 13–120)" until later that day. | `onboarding.age13-accepted` (1 person). PATCH birthday = today − 13 years at 08:00 NZDT. | `app/api/patient/profile/route.ts:78` (365.25-day years from UTC midnight) | Compare calendar dates (`ageOn` in `lib/numbers-full.ts`) against the client's local date. |
 
 ## Observations (not defects)
 
@@ -151,3 +156,72 @@ retry policy, in-memory store with database URLs removed. Full table: `docs/qa/c
 - `sim/clara-live.sim.ts`, `sim/clara-live-key.ts` — the opt-in live sample.
 - No product code (`app/`, `lib/`, `prisma/`) was changed; no test-only seam was needed (the model client is replaced
   with `mock.module` on `lib/anthropic.ts`).
+
+## Fixes (2026-11-12, after this report)
+
+Product changes on `sim/clara-first`, each with unit tests first; the simulation asserts every fixed finding hard.
+
+1. **Fibre completeness (finding 1).** A day's fibre is known only when every meal that day carries a fibre figure,
+   exactly as sodium already was: `lib/level-summary.ts` (`levelDaysFromRows` marks the day `fibre: null`),
+   `lib/levels.ts` (fibre averaged over fully known days, like sodium), `lib/numbers-full.ts` (fibre `foodCounted`
+   only when every counted day knows it, like sodium). The root was also at write time: RECIPE and RESTAURANT logs
+   stored a missing fibre figure as **0**, so it could never be told apart; `lib/meal-log.ts` now stores `fiber: null`
+   for them (`resolveSnapshot` → `fiberUnknown`). Rows written before today keep their 0 (no backfill; they cannot be
+   told apart). Consequence to know: fibre is now counted only for weeks where every logged meal has a figure — in the
+   simulation fibre got a word only for people who logged only such meals (63 "little", 124 "on track").
+2. **No level claims from too few logs (finding 2).** `lib/clara/skills/dish.ts`: without enough logs and without a
+   picture, `dish_suggest` / `dish_plan_today` hand the model empty `little`/`aLot`, emit no levels part, build no
+   reasons, and add `NOT_ENOUGH_LOGS_NOTE`. Clara's summary now comes from `loadClaraLevelSummary`
+   (`lib/level-summary.ts`) through `claimsAsNumbersSays` (`lib/levels.ts`): a fibre/sodium claim only when the
+   Numbers screen gives the same word (enough logs, known on every counted day). The simulation compares Clara's
+   claims with `GET /api/numbers?full=1` at every dish call (`agree.*`): 146 comparisons, all equal.
+3. **Recipe sodium (finding 5).** RECIPE logs carry `Recipe.sodium / servings` (`lib/meal-log.ts`; the single and batch
+   meal-log routes select `sodium`). A caller-supplied `sodium` still wins.
+4. **Profile units (finding 7, server half).** `GET/PUT /api/onboarding` `profile` gains `weightUnit` ("kg" | "lbs",
+   `resolveWeightUnit(displayWeightUnit, heightUnit)`) and `heightUnit` (as stored, null without a profile).
+5. **13th birthday (finding 8).** `PATCH /api/patient/profile?today=YYYY-MM-DD` (validated like the numbers routes)
+   checks the age in calendar years on the client's date (`birthdayError` in `lib/body-bounds.ts`); without the param
+   the old server-clock rule applies, so the web wizard is unchanged.
+
+### What changed on the wire for mobile clients
+
+- `GET/PUT /api/onboarding`: `profile.weightUnit` and `profile.heightUnit` added (additive; the Swift DTO ignores unknown keys).
+  The app should start the Account-edit unit toggle from `weightUnit` (finding 7 stays open until it does).
+- `PATCH /api/patient/profile`: accepts an optional `?today=YYYY-MM-DD`; a malformed value is 400. The app should send its
+  local date (finding 8 is fixed for the app only once it does).
+- `GET /api/numbers` (no `full=1`): same keys and nullability. For weeks with a meal that has no fibre figure, `fibre.amount` and
+  `fibre.word` can now be null (fibre is nullable like sodium), and `little` no longer lists fibre then. Weeks whose fibre is all known are byte-identical (golden test kept, with a second case and a comment).
+- `GET /api/numbers?full=1`: fibre `foodCounted` false / `amount` null / `word` null in the same weeks (shape unchanged).
+- `POST /api/meal-log` (and batch): DTO shape unchanged — `serializeMealLog` exposes no sodium. For a library recipe without
+  fibre, `log.perServing.fiber` is now `null` instead of `0` (a field that was already nullable for manual logs); `totals.fiber` stays 0.
+- Clara chat: on the not-enough-logs path, no levels part and no fibre/sodium reasons on dish cards.
+
+### Item 6 — why hard profiles got "couldn't make one that fits" (live sample)
+
+The first live run's raw outputs were not saved, so I spent 6 more live calls (two runs of the three failing profiles;
+15,850 input / 14,015 output tokens, ≈ $0.09) and recorded the model's raw tool input (`sim/.snapshot/clara-live-raw-*.json`),
+then replayed it offline through every gate stage (`sim/clara-gate-replay.ts`).
+
+| Recorded candidate | Before | After |
+|---|---|---|
+| vegetarian, no eggs/dairy · "Black bean and sweet potato tacos" | dropped: `corn tortillas` with a bare count has "no usable unit" | passes |
+| vegetarian · "Stir-fried tofu with broccoli and brown rice" | dropped: `garlic` with a bare count (cloves) | passes |
+| vegetarian · "Black bean and quinoa stuffed bell pepper" | dropped: `garlic` bare count | passes |
+| vegetarian · two coconut curries | dropped by the dairy-allergy filter: "coconut milk" matches the banned term "milk" | unchanged (safety gate, absolute) |
+| CKD 1-2 + hypertension + vegan + tree nuts · whole output | 0 candidates: `recipes` came back as a JSON **string**, and the string itself is malformed JSON (`{"name": "brown rice", "quantity": 50, "g"}`) | still 0 — correctly unusable |
+| pregnancy + fish allergy, CKD (2nd run), the others | pass every gate | pass |
+
+Defects fixed (separate commit): `unitIsUsable` / `countUnitFor` in `lib/dish-plausibility.ts` accepted only singular
+"tortilla / muffin / bagel / pita" and not garlic cloves — the plural trap; plurals and garlic (not garlic powder/salt/paste/oil)
+are now bare counts. In the recorded vegetarian run that turns "couldn't make one that fits" (0 of 3) into 2 of 3 usable.
+`parseFridgeRecipes` (`lib/fridge.ts`) now also reads a `recipes` array sent as a valid JSON string (same per-item validation);
+the one stringified output recorded was itself malformed, so this would not have rescued it — it covers the valid case only.
+No safety gate changed; `lib/diet-match.ts` is untouched.
+
+Judgement calls, not changed:
+- **Malformed model output** (seen once in 6 calls): options are strict tool use for `suggest_recipes` (schema-valid input
+  guaranteed; needs `additionalProperties: false` on the schema and a check that `claude-haiku-4-5` honours it), one retry when
+  the output parses to 0 candidates (one more Haiku call, up to 45 s more in a chat turn), or a tolerant JSON repair. Evidence: 1 of 6.
+- **"coconut milk" refused for a dairy allergy**: a text match on "milk" in a safety filter. Exempting plant milks would weaken an
+  allergy gate; it needs a clinician-reviewed exemption list, not a code change here.
+- No calorie/macro tolerance or plausibility rule dropped a compliant candidate in the 18 recorded candidates, so none is proposed.

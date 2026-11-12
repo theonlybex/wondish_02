@@ -931,3 +931,17 @@ test("clampAddedSalt halves the allowance for a 1,500 mg diner", () => {
   assert.equal(clampAddedSalt(rows, 210, 1500).ingredients[0].quantity, SEASONING_SALT_TSP_SMALL_DISH / 2);
   assert.equal(clampAddedSalt(rows, 620, 2300).changed, false);
 });
+
+// Live sample (item 6): rule-compliant dishes were dropped because "2 corn
+// tortillas" (plural) and "2 garlic" (cloves) had no unit. Plurals of the
+// countable foods and garlic cloves are bare counts like eggs.
+import { unitIsUsable, countUnitFor } from "./dish-plausibility";
+
+test("unitIsUsable: plural countable foods and garlic may be bare counts", () => {
+  for (const n of ["corn tortillas", "flour tortilla", "bagels", "muffins", "whole wheat pitas", "garlic", "garlic cloves", "eggs", "large eggs"])
+    assert.equal(unitIsUsable(n, ""), true, n);
+  for (const n of ["red lentils", "olive oil", "spinach", "brown rice", "garlic powder"]) assert.equal(unitIsUsable(n, ""), false, n);
+  assert.equal(countUnitFor("corn tortillas"), "whole");
+  assert.equal(countUnitFor("garlic"), "clove");
+  assert.equal(countUnitFor("garlic powder"), null);
+});

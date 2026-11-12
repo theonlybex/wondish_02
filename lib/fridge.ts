@@ -195,6 +195,15 @@ export function parseFridgeRecipes(
   maxRecipes: number,
   mealTypeHint?: string
 ): FridgeRecipe[] | null {
+  // The model sometimes sends the array JSON-encoded as a string (seen live,
+  // QA 2026-11-12): read it as the array; every item is validated as usual.
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
   if (!Array.isArray(raw)) return null;
 
   const cap = clampNumber(maxRecipes, 1, 5, 3);

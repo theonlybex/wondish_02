@@ -455,3 +455,15 @@ test("applyAllergenFilter: an ingredient whose catalog row carries a banned alle
   assert.deepEqual(applyAllergenFilter(recipes, matchers, groupsOf), []);
   assert.equal(applyAllergenFilter(recipes, matchers, () => []).length, 1);
 });
+
+// Live sample (docs/qa/clara-first-sim.md, item 6): the model sometimes returns
+// the tool's `recipes` array as a JSON-encoded STRING. Every candidate was lost
+// and the person got "couldn't make one that fits". The same validation runs.
+test("parseFridgeRecipes: a JSON string holding the array is read as the array", () => {
+  const out = parseFridgeRecipes(JSON.stringify([validRecipeInput(), validRecipeInput({ name: "Second" })]), 3)!;
+  assert.equal(out.length, 2);
+  assert.equal(out[1].name, "Second");
+  assert.equal(parseFridgeRecipes("[not json", 3), null);
+  assert.equal(parseFridgeRecipes(JSON.stringify({ recipes: [] }), 3), null, "a string that is not an array is still unusable");
+  assert.deepEqual(parseFridgeRecipes(JSON.stringify([{ description: "no name" }]), 3), [], "per-item validation unchanged");
+});

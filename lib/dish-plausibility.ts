@@ -1195,14 +1195,20 @@ const FORM_WORDS = new Set([
   "frittata", "toast", "parfait", "smoothie", "stirfry", "skewers",
 ]);
 
-/** Countable foods whose bare count IS the measurement (see staple-density). */
-const COUNTABLE = /\b(eggs?|bread|toast|muffin|bagel|tortilla|pita|apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|carrots?|avocados?|lemons?|limes?)\b/i;
+/**
+ * Countable foods whose bare count IS the measurement (see staple-density).
+ * Plurals count too ("2 corn tortillas"), and garlic is counted in cloves —
+ * the singular-only list dropped rule-compliant live dishes (QA 2026-11-12).
+ * "garlic powder" is a measured spice, not a count.
+ */
+const COUNTABLE = /\b(eggs?|bread|toast|muffins?|bagels?|tortillas?|pitas?|apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|carrots?|avocados?|lemons?|limes?|garlic(?! (?:powder|salt|granules|paste|oil))(?: cloves?)?)\b/i;
 
 /** The word for one of something, when a recipe gives a bare count. */
 export function countUnitFor(name: string): string | null {
   if (/\bbread\b/i.test(name)) return "slice";
-  if (/\b(muffin|bagel|tortilla|pita|wrap)\b/i.test(name)) return "whole";
+  if (/\b(muffins?|bagels?|tortillas?|pitas?|wraps?)\b/i.test(name)) return "whole";
   if (/\beggs?\b/i.test(name)) return "egg";
+  if (/\bgarlic\b(?! (?:powder|salt|granules|paste|oil))/i.test(name)) return "clove";
   if (/\b(apples?|bananas?|oranges?|pears?|potato(es)?|tomato(es)?|peppers?|onions?|avocados?|lemons?|limes?|carrots?)\b/i.test(name)) return "whole";
   return null;
 }
