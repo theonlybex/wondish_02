@@ -6,6 +6,7 @@ import type {
   ToolDef,
   ToolResult,
 } from "./types";
+import { partAsText, type ClaraPart } from "./parts";
 import { ASK_CHOICES_INVALID_MESSAGE, ASK_CHOICES_TOOL, parseChoices } from "./ask-choices";
 
 export interface LoopParams {
@@ -34,6 +35,18 @@ export interface LoopParams {
    * offers the ask_choices tool.
    */
   onChoices?: (choices: ClaraChoices) => void;
+  /**
+   * Called for every part a tool result carried, as it is executed (always,
+   * so the caller can store them). Whether the member's build gets them as
+   * events is the caller's call; `partsEnabled` only decides the text.
+   */
+  onPart?: (part: ClaraPart) => void;
+  /**
+   * true ⇒ the client draws parts itself, so no text is added. false/omitted ⇒
+   * each part is written out with partAsText() at the end of the reply, so an
+   * old build never shows a blank or part-less answer.
+   */
+  partsEnabled?: boolean;
 }
 
 const CONFIRM_REQUIRED_MESSAGE =
@@ -88,6 +101,8 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
   // model that hallucinates the tool name.
   const offersChoices = params.tools.some((t) => t.name === ASK_CHOICES_TOOL);
 
+  const partsEnabled = params.partsEnabled === true;
+
   const firstRound = await params.client.openRound({
     system: params.system,
     messages,
@@ -103,6 +118,21 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
     // separate model rounds; without a separator they render glued together
     // ("…tonight.No — …", desktop QA 2026-09-11).
     let lastChar = "";
+    // Parts collected from tool results this turn, not yet written out as text.
+    const fallbackParts: ClaraPart[] = [];
+    let partsShown = false;
+
+    // At every normal end of the turn: the old-build text for the parts.
+    function* partsText(): Generator<string> {
+      for (const part of fallbackParts.splice(0)) {
+        const t = partAsText(part);
+        if (t.length === 0) continue;
+        if (emitted && /\S$/.test(lastChar) && /^\S/.test(t)) yield "\n\n";
+        emitted = true;
+        lastChar = t.slice(-1);
+        yield t;
+      }
+    }
 
     for (;;) {
       // The assistant turn is taken from the round's terminal event, NEVER
@@ -144,12 +174,14 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
       // let whatever prose was produced stand.
       if (stopReason === "max_tokens" && calls.length > 0) {
         params.onError?.(new Error("clara loop: round truncated by max_tokens, tool calls dropped"));
-        if (!emitted) yield EMPTY_ANSWER_FALLBACK;
+        yield* partsText();
+        if (!emitted && !partsShown) yield EMPTY_ANSWER_FALLBACK;
         return;
       }
 
       if (calls.length === 0) {
-        if (!emitted) yield EMPTY_ANSWER_FALLBACK;
+        yield* partsText();
+        if (!emitted && !partsShown) yield EMPTY_ANSWER_FALLBACK;
         return;
       }
 
@@ -162,7 +194,8 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
         params.onError?.(
           new Error("clara loop: tool_use returned after the round budget was spent")
         );
-        if (!emitted) yield EMPTY_ANSWER_FALLBACK;
+        yield* partsText();
+        if (!emitted && !partsShown) yield EMPTY_ANSWER_FALLBACK;
         return;
       }
 
@@ -207,15 +240,28 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
             result = { ok: false, reason: "FAILED", message: TOOL_THREW_MESSAGE };
           }
         }
+        let forModel: ToolResult = result;
+        if (result.ok && Array.isArray(result.parts) && result.parts.length > 0) {
+          for (const part of result.parts) {
+            params.onPart?.(part);
+            if (partsEnabled) partsShown = true;
+            else fallbackParts.push(part);
+          }
+          // The model does not need the card payload back; it knows it showed one.
+          const { parts: _shown, ...rest } = result;
+          forModel = rest;
+        }
         results.push({
           type: "tool_result",
           tool_use_id: call.id,
-          content: JSON.stringify(result),
+          content: JSON.stringify(forModel),
         });
       }
       messages.push({ role: "user", content: results });
 
       if (choices) {
+        // The question stays the end of the message, so parts go before it.
+        yield* partsText();
         // Same separator rule as between rounds: the question is a new piece
         // of text after whatever this or an earlier round streamed.
         if (emitted && /\S$/.test(lastChar) && /^\S/.test(choices.question)) yield "\n\n";

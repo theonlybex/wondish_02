@@ -14,6 +14,7 @@ import { buildTodaysPlanText } from "./today-plan";
 import type { ConversationStore, ToolTraceEntry } from "./conversations";
 import type { ClaraRequestOptions } from "./request";
 import type { ClaraEvent } from "./ndjson";
+import { partAsText, type ClaraPart } from "./parts";
 import type { ClaraChoices, ClaraContext, ModelClient, ModelMessage, Skill, ToolResult } from "./types";
 
 /** Tool rounds on this route: the same for every tier (spec §2). */
@@ -86,7 +87,7 @@ export function claraAppSkills(envValue: string | undefined): Skill[] {
  */
 export function parseClaraChatBody(
   body: unknown
-): { ok: true; message: string; conversationId: string | undefined } | { ok: false; error: string } {
+): { ok: true; message: string; conversationId: string | undefined; parts?: boolean } | { ok: false; error: string } {
   if (typeof body !== "object" || body === null) return { ok: false, error: "Invalid body" };
   const b = body as Record<string, unknown>;
   if (typeof b.message !== "string") return { ok: false, error: "Invalid message" };
@@ -102,6 +103,12 @@ export function parseClaraChatBody(
     }
     conversationId = b.conversationId.trim();
   }
+  // Optional boolean: the build asks for typed parts. The key is present only
+  // when the body sent it, so a body without it parses exactly as before.
+  if (b.parts !== undefined) {
+    if (typeof b.parts !== "boolean") return { ok: false, error: "Invalid parts" };
+    return { ok: true, message, conversationId, parts: b.parts };
+  }
   return { ok: true, message, conversationId };
 }
 
@@ -114,6 +121,8 @@ export async function startClaraAppTurn(
     conversationId?: string;
     message: string;
     options: ClaraRequestOptions;
+    /** The build can draw typed parts (body `parts: true`). Omitted ⇒ plain text. */
+    parts?: boolean;
   }
 ): Promise<ClaraAppTurnResult> {
   const { patient, account, options } = input;
@@ -215,7 +224,18 @@ export async function startClaraAppTurn(
   const toolTrace: ToolTraceEntry[] = [];
   const record = (id: string, name: string, toolInput: unknown, result: ToolResult) => {
     if (name === ASK_CHOICES_TOOL || toolTrace.length >= TOOL_TRACE_MAX_CALLS) return;
-    toolTrace.push({ id, name, input: cutForTrace(safeJson(toolInput)), result: cutForTrace(safeJson(result)) });
+    // Parts ride on the trace entry of the call that produced them (the only
+    // existing JSON column we may use; no client reads it, the model replay
+    // ignores the extra key). They are kept out of the cut `result` string.
+    const parts = result.ok && result.parts && result.parts.length > 0 ? result.parts : undefined;
+    const { parts: _p, ...plain } = result.ok ? result : ({ ...result } as ToolResult & { parts?: never });
+    toolTrace.push({
+      id,
+      name,
+      input: cutForTrace(safeJson(toolInput)),
+      result: cutForTrace(safeJson(plain)),
+      ...(parts ? { parts } : {}),
+    });
   };
   const execute = async (name: string, toolInput: Record<string, unknown>, toolUseId: string): Promise<ToolResult> => {
     let result: ToolResult;
@@ -233,6 +253,9 @@ export async function startClaraAppTurn(
 
   // Only records the value — it must never throw inside the loop.
   let choices: ClaraChoices | null = null;
+  // Every part the turn's tools produced, in order (stored, and sent as events
+  // only to builds that asked).
+  const turnParts: ClaraPart[] = [];
 
   // Round 1 is opened here, before the route commits to a 200, so connect
   // errors still become JSON. No assistant row is written; the conversation id
@@ -251,6 +274,10 @@ export async function startClaraAppTurn(
       onChoices: (c) => {
         choices = c;
       },
+      onPart: (p) => {
+        turnParts.push(p);
+      },
+      partsEnabled: input.parts === true,
     });
   } catch (err) {
     onError(err);
@@ -287,6 +314,7 @@ export async function startClaraAppTurn(
     }
     // The generator is fully drained here, so `choices` is final.
     const finalChoices = choices as ClaraChoices | null;
+    if (input.parts === true) for (const part of turnParts) yield { type: "part", part };
     if (finalChoices) yield { type: "choices", question: finalChoices.question, options: finalChoices.options };
 
     // Spec §2 / Review Focus 4: a reply that failed before any model text
@@ -294,6 +322,11 @@ export async function startClaraAppTurn(
     // Partial text + the fallback is saved as it stands.
     const failedBeforeText = fellBack && !modelText;
     let messageId: string | null = null;
+    // A reply that is only parts (the model said nothing) is saved as the
+    // parts written out, so a reopened chat is never blank on any build.
+    if (text.length === 0 && turnParts.length > 0 && !failedBeforeText) {
+      text = turnParts.map(partAsText).join("\n\n");
+    }
     if (text.length > 0 && !failedBeforeText) {
       try {
         messageId = (

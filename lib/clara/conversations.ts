@@ -31,6 +31,8 @@ export interface ToolTraceEntry {
   name: string;
   input: string;
   result: string;
+  /** Typed parts the call produced (ClaraPart[]); optional, never read by clients. */
+  parts?: unknown[];
 }
 
 /**

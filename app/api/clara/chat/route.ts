@@ -83,6 +83,7 @@ async function handleChat(req: NextRequest) {
       conversationId: parsed.conversationId,
       message: parsed.message,
       options,
+      parts: parsed.parts === true,
     }
   );
   if (!turn.ok) return NextResponse.json(turn.body, { status: turn.status });

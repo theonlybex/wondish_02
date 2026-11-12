@@ -4,9 +4,16 @@
 //
 // Program spec: docs/superpowers/specs/2026-07-30-clara-full-service-assistant-design.md
 
-/** Typed handler outcome. Handlers NEVER throw — the model narrates these. */
+import type { ClaraPart } from "./parts";
+
+/**
+ * Typed handler outcome. Handlers NEVER throw — the model narrates these.
+ * An ok result may carry `parts`: structured pieces of the reply the loop
+ * shows the member (as events, or as plain text for builds that did not ask).
+ * They are not sent back to the model.
+ */
 export type ToolResult =
-  | { ok: true; data: unknown }
+  | { ok: true; data: unknown; parts?: ClaraPart[] }
   | {
       ok: false;
       reason:
