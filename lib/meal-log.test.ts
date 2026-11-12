@@ -851,3 +851,18 @@ test("create data carries sodium/estimated when supplied", () => {
   assert.equal(data.sodium, 450);
   assert.equal(data.estimated, true);
 });
+
+// ─── RECIPE nutrients (saturated fat, added sugar) ──────────────────────────
+test("resolveSnapshot: RECIPE carries per-serving nutrients only when the recipe has them", () => {
+  const parsed = parseMealLogInput({ localDate: "2026-07-19", mealType: "dinner", source: "RECIPE", recipeId: "r1", servings: 1 });
+  assert.ok(parsed.ok);
+  if (!parsed.ok) return;
+  const withBoth = resolveSnapshot(parsed.value, { recipe: { calories: 400, servings: 2, saturatedFat: 8, addedSugars: 6, name: "Bowl" } });
+  assert.deepEqual(withBoth.nutrients, { saturatedFat: 4, addedSugar: 3 });
+  const onlyFat = resolveSnapshot(parsed.value, { recipe: { calories: 400, saturatedFat: 5, name: "Bowl" } });
+  assert.deepEqual(onlyFat.nutrients, { saturatedFat: 5 });
+  const neither = resolveSnapshot(parsed.value, { recipe: { calories: 400, name: "Bowl" } });
+  assert.equal("nutrients" in neither, false);
+  assert.equal("nutrients" in buildMealLogCreateData("p1", parsed.value, neither), false);
+  assert.deepEqual(buildMealLogCreateData("p1", parsed.value, withBoth).nutrients, { saturatedFat: 4, addedSugar: 3 });
+});

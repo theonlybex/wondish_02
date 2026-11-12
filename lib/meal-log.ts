@@ -370,6 +370,9 @@ export interface RecipeDep {
   fat?: number | null;
   fiber?: number | null;
   servings?: number | null;
+  // Whole-dish extras, divided by servings into MealLog.nutrients.
+  saturatedFat?: number | null;
+  addedSugars?: number | null;
   name: string;
 }
 export interface CustomIngredientDep {
@@ -395,14 +398,30 @@ export interface RestaurantDishDep {
   name: string;
 }
 
+// Per-serving saturated fat and added sugar, when the recipe row has them.
+// Stored on MealLog.nutrients; absent keys stay absent (unknown is not 0).
+export type MealNutrients = {
+  saturatedFat?: number;
+  addedSugar?: number;
+};
+
+export function recipeNutrients(recipe: RecipeDep): MealNutrients | undefined {
+  const servings = recipe.servings && recipe.servings > 0 ? recipe.servings : 1;
+  const out: MealNutrients = {};
+  if (recipe.saturatedFat != null) out.saturatedFat = recipe.saturatedFat / servings;
+  if (recipe.addedSugars != null) out.addedSugar = recipe.addedSugars / servings;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export function resolveSnapshot(
   input: ParsedMealLog,
   deps: { recipe?: RecipeDep; customIngredient?: CustomIngredientDep; restaurantDish?: RestaurantDishDep }
-): { snapshot: MacroSnapshot; name: string } {
+): { snapshot: MacroSnapshot; name: string; nutrients?: MealNutrients } {
   if (input.source === MealLogSource.RECIPE) {
     const recipe = deps.recipe;
     if (!recipe) throw new Error("resolveSnapshot: RECIPE source requires a recipe dep");
-    return { snapshot: recipeToPerServing(recipe), name: input.name ?? recipe.name };
+    const nutrients = recipeNutrients(recipe);
+    return { snapshot: recipeToPerServing(recipe), name: input.name ?? recipe.name, ...(nutrients ? { nutrients } : {}) };
   }
   if (input.source === MealLogSource.CUSTOM) {
     const ci = deps.customIngredient;
@@ -490,12 +509,13 @@ export interface MealLogCreateData {
   // are unchanged.
   sodium?: number;
   estimated?: boolean;
+  nutrients?: MealNutrients;
 }
 
 export function buildMealLogCreateData(
   patientId: string,
   input: ParsedMealLog,
-  resolved: { snapshot: MacroSnapshot; name: string }
+  resolved: { snapshot: MacroSnapshot; name: string; nutrients?: MealNutrients }
 ): MealLogCreateData {
   const s = resolved.snapshot;
   // Caller-supplied sources store null for absent fields (unknown ≠ 0);
@@ -527,6 +547,7 @@ export function buildMealLogCreateData(
     clientRequestId: input.clientRequestId ?? null,
     ...(input.sodium !== undefined ? { sodium: input.sodium } : {}),
     ...(input.estimated !== undefined ? { estimated: input.estimated } : {}),
+    ...(resolved.nutrients ? { nutrients: resolved.nutrients } : {}),
   };
 }
 

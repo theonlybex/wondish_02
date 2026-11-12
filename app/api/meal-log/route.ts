@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     // loggable/read back through this path.
     const r = await prisma.recipe.findFirst({
       where: { id: input.recipeId!, isPublic: true },
-      select: { name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, servings: true },
+      select: { name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, servings: true, saturatedFat: true, addedSugars: true },
     });
     if (!r) return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
     recipe = r;

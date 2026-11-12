@@ -1,0 +1,184 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  buildFullNumbers,
+  convertUnit,
+  validateGoalsBody,
+  validateTrackedBody,
+  rowsToMaterialize,
+  type FullDay,
+  type FullNumbersInput,
+} from "./numbers-full";
+import { fullDaysFromRows, levelDaysFromRows } from "./level-summary";
+import { summarizeLevels } from "./levels";
+
+const range = { fromDate: "2026-11-05", toDate: "2026-11-11" };
+const person = { sexAtBirth: null, age: 30 } as const;
+const day = (i: number, over: Partial<FullDay> = {}): FullDay => ({
+  localDate: `2026-11-0${i}`, meals: 2, calories: 1800, protein: 60, carbs: 200, fibre: 15,
+  sodium: 2000, saturatedFat: 10, addedSugar: 20, ...over,
+});
+const base = (over: Partial<FullNumbersInput> = {}): FullNumbersInput => ({
+  days: [], range, macroTargets: null, person: { ...person }, conditionNames: [], pills: [],
+  trackedRows: [], picture: null, weight: null, ...over,
+});
+const lv = (out: ReturnType<typeof buildFullNumbers>, key: string) => out.levels.find((l) => l.key === key)!;
+
+test("zero days, no picture: source none, amounts null", () => {
+  const out = buildFullNumbers(base());
+  assert.equal(out.source, "none");
+  assert.equal(out.startingPicture, null);
+  assert.equal(out.summary.daysCounted, 0);
+  assert.deepEqual(out.calories, { amount: null, target: null });
+  for (const l of out.levels) assert.equal(l.amount, null);
+  assert.equal(out.levels.length, 21);
+});
+
+test("pills only: vitamin D 25 mcg estimated", () => {
+  const out = buildFullNumbers(base({ pills: [{ contents: [{ key: "vitaminD", amount: 25, unit: "mcg" }], estimated: true }] }));
+  const d = lv(out, "vitaminD");
+  assert.equal(d.amount, 25);
+  assert.equal(d.pillAmount, 25);
+  assert.equal(d.foodCounted, false);
+  assert.equal(d.word, null);
+  assert.equal(d.estimate, true);
+  assert.equal(lv(out, "iron").estimate, false);
+});
+
+test("five days with fibre 15 g: little, foodCounted", () => {
+  const days = [1, 2, 3, 4, 5].map((i) => day(i));
+  const out = buildFullNumbers(base({ days }));
+  const f = lv(out, "fibre");
+  assert.equal(f.foodCounted, true);
+  assert.equal(f.amount, 15);
+  assert.equal(f.word, "little");
+  assert.equal(out.source, "logged");
+  assert.equal(lv(out, "sodium").word, "within limit");
+  assert.equal(lv(out, "iron").foodCounted, false);
+});
+
+test("a day missing sodium: sodium not counted", () => {
+  const days = [1, 2, 3, 4].map((i) => day(i, i === 2 ? { sodium: null } : {}));
+  const s = lv(buildFullNumbers(base({ days })), "sodium");
+  assert.equal(s.foodCounted, false);
+  assert.equal(s.word, null);
+});
+
+test("not enough logs with a picture: answers, names filled", () => {
+  const out = buildFullNumbers(base({ days: [day(1)], picture: { little: ["fibre", "iron"], aLot: ["sodium"] } }));
+  assert.equal(out.source, "answers");
+  assert.deepEqual(out.startingPicture, {
+    little: [{ key: "fibre", name: "Fibre" }, { key: "iron", name: "Iron" }],
+    aLot: [{ key: "sodium", name: "Sodium" }],
+  });
+  assert.equal(lv(out, "fibre").word, null);
+});
+
+test("empty picture is answers with empty lists, not a crash", () => {
+  const out = buildFullNumbers(base({ picture: { little: [], aLot: [] } }));
+  assert.equal(out.source, "answers");
+  assert.deepEqual(out.startingPicture, { little: [], aLot: [] });
+});
+
+test("stored tracked rows override defaults; goal is returned", () => {
+  const out = buildFullNumbers(base({ trackedRows: [{ levelKey: "zinc", tracked: true, goal: 9 }, { levelKey: "iron", tracked: false, goal: null }] }));
+  assert.deepEqual(out.levels.filter((l) => l.tracked).map((l) => l.key), ["zinc"]);
+  assert.equal(lv(out, "zinc").goal, 9);
+  const none = buildFullNumbers(base({ trackedRows: [{ levelKey: "zinc", tracked: false, goal: null }] }));
+  assert.equal(none.levels.filter((l) => l.tracked).length, 0);
+  const dflt = buildFullNumbers(base());
+  assert.deepEqual(dflt.levels.filter((l) => l.tracked).map((l) => l.key), ["protein", "fibre", "addedSugar", "sodium", "iron", "vitaminD"]);
+});
+
+test("kidney condition adds phosphorus", () => {
+  assert.equal(buildFullNumbers(base({ conditionNames: ["Chronic Kidney Disease"] })).levels.length, 22);
+  assert.ok(buildFullNumbers(base({ conditionNames: ["Chronic Kidney Disease"] })).levels.some((l) => l.key === "phosphorus"));
+  assert.ok(!buildFullNumbers(base()).levels.some((l) => l.key === "phosphorus"));
+});
+
+test("unit conversion and pill sums", () => {
+  assert.equal(convertUnit(1, "mg", "mcg"), 1000);
+  assert.equal(convertUnit(2000, "mcg", "mg"), 2);
+  assert.equal(convertUnit(1, "g", "mg"), 1000);
+  const out = buildFullNumbers(base({
+    pills: [
+      { contents: [{ key: "vitaminB12", amount: 0.25, unit: "mg" }], estimated: false },
+      { contents: [{ key: "vitaminB12", amount: 100, unit: "mcg" }, { key: "magnesium", amount: 0.1, unit: "g" }], estimated: false },
+    ],
+  }));
+  assert.equal(lv(out, "vitaminB12").pillAmount, 350);
+  assert.equal(lv(out, "magnesium").pillAmount, 100);
+});
+
+test("macro targets set protein, carbs and calories; pills add to food", () => {
+  const days = [1, 2, 3].map((i) => day(i));
+  const out = buildFullNumbers(base({
+    days, macroTargets: { calories: 1900, protein: 80, carbs: 220 },
+    pills: [{ contents: [{ key: "protein", amount: 10, unit: "g" }], estimated: false }],
+  }));
+  assert.equal(lv(out, "protein").target, 80);
+  assert.equal(lv(out, "carbs").target, 220);
+  assert.equal(lv(out, "protein").amount, 70);
+  assert.deepEqual(out.calories, { amount: 1800, target: 1900 });
+});
+
+test("fullDaysFromRows: nutrients count only when every meal has them, times servings", () => {
+  const r = (localDate: string, servings: number, nutrients: unknown) =>
+    ({ localDate, servings, calories: 1, protein: 1, carbs: 1, fat: 1, fiber: 1, sodium: 1, nutrients });
+  const days = fullDaysFromRows([
+    r("2026-11-10", 2, { saturatedFat: 3, addedSugar: 4 }),
+    r("2026-11-10", 1, { saturatedFat: 1 }),
+    r("2026-11-11", 1, null),
+  ]);
+  assert.equal(days[0].saturatedFat, 7);
+  assert.equal(days[0].addedSugar, null);
+  assert.equal(days[1].saturatedFat, null);
+});
+
+test("without full=1 the summary JSON is unchanged (golden)", () => {
+  const rows = [
+    { localDate: "2026-11-10", servings: 1, calories: 500, protein: 20, carbs: 60, fat: 10, fiber: 5, sodium: 800 },
+    { localDate: "2026-11-10", servings: 2, calories: 300, protein: 10, carbs: 30, fat: 5, fiber: 3, sodium: null },
+    { localDate: "2026-11-11", servings: 1, calories: 600, protein: 30, carbs: 70, fat: 12, fiber: 8, sodium: 900 },
+    { localDate: "2026-11-11", servings: 1, calories: 400, protein: 15, carbs: 40, fat: 8, fiber: 4, sodium: 700 },
+  ];
+  const summary = summarizeLevels(levelDaysFromRows(rows), { calories: 1900, protein: 60, carbs: 250, fat: 60 }, { fromDate: "2026-11-05", toDate: "2026-11-11" });
+  assert.equal(
+    JSON.stringify({ summary, weight: null }),
+    '{"summary":{"fromDate":"2026-11-05","toDate":"2026-11-11","daysCounted":2,"enoughLogs":false,"levels":[{"key":"calories","name":"Calories","direction":"match","amount":1050,"target":1900,"unit":"kcal","word":null},{"key":"protein","name":"Protein","direction":"match","amount":42.5,"target":60,"unit":"g","word":null},{"key":"carbs","name":"Carbs","direction":"match","amount":115,"target":250,"unit":"g","word":null},{"key":"fat","name":"Fat","direction":"match","amount":20,"target":60,"unit":"g","word":null},{"key":"fibre","name":"Fibre","direction":"enough","amount":11.5,"target":28,"unit":"g","word":"little"},{"key":"sodium","name":"Sodium","direction":"under","amount":1600,"target":2300,"unit":"mg","word":"within limit"}],"little":["fibre"],"aLot":[]},"weight":null}',
+  );
+  // rows that also carry nutrients read the same
+  const withNutrients = rows.map((x) => ({ ...x, nutrients: { saturatedFat: 1 } }));
+  assert.deepEqual(levelDaysFromRows(withNutrients).map(({ ...d }) => d), levelDaysFromRows(rows));
+});
+
+test("validateTrackedBody", () => {
+  assert.deepEqual(validateTrackedBody({ tracked: ["iron", "fibre"] }), { ok: true, value: ["fibre", "iron"] });
+  assert.deepEqual(validateTrackedBody({ tracked: [] }), { ok: true, value: [] });
+  const bad = validateTrackedBody({ tracked: ["iron", "nope"] });
+  assert.deepEqual(bad, { ok: false, status: 422, error: "Unknown level: nope", field: "tracked" });
+  assert.equal(validateTrackedBody({}).ok, false);
+});
+
+test("validateGoalsBody: bounds, null clears, unknown key", () => {
+  const p = { sexAtBirth: "MALE" as const, age: 30 };
+  assert.deepEqual(validateGoalsBody({ goals: [{ key: "fibre", amount: 30 }, { key: "zinc", amount: null }] }, p),
+    { ok: true, value: [{ key: "fibre", amount: 30 }, { key: "zinc", amount: null }] });
+  for (const amount of [0, -1, 85, NaN, "30", Infinity]) {
+    const r = validateGoalsBody({ goals: [{ key: "fibre", amount }] }, p);
+    assert.equal(r.ok, false, String(amount));
+    if (!r.ok) assert.equal(r.status, 422);
+  }
+  assert.equal(validateGoalsBody({ goals: [{ key: "fibre", amount: 84 }] }, p).ok, true);
+  // male iron target is 8, so the cap is 24
+  assert.equal(validateGoalsBody({ goals: [{ key: "iron", amount: 25 }] }, p).ok, false);
+  const unk = validateGoalsBody({ goals: [{ key: "bogus", amount: 1 }] }, p);
+  assert.deepEqual(unk, { ok: false, status: 422, error: "Unknown level: bogus", field: "key" });
+});
+
+test("rowsToMaterialize writes all 22 defaults only when no rows exist", () => {
+  const rows = rowsToMaterialize([], []);
+  assert.equal(rows.length, 22);
+  assert.equal(rows.filter((r) => r.tracked).length, 6);
+  assert.deepEqual(rowsToMaterialize([{ levelKey: "iron" }], []), []);
+});
