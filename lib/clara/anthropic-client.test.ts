@@ -70,15 +70,16 @@ test("model and token cap are sent on every round", async () => {
   const client = createAnthropicClient(anthropic as any);
   await collect(await client.openRound({ system: "S", messages: [], tools: [] }));
   assert.equal(sent[0].model, CLARA_MODEL);
-  assert.equal(sent[0].model, "claude-haiku-4-5"); // all-Haiku since 2026-09-10
+  assert.equal(sent[0].model, "claude-haiku-5-5"); // all-Haiku since 2026-09-10; Haiku 5.5 since 2026-11-12
   assert.equal(sent[0].max_tokens, CLARA_MAX_TOKENS);
-  assert.equal(sent[0].max_tokens, 2048); // room for thinking + a tool call
+  assert.equal(sent[0].max_tokens, 2688); // room for thinking + a tool call (Haiku 5.5 tokenizer)
+  assert.deepEqual(sent[0].output_config, { effort: "low" });
 });
 
 // AMENDMENT 2026-07-31 (user-directed): thinking is ADAPTIVE — the param is
 // omitted, which is how Sonnet 5 selects it. With thinking disabled the model
 // is measurably less likely to reach for tools, and tools are the point.
-test("the thinking param is omitted so Sonnet 5 uses adaptive thinking", async () => {
+test("the thinking param is omitted so the model uses adaptive thinking (Haiku 5.5: on by default)", async () => {
   const { anthropic, sent } = fakeAnthropic({ deltas: ["hi"] });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = createAnthropicClient(anthropic as any);

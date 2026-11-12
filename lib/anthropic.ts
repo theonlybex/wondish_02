@@ -19,6 +19,23 @@ import Anthropic from "@anthropic-ai/sdk";
 // their own override — streaming chat (55s) and clara-swap (20s) — because
 // there the timeout covers the whole response, not time-to-first-byte.
 export const ANTHROPIC_TIMEOUT_MS = 90_000;
+
+// The ONE Haiku model id every server feature runs on (Clara chat, dish and
+// recipe generation, fridge, swap, cook-my-day, feedback triage, scripts).
+// 2026-11-12 (owner decision): Claude Haiku 4.5 → Claude Haiku 5.5. What the
+// switch changes, per the claude-api skill's migration guide:
+//   - thinking is ADAPTIVE when `thinking` is omitted (Haiku 4.5 did not
+//     think unless asked); `{type: "disabled"}` stays valid at effort
+//     low/medium/high, so the routes that disable it keep doing so;
+//   - `budget_tokens`, temperature/top_p/top_k and assistant prefill 400
+//     (none is used here);
+//   - a newer tokenizer: the same text is ~30% more tokens, so every
+//     max_tokens below was raised by about that much;
+//   - $0.10 / $0.50 per 1M input / output tokens (prompts up to 100K), from
+//     $1 / $5; prompt caching from 512 tokens (was 4,096);
+//   - structured outputs and forced tool_choice still work; a safety
+//     classifier can now answer stop_reason "refusal" (no server fallback).
+export const HAIKU_MODEL = "claude-haiku-5-5";
 export const ANTHROPIC_MAX_RETRIES = 1;
 
 export function createAnthropic(overrides: { timeout?: number; maxRetries?: number } = {}): Anthropic {

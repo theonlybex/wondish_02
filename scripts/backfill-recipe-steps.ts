@@ -10,12 +10,14 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { PrismaClient } from "@prisma/client";
+import { HAIKU_MODEL } from "../lib/anthropic";
 
 const prisma = new PrismaClient();
-const MODEL = "claude-haiku-4-5";
+const MODEL = HAIKU_MODEL;
 const MAX_USD = Number(process.env.STEPS_MAX_USD ?? 2.5);
 const BATCH = 10;
-const IN_PER_M = 1, OUT_PER_M = 5;
+// Claude Haiku 5.5 list price per 1M tokens (prompts up to 100K).
+const IN_PER_M = 0.1, OUT_PER_M = 0.5;
 // Per-dish worst-case estimate used by the guard (observed ~120 in / ~300 out).
 const EST_IN = 160, EST_OUT = 400;
 
@@ -66,7 +68,8 @@ async function main(write: boolean) {
     try {
       const msg = await anthropic.messages.create({
         model: MODEL,
-        max_tokens: 6000,
+        max_tokens: 8000, // 6000 on Haiku 4.5; Haiku 5.5 counts ~30% more tokens
+        thinking: { type: "disabled" }, // Haiku 5.5 thinks unless told not to; 4.5 did not
         system:
           "You write home-cooking instructions. For each dish, produce 5–10 clear, numbered-in-order steps a beginner can follow: " +
           "include prep (wash/chop), heat levels, pan/oven temperatures, timings, and doneness cues. Use ONLY the listed ingredients " +

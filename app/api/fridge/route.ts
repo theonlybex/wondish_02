@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
       // 2048 tokens it ran out mid-answer — three recipes, cut off, parsed
       // as nothing, a 502 (final bot, 2026-09-27). 4096 fits three.
       model: CLARA_MODEL,
-      max_tokens: 4096,
+      max_tokens: 5376, // 4096 on Haiku 4.5; Haiku 5.5 counts ~30% more tokens
       thinking: { type: "disabled" },
       system: FRIDGE_SYSTEM_PROMPT(foodMapText, MAX_RECIPES),
       tools: [

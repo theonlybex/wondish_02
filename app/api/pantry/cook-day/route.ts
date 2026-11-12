@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anthropic";
+import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE, HAIKU_MODEL } from "@/lib/anthropic";
 import { prisma } from "@/lib/db";
 import { loadIngredientGroups } from "@/lib/ingredient-catalog-db";
 import { specifyCookingOil, oilAllowedBy } from "@/lib/clara/oil";
@@ -224,8 +224,8 @@ export async function POST(req: Request) {
     try {
       const anthropic = createAnthropic();
       const msg = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
-        max_tokens: 4096,
+        model: HAIKU_MODEL,
+        max_tokens: 5376, // 4096 on Haiku 4.5; Haiku 5.5 counts ~30% more tokens
         thinking: { type: "disabled" },
         system,
         tools: [

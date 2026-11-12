@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { createAnthropic } from "@/lib/anthropic";
+import { createAnthropic, HAIKU_MODEL } from "@/lib/anthropic";
 import { prisma } from "@/lib/db";
 import { loadIngredientGroups } from "@/lib/ingredient-catalog-db";
 import { specifyCookingOil, oilAllowedBy } from "@/lib/clara/oil";
@@ -54,13 +54,14 @@ export { CLARA_RECIPE_TAG, normalizeCuisine, CUISINES, type Cuisine };
 // Structured recipe generation runs on Haiku — cheapest model, and the
 // deterministic gates (allergen filter, macro/calorie sanity, builder
 // selection) catch any quality slip regardless of model.
-const MODEL = "claude-haiku-4-5";
+const MODEL = HAIKU_MODEL;
 const MAX_DISHES_PER_BUILD = 32; // cost ceiling per generation (covers a full week: 4 slots × 7)
 // One API call per meal type, at most this many dishes each. A dish with its
 // 5–10 steps is ~600 output tokens; 8 dishes sit well inside MAX_OUTPUT_TOKENS.
 // (A single 21-dish call at 4096 tokens truncated the tool JSON → 0 dishes.)
 const MAX_DISHES_PER_CALL = 8;
-const MAX_OUTPUT_TOKENS = 8192;
+// 8192 → 10752 for Haiku 5.5 (~30% more tokens for the same text).
+const MAX_OUTPUT_TOKENS = 10752;
 // A breakfast people will actually cook on a weekday. Observed 2026-09-24: a
 // generated week served braised chicken thighs (15 min prep + 35 min cook) at
 // 8am on all seven days, because the prompt only constrained calories and the

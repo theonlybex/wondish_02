@@ -286,7 +286,8 @@ export function makeConversationStore(deps: ConversationDeps = prismaConversatio
      * No thinking blocks are replayed with the calls. The API requires them
      * only within an in-progress tool-use turn; these turns are complete
      * (each is followed by its text answer), and prior-turn thinking may be
-     * omitted. Clara runs Haiku 4.5 with thinking off anyway.
+     * omitted. (Haiku 5.5 thinks adaptively; the loop replays the current
+     * turn's thinking blocks verbatim, and earlier turns stay append-only.)
      */
     async history(
       conversationId: string,

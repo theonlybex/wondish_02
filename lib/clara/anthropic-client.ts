@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { HAIKU_MODEL } from "@/lib/anthropic";
 import type {
   ModelClient,
   ModelContentBlock,
@@ -8,15 +9,22 @@ import type {
 
 // 2026-09-10 (user-directed): Clara chat runs on Haiku like every other
 // Anthropic surface — tiers differ in availability (lib/ai-budget.ts), not
-// model. Haiku 4.5 does no thinking unless asked; `thinking` stays omitted.
-export const CLARA_MODEL = "claude-haiku-4-5";
+// model. 2026-11-12: Haiku 5.5 (lib/anthropic.ts HAIKU_MODEL), where an
+// omitted `thinking` means ADAPTIVE thinking — what the 2026-07-31 amendment
+// below always meant to get. Effort is set to "low" explicitly (the model's
+// default is medium): the migration guide's level for chat and short tool
+// tasks, and the closest to Haiku 4.5's no-thinking speed.
+export const CLARA_MODEL = HAIKU_MODEL;
+export const CLARA_EFFORT = "low" as const;
 /**
  * 2048, up from the pre-runtime 1024 (AMENDMENT 2026-07-31, user-directed):
  * adaptive thinking is now on, and thinking tokens count against max_tokens —
  * at 1024 a round could burn its whole budget thinking and truncate the
  * tool call, which the loop then (correctly) refuses to execute.
  */
-export const CLARA_MAX_TOKENS = 2048;
+// 2026-11-12: 2048 → 2688 for Haiku 5.5's tokenizer (~30% more tokens for the
+// same text), so a round keeps the same room for thinking plus a tool call.
+export const CLARA_MAX_TOKENS = 2688;
 
 /**
  * One round's token counts. `input_tokens` is the UNCACHED input only; the two
@@ -61,6 +69,7 @@ export function createAnthropicClient(
       const stream = anthropic.messages.stream({
         model: CLARA_MODEL,
         max_tokens: CLARA_MAX_TOKENS,
+        output_config: { effort: CLARA_EFFORT },
         system: [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }],
         // Strip runtime-only metadata (isWrite, and whatever flags come later)
         // at the wire boundary: the Messages API rejects unknown tool keys, so

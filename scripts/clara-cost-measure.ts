@@ -13,17 +13,17 @@
 //   system prompt, a realistic profile, a maximal memory block (50 memories
 //   capped at 2,000 chars) and 20 messages of prior history, maxToolRounds 5.
 //
-// Prices: Claude Haiku 4.5 (CLARA_MODEL), per the claude-api skill table
-// cached 2026-10-06: $1.00 / 1M input, $5.00 / 1M output, 5-minute cache
-// write 1.25x input, cache read 0.1x input.
+// Prices: Claude Haiku 5.5 (CLARA_MODEL), per the claude-api skill table
+// cached 2026-11-03: $0.10 / 1M input, $0.50 / 1M output (prompts up to
+// 100K tokens), 5-minute cache write 1.25x input, cache read 0.1x input.
 
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 
-const PRICE_IN = 1.0 / 1_000_000;
-const PRICE_OUT = 5.0 / 1_000_000;
-const PRICE_CACHE_WRITE = 1.25 / 1_000_000;
-const PRICE_CACHE_READ = 0.1 / 1_000_000;
+const PRICE_IN = 0.1 / 1_000_000;
+const PRICE_OUT = 0.5 / 1_000_000;
+const PRICE_CACHE_WRITE = 0.125 / 1_000_000;
+const PRICE_CACHE_READ = 0.01 / 1_000_000;
 const MAX_TOOL_ROUNDS = 5;
 const SPEND_ABORT_USD = 0.5; // hard stop if something runs away
 

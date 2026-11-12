@@ -2,7 +2,7 @@
 // Never throws: a model failure or timeout leaves the report saved as FAILED
 // for retryPendingTriage (admin page load / "Retry triage").
 import { prisma } from "@/lib/db";
-import { createAnthropic } from "@/lib/anthropic";
+import { createAnthropic, HAIKU_MODEL } from "@/lib/anthropic";
 import { TRIAGE_TOOL, buildTriageMessage, parseTriage, maxSeverity, type OpenIssueBrief } from "./triage-parse";
 import { isSafetyReport } from "./safety";
 
@@ -13,8 +13,9 @@ const MAX_TRIES = 3;
 export const defaultTriageCaller: TriageCaller = async (message) => {
   const client = createAnthropic({ timeout: TRIAGE_TIMEOUT_MS, maxRetries: 0 });
   const msg = await client.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 600,
+    model: HAIKU_MODEL,
+    max_tokens: 800, // 600 on Haiku 4.5; Haiku 5.5 counts ~30% more tokens
+    // The forced tool call skips thinking on Haiku 5.5 (migration guide).
     system: "You triage bug reports for Wondish, a nutrition and meal-planning app. Be terse and factual.",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools: [TRIAGE_TOOL as any],

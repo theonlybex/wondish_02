@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE } from "@/lib/anthropic";
+import { createAnthropic, claraBusyStatus, CLARA_BUSY_MESSAGE, HAIKU_MODEL } from "@/lib/anthropic";
 import { prisma } from "@/lib/db";
 import { loadIngredientGroups } from "@/lib/ingredient-catalog-db";
 import { specifyCookingOil, oilAllowedBy } from "@/lib/clara/oil";
@@ -296,8 +296,8 @@ export async function POST(
     // 20s x 1 attempt fits under this route's maxDuration = 30 with room for the DB work.
     const anthropic = createAnthropic({ timeout: 20_000, maxRetries: 0 });
     const msg = await anthropic.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 3072, // two candidate dishes with their steps
+      model: HAIKU_MODEL,
+      max_tokens: 4000, // two candidate dishes with their steps (3072 on Haiku 4.5; 5.5 counts ~30% more tokens)
       thinking: { type: "disabled" },
       system,
       tools: [

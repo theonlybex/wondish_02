@@ -16,15 +16,16 @@ import fs from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { PrismaClient } from "@prisma/client";
+import { HAIKU_MODEL } from "../lib/anthropic";
 import { catalogItemNames } from "../lib/ingredient-catalog";
 
 const prisma = new PrismaClient();
 const ALIAS_FILE = path.join(process.cwd(), "data", "ingredient-aliases.json");
-const MODEL = "claude-haiku-4-5";
+const MODEL = HAIKU_MODEL;
 const MAX_USD = 0.2;
 const CHUNK = 220;
-// Haiku 4.5 list price per 1M tokens.
-const IN_PER_M = 1, OUT_PER_M = 5;
+// Claude Haiku 5.5 list price per 1M tokens (prompts up to 100K).
+const IN_PER_M = 0.1, OUT_PER_M = 0.5;
 
 type AliasFile = {
   generatedAt: string;
@@ -71,7 +72,8 @@ async function build() {
 
     const msg = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 8000,
+      max_tokens: 10500, // 8000 on Haiku 4.5; Haiku 5.5 counts ~30% more tokens
+      thinking: { type: "disabled" }, // Haiku 5.5 thinks unless told not to; 4.5 did not
       system:
         "You normalise recipe ingredient names onto a fixed catalog. For each variant, pick the catalog item it is a form of " +
         "(different cut, prep, size, colour, brand wording, 'fresh/dried/cooked/frozen', plural, 'boneless skinless', etc. all count as the same item). " +
