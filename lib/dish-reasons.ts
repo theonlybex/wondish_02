@@ -9,6 +9,9 @@
 // below and states no grams or share of the day.
 import type { LevelSummary } from "@/lib/levels";
 
+/** Where the little/a lot view comes from: this week's logs, or the onboarding answers. */
+export type ReasonSource = "logs" | "answers";
+
 export interface DishReason {
   level: string;
   direction: "up" | "down";
@@ -79,8 +82,10 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  */
 export function dishReasons(
   dish: { ingredients: readonly string[]; sodium: number | null },
-  summary: LevelSummary,
+  summary: Pick<LevelSummary, "little" | "aLot">,
+  source: ReasonSource = "logs",
 ): DishReason[] {
+  const fromAnswers = source === "answers";
   const reasons: DishReason[] = [];
   if (summary.little.includes("fibre")) {
     const rich = fibreRichIngredient(dish.ingredients);
@@ -88,7 +93,7 @@ export function dishReasons(
       reasons.push({
         level: "fibre",
         direction: "up",
-        text: `${capitalize(rich.name)} ${rich.plural ? "are" : "is"} rich in fibre, and you've had little this week.`,
+        text: `${capitalize(rich.name)} ${rich.plural ? "are" : "is"} rich in fibre, and ${fromAnswers ? "from your answers you probably get little" : "you've had little this week"}.`,
       });
     }
   }
@@ -96,7 +101,7 @@ export function dishReasons(
     reasons.push({
       level: "sodium",
       direction: "down",
-      text: `Only ${Math.round(dish.sodium)} mg of sodium per serving, and you've had a lot of sodium this week.`,
+      text: `Only ${Math.round(dish.sodium)} mg of sodium per serving, and ${fromAnswers ? "from your answers you probably get a lot of sodium" : "you've had a lot of sodium this week"}.`,
     });
   }
   return reasons.slice(0, MAX_REASONS);

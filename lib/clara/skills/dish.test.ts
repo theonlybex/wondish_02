@@ -10,6 +10,8 @@ import {
   completeSodiumMg,
   stepStatesAmount,
   dishSystemPrompt,
+  parseStartingPicture,
+  type StartingPicture,
   type DishAsk,
   type DishDeps,
 } from "./dish";
@@ -664,4 +666,104 @@ test("dish_suggest: a step time under half a minute still shows at least 1 minut
   const dish = res.parts!.find((p) => p.kind === "dish");
   if (!dish || dish.kind !== "dish") return assert.fail("no dish part");
   assert.equal(dish.minutes, 1);
+});
+
+// ─── the starting picture (not enough logs) ─────────────────────────────────
+
+function withPicture(picture: StartingPicture | null, summary: LevelSummary = NO_LOGS) {
+  const s = spy({ summary });
+  let loads = 0;
+  s.deps.loadStartingPicture = async () => {
+    loads++;
+    return picture;
+  };
+  return { ...s, loads: () => loads };
+}
+const PIC: StartingPicture = { little: ["fibre", "iron"], aLot: ["sodium", "saturatedFat"] };
+
+test("dish_suggest: not enough logs + a picture → 'from your answers', names, no levels part", async () => {
+  const { deps, asks } = withPicture(PIC);
+  const res = await makeDishHandlers(deps).suggest(CTX, { mealType: "dinner" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  assert.deepEqual(kinds(res.parts), ["dish", "steps"]);
+  const json = JSON.stringify(res.data);
+  assert.match(json, /from your answers/);
+  assert.doesNotMatch(json, /from what you logged/);
+  const data = res.data as { levels: { little: string[]; aLot: string[] } };
+  assert.deepEqual(data.levels.little, ["fibre", "iron"]);
+  assert.deepEqual(data.levels.aLot, ["sodium", "saturated fat"]);
+  assert.deepEqual(asks[0].picture, PIC);
+  const reasons = dishParts(res.parts)[0].reasons.map((r) => r.text);
+  assert.ok(reasons.length > 0);
+  for (const t of reasons) {
+    assert.match(t, /from your answers/);
+    assert.doesNotMatch(t, /this week|logged/);
+  }
+});
+
+test("dish_suggest: picture reasons only cover fibre (if little) and sodium (if a lot)", async () => {
+  const { deps } = withPicture({ little: ["iron"], aLot: ["saturatedFat"] });
+  const res = await makeDishHandlers(deps).suggest(CTX, { mealType: "dinner" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  assert.deepEqual(dishParts(res.parts)[0].reasons, []);
+});
+
+test("dish_suggest: the generator prompt leans on the picture in answers wording", async () => {
+  const prompt = dishSystemPrompt({
+    ask: { mealType: "dinner", summary: NO_LOGS, picture: PIC },
+    foodMapText: "",
+    bannedNames: [],
+    proteinOptions: [],
+    sodiumLimitMg: 2300,
+  });
+  assert.match(prompt, /From their answers they probably get little fibre/);
+  assert.doesNotMatch(prompt, /this week: build|this week: keep/);
+});
+
+test("dish_suggest: an empty picture behaves as the not-enough-logs path", async () => {
+  const { deps } = withPicture(parseStartingPicture({ little: [], aLot: [] }));
+  const res = await makeDishHandlers(deps).suggest(CTX, { mealType: "dinner" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  assert.equal((res.data as { note?: string }).note, NOTHING_LOGGED_NOTE);
+  assert.doesNotMatch(JSON.stringify(res.data), /from your answers/);
+});
+
+test("dish_suggest: enough logs ignore the picture and never load it", async () => {
+  const enough = summarizeLevels(
+    [day("2026-11-10", 10, 3200), day("2026-11-11", 10, 3200), day("2026-11-12", 10, 3200)],
+    null,
+    RANGE,
+  );
+  assert.equal(enough.enoughLogs, true);
+  const w = withPicture(PIC, enough);
+  const res = await makeDishHandlers(w.deps).suggest(CTX, { mealType: "dinner" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  assert.equal(w.loads(), 0);
+  assert.equal(w.asks[0].picture, undefined);
+  assert.ok(kinds(res.parts).includes("levels"));
+  assert.doesNotMatch(JSON.stringify(res.data), /from your answers/);
+});
+
+test("dish_plan_today: picture reaches every ask and the model data", async () => {
+  const { deps, asks } = withPicture(PIC);
+  const res = await makeDishHandlers(deps).planToday(CTX, {});
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  assert.ok(asks.length > 0 && asks.every((a) => a.picture === PIC));
+  assert.match(JSON.stringify(res.data), /from your answers/);
+  assert.doesNotMatch(JSON.stringify(res.data), /from what you logged/);
+});
+
+test("parseStartingPicture: malformed or absent JSON is no picture", () => {
+  for (const bad of [null, undefined, 5, "x", [], {}, { little: "fibre" }, { little: ["nope"], aLot: [3] }]) {
+    assert.equal(parseStartingPicture(bad), null);
+  }
+  assert.deepEqual(parseStartingPicture({ little: ["fibre", "nope", "fibre"], aLot: ["sodium"] }), {
+    little: ["fibre"],
+    aLot: ["sodium"],
+  });
 });
