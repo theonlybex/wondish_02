@@ -399,3 +399,56 @@ test("get never exposes toolTrace, even when the stored row carries one", async 
   for (const m of got!.messages) assert.equal("toolTrace" in m, false);
   assert.ok(!JSON.stringify(got).includes("toolu_1"));
 });
+
+// ── Cook / parts opt-ins (Task 6) ──────────────────────────────────────────
+
+const partsRow = (parts: unknown[][]): HistoryRow => ({
+  ...msg(2, "assistant", "here you go"),
+  toolTrace: parts.map((p, i) => ({ id: `t${i}`, name: "x", input: "{}", result: "{}", parts: p })),
+});
+
+test("get() without the parts flag is byte-identical to before", async () => {
+  const { deps } = fakeDeps([rowWith([msg(1, "user"), partsRow([[{ kind: "levels" }]])])]);
+  const store = makeConversationStore(deps);
+  const out = await store.get("c1", "p1");
+  assert.deepEqual(Object.keys(out!.messages[1]).sort(), ["choices", "content", "createdAt", "id", "role"]);
+  assert.equal(JSON.stringify(out).includes("parts"), false);
+});
+
+test("get() with parts: true adds the stored parts, in order, to assistant messages only", async () => {
+  const a = { kind: "dish" };
+  const b = { kind: "steps" };
+  const c = { kind: "levels" };
+  const { deps } = fakeDeps([rowWith([msg(1, "user"), partsRow([[a, b], [c]]), { ...msg(3, "assistant"), toolTrace: null }])]);
+  const out = await makeConversationStore(deps).get("c1", "p1", { parts: true });
+  assert.equal("parts" in out!.messages[0], false);
+  assert.deepEqual((out!.messages[1] as { parts: unknown[] }).parts, [a, b, c]);
+  assert.deepEqual((out!.messages[2] as { parts: unknown[] }).parts, []);
+  assert.equal("toolTrace" in out!.messages[1], false);
+});
+
+test("list() without cook is exactly id/title/updatedAt; with cook adds dishName, cookedAt, stepCount", async () => {
+  const when = new Date(2026, 0, 1);
+  const { deps } = fakeDeps([rowWith([msg(1, "user")], { updatedAt: when })]);
+  const base = deps.listPage;
+  deps.listPage = async (p, c, t, withCook) => {
+    const rows = await base(p, c, t, withCook);
+    return rows.map((r) =>
+      withCook ? { ...r, dishName: "Soup", cookedAt: when, recipe: { steps: ["a", "b", "c"] } } : r
+    );
+  };
+  const store = makeConversationStore(deps);
+  const plain = await store.list("p1");
+  assert.deepEqual(Object.keys(plain.items[0]).sort(), ["id", "title", "updatedAt"]);
+  const cook = await store.list("p1", undefined, { cook: true });
+  assert.deepEqual(cook.items[0], { id: "c1", title: "t", updatedAt: when, dishName: "Soup", cookedAt: when, stepCount: 3 });
+});
+
+test("list() with cook: a chat never cooked has null dishName/cookedAt and stepCount 0", async () => {
+  const { deps } = fakeDeps([rowWith([msg(1, "user")])]);
+  const cook = await makeConversationStore(deps).list("p1", undefined, { cook: true });
+  assert.deepEqual(
+    { d: cook.items[0].dishName, c: cook.items[0].cookedAt, s: cook.items[0].stepCount },
+    { d: null, c: null, s: 0 }
+  );
+});

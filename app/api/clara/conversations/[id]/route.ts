@@ -8,13 +8,15 @@ const NOT_FOUND = () => NextResponse.json({ error: "Conversation not found" }, {
 
 // Both verbs are ownership-scoped inside the store: someone else's id is
 // indistinguishable from a missing one (404).
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const caller = await resolveClaraCaller();
     if (!caller.ok) return caller.response;
     if (!caller.patient) return NOT_FOUND();
 
-    const conversation = await store.get(params.id, caller.patient.id);
+    const conversation = await store.get(params.id, caller.patient.id, {
+      parts: req.nextUrl.searchParams.get("parts") === "1",
+    });
     if (!conversation) return NOT_FOUND();
     return NextResponse.json(conversation);
   } catch (err) {

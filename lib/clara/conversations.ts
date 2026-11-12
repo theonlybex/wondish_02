@@ -50,6 +50,20 @@ export interface ConversationSummary {
   updatedAt: Date;
 }
 
+/** What the list adds when a cooking-aware client asks (?cook=1). */
+export interface ConversationCookSummary extends ConversationSummary {
+  dishName: string | null;
+  cookedAt: Date | null;
+  stepCount: number;
+}
+
+/** A list row as the port hands it back: cook columns only when asked for. */
+export interface ConversationListRow extends ConversationSummary {
+  dishName?: string | null;
+  cookedAt?: Date | null;
+  recipe?: unknown;
+}
+
 /** Persistence port. Prisma-backed by default; in-memory fakes in tests. */
 export interface ConversationDeps {
   /** Creates the conversation AND its first user message together. */
@@ -72,13 +86,21 @@ export interface ConversationDeps {
     /** Assistant rows only; null/absent ⇒ the column stays NULL. */
     toolTrace?: ToolTraceEntry[] | null;
   }) => Promise<{ id: string }>;
-  /** Newest updatedAt first; rows strictly after `cursor` (a conversation id). */
-  listPage: (patientId: string, cursor: string | undefined, take: number) => Promise<ConversationSummary[]>;
+  /**
+   * Newest updatedAt first; rows strictly after `cursor` (a conversation id).
+   * With `withCook`, rows also carry dishName, cookedAt and the stored recipe.
+   */
+  listPage: (
+    patientId: string,
+    cursor: string | undefined,
+    take: number,
+    withCook?: boolean
+  ) => Promise<ConversationListRow[]>;
   /** Ownership-scoped; messages oldest first. */
   getOwned: (
     conversationId: string,
     patientId: string
-  ) => Promise<{ id: string; title: string; messages: StoredMessage[] } | null>;
+  ) => Promise<{ id: string; title: string; messages: HistoryRow[] } | null>;
   /** Ownership-scoped; true when a row was deleted. */
   deleteOwned: (conversationId: string, patientId: string) => Promise<boolean>;
 }
@@ -108,6 +130,12 @@ function parseToolTrace(raw: unknown): ToolTraceEntry[] {
       typeof (e as ToolTraceEntry).input === "string" &&
       typeof (e as ToolTraceEntry).result === "string"
   );
+}
+
+/** Steps in a stored recipe; anything malformed counts as none. */
+function countSteps(recipe: unknown): number {
+  const steps = recipe && typeof recipe === "object" ? (recipe as { steps?: unknown }).steps : null;
+  return Array.isArray(steps) ? steps.length : 0;
 }
 
 /** A stored input that no longer parses to an object (it may have been cut) replays as {}. */
@@ -183,13 +211,18 @@ const prismaConversationDeps: ConversationDeps = {
     ]);
     return { id: row.id };
   },
-  listPage: async (patientId, cursor, take) =>
+  listPage: async (patientId, cursor, take, withCook) =>
     prisma.claraConversation.findMany({
       where: { patientId },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       take,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      select: { id: true, title: true, updatedAt: true },
+      select: {
+        id: true,
+        title: true,
+        updatedAt: true,
+        ...(withCook ? { dishName: true, cookedAt: true, recipe: true } : {}),
+      },
     }),
   getOwned: async (conversationId, patientId) => {
     const row = await prisma.claraConversation.findFirst({
@@ -200,7 +233,9 @@ const prismaConversationDeps: ConversationDeps = {
         messages: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
       },
     });
-    return row ? { id: row.id, title: row.title, messages: row.messages.map(toStored) } : null;
+    return row
+      ? { id: row.id, title: row.title, messages: row.messages.map((r) => ({ ...toStored(r), toolTrace: r.toolTrace })) }
+      : null;
   },
   deleteOwned: async (conversationId, patientId) => {
     const { count } = await prisma.claraConversation.deleteMany({ where: { id: conversationId, patientId } });
@@ -307,11 +342,23 @@ export function makeConversationStore(deps: ConversationDeps = prismaConversatio
 
     async list(
       patientId: string,
-      cursor?: string
-    ): Promise<{ items: ConversationSummary[]; nextCursor: string | null }> {
+      cursor?: string,
+      opts?: { cook?: boolean }
+    ): Promise<{ items: (ConversationSummary & Partial<ConversationCookSummary>)[]; nextCursor: string | null }> {
+      const cook = opts?.cook === true;
       // One extra row tells us whether another page exists.
-      const rows = await deps.listPage(patientId, cursor, LIST_PAGE_SIZE + 1);
-      const items = rows.slice(0, LIST_PAGE_SIZE);
+      const rows = await deps.listPage(patientId, cursor, LIST_PAGE_SIZE + 1, cook);
+      // Rebuilt field by field: without the flag a row is exactly id/title/updatedAt.
+      const items = rows.slice(0, LIST_PAGE_SIZE).map((r) => {
+        const base: ConversationSummary = { id: r.id, title: r.title, updatedAt: r.updatedAt };
+        if (!cook) return base;
+        return {
+          ...base,
+          dishName: r.dishName ?? null,
+          cookedAt: r.cookedAt ?? null,
+          stepCount: countSteps(r.recipe),
+        };
+      });
       const nextCursor = rows.length > LIST_PAGE_SIZE ? items[items.length - 1].id : null;
       return { items, nextCursor };
     },
@@ -321,10 +368,18 @@ export function makeConversationStore(deps: ConversationDeps = prismaConversatio
      * plain StoredMessages so the tool trace (raw tool inputs and results)
      * never reaches a client, whatever the persistence layer hands back.
      */
-    async get(conversationId: string, patientId: string) {
+    async get(conversationId: string, patientId: string, opts: { parts?: boolean } = {}) {
       const row = await deps.getOwned(conversationId, patientId);
       if (!row) return null;
-      return { id: row.id, title: row.title, messages: row.messages.map(toStored) };
+      const messages = row.messages.map((m): StoredMessage & { parts?: unknown[] } => {
+        const plain = toStored(m);
+        // Opt-in (?parts=1): an assistant row's stored parts, in call order.
+        if (opts.parts && plain.role === "assistant") {
+          return { ...plain, parts: parseToolTrace(m.toolTrace).flatMap((e) => (Array.isArray(e.parts) ? e.parts : [])) };
+        }
+        return plain;
+      });
+      return { id: row.id, title: row.title, messages };
     },
 
     remove: (conversationId: string, patientId: string) => deps.deleteOwned(conversationId, patientId),
