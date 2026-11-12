@@ -1105,7 +1105,7 @@ const handlers = makeDishHandlers();
 export const dishSkill: Skill = {
   name: "dish",
   promptFragment: [
-    "About your dish_ tools: dish_suggest makes ONE dish to cook now, chosen from what they have eaten this week (the levels); dish_plan_today makes one dish for each of today's meals they have not logged yet. Both only suggest — nothing is logged or saved, and the app shows each dish as a card with its reasons and steps, so name the dish and its reasons briefly instead of writing out the recipe.",
+    "About your dish_ tools: dish_suggest suggests ONE dish to cook now, chosen from what they have eaten this week (the levels); dish_plan_today suggests one dish for each of today's meals they have not logged yet. A dish is either made just now or taken from the Wondish recipe library — each result's source says which; for a library dish follow its note and never say you made or created it. Both only suggest — nothing is logged or saved, and the app shows each dish as a card with its reasons and steps, so name the dish and its reasons briefly instead of writing out the recipe.",
     "Talk about what they have EATEN, never their body: \"you've had little fibre this week\", never \"your fibre is low\". When the result's levels say source answers (not enough logs yet), say \"from your answers, you probably get little fibre\". The only level words are little, on track, within limit and a lot.",
     "If the result has a note that nothing (or not enough) is logged yet, say so plainly, make no little or a lot claim, and still offer the dish. If a dish comes back as couldn't make one that fits, say exactly that and offer to try again — never describe a dish you were not given.",
     `Before dish_plan_today, ask "Anything happening today?" once with ask_choices, options exactly "${OCCASION_OPTIONS[0]}", "${OCCASION_OPTIONS[1]}", "${OCCASION_OPTIONS[2]}", "${OCCASION_OPTIONS[3]}" — then pass occasion normal, eating_out, guests or little_time. It is optional: if they already said what today is like, skip the question. When they are eating out, ask them to send the menu.`,
@@ -1115,7 +1115,7 @@ export const dishSkill: Skill = {
       def: {
         name: "dish_suggest",
         description:
-          "Make ONE new dish for them to cook, based on what they have eaten this week. Use for 'what should I eat', 'what should I cook tonight', 'give me a dinner idea'. NOT for what is already on their meal plan (plan_get) and NOT for whether a named dish fits them (answer directly). Suggests only; logs nothing.",
+          "Suggest ONE dish for them to cook, based on what they have eaten this week: made just now, or a recipe from the Wondish library when that fits better or faster (the result's source says which). Use for 'what should I eat', 'what should I cook tonight', 'give me a dinner idea'. NOT for what is already on their meal plan (plan_get) and NOT for whether a named dish fits them (answer directly). Suggests only; logs nothing.",
         input_schema: {
           type: "object",
           properties: {
@@ -1132,7 +1132,7 @@ export const dishSkill: Skill = {
       def: {
         name: "dish_plan_today",
         description:
-          "Make one dish for each of today's meals they have not logged yet. Use for 'plan my day', 'plan today's dishes', 'what should I eat today'. NOT for the saved meal plan (plan_get). Suggests only; logs nothing.",
+          "Suggest one dish for each of today's meals they have not logged yet (each made just now or from the recipe library; each result's source says which). Use for 'plan my day', 'plan today's dishes', 'what should I eat today'. NOT for the saved meal plan (plan_get). Suggests only; logs nothing.",
         input_schema: {
           type: "object",
           properties: {

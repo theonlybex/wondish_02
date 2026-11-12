@@ -112,6 +112,12 @@ export function createAnthropicClient(
         // here, and the block list preserves real order and grouping (deltas
         // do not). The loop replays this content verbatim.
         const final = await stream.finalMessage();
+        // Haiku 5.5 can decline (stop_reason "refusal", no server-side fallback).
+        // Logged without any user content: the category only.
+        if (final.stop_reason === "refusal") {
+          const category = (final as { stop_details?: { category?: string | null } | null }).stop_details?.category ?? "unknown";
+          console.warn(`[clara] stop_reason refusal (category ${category})`);
+        }
         if (onUsage && final.usage) {
           onUsage({
             input_tokens: final.usage.input_tokens,

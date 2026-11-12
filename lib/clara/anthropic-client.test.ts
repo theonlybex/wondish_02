@@ -305,3 +305,21 @@ test("omitting onUsage changes nothing, even when usage is present", async () =>
   const events = await collect(await client.openRound({ system: "S", messages: [], tools: [] }));
   assert.equal(events.at(-1)!.type, "end");
 });
+
+test("a refusal (Haiku 5.5, no server-side fallback) is logged with no user content", async () => {
+  const { anthropic } = fakeAnthropic({ deltas: ["secret user words"], stopReason: "refusal" });
+  const logged: string[] = [];
+  const warn = console.warn;
+  console.warn = (...a: unknown[]) => { logged.push(a.join(" ")); };
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = createAnthropicClient(anthropic as any);
+    const events = await collect(await client.openRound({ system: "S", messages: [], tools: [] }));
+    assert.equal((events.at(-1) as { stopReason: string }).stopReason, "refusal");
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /stop_reason refusal/);
+  assert.doesNotMatch(logged[0], /secret/);
+});
