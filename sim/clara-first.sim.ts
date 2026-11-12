@@ -166,7 +166,7 @@ const SH = {
     conditions: { arr: { obj: { id: "string", name: "string", common: "boolean", label: "string" } } },
     allergies: { arr: { obj: { id: "string", name: "string" } } },
     activities: { arr: { obj: { id: "string", name: "string" } } },
-    profile: { obj: { conditionIds: { arr: "string" }, noCondition: "boolean", birthday: { n: "date" }, sexAtBirth: { n: { en: ["MALE", "FEMALE"] } },
+    profile: { obj: { weightUnit: { en: ["kg", "lbs"] }, heightUnit: { n: { en: ["cm", "in", "ftin"] } }, conditionIds: { arr: "string" }, noCondition: "boolean", birthday: { n: "date" }, sexAtBirth: { n: { en: ["MALE", "FEMALE"] } },
       heightCm: { n: "number" }, weightKg: { n: "number" }, activityId: { n: "string" }, allergyIds: { arr: "string" } } },
     usualEating: { obj: Object.fromEntries(EATING_KEYS.map((k) => [k, { en: [0, 1, 2, null] }])) },
     pills: { arr: { en: PILLS } },
@@ -215,13 +215,9 @@ const MEALLOG_POST: Sh = { obj: { log: SH.mealLogDto, dayTotals: MACROS, dayTarg
 // ── findings: invariant ids that are known product defects (reported, not fatal) ──
 // Filled in from triage; every entry is written up in docs/qa/clara-first-sim.md.
 const KNOWN_FINDINGS: Record<string, { severity: "Critical" | "Important" | "Minor"; title: string }> = {
-  "honesty.fibre-unknown-as-zero": { severity: "Important", title: "A meal with no fibre figure counts as 0 g fibre (Numbers and Clara)" },
-  "honesty.clara-levels-need-enough-logs": { severity: "Important", title: "Clara says \"you've had little fibre this week\" from one logged day" },
   "pills.catalogue-pill-counts": { severity: "Minor", title: "A pill entered on the website counts for nothing on Numbers" },
   "onboarding.resume-step4": { severity: "Minor", title: "Closing the app on step 4 skips the weight question for good" },
-  "meallog.recipe-sodium": { severity: "Minor", title: "Logging a library recipe drops the recipe's sodium" },
   "units.untouched-weight-stable": { severity: "Minor", title: "Re-saving untouched basics nudges the stored weight by 0.1 lb" },
-  "onboarding.age13-accepted": { severity: "Minor", title: "On their 13th birthday a person east of UTC is told they are under 13" },
   "units.edit-keeps-weight-unit": { severity: "Minor", title: "Editing basics from Account resets the weight unit to the phone's locale" },
 };
 
@@ -360,7 +356,7 @@ function buildPersonas(): Persona[] {
     .map((p) => p.rules.filter(appOnly))
     .filter((rules) => rules.length >= 2)
     .slice(0, 12)
-    .forEach((rules, i) => chosen.push({ id: `app${i}:${rules.join("+").replace(/[^a-z0-9+]+/gi, "_").slice(0, 70)}`, tier: "app mix", rules }));
+    .forEach((rules, i) => chosen.push({ id: `app${i}:${rules.join("+").replace(/[^a-z0-9+]+/gi, "_").slice(0, 70)}`, tier: "app mix" as Profile["tier"], rules }));
   // Old-app people: only the pre-existing endpoints, ever.
   const old: Profile[] = [{ id: "old0:Shellfish", tier: "real", rules: ["allergy:Shellfish", "goal:Eat healthier"] }, { id: "old1:empty", tier: "curated", rules: [] }, { id: "old2:Hypertension", tier: "single", rules: ["condition:Hypertension"] }];
   const out: Persona[] = [];
@@ -370,7 +366,7 @@ function buildPersonas(): Persona[] {
     const r = rng(seed);
     const rules = p.rules.filter(keep);
     const needsWeb = rules.some((k) => /^(avoid|diet|goal):/.test(k));
-    const web = oldApp || needsWeb || (p.tier !== "app mix" && chance(r, 0.2));
+    const web = oldApp || needsWeb || ((p.tier as string) !== "app mix" && chance(r, 0.2));
     let tz = TZS[idx % TZS.length];
     const startDate = idx % 3 === 2 ? "2026-10-27" : "2026-10-22"; // both cross 1 Nov (month + US DST); the first also EU DST (25 Oct)
     const sex = chance(r, 0.55) ? "FEMALE" : "MALE";
@@ -387,7 +383,7 @@ function buildPersonas(): Persona[] {
     const heightCm = round1(sex === "MALE" ? 160 + r() * 35 : 148 + r() * 32);
     const bmi = idx === 7 ? 44 : idx === 8 ? 17 : 19 + r() * 16;
     const kg = (bmi * (heightCm / 100) ** 2);
-    const heightEntry = metric ? { cm: heightCm } : (() => { const inches = Math.round(heightCm / 2.54); return { ft: Math.floor(inches / 12), inch: inches % 12 }; })();
+    const heightEntry: { cm?: number; ft?: number; inch?: number } = metric ? { cm: heightCm } : (() => { const inches = Math.round(heightCm / 2.54); return { ft: Math.floor(inches / 12), inch: inches % 12 }; })();
     const weightEntry = metric ? round1(kg) : Math.round(kg * LBS_PER_KG_APP);
     const goal = pick(r, ["lose", "keep", "gain", "none"] as const);
     const [eatingLabel, eatingFn] = idx < EATING_PATTERNS.length * 2 ? EATING_PATTERNS[idx % EATING_PATTERNS.length] : chance(r, 0.4) ? pick(r, EATING_PATTERNS) : ["random", () => Object.fromEntries(EATING_KEYS.filter(() => chance(r, 0.85)).map((k) => [k, Math.floor(r() * 3)])) as Partial<Eating>];
@@ -513,7 +509,8 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
       return res.json;
     };
     const patch = async (body: Record<string, unknown>, label = "PATCH /api/patient/profile") => {
-      const res = await call(label, profile.PATCH as any, { method: "PATCH", body });
+      // The app sends its local date (finding 8 fix: the age check uses it); the website does not.
+      const res = await call(label, profile.PATCH as any, { method: "PATCH", body, path: "/api/patient/profile", ...(label.includes("(web)") ? {} : { query: { today: today() } }) });
       if (res.status === 200) shape("PATCH /api/patient/profile", res.json, SH.profilePatch);
       return res;
     };
@@ -607,6 +604,8 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
       check("onboarding.eating", JSON.stringify(o.usualEating) === JSON.stringify(L.usualEating ?? emptyEating()), () => `${why}: usualEating ${JSON.stringify(o.usualEating)} vs ${JSON.stringify(L.usualEating)}`);
       check("onboarding.weightGoal", o.weightGoal === L.weightGoal, () => `${why}: weightGoal ${o.weightGoal} vs ${L.weightGoal}`);
       if (L.basicsSaved) {
+        const unit = L.displayUnit === "kg" || L.displayUnit === "lbs" ? L.displayUnit : L.heightUnit === "cm" ? "kg" : "lbs";
+        check("onboarding.units", o.profile.weightUnit === unit && o.profile.heightUnit === L.heightUnit, () => `${why}: units ${o.profile.weightUnit}/${o.profile.heightUnit} vs ${unit}/${L.heightUnit}`);
         check("units.height-roundtrip", Math.abs(o.profile.heightCm - L.heightStoredCm!) <= 0.05, () => `${why}: heightCm ${o.profile.heightCm} vs stored ${L.heightStoredCm}`);
         check("units.weight-roundtrip", Math.abs(o.profile.weightKg - L.weightLbs! * 0.45359237) <= 0.051, () => `${why}: weightKg ${o.profile.weightKg} vs ${L.weightLbs} lbs`);
         check("onboarding.birthday", o.profile.birthday === P.birthday, () => `${why}: birthday ${o.profile.birthday} vs ${P.birthday}`);
@@ -835,7 +834,8 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
         const pick: Record<string, (m: MealEntry) => number | null> = { protein: (m) => m.per.p, carbs: (m) => m.per.c, fibre: (m) => m.per.fib, sodium: (m) => m.per.sodium, saturatedFat: (m) => m.per.satFat, addedSugar: (m) => m.per.addedSugar };
         let foodCounted = false, foodAvg: number | null = null;
         if (pick[l.key] && days.length > 0) {
-          if (["protein", "carbs", "fibre"].includes(l.key)) { foodCounted = true; foodAvg = avg(pick[l.key]); }
+          // Fibre follows the sodium rule (finding 1, fixed): counted only when every meal carries it.
+          if (["protein", "carbs"].includes(l.key)) { foodCounted = true; foodAvg = avg(pick[l.key]); }
           else if (days.every((d) => d.every((m) => pick[l.key](m) !== null))) { foodCounted = true; foodAvg = avg(pick[l.key]); }
         }
         check("arith.foodCounted", l.foodCounted === foodCounted, () => `${why}: ${l.key} foodCounted ${l.foodCounted}, expected ${foodCounted}`);
@@ -912,9 +912,12 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
     // ── Days 1–10 ───────────────────────────────────────────────────────────
     const conv: { id: string; dishes: Map<string, { name: string; recipe: any; started: boolean; ateLogged: boolean }> }[] = [];
     let mealCounter = 0;
+    // Every fifth person only logs meals with a fibre figure, so fibre words (and Clara's claims) happen.
+    const fibreKnownOnly = P.idx % 5 === 3;
+    if (fibreKnownOnly) cover("person logs only meals with a fibre figure");
     const compliantLibrary = (meal: string) => {
       refreshOracle();
-      const pool = libraryByMeal.get(meal) ?? [];
+      const pool = (libraryByMeal.get(meal) ?? []).filter((x) => !fibreKnownOnly || x.fiber != null);
       for (let tries = 0; tries < 60; tries++) {
         const rec = pick(r, pool);
         const items = rec.ingredients.map((ri) => ingById.get(ri.ingredientId)).filter(Boolean).map((i) => ({ name: i!.name, allergenGroups: i!.allergenGroups }));
@@ -939,7 +942,7 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
       const nv = (v: number | null | undefined) => (v == null ? null : v / per);
       const entry: MealEntry = {
         key: key ?? res.json.log.id, id: res.json.log.id, localDate: today(), mealType, name: rec.name, source: "RECIPE", estimated: false, live: true, servings, recipeId: rec.id,
-        per: { cal: nv(rec.calories) ?? 0, p: nv(rec.protein) ?? 0, c: nv(rec.carbs) ?? 0, f: nv(rec.fat) ?? 0, fib: nv(rec.fiber), sodium: null, satFat: nv(rec.saturatedFat), addedSugar: nv(rec.addedSugars) },
+        per: { cal: nv(rec.calories) ?? 0, p: nv(rec.protein) ?? 0, c: nv(rec.carbs) ?? 0, f: nv(rec.fat) ?? 0, fib: nv(rec.fiber), sodium: nv(rec.sodium), satFat: nv(rec.saturatedFat), addedSugar: nv(rec.addedSugars) },
       };
       L.meals.push(entry);
       const row = store.tables.mealLog.find((m) => m.id === res.json.log.id);
@@ -950,7 +953,7 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
       }
     };
     const logEstimate = async (mealType: string) => {
-      const withFibre = chance(r, 0.5);
+      const withFibre = fibreKnownOnly || chance(r, 0.5);
       const per = { calories: 300 + Math.round(r() * 400), protein: 10 + Math.round(r() * 30), carbs: 20 + Math.round(r() * 60), fat: 5 + Math.round(r() * 25), ...(withFibre ? { fiber: Math.round(r() * 12) } : {}) };
       const sodium = chance(r, 0.5) ? Math.round(200 + r() * 1500) : undefined;
       const body = { localDate: today(), mealType, source: "MANUAL", name: "Takeaway bowl (estimate)", perServing: per, estimated: true, ...(sodium !== undefined ? { sodium } : {}), clientRequestId: `est-${P.idx}-${++mealCounter}` };
@@ -1045,6 +1048,25 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
         check("honesty.answers-phrase", /from your answers/.test(blob), () => `${why}: answers path without "from your answers"`);
       }
     };
+    // Numbers and Clara must say the same thing about the same week (finding 2, fixed).
+    const agree = (res: any, fullNow: any, picture: boolean, why: string) => {
+      if (!fullNow || !res?.ok) return;
+      const lv = res.data.levels;
+      if (!lv) return; // every meal already logged: no levels handed over at all
+      if (picture) {
+        const pic = fullNow.startingPicture;
+        const names = (xs: any[]) => xs.map((x: any) => LV.get(x.key)!.name.toLowerCase());
+        check("agree.picture", !!pic && JSON.stringify(lv.little) === JSON.stringify(names(pic.little)) && JSON.stringify(lv.aLot) === JSON.stringify(names(pic.aLot)),
+          () => `${why}: Clara's picture ${JSON.stringify([lv.little, lv.aLot])} vs Numbers ${JSON.stringify(pic)}`);
+        return;
+      }
+      const word = (k: string) => fullNow.levels.find((l: any) => l.key === k)?.word ?? null;
+      const claimsLittleFibre = lv.little.includes("fibre"), claimsALotSodium = lv.aLot.includes("sodium");
+      check("agree.fibre", claimsLittleFibre === (word("fibre") === "little"), () => `${why}: Clara little fibre ${claimsLittleFibre}, Numbers fibre word ${word("fibre")} (enoughLogs ${fullNow.summary.enoughLogs})`);
+      check("agree.sodium", claimsALotSodium === (word("sodium") === "a lot"), () => `${why}: Clara a lot of sodium ${claimsALotSodium}, Numbers sodium word ${word("sodium")}`);
+      check("agree.no-other-claims", lv.little.every((k: string) => k === "fibre") && lv.aLot.every((k: string) => k === "sodium"), () => `${why}: ${JSON.stringify(lv)}`);
+      cover(`Clara and Numbers compared (${claimsLittleFibre || claimsALotSodium ? "a claim" : "no claim"})`);
+    };
     const dishSuggest = async (input: Record<string, unknown>) => {
       current.step = `${today()} · Clara dish_suggest ${JSON.stringify(input)}`;
       lastSlips = [];
@@ -1067,6 +1089,7 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
         check("honesty.clara-levels-need-enough-logs", !levelsPart && !dish.reasons.some((x: any) => /you've had/.test(x.text)),
           () => `not enough logs (${res.data.levels.daysCounted} day(s) logged) yet Clara is handed little=${JSON.stringify(res.data.levels.little)} aLot=${JSON.stringify(res.data.levels.aLot)}${levelsPart ? " and shows a levels chip row" : ""}; reasons: ${dish.reasons.map((x: any) => x.text).join(" / ")}`);
       }
+      agree(res, fullNow, picture, "dish_suggest");
       judgeServed(dish, "dish_suggest");
       if ((input.servings as number) > 1) check("dish.guests", dish.recipe.servings === input.servings, () => `servings ${dish.recipe.servings} vs ${input.servings}`);
       wording(res, picture, "dish_suggest");
@@ -1085,6 +1108,9 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
       try { res = await planTool(ctx() as any, { occasion }); } catch (e) { check("no-throw", false, () => `dish_plan_today threw ${(e as Error).message}`); return []; } finally { Object.assign(console, quiet); }
       if (!res.ok) { dishStats.couldntFit++; return []; }
       const loggedToday = new Set(L.meals.filter((m) => m.live && m.localDate === today()).map((m) => m.mealType));
+      agree(res, fullNow, picture, `plan ${occasion}`);
+      if (!picture && res.data.levels && !res.data.levels.enoughLogs) check("honesty.clara-levels-need-enough-logs", !(res.parts ?? []).some((p: any) => p.kind === "levels") && res.data.levels.little.length === 0 && res.data.levels.aLot.length === 0,
+        () => `plan: not enough logs yet Clara is handed ${JSON.stringify(res.data.levels)}`);
       for (const p of res.parts ?? []) { judgeServed(p, `plan ${occasion}`); }
       check("dish.plan-skips-logged", (res.data.dishes ?? []).every((d: any) => !loggedToday.has(d.mealType)), () => `plan includes an already-logged meal: ${JSON.stringify(res.data.dishes.map((d: any) => d.mealType))} logged ${[...loggedToday]}`);
       if (occasion === "eating_out") check("dish.eating-out", (res.data.dishes ?? []).every((d: any) => d.mealType !== "dinner"), () => `eating out still plans dinner`);

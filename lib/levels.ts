@@ -19,7 +19,8 @@ export interface LevelDayInput {
   protein: number;
   carbs: number;
   fat: number;
-  fibre: number;
+  /** Null unless every meal that day carries a fibre figure (as sodium). */
+  fibre: number | null;
   sodium: number | null;
 }
 export interface LevelSummary {
@@ -56,7 +57,11 @@ export function summarizeLevels(
   const sodiumAvg = mean(
     counted.map((d) => d.sodium).filter((v): v is number => v !== null),
   );
-  const fibreAvg = avg((d) => d.fibre);
+  // Fibre follows the sodium rule: only days whose fibre is fully known are
+  // averaged. A meal with no fibre figure is unknown, not 0 g.
+  const fibreAvg = mean(
+    counted.map((d) => d.fibre).filter((v): v is number => v !== null),
+  );
 
   const fibreWord: LevelWord | null =
     fibreAvg === null ? null : fibreAvg < FIBRE_TARGET_G * LITTLE_BELOW ? "little" : "on track";
@@ -81,4 +86,19 @@ export function summarizeLevels(
     little: levels.filter((l) => l.word === "little").map((l) => l.key),
     aLot: levels.filter((l) => l.word === "a lot").map((l) => l.key),
   };
+}
+
+/**
+ * The summary as Clara may speak from it: the "little / a lot" lists only when
+ * the Numbers screen (full=1) would give the same word — enough logs, and the
+ * level known on EVERY counted day (fibre and sodium). Levels, amounts and
+ * targets are untouched; only the claim lists shrink. Without enough logs there
+ * is no claim at all.
+ */
+export function claimsAsNumbersSays(summary: LevelSummary, days: LevelDayInput[]): LevelSummary {
+  if (!summary.enoughLogs) return { ...summary, little: [], aLot: [] };
+  const counted = days.filter((d) => d.meals >= 1);
+  const known = (k: "fibre" | "sodium") => counted.length > 0 && counted.every((d) => d[k] !== null);
+  const keep = (k: LevelKey) => (k === "fibre" || k === "sodium" ? known(k) : true);
+  return { ...summary, little: summary.little.filter(keep), aLot: summary.aLot.filter(keep) };
 }

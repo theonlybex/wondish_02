@@ -22,8 +22,8 @@ export interface FullDay {
   calories: number;
   protein: number;
   carbs: number;
-  fibre: number;
-  /** Null unless every meal that day carries the value. */
+  /** Null unless every meal that day carries the value (fibre, sodium, saturated fat, added sugar). */
+  fibre: number | null;
   sodium: number | null;
   saturatedFat: number | null;
   addedSugar: number | null;
@@ -153,6 +153,9 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
   const withPhosphorus = showsPhosphorus(input.conditionNames);
 
   type Food = { values: (number | null)[] };
+  // Protein and carbs count on every counted day (a missing figure is 0, as in
+  // calories). Fibre, sodium, saturated fat and added sugar count only when
+  // every counted day knows them (foodCounted below).
   const foodOf: Partial<Record<FullLevelKey, Food>> = {
     protein: { values: counted.map((d) => d.protein) },
     carbs: { values: counted.map((d) => d.carbs) },

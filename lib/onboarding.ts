@@ -7,6 +7,7 @@ import {
   type UsualEating,
 } from "./starting-picture";
 import { conditionLabel } from "./condition-groups";
+import { resolveWeightUnit } from "./weight-unit-pref";
 
 /**
  * Shared onboarding-completeness logic.
@@ -258,6 +259,7 @@ export interface OnboardingPatientRow {
   height: number | null; // cm, or inches when heightUnit is "in"
   heightUnit?: string | null; // "cm" | "in" | "ftin"
   weight: number | null; // lbs
+  displayWeightUnit?: string | null; // "kg" | "lbs" | null (= from heightUnit)
   physicalActivityId: string | null;
   usualEating: unknown;
   startingPicture: unknown;
@@ -324,6 +326,9 @@ export function buildOnboardingResponse(input: {
       weightKg: patient?.weight == null ? null : Math.round(patient.weight * LB_TO_KG * 10) / 10,
       activityId: patient?.physicalActivityId ?? null,
       allergyIds: patient?.allergyIds ?? [],
+      // Additive: the units the person reads, so Account editing opens in them.
+      weightUnit: resolveWeightUnit(patient?.displayWeightUnit, patient?.heightUnit),
+      heightUnit: patient?.heightUnit ?? null,
     },
     usualEating: normaliseUsualEating(patient?.usualEating),
     pills: [...new Set(input.pills.map(catalogueNameOf).filter((n): n is PillName => !!n))],

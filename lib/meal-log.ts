@@ -370,6 +370,8 @@ export interface RecipeDep {
   fat?: number | null;
   fiber?: number | null;
   servings?: number | null;
+  // Whole-dish sodium (mg), divided by servings into MealLog.sodium.
+  sodium?: number | null;
   // Whole-dish extras, divided by servings into MealLog.nutrients.
   saturatedFat?: number | null;
   addedSugars?: number | null;
@@ -416,12 +418,22 @@ export function recipeNutrients(recipe: RecipeDep): MealNutrients | undefined {
 export function resolveSnapshot(
   input: ParsedMealLog,
   deps: { recipe?: RecipeDep; customIngredient?: CustomIngredientDep; restaurantDish?: RestaurantDishDep }
-): { snapshot: MacroSnapshot; name: string; nutrients?: MealNutrients } {
+): { snapshot: MacroSnapshot; name: string; nutrients?: MealNutrients; sodium?: number; fiberUnknown?: true } {
   if (input.source === MealLogSource.RECIPE) {
     const recipe = deps.recipe;
     if (!recipe) throw new Error("resolveSnapshot: RECIPE source requires a recipe dep");
     const nutrients = recipeNutrients(recipe);
-    return { snapshot: recipeToPerServing(recipe), name: input.name ?? recipe.name, ...(nutrients ? { nutrients } : {}) };
+    // Per-serving sodium when the recipe has it; absent (unknown) otherwise.
+    const per = recipe.servings && recipe.servings > 0 ? recipe.servings : 1;
+    const sodium = recipe.sodium != null ? recipe.sodium / per : undefined;
+    return {
+      snapshot: recipeToPerServing(recipe),
+      name: input.name ?? recipe.name,
+      ...(nutrients ? { nutrients } : {}),
+      ...(sodium !== undefined ? { sodium } : {}),
+      // No fibre figure is unknown, not 0 g (stored as NULL; see buildMealLogCreateData).
+      ...(recipe.fiber == null ? { fiberUnknown: true as const } : {}),
+    };
   }
   if (input.source === MealLogSource.CUSTOM) {
     const ci = deps.customIngredient;
@@ -431,7 +443,7 @@ export function resolveSnapshot(
   if (input.source === MealLogSource.RESTAURANT) {
     const dish = deps.restaurantDish;
     if (!dish) throw new Error("resolveSnapshot: RESTAURANT source requires a restaurantDish dep");
-    return { snapshot: recipeToPerServing(dish), name: input.name ?? dish.name };
+    return { snapshot: recipeToPerServing(dish), name: input.name ?? dish.name, ...(dish.fiber == null ? { fiberUnknown: true as const } : {}) };
   }
   // MANUAL / PICTURE / FRIDGE / CLARA — name guaranteed present by validation.
   return { snapshot: snapshotFromMacros(input.perServing ?? {}), name: input.name! };
@@ -515,14 +527,14 @@ export interface MealLogCreateData {
 export function buildMealLogCreateData(
   patientId: string,
   input: ParsedMealLog,
-  resolved: { snapshot: MacroSnapshot; name: string; nutrients?: MealNutrients }
+  resolved: { snapshot: MacroSnapshot; name: string; nutrients?: MealNutrients; sodium?: number; fiberUnknown?: true }
 ): MealLogCreateData {
   const s = resolved.snapshot;
   // Caller-supplied sources store null for absent fields (unknown ≠ 0);
   // RECIPE/CUSTOM/RESTAURANT store the server-priced snapshot verbatim.
   const cols: MacroColumns = CALLER_SUPPLIED_SOURCES.has(input.source)
     ? nullableMacroColumns(input.perServing)
-    : { calories: s.calories, protein: s.protein, carbs: s.carbs, fat: s.fat, fiber: s.fiber, incomplete: s.incomplete };
+    : { calories: s.calories, protein: s.protein, carbs: s.carbs, fat: s.fat, fiber: resolved.fiberUnknown ? null : s.fiber, incomplete: s.incomplete };
   return {
     patientId,
     localDate: input.localDate,
@@ -545,7 +557,8 @@ export function buildMealLogCreateData(
     planExchangeId: input.planExchangeId ?? null,
     note: input.note ?? null,
     clientRequestId: input.clientRequestId ?? null,
-    ...(input.sodium !== undefined ? { sodium: input.sodium } : {}),
+    // The caller's sodium when sent; else the recipe's (RECIPE source only).
+    ...(input.sodium !== undefined ? { sodium: input.sodium } : resolved.sodium !== undefined ? { sodium: resolved.sodium } : {}),
     ...(input.estimated !== undefined ? { estimated: input.estimated } : {}),
     ...(resolved.nutrients ? { nutrients: resolved.nutrients } : {}),
   };

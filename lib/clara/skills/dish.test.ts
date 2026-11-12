@@ -5,6 +5,7 @@ import {
   dishSkill,
   gateGeneratedDishes,
   NOTHING_LOGGED_NOTE,
+  NOT_ENOUGH_LOGS_NOTE,
   COULDNT_FIT_NOTE,
   OCCASION_OPTIONS,
   completeSodiumMg,
@@ -796,4 +797,37 @@ test("dishSkill.promptFragment pins the wording rule: 'from your answers', never
   const sentence = f.split(/(?<=\.)\s/).find((x) => x.includes("from your answers")) ?? "";
   assert.doesNotMatch(sentence, /is low|are low/);
   assert.doesNotMatch(sentence, /from what you logged/);
+});
+
+// Simulation finding 2 (docs/qa/clara-first-sim.md): with too few logs and no
+// starting picture, Clara made "you've had little fibre this week" claims from
+// a single day. Numbers says nothing then; Clara must agree.
+const ONE_DAY_LITTLE_FIBRE: LevelSummary = summarizeLevels([day("2026-11-12", 5, 3200)], null, RANGE);
+
+test("dish_suggest: too few logs and no picture → no level claim, no levels part, model told so", async () => {
+  assert.equal(ONE_DAY_LITTLE_FIBRE.enoughLogs, false);
+  assert.deepEqual(ONE_DAY_LITTLE_FIBRE.little, ["fibre"], "the raw summary would claim it");
+  const s = spy({ summary: ONE_DAY_LITTLE_FIBRE });
+  const res = await makeDishHandlers(s.deps).suggest(CTX, { mealType: "dinner" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  assert.deepEqual(kinds(res.parts), ["dish", "steps"]);
+  assert.deepEqual(dishParts(res.parts)[0].reasons, []);
+  const data = res.data as { levels: { little: string[]; aLot: string[] }; note?: string };
+  assert.deepEqual(data.levels.little, []);
+  assert.deepEqual(data.levels.aLot, []);
+  assert.equal(data.note, NOT_ENOUGH_LOGS_NOTE);
+  assert.deepEqual(s.asks[0].summary.little, [], "the generator prompt leans into nothing");
+  assert.doesNotMatch(JSON.stringify(res), /you've had/);
+});
+
+test("dish_plan_today: too few logs and no picture → no claims either", async () => {
+  const s = spy({ summary: ONE_DAY_LITTLE_FIBRE });
+  const res = await makeDishHandlers(s.deps).planToday(CTX, {});
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  assert.ok(!kinds(res.parts).includes("levels"));
+  assert.ok(dishParts(res.parts).every((d) => d.reasons.length === 0));
+  assert.equal((res.data as { note?: string }).note, NOT_ENOUGH_LOGS_NOTE);
+  assert.ok(s.asks.every((a) => a.summary.little.length === 0 && a.summary.aLot.length === 0));
 });

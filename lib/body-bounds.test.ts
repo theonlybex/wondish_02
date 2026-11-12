@@ -72,3 +72,24 @@ test("zero is a value the user typed, not an absent field", () => {
   // An untouched field still reaches here as null and is still not an error.
   assert.deepEqual(checkBodyMetrics({ weightLbs: null, heightCm: null, goalWeightLbs: null }, lbsCm), {});
 });
+
+// Simulation finding 8 (docs/qa/clara-first-sim.md): on their 13th birthday a
+// person east of UTC was refused, because age was 365.25-day years from UTC
+// midnight. With the client's local `today`, age is calendar years.
+import { birthdayError } from "./body-bounds";
+
+test("birthdayError with the client's today: the 13th birthday itself is 13", () => {
+  assert.equal(birthdayError("2013-11-13", { today: "2026-11-13" }), null);
+  assert.ok(birthdayError("2013-11-14", { today: "2026-11-13" }), "the day before is 12");
+  assert.ok(birthdayError("1905-11-12", { today: "2026-11-13" }), "121 is too old");
+  assert.equal(birthdayError("1906-11-14", { today: "2026-11-13" }), null, "120 is fine");
+  assert.ok(birthdayError("2027-01-01", { today: "2026-11-13" }), "future");
+  assert.equal(birthdayError("1990-04-02T00:00:00.000Z", { today: "2026-11-13" }), null, "an ISO date-time reads its date");
+  assert.ok(birthdayError("not a date", { today: "2026-11-13" }));
+});
+
+test("birthdayError without today keeps the old server-clock rule (web unchanged)", () => {
+  const now = new Date("2026-11-12T19:00:00Z"); // Auckland's morning of the 13th
+  assert.ok(birthdayError("2013-11-13", { now }), "still 12.99 years by the server clock");
+  assert.equal(birthdayError("1990-04-02", { now }), null);
+});

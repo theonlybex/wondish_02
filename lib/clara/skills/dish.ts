@@ -18,7 +18,7 @@ import { PATIENT_FOOD_MAP_INCLUDE, buildFoodMapText } from "@/lib/food-map";
 import { derivePatientBans, buildDietMatchers, bannedNamesForPrompt, type DietMatchers } from "@/lib/diet-match";
 import { dailySodiumLimitMg } from "@/lib/sodium-limit";
 import { currentStartingPicture } from "@/lib/onboarding";
-import { loadLevelSummary } from "@/lib/level-summary";
+import { loadClaraLevelSummary } from "@/lib/level-summary";
 import { LEVELS, type FullLevelKey } from "@/lib/level-catalogue";
 import { applyAllergenFilter, parseFridgeRecipes, SUGGEST_RECIPES_SCHEMA, type FridgeRecipe } from "@/lib/fridge";
 import { MAX_SERVINGS } from "@/lib/meal-log";
@@ -72,6 +72,8 @@ const MAX_MINUTES = 600;
 
 export const NOTHING_LOGGED_NOTE =
   "Nothing is logged yet this week, so this isn't based on what they've eaten. Say so plainly, and that logging meals lets you tailor the next one.";
+export const NOT_ENOUGH_LOGS_NOTE =
+  "Not enough is logged yet this week to say what they have had little or a lot of, so make no such claim. Say plainly that a few more days of logged meals lets you tailor the next dish.";
 export const COULDNT_FIT_NOTE =
   "I couldn't make one that fits right now. Tell them plainly and offer to try again; do not describe a dish.";
 export const EATING_OUT_NOTE =
@@ -316,7 +318,8 @@ function readableAmounts(r: FridgeRecipe): FridgeRecipe {
 }
 
 const prismaDeps: DishDeps = {
-  loadSummary: (patientId, today) => loadLevelSummary(patientId, today, 7),
+  // Claims only where Numbers says the same (simulation finding 2).
+  loadSummary: (patientId, today) => loadClaraLevelSummary(patientId, today, 7),
   generate: generateGated,
   loadStartingPicture: async (patientId) => {
     // Computed now from the answers and the live pills (the stored column can be stale).
@@ -559,6 +562,24 @@ export const ANSWERS_PHRASE = "from your answers";
 const PICTURE_NOTE =
   "There are not enough logged meals yet, so this is based on their onboarding answers, not on logged meals. Say 'from your answers, you probably get little X' (or 'a lot of X'); never describe their body. Logging meals lets you tailor the next one.";
 
+/**
+ * The levels Clara may speak from. Without enough logs (the same rule that
+ * keeps Numbers' words null) there is no "little / a lot" claim: the lists are
+ * emptied, so no chip row, no reason and no prompt lean-in is built from a
+ * day or two of logs. The starting picture, when there is one, replaces them.
+ */
+function claimableSummary(summary: LevelSummary): LevelSummary {
+  return summary.enoughLogs ? summary : { ...summary, little: [], aLot: [] };
+}
+
+/** The note for the model: the picture's, nothing logged, or not enough logged yet. */
+function levelsNote(summary: LevelSummary, picture: StartingPicture | undefined) {
+  if (picture) return { note: PICTURE_NOTE };
+  if (summary.daysCounted === 0) return { note: NOTHING_LOGGED_NOTE };
+  if (!summary.enoughLogs) return { note: NOT_ENOUGH_LOGS_NOTE };
+  return {};
+}
+
 /** The picture applies only while logs are not enough and it names at least one level. */
 async function pictureFor(deps: DishDeps, ctx: ClaraContext, summary: LevelSummary): Promise<StartingPicture | undefined> {
   if (summary.enoughLogs || !deps.loadStartingPicture) return undefined;
@@ -607,8 +628,9 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
     const servings = optionalInt(input.servings, 1, MAX_SERVINGS);
     if (servings === null) return invalid(`servings must be a whole number from 1 to ${MAX_SERVINGS}`);
 
-    const summary = await deps.loadSummary(ctx.patientId, ctx.today);
-    const picture = await pictureFor(deps, ctx, summary);
+    const loaded = await deps.loadSummary(ctx.patientId, ctx.today);
+    const picture = await pictureFor(deps, ctx, loaded);
+    const summary = claimableSummary(loaded);
     const ask: DishAsk = {
       mealType: mealType as DishMealType,
       summary,
@@ -625,7 +647,7 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
       data: {
         dish: dishForModel(built, ask.mealType),
         levels: picture ? pictureForModel(picture) : levelsForModel(summary),
-        ...(picture ? { note: PICTURE_NOTE } : summary.daysCounted === 0 ? { note: NOTHING_LOGGED_NOTE } : {}),
+        ...levelsNote(summary, picture),
         shown: SUGGEST_SHOWN_NOTE,
       },
       parts: [...(levels ? [levels] : []), built.dish, built.steps],
@@ -638,17 +660,18 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
       return invalid(`occasion must be one of ${OCCASIONS.join(", ")}`);
     }
 
-    const [summary, logged] = await Promise.all([
+    const [loaded, logged] = await Promise.all([
       deps.loadSummary(ctx.patientId, ctx.today),
       deps.loggedMealTypes(ctx.patientId, ctx.today),
     ]);
-    const picture = await pictureFor(deps, ctx, summary);
+    const picture = await pictureFor(deps, ctx, loaded);
+    const summary = claimableSummary(loaded);
     const loggedSet = new Set(logged.map((m) => m.toLowerCase()));
     const eatingOut = occasion === "eating_out";
     const meals = PLANNED_MEALS.filter((m) => !loggedSet.has(m) && !(eatingOut && m === "dinner"));
 
     const notes = {
-      ...(picture ? { note: PICTURE_NOTE } : summary.daysCounted === 0 ? { note: NOTHING_LOGGED_NOTE } : {}),
+      ...levelsNote(summary, picture),
       ...(eatingOut ? { eatingOut: EATING_OUT_NOTE } : {}),
     };
     if (meals.length === 0) {
@@ -698,7 +721,7 @@ export const dishSkill: Skill = {
   promptFragment: [
     "About your dish_ tools: dish_suggest makes ONE dish to cook now, chosen from what they have eaten this week (the levels); dish_plan_today makes one dish for each of today's meals they have not logged yet. Both only suggest — nothing is logged or saved, and the app shows each dish as a card with its reasons and steps, so name the dish and its reasons briefly instead of writing out the recipe.",
     "Talk about what they have EATEN, never their body: \"you've had little fibre this week\", never \"your fibre is low\". When the result's levels say source answers (not enough logs yet), say \"from your answers, you probably get little fibre\". The only level words are little, on track, within limit and a lot.",
-    "If the result has a note that nothing is logged yet, say so plainly and still offer the dish. If a dish comes back as couldn't make one that fits, say exactly that and offer to try again — never describe a dish you were not given.",
+    "If the result has a note that nothing (or not enough) is logged yet, say so plainly, make no little or a lot claim, and still offer the dish. If a dish comes back as couldn't make one that fits, say exactly that and offer to try again — never describe a dish you were not given.",
     `Before dish_plan_today, ask "Anything happening today?" once with ask_choices, options exactly "${OCCASION_OPTIONS[0]}", "${OCCASION_OPTIONS[1]}", "${OCCASION_OPTIONS[2]}", "${OCCASION_OPTIONS[3]}" — then pass occasion normal, eating_out, guests or little_time. It is optional: if they already said what today is like, skip the question. When they are eating out, ask them to send the menu.`,
   ].join(" "),
   tools: [

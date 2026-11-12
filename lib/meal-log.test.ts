@@ -866,3 +866,42 @@ test("resolveSnapshot: RECIPE carries per-serving nutrients only when the recipe
   assert.equal("nutrients" in buildMealLogCreateData("p1", parsed.value, neither), false);
   assert.deepEqual(buildMealLogCreateData("p1", parsed.value, withBoth).nutrients, { saturatedFat: 4, addedSugar: 3 });
 });
+
+// Simulation finding 5 (docs/qa/clara-first-sim.md): a library recipe's sodium
+// was dropped on log, so days with such a log read "sodium not counted".
+test("RECIPE log carries the recipe's per-serving sodium (null when the recipe has none)", () => {
+  const parsed = parseMealLogInput({ localDate: "2026-11-12", mealType: "dinner", source: "RECIPE", recipeId: "r1", servings: 2 });
+  assert.ok(parsed.ok);
+  const recipe = { calories: 400, protein: 20, carbs: 40, fat: 10, fiber: 2, servings: 2, sodium: 900, name: "Bowl" };
+  const out = resolveSnapshot(parsed.value, { recipe });
+  assert.equal(out.sodium, 450);
+  const data = buildMealLogCreateData("p1", parsed.value, out);
+  assert.equal(data.sodium, 450, "per serving; servings is applied once, at read");
+  const none = buildMealLogCreateData("p1", parsed.value, resolveSnapshot(parsed.value, { recipe: { ...recipe, sodium: null } }));
+  assert.equal("sodium" in none, false, "unknown stays unknown");
+  // The response DTO is unchanged: serializeMealLog exposes no sodium key.
+  const row = { ...data, id: "m1", deletedAt: null, loggedAt: new Date(0), updatedAt: new Date(0) } as any;
+  assert.equal("sodium" in serializeMealLog(row), false);
+});
+
+test("a caller-supplied sodium on a RECIPE log still wins over the recipe's", () => {
+  const parsed = parseMealLogInput({ localDate: "2026-11-12", mealType: "dinner", source: "RECIPE", recipeId: "r1", sodium: 120 });
+  assert.ok(parsed.ok);
+  const data = buildMealLogCreateData("p1", parsed.value, resolveSnapshot(parsed.value, { recipe: { calories: 1, sodium: 900, servings: 1, name: "B" } }));
+  assert.equal(data.sodium, 120);
+});
+
+// Finding 1 at its root: a recipe (or restaurant dish) with no fibre figure was
+// stored as 0 g, so Numbers could not tell it from a fibre-free dish.
+test("RECIPE / RESTAURANT with no fibre figure store fiber null (unknown), not 0", () => {
+  const parsed = parseMealLogInput({ localDate: "2026-11-12", mealType: "dinner", source: "RECIPE", recipeId: "r1" });
+  assert.ok(parsed.ok);
+  const unknown = buildMealLogCreateData("p1", parsed.value, resolveSnapshot(parsed.value, { recipe: { calories: 400, protein: 20, carbs: 40, fat: 10, fiber: null, servings: 2, name: "B" } }));
+  assert.equal(unknown.fiber, null);
+  assert.equal(unknown.calories, 200, "the other columns are unchanged");
+  const known = buildMealLogCreateData("p1", parsed.value, resolveSnapshot(parsed.value, { recipe: { calories: 400, fiber: 6, servings: 2, name: "B" } }));
+  assert.equal(known.fiber, 3);
+  const r = parseMealLogInput({ localDate: "2026-11-12", mealType: "dinner", source: "RESTAURANT", restaurantDishId: "d1" });
+  assert.ok(r.ok);
+  assert.equal(buildMealLogCreateData("p1", r.value, resolveSnapshot(r.value, { restaurantDish: { calories: 700, fiber: null, name: "D" } })).fiber, null);
+});

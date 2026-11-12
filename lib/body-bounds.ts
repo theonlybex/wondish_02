@@ -110,3 +110,24 @@ export const firstBodyMetricsError = (errs: BodyMetricsErrors): { field: keyof B
 };
 
 export { round1 as roundToTenth };
+
+const BIRTHDAY_ERROR = "Birthday must be a valid past date (age 13–120).";
+
+/**
+ * The profile's age check. With the client's local `today` (YYYY-MM-DD) the
+ * age is whole calendar years, so a 13th birthday is 13 wherever the person
+ * is. Without it, the original rule: 365.25-day years against the server clock.
+ */
+export function birthdayError(raw: unknown, opts: { today?: string; now?: Date } = {}): string | null {
+  const b = new Date(raw as string);
+  if (raw == null || Number.isNaN(b.getTime())) return BIRTHDAY_ERROR;
+  if (opts.today) {
+    const day = typeof raw === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : b.toISOString().slice(0, 10);
+    if (day > opts.today) return BIRTHDAY_ERROR;
+    let age = Number(opts.today.slice(0, 4)) - Number(day.slice(0, 4));
+    if (opts.today.slice(5) < day.slice(5)) age -= 1;
+    return age < 13 || age > 120 ? BIRTHDAY_ERROR : null;
+  }
+  const ageYears = ((opts.now ?? new Date()).getTime() - b.getTime()) / (365.25 * 86400000);
+  return ageYears < 13 || ageYears > 120 ? BIRTHDAY_ERROR : null;
+}

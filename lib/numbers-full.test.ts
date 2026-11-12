@@ -142,6 +142,18 @@ test("without full=1 the summary JSON is unchanged (golden)", () => {
     JSON.stringify({ summary, weight: null }),
     '{"summary":{"fromDate":"2026-11-05","toDate":"2026-11-11","daysCounted":2,"enoughLogs":false,"levels":[{"key":"calories","name":"Calories","direction":"match","amount":1050,"target":1900,"unit":"kcal","word":null},{"key":"protein","name":"Protein","direction":"match","amount":42.5,"target":60,"unit":"g","word":null},{"key":"carbs","name":"Carbs","direction":"match","amount":115,"target":250,"unit":"g","word":null},{"key":"fat","name":"Fat","direction":"match","amount":20,"target":60,"unit":"g","word":null},{"key":"fibre","name":"Fibre","direction":"enough","amount":11.5,"target":28,"unit":"g","word":"little"},{"key":"sodium","name":"Sodium","direction":"under","amount":1600,"target":2300,"unit":"mg","word":"within limit"}],"little":["fibre"],"aLot":[]},"weight":null}',
   );
+  // Deliberate change (simulation finding 1, docs/qa/clara-first-sim.md): a
+  // meal with no fibre figure no longer counts as 0 g. Same keys and nullability
+  // as before (fibre is nullable like sodium); for such a week fibre's amount and
+  // word are null instead of a false "little". Weeks whose fibre is all known,
+  // as above, are byte-identical.
+  const unknownFibre = rows.map((x, i) => (i === 1 ? { ...x, fiber: null } : x));
+  const s2 = summarizeLevels(levelDaysFromRows(unknownFibre), { calories: 1900, protein: 60, carbs: 250, fat: 60 }, { fromDate: "2026-11-05", toDate: "2026-11-11" });
+  assert.equal(
+    JSON.stringify(s2.levels.find((l) => l.key === "fibre")),
+    '{"key":"fibre","name":"Fibre","direction":"enough","amount":12,"target":28,"unit":"g","word":"little"}',
+    "only the fully known day (11 Nov: 8 + 4 g) is averaged",
+  );
   // rows that also carry nutrients read the same
   const withNutrients = rows.map((x) => ({ ...x, nutrients: { saturatedFat: 1 } }));
   assert.deepEqual(levelDaysFromRows(withNutrients), levelDaysFromRows(rows));
@@ -218,4 +230,23 @@ test("an empty picture (both lists empty) is no picture: source none, startingPi
   const out = buildFullNumbers(base({ picture: { little: [], aLot: [] } }));
   assert.equal(out.source, "none");
   assert.equal(out.startingPicture, null);
+});
+
+// Simulation finding 1: fibre is food-counted only when every counted day knows it.
+test("a counted day with unknown fibre: fibre not food-counted, no word", () => {
+  const days = [day(1), day(2), { ...day(3), fibre: null }];
+  const out = buildFullNumbers(base({ days }));
+  const f = lv(out, "fibre");
+  assert.equal(f.foodCounted, false);
+  assert.equal(f.amount, null);
+  assert.equal(f.word, null);
+  assert.equal(lv(out, "protein").foodCounted, true, "protein still counts");
+});
+
+test("fullDaysFromRows: a meal without fibre leaves its day's fibre null", () => {
+  const days = fullDaysFromRows([
+    { localDate: "2026-11-10", servings: 1, calories: 500, protein: 20, carbs: 60, fat: 10, fiber: null, sodium: 800 },
+    { localDate: "2026-11-10", servings: 1, calories: 500, protein: 20, carbs: 60, fat: 10, fiber: 4, sodium: 800 },
+  ]);
+  assert.equal(days[0].fibre, null);
 });

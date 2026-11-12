@@ -472,3 +472,22 @@ test("planOnboardingPut: a catalogue pill not in the requested list is not fille
   );
   assert.deepEqual(plan.pillOps.fillContents, [{ id: "b", name: "Iron" }]);
 });
+
+// Simulation finding 7 (docs/qa/clara-first-sim.md): the app had no way to open
+// Account editing in the person's own units. Additive profile keys.
+test("buildOnboardingResponse: profile carries the resolved weightUnit and the stored heightUnit", () => {
+  const args = { conditions: [], allergies: [], activities: [], pills: [] };
+  const row = (over: Record<string, unknown>) => ({
+    birthday: null, sexAtBirth: null, height: 170, weight: 150, physicalActivityId: null, usualEating: null,
+    startingPicture: null, weightGoal: null, noCondition: false, conditionIds: [], allergyIds: [], ...over,
+  });
+  const chosen = buildOnboardingResponse({ ...args, patient: row({ heightUnit: "cm", displayWeightUnit: "lbs" }) });
+  assert.equal(chosen.profile.weightUnit, "lbs", "the person's choice wins");
+  assert.equal(chosen.profile.heightUnit, "cm");
+  const metric = buildOnboardingResponse({ ...args, patient: row({ heightUnit: "cm", displayWeightUnit: null }) });
+  assert.equal(metric.profile.weightUnit, "kg", "unchosen: metric height reads kg");
+  const imperial = buildOnboardingResponse({ ...args, patient: row({ heightUnit: "in" }) });
+  assert.deepEqual([imperial.profile.weightUnit, imperial.profile.heightUnit], ["lbs", "in"]);
+  const nobody = buildOnboardingResponse({ ...args, patient: null });
+  assert.deepEqual([nobody.profile.weightUnit, nobody.profile.heightUnit], ["lbs", null]);
+});

@@ -33,3 +33,30 @@ test("a week where no day has sodium on every meal gives no sodium amount and no
   assert.equal(sodium.amount, null);
   assert.equal(sodium.word, null);
 });
+
+// Simulation finding 1 (docs/qa/clara-first-sim.md): a meal with no fibre
+// figure used to count as 0 g, which read as "little fibre". Fibre now follows
+// the sodium rule: a day's fibre is known only when every meal carries it.
+const fibreRow = (localDate: string, fiber: number | null): MealLevelRow =>
+  ({ localDate, servings: 1, calories: 600, protein: 30, carbs: 70, fat: 20, fiber, sodium: 500 });
+
+test("a day where one meal has no fibre figure has no fibre for that day", () => {
+  const days = levelDaysFromRows([fibreRow("2026-11-12", 8), fibreRow("2026-11-12", null)]);
+  assert.equal(days[0].fibre, null);
+  assert.equal(days[0].protein, 60, "the other numbers still add up");
+});
+
+test("a week whose every day misses a fibre figure gives no fibre amount and no word", () => {
+  const rows = ["2026-11-10", "2026-11-11", "2026-11-12"].flatMap((d) => [fibreRow(d, 3), fibreRow(d, null)]);
+  const s = summarizeLevels(levelDaysFromRows(rows), null, RANGE);
+  const fibre = s.levels.find((l) => l.key === "fibre")!;
+  assert.equal(fibre.amount, null);
+  assert.equal(fibre.word, null);
+  assert.deepEqual(s.little, []);
+});
+
+test("fibre averages only the days whose fibre is fully known", () => {
+  const rows = [fibreRow("2026-11-11", 20), fibreRow("2026-11-11", 10), fibreRow("2026-11-12", 5), fibreRow("2026-11-12", null)];
+  const s = summarizeLevels(levelDaysFromRows(rows), null, RANGE);
+  assert.equal(s.levels.find((l) => l.key === "fibre")!.amount, 30);
+});

@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db";
 import { internalError } from "@/lib/api-error";
 import { convertWeight, convertHeight, calcCBMI } from "@/lib/caloric-engine";
 import { AccountClaimConflictError, getOrCreateAccount } from "@/lib/auth";
-import { CM_PER_IN, checkBodyMetrics, firstBodyMetricsError } from "@/lib/body-bounds";
+import { CM_PER_IN, birthdayError, checkBodyMetrics, firstBodyMetricsError } from "@/lib/body-bounds";
+import { parseTodayParam } from "@/lib/meal-log";
 
 export async function GET() {
   const { userId } = await auth();
@@ -73,15 +74,19 @@ export async function PATCH(req: NextRequest) {
 
   // Boundary validation: reject unusable birthday/goalWeight values instead
   // of persisting them into the caloric engine's inputs.
+  // Optional ?today=YYYY-MM-DD (the client's local date, as the numbers routes
+  // take it): age is then calendar years on that date, so a 13th birthday
+  // counts wherever the person is. Absent: the original server-clock rule.
+  const todayRaw = new URL(req.url).searchParams.get("today");
+  let clientToday: string | undefined;
+  if (todayRaw != null) {
+    const t = parseTodayParam(todayRaw);
+    if (!t.ok) return NextResponse.json({ error: t.error }, { status: t.status });
+    clientToday = t.value;
+  }
   if (birthday) {
-    const b = new Date(birthday);
-    const ageYears = (Date.now() - b.getTime()) / (365.25 * 86400000);
-    if (Number.isNaN(b.getTime()) || ageYears < 13 || ageYears > 120) {
-      return NextResponse.json(
-        { error: "Birthday must be a valid past date (age 13–120)." },
-        { status: 422 }
-      );
-    }
+    const err = birthdayError(birthday, clientToday ? { today: clientToday } : {});
+    if (err) return NextResponse.json({ error: err }, { status: 422 });
   }
   // Plausibility bounds (lib/body-bounds, shared with the wizard, the
   // settings form and the journal weigh-in): weight 50–700 lbs, height

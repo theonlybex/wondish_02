@@ -123,3 +123,19 @@ test("rows come in order with display names and units", () => {
   ]);
   assert.equal(row(s, "protein").target, 100);
 });
+
+// Simulation finding 2: Clara's "little / a lot" claims must match what Numbers
+// says (full=1), which counts fibre and sodium only when EVERY counted day knows them.
+import { claimsAsNumbersSays } from "./levels";
+
+test("claimsAsNumbersSays: no fibre / sodium claim when a counted day lacks it, or logs are not enough", () => {
+  const full = [day({ localDate: "2026-11-10", fibre: 5, sodium: 4000 }), day({ localDate: "2026-11-11", fibre: 5, sodium: 4000 }), day({ localDate: "2026-11-12", fibre: 5, sodium: 4000 })];
+  const s = summarizeLevels(full, TARGETS, RANGE);
+  assert.deepEqual([claimsAsNumbersSays(s, full).little, claimsAsNumbersSays(s, full).aLot], [["fibre"], ["sodium"]]);
+  const gap = [...full.slice(0, 2), day({ localDate: "2026-11-12", fibre: null, sodium: null })];
+  const g = claimsAsNumbersSays(summarizeLevels(gap, TARGETS, RANGE), gap);
+  assert.deepEqual([g.little, g.aLot], [[], []]);
+  const few = full.slice(0, 1);
+  const f = claimsAsNumbersSays(summarizeLevels(few, TARGETS, RANGE), few);
+  assert.deepEqual([f.little, f.aLot], [[], []]);
+});

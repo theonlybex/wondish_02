@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
       // gate as app/api/meal-plan/[menuId]/swap and the single-write route.
       const r = await prisma.recipe.findFirst({
         where: { id: item.recipeId!, isPublic: true },
-        select: { name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, servings: true, saturatedFat: true, addedSugars: true },
+        select: { name: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, sodium: true, servings: true, saturatedFat: true, addedSugars: true },
       });
       if (!r) return NextResponse.json({ error: `Recipe not found: ${item.recipeId}` }, { status: 404 });
       recipe = r;
