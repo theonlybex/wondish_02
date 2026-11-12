@@ -59,3 +59,41 @@ test("intake: rejects bad date and non-boolean taken", () => {
   assert.equal(validateIntakeBody({ date: "2026-07-24", taken: "yes" }).ok, false);
   assert.equal(validateIntakeBody({ taken: true }).ok, false);
 });
+
+// ─── contents / estimated (Clara first run) ───────────────────────────────────
+test("contents: valid list passes through; null clears; absent is absent", () => {
+  const ok = validateSupplementBody(
+    { name: "Iron", timeSlot: "MORNING", contents: [{ key: "iron", amount: 18, unit: "mg" }], estimated: true },
+    { partial: false },
+  );
+  assert.deepEqual(ok, {
+    ok: true, name: "Iron", dosage: null, timeSlot: "MORNING",
+    contents: [{ key: "iron", amount: 18, unit: "mg" }], estimated: true,
+  });
+  const cleared = validateSupplementBody({ contents: null }, { partial: true });
+  assert.deepEqual(cleared, { ok: true, contents: null });
+  assert.equal("contents" in (validateSupplementBody({ name: "x" }, { partial: true }) as object), false);
+});
+
+test("contents: rejects bad key, amount, unit, size, shape", () => {
+  const bad = (contents: unknown) =>
+    assert.equal(validateSupplementBody({ contents }, { partial: true }).ok, false);
+  bad("iron");
+  bad([{ key: "calories", amount: 1, unit: "mg" }]);
+  bad([{ key: "iron", amount: 0, unit: "mg" }]);
+  bad([{ key: "iron", amount: -1, unit: "mg" }]);
+  bad([{ key: "iron", amount: 100001, unit: "mg" }]);
+  bad([{ key: "iron", amount: "5", unit: "mg" }]);
+  bad([{ key: "iron", amount: 5, unit: "kg" }]);
+  bad([null]);
+  bad(Array.from({ length: 31 }, () => ({ key: "iron", amount: 1, unit: "mg" })));
+  assert.equal(
+    validateSupplementBody({ contents: Array.from({ length: 30 }, () => ({ key: "iron", amount: 100000, unit: "mcg" })) }, { partial: true }).ok,
+    true,
+  );
+});
+
+test("estimated must be a boolean", () => {
+  assert.equal(validateSupplementBody({ estimated: "yes" }, { partial: true }).ok, false);
+  assert.deepEqual(validateSupplementBody({ estimated: false }, { partial: true }), { ok: true, estimated: false });
+});

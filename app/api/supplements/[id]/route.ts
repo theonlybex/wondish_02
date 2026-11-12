@@ -1,7 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { validateSupplementBody } from "@/lib/supplements";
+import { supplementExtras, validateSupplementBody } from "@/lib/supplements";
 
 /** 404s unless the supplement exists, is live, and belongs to the caller. */
 async function resolveOwnedSupplement(userId: string, id: string) {
@@ -34,10 +35,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       ...(v.name !== undefined ? { name: v.name } : {}),
       ...(v.dosage !== undefined ? { dosage: v.dosage } : {}),
       ...(v.timeSlot !== undefined ? { timeSlot: v.timeSlot } : {}),
+      ...(v.contents !== undefined ? { contents: v.contents === null ? Prisma.DbNull : (v.contents as unknown as Prisma.InputJsonValue) } : {}),
+      // A typical-dose estimate stops being one once the person edits the pill.
+      ...(v.estimated !== undefined
+        ? { estimated: v.estimated }
+        : v.contents !== undefined || v.name !== undefined || v.dosage !== undefined
+          ? { estimated: false }
+          : {}),
     },
   });
   return NextResponse.json({
-    supplement: { id: updated.id, name: updated.name, dosage: updated.dosage, timeSlot: updated.timeSlot },
+    supplement: { id: updated.id, name: updated.name, dosage: updated.dosage, timeSlot: updated.timeSlot, ...supplementExtras(updated) },
   });
 }
 

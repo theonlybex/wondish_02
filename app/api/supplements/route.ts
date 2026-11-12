@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseLocalDateStrict } from "@/lib/journal";
-import { validateSupplementBody } from "@/lib/supplements";
+import { supplementExtras, validateSupplementBody } from "@/lib/supplements";
 
 const SLOT_ORDER: Record<string, number> = { MORNING: 0, AFTERNOON: 1, EVENING: 2 };
 
@@ -42,6 +43,7 @@ export async function GET(req: NextRequest) {
       dosage: s.dosage,
       timeSlot: s.timeSlot,
       takenToday: s.intakes.length > 0,
+      ...supplementExtras(s),
     }))
     .sort((a, b) => (SLOT_ORDER[a.timeSlot] ?? 9) - (SLOT_ORDER[b.timeSlot] ?? 9));
 
@@ -64,10 +66,17 @@ export async function POST(req: NextRequest) {
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
 
   const created = await prisma.supplement.create({
-    data: { patientId: patient.id, name: v.name!, dosage: v.dosage ?? null, timeSlot: v.timeSlot! },
+    data: {
+      patientId: patient.id,
+      name: v.name!,
+      dosage: v.dosage ?? null,
+      timeSlot: v.timeSlot!,
+      ...(v.contents ? { contents: v.contents as unknown as Prisma.InputJsonValue } : {}),
+      ...(v.estimated !== undefined ? { estimated: v.estimated } : {}),
+    },
   });
   return NextResponse.json(
-    { supplement: { id: created.id, name: created.name, dosage: created.dosage, timeSlot: created.timeSlot, takenToday: false } },
+    { supplement: { id: created.id, name: created.name, dosage: created.dosage, timeSlot: created.timeSlot, takenToday: false, ...supplementExtras(created) } },
     { status: 201 },
   );
 }
