@@ -113,3 +113,10 @@ test("editsPillFacts: only real differences count", () => {
   assert.equal(editsPillFacts({ ...stored, contents: null }, { contents: null }), false);
   assert.equal(editsPillFacts(stored, { contents: null }), true);
 });
+
+test("editsPillFacts: stored key order does not matter", () => {
+  const stored = { name: "Iron", dosage: null, contents: [{ key: "iron", unit: "mg", amount: 18 }] };
+  assert.equal(editsPillFacts(stored, { contents: [{ key: "iron", amount: 18, unit: "mg" }] }), false);
+  assert.equal(editsPillFacts(stored, { contents: [{ key: "iron", amount: 18, unit: "g" }] }), true);
+  assert.equal(editsPillFacts(stored, { contents: [] }), true);
+});

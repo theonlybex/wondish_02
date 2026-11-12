@@ -120,6 +120,16 @@ export function supplementExtras(row: { contents: unknown; estimated: boolean })
   return { contents: Array.isArray(row.contents) ? (row.contents as PillContent[]) : null, estimated: row.estimated };
 }
 
+// Postgres jsonb does not keep key order, so compare entry by entry.
+function sameContents(a: unknown[] | null, b: PillContent[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.length !== b.length) return false;
+  return a.every((raw, i) => {
+    const x = raw as Partial<PillContent> | null;
+    return !!x && x.key === b[i].key && x.amount === b[i].amount && x.unit === b[i].unit;
+  });
+}
+
 /** True when the body changes name, dosage or contents relative to what is stored. */
 export function editsPillFacts(
   stored: { name: string; dosage: string | null; contents: unknown },
@@ -129,7 +139,7 @@ export function editsPillFacts(
   if (v.dosage !== undefined && v.dosage !== stored.dosage) return true;
   if (v.contents !== undefined) {
     const was = Array.isArray(stored.contents) ? stored.contents : null;
-    if (JSON.stringify(v.contents) !== JSON.stringify(was)) return true;
+    if (!sameContents(was, v.contents)) return true;
   }
   return false;
 }

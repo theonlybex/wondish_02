@@ -137,7 +137,7 @@ export function validateOnboardingBody(body: unknown): OnboardingValidation {
   return { ok: true, value };
 }
 
-// The ten chips, in display order, matched to database names. Names come from
+// The common-condition chips, in display order, matched to database names. Names come from
 // lib/condition-groups.ts. Matching is on a folded name.
 const CHIPS: { label: string; names: string[] }[] = [
   { label: "Type 2 diabetes", names: ["Type 2 Diabetes"] },
@@ -157,7 +157,7 @@ const fold = (s: string) => s.trim().toLowerCase().replace(/[\u2010-\u2015]/g, "
 
 export interface ConditionChip { id: string; name: string; common: boolean; label: string }
 
-/** Every condition, with `common` marking the ten chips (chip label as `label`). */
+/** Every condition, with `common` marking the chips (chip label as `label`). */
 export function commonConditions(all: { id: string; name: string }[]): ConditionChip[] {
   const byName = new Map(all.map((c) => [fold(c.name), c]));
   const chips: ConditionChip[] = [];
@@ -254,12 +254,13 @@ export function heightToCm(p: {
   heightIn?: number | null;
 }): number | null {
   const ok = (n: number | null | undefined): n is number => n != null && Number.isFinite(n);
+  const positive = (n: number): number | null => (Number.isFinite(n) && n > 0 ? round1(n) : null);
   if (p.heightUnit === "ftin") {
-    if (ok(p.heightFt)) return round1((p.heightFt * 12 + (ok(p.heightIn) ? p.heightIn : 0)) * CM_PER_INCH);
-    return ok(p.height) && p.height > 0 ? round1(p.height) : null;
+    if (ok(p.heightFt)) return positive((p.heightFt * 12 + (ok(p.heightIn) ? p.heightIn : 0)) * CM_PER_INCH);
+    return ok(p.height) ? positive(p.height) : null;
   }
   if (!ok(p.height)) return null;
-  return round1(p.heightUnit === "in" ? p.height * CM_PER_INCH : p.height);
+  return positive(p.heightUnit === "in" ? p.height * CM_PER_INCH : p.height);
 }
 
 export function buildOnboardingResponse(input: {

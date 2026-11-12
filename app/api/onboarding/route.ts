@@ -91,8 +91,10 @@ export async function PUT(req: NextRequest) {
   if (!v.ok) return NextResponse.json({ error: v.error, field: v.field }, { status: 422 });
 
   try {
-    // One interactive transaction: the live pills are read in the same
-    // transaction as the writes, so two overlapping PUTs cannot both create.
+    // One interactive transaction. Postgres runs READ COMMITTED, so reading the
+    // live pills in the same transaction is not enough on its own: the patient
+    // row is locked first, which makes overlapping PUTs for one person run one
+    // after the other, and the second reads the first's committed pills.
     await prisma.$transaction(async (tx) => {
       const patient = await tx.patient.upsert({
         where: { accountId: a.account.id },
@@ -100,6 +102,7 @@ export async function PUT(req: NextRequest) {
         update: {},
         select: { id: true, usualEating: true },
       });
+      await tx.$queryRaw`SELECT "id" FROM "Patient" WHERE "id" = ${patient.id} FOR UPDATE`;
       const supplements = await tx.supplement.findMany({
         where: { patientId: patient.id, deletedAt: null },
         select: { id: true, name: true, estimated: true },

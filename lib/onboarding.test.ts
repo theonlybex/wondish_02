@@ -336,6 +336,10 @@ test("heightToCm: cm, inches, feet and inches", () => {
   assert.equal(heightToCm({ height: null, heightUnit: "ftin", heightFt: 5, heightIn: 7 }), 170.2);
   assert.equal(heightToCm({ height: 170, heightUnit: "ftin", heightFt: null, heightIn: null }), 170);
   assert.equal(heightToCm({ height: null, heightUnit: "cm" }), null);
+  assert.equal(heightToCm({ height: 0, heightUnit: "cm" }), null);
+  assert.equal(heightToCm({ height: 0, heightUnit: "in" }), null);
+  assert.equal(heightToCm({ height: null, heightUnit: "ftin", heightFt: 0, heightIn: 0 }), null);
+  assert.equal(heightToCm({ height: Infinity, heightUnit: "cm" }), null);
 });
 
 test("planOnboardingPut with only pills uses the stored answers", () => {
