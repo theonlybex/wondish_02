@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateSupplementBody, validateIntakeBody } from "./supplements";
+import { validateSupplementBody, validateIntakeBody, editsPillFacts } from "./supplements";
 
 test("supplement create: accepts name + slot, trims, defaults dosage null", () => {
   const r = validateSupplementBody({ name: "  Vitamin D3 ", timeSlot: "MORNING" }, { partial: false });
@@ -87,13 +87,29 @@ test("contents: rejects bad key, amount, unit, size, shape", () => {
   bad([{ key: "iron", amount: 5, unit: "kg" }]);
   bad([null]);
   bad(Array.from({ length: 31 }, () => ({ key: "iron", amount: 1, unit: "mg" })));
-  assert.equal(
-    validateSupplementBody({ contents: Array.from({ length: 30 }, () => ({ key: "iron", amount: 100000, unit: "mcg" })) }, { partial: true }).ok,
-    true,
-  );
+  // The boundary amount itself is allowed.
+  assert.equal(validateSupplementBody({ contents: [{ key: "iron", amount: 100000, unit: "mcg" }] }, { partial: true }).ok, true);
 });
 
 test("estimated must be a boolean", () => {
   assert.equal(validateSupplementBody({ estimated: "yes" }, { partial: true }).ok, false);
   assert.deepEqual(validateSupplementBody({ estimated: false }, { partial: true }), { ok: true, estimated: false });
+});
+
+test("contents: duplicate keys are rejected", () => {
+  assert.equal(
+    validateSupplementBody({ contents: [{ key: "iron", amount: 1, unit: "mg" }, { key: "iron", amount: 2, unit: "mg" }] }, { partial: true }).ok,
+    false,
+  );
+});
+
+test("editsPillFacts: only real differences count", () => {
+  const stored = { name: "Iron", dosage: null, contents: [{ key: "iron", amount: 18, unit: "mg" }] };
+  assert.equal(editsPillFacts(stored, {}), false);
+  assert.equal(editsPillFacts(stored, { name: "Iron", dosage: null, contents: [{ key: "iron", amount: 18, unit: "mg" }] }), false);
+  assert.equal(editsPillFacts(stored, { name: "Iron 2" }), true);
+  assert.equal(editsPillFacts(stored, { dosage: "1 tablet" }), true);
+  assert.equal(editsPillFacts(stored, { contents: [{ key: "iron", amount: 20, unit: "mg" }] }), true);
+  assert.equal(editsPillFacts({ ...stored, contents: null }, { contents: null }), false);
+  assert.equal(editsPillFacts(stored, { contents: null }), true);
 });

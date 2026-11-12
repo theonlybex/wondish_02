@@ -53,6 +53,7 @@ export function isProfileComplete(patient: ProfileCompletionInput): boolean {
 // everything decidable lives here so tests need no Prisma or Clerk.
 
 export const PILL_NAMES = Object.keys(TYPICAL_PILLS) as PillName[];
+const MAX_PILLS = 20;
 export const WEIGHT_GOALS = ["lose", "keep", "gain", "none"] as const;
 export type WeightGoal = (typeof WEIGHT_GOALS)[number];
 
@@ -72,7 +73,8 @@ export function normaliseUsualEating(raw: unknown): UsualEating {
 }
 
 export interface OnboardingPutValue {
-  usualEating?: UsualEating;
+  /** Only the keys sent; null clears an answer, an absent key is left alone. */
+  usualEating?: Partial<UsualEating>;
   pills?: PillName[];
   weightGoal?: WeightGoal | null;
   noCondition?: boolean;
@@ -84,7 +86,8 @@ export type OnboardingValidation =
 
 /**
  * Hand-written validation for PUT /api/onboarding. Every key is optional.
- * A usualEating object replaces the stored one; keys it leaves out are unanswered.
+ * A usualEating object is merged over the stored answers: keys it leaves out are
+ * unchanged, an explicit null clears one.
  */
 export function validateOnboardingBody(body: unknown): OnboardingValidation {
   const fail = (field: string, error: string): OnboardingValidation => ({ ok: false, error, field });
@@ -99,7 +102,7 @@ export function validateOnboardingBody(body: unknown): OnboardingValidation {
     if (u === null || typeof u !== "object" || Array.isArray(u)) {
       return fail("usualEating", "usualEating must be an object.");
     }
-    const out = emptyUsualEating();
+    const out: Partial<UsualEating> = {};
     for (const [k, v] of Object.entries(u as Record<string, unknown>)) {
       if (!(USUAL_EATING_KEYS as readonly string[]).includes(k)) return fail("usualEating", `Unknown answer "${k}".`);
       if (v !== null && v !== 0 && v !== 1 && v !== 2) return fail("usualEating", `${k} must be 0, 1, 2 or null.`);
@@ -110,6 +113,7 @@ export function validateOnboardingBody(body: unknown): OnboardingValidation {
 
   if (b.pills !== undefined) {
     if (!Array.isArray(b.pills)) return fail("pills", "pills must be a list of names.");
+    if (b.pills.length > MAX_PILLS) return fail("pills", `pills must have at most ${MAX_PILLS} entries.`);
     const seen = new Set<PillName>();
     for (const p of b.pills) {
       if (typeof p !== "string" || !(PILL_NAMES as string[]).includes(p)) return fail("pills", "Unknown pill name.");
@@ -134,14 +138,15 @@ export function validateOnboardingBody(body: unknown): OnboardingValidation {
 }
 
 // The ten chips, in display order, matched to database names. Names come from
-// lib/condition-groups.ts. Matching is on a folded name; the first listed name
-// that exists wins. IBS maps to IBS-M (the unspecified-pattern row).
+// lib/condition-groups.ts. Matching is on a folded name.
 const CHIPS: { label: string; names: string[] }[] = [
   { label: "Type 2 diabetes", names: ["Type 2 Diabetes"] },
   { label: "High blood pressure", names: ["Hypertension"] },
   { label: "High cholesterol", names: ["High Cholesterol"] },
   { label: "Acid reflux (GERD)", names: ["GERD"] },
-  { label: "IBS", names: ["IBS-M"] },
+  { label: "IBS (constipation)", names: ["IBS-C"] },
+  { label: "IBS (diarrhoea)", names: ["IBS-D"] },
+  { label: "IBS (mixed)", names: ["IBS-M"] },
   { label: "Celiac disease", names: ["Celiac Disease"] },
   { label: "Kidney disease", names: ["Chronic Kidney Disease stage 1-2"] },
   { label: "PCOS", names: ["PCOS"] },
@@ -155,21 +160,11 @@ export interface ConditionChip { id: string; name: string; common: boolean; labe
 /** Every condition, with `common` marking the ten chips (chip label as `label`). */
 export function commonConditions(all: { id: string; name: string }[]): ConditionChip[] {
   const byName = new Map(all.map((c) => [fold(c.name), c]));
-  const chipFor = new Map<string, string>(); // condition id -> chip label
+  const chips: ConditionChip[] = [];
   for (const chip of CHIPS) {
-    for (const n of chip.names) {
-      const hit = byName.get(fold(n));
-      if (hit) {
-        chipFor.set(hit.id, chip.label);
-        break;
-      }
-    }
+    const row = byName.get(fold(chip.names[0]));
+    if (row) chips.push({ id: row.id, name: row.name, common: true, label: chip.label });
   }
-  const chips = CHIPS.flatMap((chip) => {
-    const id = [...chipFor].find(([, l]) => l === chip.label)?.[0];
-    const row = id ? all.find((c) => c.id === id) : undefined;
-    return row ? [{ id: row.id, name: row.name, common: true, label: chip.label }] : [];
-  });
   const chipIds = new Set(chips.map((c) => c.id));
   const rest = all
     .filter((c) => !chipIds.has(c.id))
@@ -180,21 +175,21 @@ export function commonConditions(all: { id: string; name: string }[]): Condition
 export interface PillRow { id: string; name: string; estimated: boolean }
 
 /**
- * Which pill rows to create and which to soft-delete so the live rows match the
- * requested names. A name that already exists (edited or not) creates nothing.
- * Only typical-dose rows (estimated) with a catalogue name are removed; a pill
- * the person edited (estimated = false) is never touched.
+ * Which pill rows to create and which to soft-delete so the live catalogue
+ * pills match the requested names. The list is authoritative for the seven
+ * catalogue names: a live catalogue-named pill that is not listed is removed,
+ * edited or not; a name already live creates nothing. Supplements with other
+ * names are never touched.
  */
 export function reconcilePills(
   existing: PillRow[],
   requestedNames: PillName[],
 ): { create: PillName[]; softDelete: string[] } {
   const want = new Set(requestedNames.map(fold));
+  const isCatalogue = (name: string) => PILL_NAMES.some((n) => fold(n) === fold(name));
   const have = new Set(existing.map((e) => fold(e.name)));
   const create = requestedNames.filter((n, i) => !have.has(fold(n)) && requestedNames.indexOf(n) === i);
-  const softDelete = existing
-    .filter((e) => e.estimated && (PILL_NAMES as string[]).some((n) => fold(n) === fold(e.name)) && !want.has(fold(e.name)))
-    .map((e) => e.id);
+  const softDelete = existing.filter((e) => isCatalogue(e.name) && !want.has(fold(e.name))).map((e) => e.id);
   return { create, softDelete };
 }
 
@@ -209,20 +204,22 @@ export interface OnboardingPatientUpdate {
 export function planOnboardingPut(
   value: OnboardingPutValue,
   current: { usualEating: unknown; supplements: PillRow[] },
-): { patientData: OnboardingPatientUpdate; pillOps: { create: PillName[]; softDelete: string[] } } {
-  const usualEating = value.usualEating ?? normaliseUsualEating(current.usualEating);
+): {
+  patientData: OnboardingPatientUpdate;
+  pillOps: { create: PillName[]; softDelete: string[] };
+  removeBuiltInConditions: boolean;
+} {
+  const merged: UsualEating = { ...normaliseUsualEating(current.usualEating), ...(value.usualEating ?? {}) };
   const livePillNames = current.supplements
     .map((s) => PILL_NAMES.find((n) => fold(n) === fold(s.name)))
     .filter((n): n is PillName => !!n);
   const pillOps = value.pills ? reconcilePills(current.supplements, value.pills) : { create: [], softDelete: [] };
-  const finalPills: PillName[] = value.pills
-    ? [...new Set([...value.pills, ...livePillNames.filter((n) => current.supplements.some((s) => !s.estimated && fold(s.name) === fold(n)))])]
-    : livePillNames;
-  const patientData: OnboardingPatientUpdate = { startingPicture: computeStartingPicture(usualEating, finalPills) };
-  if (value.usualEating) patientData.usualEating = value.usualEating;
+  const finalPills: PillName[] = value.pills ?? livePillNames;
+  const patientData: OnboardingPatientUpdate = { startingPicture: computeStartingPicture(merged, finalPills) };
+  if (value.usualEating && Object.keys(value.usualEating).length > 0) patientData.usualEating = merged;
   if (value.weightGoal !== undefined) patientData.weightGoal = value.weightGoal;
   if (value.noCondition !== undefined) patientData.noCondition = value.noCondition;
-  return { patientData, pillOps };
+  return { patientData, pillOps, removeBuiltInConditions: value.noCondition === true };
 }
 
 const LB_TO_KG = 0.45359237;
@@ -231,7 +228,8 @@ const nameOf = (key: string) => LEVELS.find((l) => l.key === key)?.name ?? key;
 export interface OnboardingPatientRow {
   birthday: Date | string | null;
   sexAtBirth: string | null;
-  height: number | null; // cm
+  height: number | null; // cm, or inches when heightUnit is "in"
+  heightUnit?: string | null; // "cm" | "in" | "ftin"
   weight: number | null; // lbs
   physicalActivityId: string | null;
   usualEating: unknown;
@@ -245,6 +243,25 @@ export interface OnboardingPatientRow {
   heightIn?: number | null;
 }
 
+const CM_PER_INCH = 2.54;
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/** Height in cm from however it was stored: cm as is, inches, or feet and inches. */
+export function heightToCm(p: {
+  height: number | null;
+  heightUnit?: string | null;
+  heightFt?: number | null;
+  heightIn?: number | null;
+}): number | null {
+  const ok = (n: number | null | undefined): n is number => n != null && Number.isFinite(n);
+  if (p.heightUnit === "ftin") {
+    if (ok(p.heightFt)) return round1((p.heightFt * 12 + (ok(p.heightIn) ? p.heightIn : 0)) * CM_PER_INCH);
+    return ok(p.height) && p.height > 0 ? round1(p.height) : null;
+  }
+  if (!ok(p.height)) return null;
+  return round1(p.heightUnit === "in" ? p.height * CM_PER_INCH : p.height);
+}
+
 export function buildOnboardingResponse(input: {
   conditions: { id: string; name: string }[];
   allergies: { id: string; name: string }[];
@@ -255,6 +272,7 @@ export function buildOnboardingResponse(input: {
   const { patient } = input;
   const conditions = commonConditions(input.conditions);
   const knownConditions = new Set(input.conditions.map((c) => c.id));
+  const conditionIds = (patient?.conditionIds ?? []).filter((id) => knownConditions.has(id));
   const stored = (patient?.startingPicture ?? null) as Partial<StartingPicture> | null;
   const named = (keys: unknown) =>
     (Array.isArray(keys) ? keys : [])
@@ -270,11 +288,11 @@ export function buildOnboardingResponse(input: {
     allergies: input.allergies,
     activities: input.activities,
     profile: {
-      conditionIds: (patient?.conditionIds ?? []).filter((id) => knownConditions.has(id)),
-      noCondition: patient?.noCondition ?? false,
+      conditionIds,
+      noCondition: (patient?.noCondition ?? false) && conditionIds.length === 0,
       birthday,
       sexAtBirth: patient?.sexAtBirth ?? null,
-      heightCm: patient?.height ?? null,
+      heightCm: patient ? heightToCm(patient) : null,
       weightKg: patient?.weight == null ? null : Math.round(patient.weight * LB_TO_KG * 10) / 10,
       activityId: patient?.physicalActivityId ?? null,
       allergyIds: patient?.allergyIds ?? [],

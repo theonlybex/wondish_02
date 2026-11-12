@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { supplementExtras, validateSupplementBody } from "@/lib/supplements";
+import { editsPillFacts, supplementExtras, validateSupplementBody } from "@/lib/supplements";
 
 /** 404s unless the supplement exists, is live, and belongs to the caller. */
 async function resolveOwnedSupplement(userId: string, id: string) {
@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       // A typical-dose estimate stops being one once the person edits the pill.
       ...(v.estimated !== undefined
         ? { estimated: v.estimated }
-        : v.contents !== undefined || v.name !== undefined || v.dosage !== undefined
+        : editsPillFacts(owned.supplement, v)
           ? { estimated: false }
           : {}),
     },

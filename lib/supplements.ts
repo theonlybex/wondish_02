@@ -27,6 +27,7 @@ function parseContents(raw: unknown): { ok: true; value: PillContent[] } | { ok:
   if (!Array.isArray(raw)) return { ok: false, error: "contents must be a list" };
   if (raw.length > MAX_CONTENTS) return { ok: false, error: `contents must have at most ${MAX_CONTENTS} entries` };
   const value: PillContent[] = [];
+  const seen = new Set<string>();
   for (const c of raw) {
     if (c === null || typeof c !== "object" || Array.isArray(c)) return { ok: false, error: "each contents entry must be an object" };
     const { key, amount, unit } = c as Record<string, unknown>;
@@ -35,6 +36,8 @@ function parseContents(raw: unknown): { ok: true; value: PillContent[] } | { ok:
       return { ok: false, error: `contents amount must be greater than 0 and at most ${MAX_AMOUNT}` };
     }
     if (typeof unit !== "string" || !CONTENT_UNITS.includes(unit)) return { ok: false, error: "contents unit must be g, mg or mcg" };
+    if (seen.has(key)) return { ok: false, error: "contents must not repeat a key" };
+    seen.add(key);
     value.push({ key: key as FullLevelKey, amount, unit: unit as PillContent["unit"] });
   }
   return { ok: true, value };
@@ -115,4 +118,18 @@ export function supplementExtras(row: { contents: unknown; estimated: boolean })
   estimated: boolean;
 } {
   return { contents: Array.isArray(row.contents) ? (row.contents as PillContent[]) : null, estimated: row.estimated };
+}
+
+/** True when the body changes name, dosage or contents relative to what is stored. */
+export function editsPillFacts(
+  stored: { name: string; dosage: string | null; contents: unknown },
+  v: { name?: string; dosage?: string | null; contents?: PillContent[] | null },
+): boolean {
+  if (v.name !== undefined && v.name !== stored.name) return true;
+  if (v.dosage !== undefined && v.dosage !== stored.dosage) return true;
+  if (v.contents !== undefined) {
+    const was = Array.isArray(stored.contents) ? stored.contents : null;
+    if (JSON.stringify(v.contents) !== JSON.stringify(was)) return true;
+  }
+  return false;
 }

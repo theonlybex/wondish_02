@@ -184,6 +184,7 @@ import {
   reconcilePills,
   planOnboardingPut,
   buildOnboardingResponse,
+  heightToCm,
 } from "./onboarding";
 
 test("validateOnboardingBody accepts a full body", () => {
@@ -202,9 +203,9 @@ test("validateOnboardingBody accepts a full body", () => {
   }
 });
 
-test("validateOnboardingBody: missing usualEating keys are unanswered; empty body is fine", () => {
-  const r = validateOnboardingBody({ usualEating: { veg: 1 } });
-  assert.equal(r.ok && r.value.usualEating?.fruit, null);
+test("validateOnboardingBody: usualEating keeps only the keys sent; empty body is fine", () => {
+  const r = validateOnboardingBody({ usualEating: { veg: 1, fish: null } });
+  assert.deepEqual(r.ok && r.value.usualEating, { veg: 1, fish: null });
   assert.equal(validateOnboardingBody({}).ok, true);
 });
 
@@ -222,6 +223,7 @@ test("validateOnboardingBody rejects bad values with a field", () => {
   bad({ pills: "Iron" }, "pills");
   bad({ weightGoal: "shrink" }, "weightGoal");
   bad({ noCondition: "yes" }, "noCondition");
+  bad({ pills: Array.from({ length: 21 }, () => "Iron") }, "pills");
   bad(null, "body");
   bad([], "body");
 });
@@ -251,15 +253,15 @@ test("commonConditions matches the real database names, omits misses, keeps orde
   const chips = r.filter((c) => c.common);
   assert.deepEqual(
     chips.map((c) => c.label),
-    ["Type 2 diabetes", "High blood pressure", "High cholesterol", "Acid reflux (GERD)", "IBS",
-     "Celiac disease", "Kidney disease", "PCOS", "Fatty liver", "Migraine"],
+    ["Type 2 diabetes", "High blood pressure", "High cholesterol", "Acid reflux (GERD)",
+     "IBS (constipation)", "IBS (mixed)", "Celiac disease", "Kidney disease", "PCOS", "Fatty liver", "Migraine"],
   );
   assert.equal(chips.find((c) => c.label === "Kidney disease")?.id, "8");
-  assert.equal(chips.find((c) => c.label === "IBS")?.id, "5");
+  assert.equal(chips.find((c) => c.label === "IBS (mixed)")?.id, "5");
+  assert.equal(chips.find((c) => c.label === "IBS (constipation)")?.id, "6");
   // Everything is still returned; non-chips are not common.
   assert.equal(r.length, all.length);
   assert.equal(r.find((c) => c.id === "13")?.common, false);
-  assert.equal(r.find((c) => c.id === "6")?.common, false);
 });
 
 test("commonConditions omits a chip with no match", () => {
@@ -267,29 +269,31 @@ test("commonConditions omits a chip with no match", () => {
   assert.deepEqual(r.filter((c) => c.common).map((c) => c.label), ["Migraine"]);
 });
 
-test("reconcilePills: creates missing, soft-deletes unlisted typical pills, never touches edited ones", () => {
+test("reconcilePills: the list is authoritative for catalogue names, edited or not", () => {
   const existing = [
     { id: "a", name: "Iron", estimated: true },
-    { id: "b", name: "Vitamin D", estimated: false }, // edited by the person
+    { id: "b", name: "Vitamin D", estimated: false }, // edited, not listed: removed
     { id: "c", name: "Calcium", estimated: true },
-    { id: "d", name: "Fish oil", estimated: true }, // not a catalogue pill
+    { id: "d", name: "Fish oil", estimated: true }, // not a catalogue pill: untouched
+    { id: "e", name: "Zinc plus", estimated: false },
   ];
   const r = reconcilePills(existing, ["Iron", "Magnesium"]);
   assert.deepEqual(r.create, ["Magnesium"]);
-  assert.deepEqual(r.softDelete, ["c"]);
+  assert.deepEqual(r.softDelete, ["b", "c"]);
 });
 
-test("reconcilePills: re-adding a name that exists creates nothing, even if edited", () => {
+test("reconcilePills: a name already live creates nothing, even if edited", () => {
   const existing = [{ id: "b", name: "Vitamin D", estimated: false }];
   assert.deepEqual(reconcilePills(existing, ["Vitamin D"]), { create: [], softDelete: [] });
 });
 
-test("reconcilePills: empty request removes only typical-dose catalogue pills", () => {
+test("reconcilePills: empty list removes catalogue pills only", () => {
   const existing = [
     { id: "a", name: "Iron", estimated: true },
     { id: "b", name: "Magnesium", estimated: false },
+    { id: "c", name: "Fish oil", estimated: false },
   ];
-  assert.deepEqual(reconcilePills(existing, []), { create: [], softDelete: ["a"] });
+  assert.deepEqual(reconcilePills(existing, []), { create: [], softDelete: ["a", "b"] });
 });
 
 test("planOnboardingPut recomputes the starting picture from new answers and pills", () => {
@@ -301,6 +305,37 @@ test("planOnboardingPut recomputes the starting picture from new answers and pil
   assert.deepEqual(plan.patientData.startingPicture?.aLot, ["sodium"]);
   assert.equal(plan.patientData.startingPicture?.little.includes("vitaminC"), false);
   assert.equal(plan.patientData.startingPicture?.little.includes("fibre"), true);
+});
+
+test("planOnboardingPut merges sent answers over stored ones; null clears; {} is a no-op", () => {
+  const stored = { veg: 0, fruit: 0, beans: 0, grains: 0, fish: null, meat: 0, dairy: 0, packaged: 2, sweet: null };
+  const merged = planOnboardingPut({ usualEating: { fish: 2, packaged: null } }, { usualEating: stored, supplements: [] });
+  assert.deepEqual(merged.patientData.usualEating, { ...stored, fish: 2, packaged: null });
+  assert.equal(merged.patientData.startingPicture.aLot.includes("sodium"), false);
+  const noop = planOnboardingPut({ usualEating: {} }, { usualEating: stored, supplements: [] });
+  assert.equal(noop.patientData.usualEating, undefined);
+  assert.equal(noop.patientData.startingPicture.aLot.includes("sodium"), true);
+});
+
+test("planOnboardingPut: unlisted catalogue pills no longer count; noCondition true removes built-in links", () => {
+  const stored = { veg: 1, fruit: 1, beans: 0, grains: 1, fish: 0, meat: 0, dairy: 1, packaged: null, sweet: null };
+  const plan = planOnboardingPut(
+    { pills: [], noCondition: true },
+    { usualEating: stored, supplements: [{ id: "a", name: "Iron", estimated: false }] },
+  );
+  assert.deepEqual(plan.pillOps.softDelete, ["a"]);
+  assert.equal(plan.patientData.startingPicture.little.includes("iron"), true);
+  assert.equal(plan.removeBuiltInConditions, true);
+  assert.equal(planOnboardingPut({ noCondition: false }, { usualEating: null, supplements: [] }).removeBuiltInConditions, false);
+});
+
+test("heightToCm: cm, inches, feet and inches", () => {
+  assert.equal(heightToCm({ height: 170, heightUnit: "cm" }), 170);
+  assert.equal(heightToCm({ height: 170.04 }), 170);
+  assert.equal(heightToCm({ height: 70, heightUnit: "in" }), 177.8);
+  assert.equal(heightToCm({ height: null, heightUnit: "ftin", heightFt: 5, heightIn: 7 }), 170.2);
+  assert.equal(heightToCm({ height: 170, heightUnit: "ftin", heightFt: null, heightIn: null }), 170);
+  assert.equal(heightToCm({ height: null, heightUnit: "cm" }), null);
 });
 
 test("planOnboardingPut with only pills uses the stored answers", () => {
@@ -342,6 +377,19 @@ test("buildOnboardingResponse shapes the wire contract", () => {
     little: [{ key: "fibre", name: "Fibre" }],
     aLot: [{ key: "sodium", name: "Sodium" }],
   });
+});
+
+test("buildOnboardingResponse: noCondition only reports when no built-in links remain; height converts", () => {
+  const base = {
+    birthday: null, sexAtBirth: null, height: 70, heightUnit: "in", weight: null, physicalActivityId: null,
+    usualEating: null, startingPicture: null, weightGoal: null, allergyIds: [],
+  };
+  const args = { conditions: [{ id: "c1", name: "Migraine" }], allergies: [], activities: [], pills: [] };
+  const a = buildOnboardingResponse({ ...args, patient: { ...base, noCondition: true, conditionIds: [] } });
+  assert.equal(a.profile.noCondition, true);
+  assert.equal(a.profile.heightCm, 177.8);
+  const b = buildOnboardingResponse({ ...args, patient: { ...base, noCondition: true, conditionIds: ["c1"] } });
+  assert.equal(b.profile.noCondition, false);
 });
 
 test("buildOnboardingResponse with no patient is empty, not a crash", () => {

@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { internalError } from "@/lib/api-error";
+import { AccountClaimConflictError, getOrCreateAccount } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import {
   buildOnboardingResponse,
@@ -21,7 +22,20 @@ async function authorise() {
   if (!success) {
     return { error: NextResponse.json({ error: "Too many requests. Please slow down." }, { status: 429 }) };
   }
-  const account = await prisma.account.findUnique({ where: { clerkId: userId } });
+  let account;
+  try {
+    account = await getOrCreateAccount(userId);
+  } catch (err) {
+    if (err instanceof AccountClaimConflictError) {
+      return {
+        error: NextResponse.json(
+          { error: "email_conflict", message: "This email is already associated with another Wondish account. Contact support." },
+          { status: 409 },
+        ),
+      };
+    }
+    return { error: internalError("onboarding:account", err, "Couldn't load your account — please try again.") };
+  }
   if (!account) return { error: NextResponse.json({ error: "Account not found" }, { status: 404 }) };
   return { account };
 }
@@ -77,19 +91,25 @@ export async function PUT(req: NextRequest) {
   if (!v.ok) return NextResponse.json({ error: v.error, field: v.field }, { status: 422 });
 
   try {
-    const patient = await prisma.patient.upsert({
-      where: { accountId: a.account.id },
-      create: { accountId: a.account.id },
-      update: {},
-      include: { supplements: { where: { deletedAt: null }, select: { id: true, name: true, estimated: true } } },
-    });
-    const { patientData, pillOps } = planOnboardingPut(v.value, {
-      usualEating: patient.usualEating,
-      supplements: patient.supplements,
-    });
-    await prisma.$transaction([
-      ...pillOps.create.map((name) =>
-        prisma.supplement.create({
+    // One interactive transaction: the live pills are read in the same
+    // transaction as the writes, so two overlapping PUTs cannot both create.
+    await prisma.$transaction(async (tx) => {
+      const patient = await tx.patient.upsert({
+        where: { accountId: a.account.id },
+        create: { accountId: a.account.id },
+        update: {},
+        select: { id: true, usualEating: true },
+      });
+      const supplements = await tx.supplement.findMany({
+        where: { patientId: patient.id, deletedAt: null },
+        select: { id: true, name: true, estimated: true },
+      });
+      const { patientData, pillOps, removeBuiltInConditions } = planOnboardingPut(v.value, {
+        usualEating: patient.usualEating,
+        supplements,
+      });
+      for (const name of pillOps.create) {
+        await tx.supplement.create({
           data: {
             patientId: patient.id,
             name,
@@ -97,12 +117,21 @@ export async function PUT(req: NextRequest) {
             contents: TYPICAL_PILLS[name] as unknown as Prisma.InputJsonValue,
             estimated: true,
           },
-        }),
-      ),
-      ...(pillOps.softDelete.length
-        ? [prisma.supplement.updateMany({ where: { id: { in: pillOps.softDelete }, patientId: patient.id }, data: { deletedAt: new Date() } })]
-        : []),
-      prisma.patient.update({
+        });
+      }
+      if (pillOps.softDelete.length) {
+        await tx.supplement.updateMany({
+          where: { id: { in: pillOps.softDelete }, patientId: patient.id },
+          data: { deletedAt: new Date() },
+        });
+      }
+      if (removeBuiltInConditions) {
+        // Built-in links only; the person's own conditions stay.
+        await tx.patientHealthCondition.deleteMany({
+          where: { patientId: patient.id, condition: { ownerPatientId: null } },
+        });
+      }
+      await tx.patient.update({
         where: { id: patient.id },
         data: {
           startingPicture: patientData.startingPicture as unknown as Prisma.InputJsonValue,
@@ -110,8 +139,8 @@ export async function PUT(req: NextRequest) {
           ...(patientData.weightGoal !== undefined ? { weightGoal: patientData.weightGoal } : {}),
           ...(patientData.noCondition !== undefined ? { noCondition: patientData.noCondition } : {}),
         },
-      }),
-    ]);
+      });
+    });
     return NextResponse.json(await load(a.account.id));
   } catch (err) {
     return internalError("onboarding:put", err, "Couldn't save your answers — please try again.");
