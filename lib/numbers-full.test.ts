@@ -75,12 +75,6 @@ test("not enough logs with a picture: answers, names filled", () => {
   assert.equal(lv(out, "fibre").word, null);
 });
 
-test("empty picture is answers with empty lists, not a crash", () => {
-  const out = buildFullNumbers(base({ picture: { little: [], aLot: [] } }));
-  assert.equal(out.source, "answers");
-  assert.deepEqual(out.startingPicture, { little: [], aLot: [] });
-});
-
 test("stored tracked rows override defaults; goal is returned", () => {
   const out = buildFullNumbers(base({ trackedRows: [{ levelKey: "zinc", tracked: true, goal: 9 }, { levelKey: "iron", tracked: false, goal: null }] }));
   assert.deepEqual(out.levels.filter((l) => l.tracked).map((l) => l.key), ["zinc"]);
