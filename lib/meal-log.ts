@@ -33,14 +33,14 @@ import {
   resolveSex,
 } from "@/lib/caloric-engine";
 import { getPlanDayCalories } from "@/lib/meal-plan";
-import { formatLocalDate, MEAL_TYPES, type MealType } from "@/lib/local-date";
+import { formatLocalDate, addDays, MEAL_TYPES, type MealType } from "@/lib/local-date";
 
 // ─── Constants / allow-lists ────────────────────────────────────────────────
 
 // Re-exported from the pure lib/local-date.ts module so existing importers of
 // these names (routes, lib/meal-log.test.ts) are untouched, while the single
 // source of truth lives in the client-safe module.
-export { formatLocalDate, MEAL_TYPES };
+export { formatLocalDate, addDays, MEAL_TYPES };
 export type { MealType };
 
 export const MEAL_LOG_SOURCES = Object.values(MealLogSource) as MealLogSource[];
@@ -131,6 +131,14 @@ function checkLocalDate(v: unknown): ParseResult<string> {
   if (typeof v !== "string" || !LOCAL_DATE_RE.test(v)) {
     return fail("localDate is required and must be a YYYY-MM-DD string");
   }
+  return { ok: true, value: v };
+}
+
+// Optional ?today=YYYY-MM-DD from the client (its local date). Absent -> the
+// server date, which is only a fallback (UTC on Vercel).
+export function parseTodayParam(v: string | null): ParseResult<string> {
+  if (v == null) return { ok: true, value: formatLocalDate(new Date()) };
+  if (!LOCAL_DATE_RE.test(v)) return fail("today must be a YYYY-MM-DD string");
   return { ok: true, value: v };
 }
 

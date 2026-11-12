@@ -1,17 +1,17 @@
+// GET /api/log?from=YYYY-MM-DD&to=YYYY-MM-DD&today=YYYY-MM-DD
+//   from/to : inclusive range, max 31 days. With neither, the last 14 days.
+//   today   : the client's local date; used as the default `to`. Falls back to
+//             the server date when absent (UTC on Vercel, so send it).
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { formatLocalDate, validateRange } from "@/lib/meal-log";
+import { addDays } from "@/lib/local-date";
+import { parseTodayParam, validateRange } from "@/lib/meal-log";
 import { groupLogByDate } from "@/lib/log-view";
 
 const MAX_LOG_DAYS = 31;
 const DEFAULT_LOG_DAYS = 14;
-
-function addDays(localDate: string, delta: number): string {
-  const [y, m, d] = localDate.split("-").map(Number);
-  return formatLocalDate(new Date(y, m - 1, d + delta));
-}
 
 // ─── GET /api/log?from=YYYY-MM-DD&to=YYYY-MM-DD — read-only Log tab feed ─────
 export async function GET(req: NextRequest) {
@@ -27,8 +27,17 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   let from = searchParams.get("from");
   let to = searchParams.get("to");
-  if (to == null) to = from == null ? formatLocalDate(new Date()) : null;
-  if (from == null && to != null) from = addDays(to, -(DEFAULT_LOG_DAYS - 1));
+  if (from == null && to == null) {
+    // Neither given: default window is the last 14 days ending today.
+    const today = parseTodayParam(searchParams.get("today"));
+    if (!today.ok) return NextResponse.json({ error: today.error }, { status: today.status });
+    to = today.value;
+    from = addDays(to, -(DEFAULT_LOG_DAYS - 1));
+  } else if (searchParams.get("today") != null) {
+    // Validate even when unused so a malformed value is never silently ignored.
+    const today = parseTodayParam(searchParams.get("today"));
+    if (!today.ok) return NextResponse.json({ error: today.error }, { status: today.status });
+  }
   if (from == null || to == null) {
     return NextResponse.json({ error: "Both from and to are required for a range query" }, { status: 400 });
   }

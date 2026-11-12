@@ -805,3 +805,49 @@ test("CLARA create data stores stated macros; absent ones NULL + incomplete", ()
   assert.equal(data.incomplete, true);
   assert.equal(data.name, "Tonkotsu ramen");
 });
+
+// ─── optional sodium / estimated input ─────────────────────────────────────
+
+const clara = (extra: Record<string, unknown> = {}) => ({
+  localDate: "2026-11-12", mealType: "lunch", source: "CLARA", name: "Soup", servings: 1,
+  perServing: { calories: 100 }, ...extra,
+});
+
+test("sodium: negative, NaN and over-limit are rejected", () => {
+  for (const sodium of [-1, NaN, Infinity, 100001, "5"]) {
+    assert.equal(parseMealLogInput(clara({ sodium })).ok, false, String(sodium));
+  }
+});
+
+test("sodium and estimated: valid values are accepted", () => {
+  const r = parseMealLogInput(clara({ sodium: 450, estimated: true }));
+  assert.ok(r.ok);
+  if (r.ok) {
+    assert.equal(r.value.sodium, 450);
+    assert.equal(r.value.estimated, true);
+  }
+});
+
+test("estimated: non-boolean is rejected", () => {
+  for (const estimated of ["true", 1, {}]) {
+    assert.equal(parseMealLogInput(clara({ estimated })).ok, false, String(estimated));
+  }
+});
+
+test("create data has no sodium/estimated keys when neither is supplied", () => {
+  const r = parseMealLogInput(clara());
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  const data = buildMealLogCreateData("pat_1", r.value, resolveSnapshot(r.value, {}));
+  assert.equal("sodium" in data, false);
+  assert.equal("estimated" in data, false);
+});
+
+test("create data carries sodium/estimated when supplied", () => {
+  const r = parseMealLogInput(clara({ sodium: 450, estimated: true }));
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  const data = buildMealLogCreateData("pat_1", r.value, resolveSnapshot(r.value, {}));
+  assert.equal(data.sodium, 450);
+  assert.equal(data.estimated, true);
+});

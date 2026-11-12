@@ -22,6 +22,12 @@ export function formatLocalDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+// Calendar-day arithmetic on a "YYYY-MM-DD" string (no timezone involved).
+export function addDays(localDate: string, delta: number): string {
+  const [y, m, d] = localDate.split("-").map(Number);
+  return formatLocalDate(new Date(y, m - 1, d + delta));
+}
+
 // ─── Meal-type slugs (the four fixed sections) ──────────────────────────────
 // The canonical ordered list. lib/meal-log.ts re-exports this as MEAL_TYPES;
 // components/tracking/shared.ts re-exports it as MEAL_TYPE_ORDER (its existing

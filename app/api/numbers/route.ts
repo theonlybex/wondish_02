@@ -1,17 +1,17 @@
+// GET /api/numbers?days=7&today=YYYY-MM-DD
+//   days  : integer 1-31, default 7
+//   today : the client's local date; ends the window. Falls back to the server
+//           date when absent (UTC on Vercel, so clients should send it).
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { formatLocalDate, getDayTarget } from "@/lib/meal-log";
+import { addDays } from "@/lib/local-date";
+import { getDayTarget, parseTodayParam } from "@/lib/meal-log";
 import { summarizeLevels, type LevelDayInput } from "@/lib/levels";
 
 const DEFAULT_DAYS = 7;
 const MAX_DAYS = 31;
-
-function addDays(localDate: string, delta: number): string {
-  const [y, m, d] = localDate.split("-").map(Number);
-  return formatLocalDate(new Date(y, m - 1, d + delta));
-}
 
 // ─── GET /api/numbers?days=7 — read-only Numbers tab feed ────────────────────
 export async function GET(req: NextRequest) {
@@ -36,7 +36,9 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const toDate = formatLocalDate(new Date());
+  const today = parseTodayParam(new URL(req.url).searchParams.get("today"));
+  if (!today.ok) return NextResponse.json({ error: today.error }, { status: today.status });
+  const toDate = today.value;
   const fromDate = addDays(toDate, -(days - 1));
 
   const rows = await prisma.mealLog.findMany({
