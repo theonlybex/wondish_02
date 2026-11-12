@@ -19,8 +19,11 @@ export interface DishReason {
  * Fibre-rich ingredients, matched against the dish's (gated) ingredient names.
  * Every food noun takes `s?` — the plural trap (docs/qa/beta-test-plan.md):
  * a singular-only pattern never matches the catalog's own "Lentils".
- * Beans exclude the kinds that are not legumes eaten as pulses.
+ * Beans exclude the kinds that are not legumes eaten as pulses, and every
+ * noun is refused when it only names a product made from the food ("black
+ * bean sauce", "brown rice vinegar", "oat flour"): see NOT_A_PRODUCT.
  */
+const NOT_A_PRODUCT = String.raw`(?!\s+(?:sprouts?|sauces?|pastes?|vinegars?|syrups?|flours?|milks?|creams?|shoots?|malt)\b)`;
 const FIBRE_RICH: RegExp[] = [
   /\blentils?\b/i,
   /\bchickpeas?\b/i,
@@ -39,7 +42,7 @@ const FIBRE_RICH: RegExp[] = [
   /\bflax ?seeds?\b/i,
   /\bflax\b/i,
   /\blinseeds?\b/i,
-];
+].map((re) => new RegExp(re.source + NOT_A_PRODUCT, re.flags));
 
 /** Shown to the generator when fibre is little; the same foods the reason accepts. */
 export const FIBRE_RICH_EXAMPLES =
@@ -54,7 +57,14 @@ export function fibreRichIngredient(ingredients: readonly string[]): { name: str
   for (const name of ingredients) {
     for (const re of FIBRE_RICH) {
       const m = name.match(re);
-      if (m) return { name: name.trim(), plural: /s$/i.test(m[0]) };
+      if (!m) continue;
+      // A catalog name can carry a qualifier ("Lentils, red, dry", "Green peas
+      // (frozen)"); the sentence uses the part before it. When the fibre food
+      // is only in the qualifier ("Soup, lentil"), the matched word is used.
+      const cut = name.search(/[,(]/);
+      const head = (cut === -1 ? name : name.slice(0, cut)).trim();
+      const display = cut === -1 || (m.index ?? 0) < cut ? head : m[0];
+      return { name: display, plural: /s$/i.test(m[0]) };
     }
   }
   return null;

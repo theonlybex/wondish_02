@@ -596,3 +596,50 @@ test("the plan's shown-note does not claim the steps are on screen", async () =>
   const sug = await makeDishHandlers(spy().deps).suggest(CTX, { mealType: "dinner" });
   if (sug.ok) assert.match((sug.data as { shown: string }).shown, /steps/);
 });
+
+test("stepStatesAmount: review probes — a number before a food noun, and spelled-out amounts", () => {
+  for (const step of [
+    "Dice 1 onion.",
+    "Add 2 carrots.",
+    "Slice 1 large onion.",
+    "Add 2 chicken breasts.",
+    "Add one cup of lentils.",
+    "Add a tablespoon of oil.",
+    "Add half a cup of stock.",
+    "Season with a pinch of salt.",
+    "a pinch of salt",
+    // kept from the first round
+    "Add 1 1/2 cups water.",
+    "Mince 2-3 cloves garlic.",
+    "Add ½ cup oats.",
+    "Stir in 1tsp cumin.",
+    "Add 3 tbsp. olive oil.",
+    "Pour in 1 litre stock.",
+    "Add 1 can chickpeas.",
+    "Mince 2 or 3 cloves garlic.",
+    "Add two eggs.",
+  ]) {
+    assert.ok(stepStatesAmount(step), step);
+  }
+});
+
+test("stepStatesAmount: times, temperatures, lengths, step numbers and counts of actions are not amounts", () => {
+  for (const step of [
+    "Simmer 20 minutes.",
+    "Cook for 5 min.",
+    "Bake at 180°C until golden.",
+    "Bake at 350 F for 25-30 minutes.",
+    "Preheat the oven to 400°F (200°C).",
+    "Cut the carrots into 2 cm pieces.",
+    "Heat a 12-inch skillet.",
+    "Step 2: stir well.",
+    "Stir 2 or 3 times.",
+    "Cook for 2 to 3 minutes per side.",
+    "Divide between 2 bowls.",
+    "Rest for 1 hour, then slice.",
+    "Bring to a boil and simmer.",
+    "Add the lentils and the spinach.",
+  ]) {
+    assert.ok(!stepStatesAmount(step), step);
+  }
+});

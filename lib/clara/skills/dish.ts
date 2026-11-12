@@ -400,17 +400,50 @@ function pickDish(recipes: FridgeRecipe[], ask: DishAsk): FridgeRecipe | null {
 }
 
 /**
- * A measured amount in a step: a number (whole, decimal, "1/2" or "½") before a
- * kitchen unit or a counted thing. Times ("15 minutes"), temperatures and sizes
- * ("2 cm", "a 12-inch pan") are not amounts. No existing pattern fits: the
- * dish-plausibility ones are fat-only (FAT_IN_STEP) or decimal-only
- * (PROSE_AMOUNT), and both are module-private.
+ * Does a step state an amount of food? Two shapes:
+ *   - a NUMBER (whole, decimal, "1/2", "1 1/2", "½", or a range "2-3" / "2 to
+ *     3" / "2 or 3") followed, with an optional size word, by any word that is
+ *     not a time, temperature, length, cut shape, piece of equipment or other
+ *     non-amount (STEP_NOT_AN_AMOUNT): "Dice 1 onion", "Add 2 chicken breasts",
+ *     "1tsp", "2-3 cloves". Denylist rather than allowlist, because the food
+ *     noun can be anything; a stray false hit only drops a candidate dish.
+ *   - a SPELLED amount ("a", "an", "one" … "four", "half", "quarter") before a
+ *     kitchen unit: "one cup of lentils", "half a cup", "a pinch of salt".
+ * Not amounts: "simmer 20 minutes", "for 5 min", "180°C", "350 F", "2 cm
+ * pieces", "a 12-inch skillet", "Step 2:", "stir 2 or 3 times".
+ * No existing pattern fits: the dish-plausibility ones are fat-only
+ * (FAT_IN_STEP) or decimal-only (PROSE_AMOUNT), and both are module-private.
  */
-const STEP_AMOUNT =
-  /(?<![\w.])(?:\d+(?:\.\d+)?(?:\s*\/\s*\d+)?|\d*\s*[½⅓⅔¼¾⅛⅜⅝⅞])\s*(?:-|to)?\s*(?:\d+(?:\.\d+)?\s*)?(?:(?:large|medium|small|whole|fresh)\s+)?(?:teaspoons?|tsp|tablespoons?|tbsp|cups?|grams?|g|kg|kilograms?|ml|millilit(?:er|re)s?|l|lit(?:er|re)s?|ounces?|oz|pounds?|lbs?|cloves?|eggs?|slices?|cans?|tins?|pinch(?:es)?|handfuls?|sprigs?|stalks?|heads?|bunch(?:es)?)\b/i;
+const STEP_NUM = String.raw`(?:\d+\s+\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d*\s*[½⅓⅔¼¾⅛⅜⅝⅞]|\d+(?:\.\d+)?)`;
+const STEP_NUMBER_THEN_WORD = new RegExp(
+  String.raw`(?<![\w.\/])${STEP_NUM}(?:\s*(?:-|–|to|or)\s*${STEP_NUM})?\s*(?:(?:large|medium|small|whole|fresh|big|ripe|heaping|level)\s+)?([a-z][a-z']*)`,
+  "gi",
+);
+const STEP_NOT_AN_AMOUNT = new Set([
+  // time
+  "minute", "minutes", "min", "mins", "m", "hour", "hours", "hr", "hrs", "h", "second", "seconds", "sec", "secs", "s",
+  "day", "days", "night", "nights", "times", "time",
+  // temperature and length
+  "degree", "degrees", "deg", "f", "c", "cm", "mm", "centimeter", "centimeters", "centimetre", "centimetres",
+  "inch", "inches", "in",
+  // joining words and step labels
+  "to", "or", "and", "of", "x", "at", "on", "per", "until", "more", "then", "step", "steps",
+  // cut shapes, portions and equipment: they say how, not how much food
+  "piece", "pieces", "half", "halves", "quarter", "quarters", "wedge", "wedges", "strip", "strips", "chunk", "chunks",
+  "cube", "cubes", "layer", "layers", "part", "parts", "batch", "batches", "side", "sides", "serving", "servings",
+  "portion", "portions", "people", "person", "persons", "bowl", "bowls", "plate", "plates", "skillet", "skillets",
+  "pan", "pans", "pot", "pots", "tray", "trays", "sheet", "sheets", "dish", "dishes", "ramekin", "ramekins",
+  "jar", "jars", "glass", "glasses",
+]);
+const STEP_SPELLED_AMOUNT =
+  /\b(?:a|an|one|two|three|four|half|quarter)\s+(?:(?:heaping|heaped|level|scant|generous|small|large)\s+)?(?:teaspoons?|tsp|tablespoons?|tbsp|cups?|grams?|ounces?|oz|pounds?|lbs?|lit(?:er|re)s?|millilit(?:er|re)s?|pinch(?:es)?|dash(?:es)?|splash(?:es)?|knob|handfuls?|cloves?|cans?|tins?|eggs?|slices?|sprigs?|stalks?|bunch(?:es)?)\b/i;
 
 export function stepStatesAmount(step: string): boolean {
-  return STEP_AMOUNT.test(step);
+  if (STEP_SPELLED_AMOUNT.test(step)) return true;
+  for (const m of step.matchAll(STEP_NUMBER_THEN_WORD)) {
+    if (!STEP_NOT_AN_AMOUNT.has(m[1].toLowerCase())) return true;
+  }
+  return false;
 }
 
 /**

@@ -119,3 +119,25 @@ test("wording is about intake, never the body", () => {
     assert.ok(!/your (fibre|sodium) is/i.test(r.text), r.text);
   }
 });
+
+test("fibre list: a product made from the food is not the food", () => {
+  for (const name of [
+    "bean sprouts", "black bean sauce", "brown rice vinegar", "brown rice syrup", "oat flour", "oat cream",
+    "pea shoots", "flax milk", "barley malt", "chickpea flour",
+  ]) {
+    assert.equal(fibreRichIngredient([name]), null, name);
+  }
+});
+
+test("fibre reason: a catalog qualifier after a comma or parenthesis is left out of the sentence", () => {
+  const cases: [string, string][] = [
+    ["Lentils, red, dry", "Lentils are rich in fibre, and you've had little this week."],
+    ["Green peas (frozen)", "Green peas are rich in fibre, and you've had little this week."],
+    ["Quinoa (cooked), white", "Quinoa is rich in fibre, and you've had little this week."],
+    ["Soup, lentil", "Lentil is rich in fibre, and you've had little this week."],
+  ];
+  for (const [ingredient, text] of cases) {
+    const [r] = dishReasons({ ingredients: [ingredient], sodium: null }, LITTLE_FIBRE);
+    assert.equal(r?.text, text, ingredient);
+  }
+});
