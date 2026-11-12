@@ -206,7 +206,9 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
 
   const named = (keys: FullLevelKey[]) =>
     keys.filter((k) => LEVEL_BY_KEY.has(k)).map((k) => ({ key: k, name: LEVEL_BY_KEY.get(k)!.name }));
-  const source: FullNumbers["source"] = enoughLogs ? "logged" : input.picture ? "answers" : "none";
+  // A picture with both lists empty says nothing: it is no picture.
+  const picture = input.picture && (input.picture.little.length > 0 || input.picture.aLot.length > 0) ? input.picture : null;
+  const source: FullNumbers["source"] = enoughLogs ? "logged" : picture ? "answers" : "none";
   const calAvg = mean(counted.map((d) => d.calories));
 
   return {
@@ -217,8 +219,8 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
     levels,
     areas: AREAS.map((a) => ({ key: a.key, name: a.name, uses: [...a.uses] })),
     startingPicture:
-      source === "answers" && input.picture
-        ? { little: named(input.picture.little), aLot: named(input.picture.aLot) }
+      source === "answers" && picture
+        ? { little: named(picture.little), aLot: named(picture.aLot) }
         : null,
   };
 }

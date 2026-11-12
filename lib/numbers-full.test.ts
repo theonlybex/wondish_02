@@ -219,3 +219,9 @@ test("pillAmount and amount round the same way; 0.25 mg keeps its value", () => 
   assert.equal(lv(out, "vitaminB12").amount, 0.25);
   assert.equal(lv(out, "magnesium").pillAmount, lv(out, "magnesium").amount);
 });
+
+test("an empty picture (both lists empty) is no picture: source none, startingPicture null", () => {
+  const out = buildFullNumbers(base({ picture: { little: [], aLot: [] } }));
+  assert.equal(out.source, "none");
+  assert.equal(out.startingPicture, null);
+});

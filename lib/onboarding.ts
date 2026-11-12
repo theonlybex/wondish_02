@@ -230,11 +230,16 @@ export function planOnboardingPut(
     .map((s) => PILL_NAMES.find((n) => fold(n) === fold(s.name)))
     .filter((n): n is PillName => !!n);
   const reconciled = value.pills ? reconcilePills(current.supplements, value.pills) : { create: [], softDelete: [] };
-  // A live catalogue-named pill with no contents gets the typical ones, so it counts on Numbers.
-  const fillContents = current.supplements.flatMap((s) => {
-    const name = catalogueNameOf(s.name);
-    return name && s.contents == null && !reconciled.softDelete.includes(s.id) ? [{ id: s.id, name }] : [];
-  });
+  // Only a pill the person ticked in THIS request, and only if it has no contents,
+  // gets the typical ones (so it counts on Numbers). A PUT without `pills` touches no pill,
+  // so contents a person cleared on purpose stay cleared.
+  const requested = new Set((value.pills ?? []).map(fold));
+  const fillContents = value.pills
+    ? current.supplements.flatMap((s) => {
+        const name = catalogueNameOf(s.name);
+        return name && requested.has(fold(s.name)) && s.contents == null ? [{ id: s.id, name }] : [];
+      })
+    : [];
   const pillOps = { ...reconciled, fillContents };
   const finalPills: PillName[] = value.pills ?? livePillNames;
   const patientData: OnboardingPatientUpdate = { startingPicture: computeStartingPicture(merged, finalPills) };

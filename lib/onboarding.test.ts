@@ -436,7 +436,7 @@ test("buildOnboardingResponse: website pill 'vitamin d' shows ticked as 'Vitamin
 
 test("planOnboardingPut: a live catalogue pill with null contents is filled; others are not", () => {
   const plan = planOnboardingPut(
-    {},
+    { pills: ["Vitamin D", "Iron"] },
     {
       usualEating: null,
       supplements: [
@@ -455,4 +455,20 @@ test("planOnboardingPut: a pill being removed is not filled", () => {
     { usualEating: null, supplements: [{ id: "a", name: "Iron", estimated: false, contents: null }] },
   );
   assert.deepEqual(plan.pillOps.fillContents, []);
+});
+
+test("planOnboardingPut: a PUT without pills never touches any pill (cleared contents stay cleared)", () => {
+  const plan = planOnboardingPut(
+    { usualEating: { veg: 1 } },
+    { usualEating: null, supplements: [{ id: "a", name: "Iron", estimated: false, contents: null }] },
+  );
+  assert.deepEqual(plan.pillOps, { create: [], softDelete: [], fillContents: [] });
+});
+
+test("planOnboardingPut: a catalogue pill not in the requested list is not filled", () => {
+  const plan = planOnboardingPut(
+    { pills: ["Iron"] },
+    { usualEating: null, supplements: [{ id: "a", name: "Calcium", estimated: false, contents: null }, { id: "b", name: "Iron", estimated: false, contents: null }] },
+  );
+  assert.deepEqual(plan.pillOps.fillContents, [{ id: "b", name: "Iron" }]);
 });
