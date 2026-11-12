@@ -145,7 +145,7 @@ export interface DishDeps {
    * filter and every gate a generated dish passes, best first; [] when none.
    * Started alongside the model call, read only when no generated dish is served.
    */
-  library?(ctx: ClaraContext, ask: DishAsk): Promise<FridgeRecipe[]>;
+  library?(ctx: ClaraContext, ask: DishAsk, signal?: AbortSignal): Promise<FridgeRecipe[]>;
   /** The model's time budget per dish, ms (DISH_BUDGET_MS when absent). */
   budgetMs?: number;
   loggedMealTypes(patientId: string, today: string): Promise<string[]>;
@@ -370,6 +370,19 @@ const catalogTokens = cached(CACHE_MS, async () =>
 );
 
 /**
+ * The card logs the dish's declared fibre (pricing has no fibre column). A
+ * figure above the carbs — the declared carbs or the priced carbs the card
+ * shows — is a typo ("fiber": 180 seen live), not a dish, and there is no
+ * deterministic repair, so the dish is not used.
+ */
+export function fibreIsPlausible(r: FridgeRecipe): boolean {
+  const fibre = r.perServing.fiber;
+  if (!(fibre >= 0 && fibre <= MAX_FIBRE_G && fibre <= r.perServing.carbs)) return false;
+  const priced = pricedMacros(r);
+  return !priced || fibre <= priced.carbs;
+}
+
+/**
  * One candidate through the oil repair and every gate, alone. null when it
  * fails; `trace` (diagnostics only) says where.
  */
@@ -400,10 +413,7 @@ async function gateOne(
     sodiumLimitMg: person.sodiumLimitMg,
   });
   const r = gated[0];
-  // The card logs the dish's declared fibre (pricing has no fibre column). A
-  // figure above the carbs is a typo ("fiber": 180 seen live), not a dish:
-  // there is no deterministic repair, so the candidate is not used.
-  if (r && !(r.perServing.fiber <= r.perServing.carbs && r.perServing.fiber <= MAX_FIBRE_G)) {
+  if (r && !fibreIsPlausible(r)) {
     note(label, "gates");
     return null;
   }
@@ -421,7 +431,16 @@ async function gateOne(
  * `accept` (or the signal fires) and returns the gated dishes so far. [] on
  * any failure. Never retries: the library is the fallback, not a second call.
  */
-async function generateGated(ctx: ClaraContext, ask: DishAsk, opts: GenerateOptions = {}): Promise<FridgeRecipe[]> {
+/** The one SDK call the generator makes; a fake in tests (createLiveDishDeps). */
+export type DishModelClient = Pick<Anthropic, "messages">;
+const defaultDishClient = (): DishModelClient => createAnthropic({ timeout: 45_000, maxRetries: 0 });
+
+async function generateGated(
+  ctx: ClaraContext,
+  ask: DishAsk,
+  opts: GenerateOptions = {},
+  client: () => DishModelClient = defaultDishClient,
+): Promise<FridgeRecipe[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
   const t0 = Date.now();
   const note = (name: string, stage: CandidateTrace["stage"]) => opts.trace?.({ ms: Date.now() - t0, name, stage });
@@ -437,7 +456,7 @@ async function generateGated(ctx: ClaraContext, ask: DishAsk, opts: GenerateOpti
   const accepted: FridgeRecipe[] = [];
   const seen = new Set<string>();
   try {
-    const stream = await createAnthropic({ timeout: 45_000, maxRetries: 0 }).messages.create(
+    const stream = await client().messages.create(
       {
         model: CLARA_MODEL,
         max_tokens: DISH_MAX_TOKENS,
@@ -473,7 +492,8 @@ async function generateGated(ctx: ClaraContext, ask: DishAsk, opts: GenerateOpti
       }
       if (stop.signal.aborted) break;
     }
-    if (stopReason === "refusal") console.warn(`[clara-dish] ${meal}: the model declined (refusal)`);
+    // No user content in the log: the meal and the stop reason only.
+    if (stopReason === "refusal") console.warn(`[clara-dish] ${meal}: stop_reason refusal (the model declined); the library dish covers it`);
   } catch (err) {
     if (!stop.signal.aborted) {
       const e = err as { status?: number; message?: string };
@@ -529,7 +549,18 @@ function libraryPool(mealType: DishMealType): Promise<LibraryRecipe[]> {
   return load();
 }
 
-/** What they logged in the last 7 days: never offered again as the fallback. */
+/** What they logged in the last 7 days: never offered again as the fallback. Once per tool call. */
+const recentMemo = new WeakMap<ClaraContext, Promise<RecentDishes>>();
+function recentFor(ctx: ClaraContext): Promise<RecentDishes> {
+  let p = recentMemo.get(ctx);
+  if (!p) {
+    p = recentDishes(ctx.patientId, ctx.today);
+    recentMemo.set(ctx, p);
+    p.catch(() => recentMemo.delete(ctx));
+  }
+  return p;
+}
+
 async function recentDishes(patientId: string, today: string): Promise<RecentDishes> {
   const from = new Date(`${today}T12:00:00Z`);
   from.setUTCDate(from.getUTCDate() - 7);
@@ -543,7 +574,7 @@ async function recentDishes(patientId: string, today: string): Promise<RecentDis
   };
 }
 
-/** How many ranked library recipes are gated at a time, until enough pass. */
+/** How many ranked library recipes are gated at a time (CPU only), until enough pass. */
 const LIBRARY_CHUNK = 12;
 const LIBRARY_KEEP = 3;
 
@@ -551,15 +582,18 @@ const LIBRARY_KEEP = 3;
  * Library recipes for this ask, ranked by rankLibrary (the planner's rule
  * filter first) and then put through gateGeneratedDishes exactly like a
  * generated dish, oil repair included. Keeps the first few that pass.
+ * `signal` fires once a generated dish is served: from then on no further
+ * query is made (the allergen groups for every ranked candidate are loaded in
+ * ONE query, after the check).
  */
-async function libraryGated(ctx: ClaraContext, ask: DishAsk): Promise<FridgeRecipe[]> {
+async function libraryGated(ctx: ClaraContext, ask: DishAsk, signal?: AbortSignal): Promise<FridgeRecipe[]> {
   const [person, pool, recent, catalogFoodTokens] = await Promise.all([
     personFor(ctx),
     libraryPool(ask.mealType),
-    recentDishes(ctx.patientId, ctx.today),
+    recentFor(ctx),
     catalogTokens(),
   ]);
-  if (!person) return [];
+  if (!person || signal?.aborted) return [];
   const meal = capitalize(ask.mealType);
   const ranked = rankLibrary(
     pool,
@@ -574,16 +608,22 @@ async function libraryGated(ctx: ClaraContext, ask: DishAsk): Promise<FridgeReci
     recent,
     stepStatesAmount,
   );
+  if (ranked.length === 0) return [];
   const oil = oilAllowedBy(person.matchers);
+  const candidates = ranked.map((r) => specifyCookingOil(libraryToFridge(r, meal, ask.servings ?? 1, `frg_${crypto.randomUUID()}`), oil));
+  if (signal?.aborted) return [];
+  // The same catalog lookup a generated dish gets, for every candidate at once.
+  const groupsOf = await loadIngredientGroups(candidates.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
   const out: FridgeRecipe[] = [];
-  for (let i = 0; i < ranked.length && out.length < LIBRARY_KEEP; i += LIBRARY_CHUNK) {
-    const chunk = ranked
-      .slice(i, i + LIBRARY_CHUNK)
-      .map((r) => specifyCookingOil(libraryToFridge(r, meal, ask.servings ?? 1, `frg_${crypto.randomUUID()}`), oil));
-    // The stored rows carry their own groups; the catalog lookup is the same one a generated dish gets.
-    const groupsOf = await loadIngredientGroups(chunk.flatMap((r) => r.usesIngredients));
-    const gated = gateGeneratedDishes(chunk, { mealTypeName: meal, matchers: person.matchers, groupsOf, catalogFoodTokens, sodiumLimitMg: person.sodiumLimitMg });
-    for (const r of gated) if (pickDish([r], ask)) out.push(readableAmounts(r));
+  for (let i = 0; i < candidates.length && out.length < LIBRARY_KEEP && !signal?.aborted; i += LIBRARY_CHUNK) {
+    const gated = gateGeneratedDishes(candidates.slice(i, i + LIBRARY_CHUNK), {
+      mealTypeName: meal,
+      matchers: person.matchers,
+      groupsOf,
+      catalogFoodTokens,
+      sodiumLimitMg: person.sodiumLimitMg,
+    });
+    for (const r of gated) if (fibreIsPlausible(r) && pickDish([r], ask)) out.push(readableAmounts(r));
   }
   return out.slice(0, LIBRARY_KEEP);
 }
@@ -591,31 +631,39 @@ async function libraryGated(ctx: ClaraContext, ask: DishAsk): Promise<FridgeReci
 /** The live budget. A mutable object only so the offline simulation can shorten it (sim/clara-first.sim.ts). */
 export const dishTiming = { budgetMs: DISH_BUDGET_MS };
 
-const prismaDeps: DishDeps = {
-  get budgetMs() {
-    return dishTiming.budgetMs;
-  },
-  // Claims only where Numbers says the same (simulation finding 2).
-  loadSummary: (patientId, today) => loadClaraLevelSummary(patientId, today, 7),
-  generate: generateGated,
-  library: libraryGated,
-  loadStartingPicture: async (patientId) => {
-    // Computed now from the answers and the live pills (the stored column can be stale).
-    const row = await prisma.patient.findUnique({
-      where: { id: patientId },
-      select: { usualEating: true, supplements: { where: { deletedAt: null }, select: { name: true } } },
-    });
-    return parseStartingPicture(row && currentStartingPicture(row.usualEating, row.supplements.map((x) => x.name)));
-  },
-  loggedMealTypes: async (patientId, today) => {
-    const rows = await prisma.mealLog.findMany({
-      where: { patientId, localDate: today, deletedAt: null },
-      select: { mealType: true },
-      distinct: ["mealType"],
-    });
-    return rows.map((r) => r.mealType);
-  },
-};
+/**
+ * The production effects. `client` replaces the model client (tests drive the
+ * real gates with a fake stream); everything else is the real code.
+ */
+export function createLiveDishDeps(io: { client?: () => DishModelClient } = {}): DishDeps {
+  return {
+    get budgetMs() {
+      return dishTiming.budgetMs;
+    },
+    // Claims only where Numbers says the same (simulation finding 2).
+    loadSummary: (patientId, today) => loadClaraLevelSummary(patientId, today, 7),
+    generate: (ctx, ask, opts) => generateGated(ctx, ask, opts, io.client),
+    library: libraryGated,
+    loadStartingPicture: async (patientId) => {
+      // Computed now from the answers and the live pills (the stored column can be stale).
+      const row = await prisma.patient.findUnique({
+        where: { id: patientId },
+        select: { usualEating: true, supplements: { where: { deletedAt: null }, select: { name: true } } },
+      });
+      return parseStartingPicture(row && currentStartingPicture(row.usualEating, row.supplements.map((x) => x.name)));
+    },
+    loggedMealTypes: async (patientId, today) => {
+      const rows = await prisma.mealLog.findMany({
+        where: { patientId, localDate: today, deletedAt: null },
+        select: { mealType: true },
+        distinct: ["mealType"],
+      });
+      return rows.map((r) => r.mealType);
+    },
+  };
+}
+
+const prismaDeps: DishDeps = createLiveDishDeps();
 
 // ─── building the reply ─────────────────────────────────────────────────────
 
@@ -828,8 +876,10 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Promise<BuiltDish | null> {
   const budget = deps.budgetMs ?? DISH_BUDGET_MS;
   const started = Date.now();
+  // Fired once a generated dish is served: the library stops making queries.
+  const libraryStop = new AbortController();
   const library: Promise<FridgeRecipe[]> = deps.library
-    ? deps.library(ctx, ask).catch((err) => {
+    ? deps.library(ctx, ask, libraryStop.signal).catch((err) => {
         console.warn(`[clara-dish] library failed: ${(err as Error)?.message ?? String(err)}`);
         return [];
       })
@@ -854,7 +904,10 @@ async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Pro
     clearTimeout(timer);
   }
   const picked = pickDish(recipes, ask);
-  if (picked) return buildDish(picked, ask, "generated");
+  if (picked) {
+    libraryStop.abort();
+    return buildDish(picked, ask, "generated");
+  }
 
   // The library had the whole budget to load; it gets a little more, never unbounded.
   const waitMs = Math.max(0, started + budget + LIBRARY_GRACE_MS - Date.now());

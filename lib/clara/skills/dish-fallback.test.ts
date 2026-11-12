@@ -270,3 +270,19 @@ test("rankLibrary never offers one person a multi-serving recipe whose steps sta
   const single = lib("one serving", [["lentils"], ["spinach"]], { steps: ["Simmer 50 g lentils for 20 minutes.", "Serve."] });
   assert.deepEqual(rankLibrary([single], { mealType: "dinner", little: [], aLot: [] }, { patient: {} as any, matchers: m, seed: "s" }, NONE, statesAmount).map((r) => r.id), ["one serving"], "a one-serving recipe's amounts are per serving: fine for one");
 });
+
+test("once a generated dish is served, the library's signal fires (no more library work)", async () => {
+  let librarySignal: AbortSignal | undefined;
+  const res: any = await makeDishHandlers(deps({
+    generate: async () => [dish("Model Stew")],
+    library: async (_c, _a, signal) => { librarySignal = signal; return [dish("Library Stew")]; },
+  })).suggest(CTX, { mealType: "dinner" });
+  assert.equal(res.data.dish.source, "generated");
+  assert.equal(librarySignal?.aborted, true);
+});
+
+test("when the library dish is served, its signal never fired", async () => {
+  let librarySignal: AbortSignal | undefined;
+  await makeDishHandlers(deps({ generate: async () => [], library: async (_c, _a, signal) => { librarySignal = signal; return [dish("Library Stew")]; } })).suggest(CTX, { mealType: "dinner" });
+  assert.equal(librarySignal?.aborted, false);
+});
