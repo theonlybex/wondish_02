@@ -224,9 +224,11 @@ const CANDIDATES = 3;
  * past it, the model call is aborted and the library dish (already chosen in
  * parallel) is served instead, so the person always has an answer by then.
  */
-export const DISH_BUDGET_MS = 9_000;
+export const DISH_BUDGET_MS = 8_000;
 /** After the budget, how long the generator may take to hand back what it already gated. */
 const ABORT_GRACE_MS = 300;
+/** More fibre than this in one serving is not a real dish. */
+const MAX_FIBRE_G = 40;
 /** Three lean dishes on Haiku 5.5's tokenizer, with room; the stream usually stops after the first. */
 const DISH_MAX_TOKENS = 4096;
 
@@ -398,6 +400,13 @@ async function gateOne(
     sodiumLimitMg: person.sodiumLimitMg,
   });
   const r = gated[0];
+  // The card logs the dish's declared fibre (pricing has no fibre column). A
+  // figure above the carbs is a typo ("fiber": 180 seen live), not a dish:
+  // there is no deterministic repair, so the candidate is not used.
+  if (r && !(r.perServing.fiber <= r.perServing.carbs && r.perServing.fiber <= MAX_FIBRE_G)) {
+    note(label, "gates");
+    return null;
+  }
   if (!r || seen.has(r.name.trim().toLowerCase())) {
     note(label, applyAllergenFilter([named], person.matchers, groupsOf).length === 0 ? "safety" : "gates");
     return null;

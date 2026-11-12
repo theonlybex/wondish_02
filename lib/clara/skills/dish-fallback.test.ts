@@ -220,13 +220,14 @@ test("rankLibrary applies the planner's rule filter: banned names AND stored all
   assert.deepEqual(ranked.map((r) => r.id), ["ok"]);
 });
 
-test("rankLibrary drops disliked, recent, incomplete (no amount, no fibre figure) recipes", () => {
+test("rankLibrary drops disliked, recent, incomplete (no amount, no or impossible fibre figure) recipes", () => {
   const m = buildDietMatchers(derivePatientBans(graph({})));
   const pool = [
     lib("disliked", [["oats"], ["pear"]]),
     lib("recent", [["oats"], ["pear"]]),
     lib("noqty", [["oats"], ["pear"]], { ingredients: [{ quantity: null, unit: null, ingredient: { name: "oats" } }, { quantity: 1, unit: "", ingredient: { name: "pear" } }] }),
     lib("nofibre", [["oats"], ["pear"]], { fiber: null }),
+    lib("fibre above carbs", [["oats"], ["pear"]], { fiber: 90 }),
     lib("keep", [["oats"], ["pear"]]),
   ];
   const ranked = rankLibrary(pool, { mealType: "dinner", little: [], aLot: [] }, { patient: { dishPreferences: [{ recipeId: "disliked" }] } as any, matchers: m, seed: "s" }, { recipeIds: new Set(["recent"]), names: new Set() }, noAmounts);

@@ -93,6 +93,8 @@ export function rankLibrary(
     if (disliked.has(r.id) || recent.recipeIds.has(r.id) || recent.names.has(r.name.trim().toLowerCase())) continue;
     if (r.ingredients.length < 2 || r.ingredients.some((ri) => ri.quantity == null || !(ri.quantity > 0))) continue;
     if (r.fiber == null || stepsOf(r).length === 0) continue;
+    // The card logs this fibre figure: one above the carbs is a data error, not a dish.
+    if (r.carbs == null || r.fiber > r.carbs) continue;
     // A few stored names carry editing notes ("Caribbean Casserole , V2S- 1/3 cup black beans"): not a card title.
     if (/\d/.test(r.name)) continue;
     const names = r.ingredients.map((ri) => ri.ingredient.name);
