@@ -72,10 +72,15 @@ the model, the new design also ran on Haiku 4.5 for the same 28 hard asks (the c
    disliked; `evaluateDishAgainstProfile` over the catalog ingredient names *and* their stored allergen groups), with
    complete data only (every amount, steps, a fibre figure not above the carbs, no editing notes in the name), not one
    of the person's dishes from the last 7 days; ranked by the levels (fibre-rich ingredient when they get little fibre,
-   nothing salty when they get a lot of sodium), the asked time, and for several servings steps without amounts; then
-   put through **every gate a generated dish passes** (`gateGeneratedDishes`, oil repair included) and `pickDish`.
-   It is held to the stricter of both paths. Served through the same card, with its stored amounts per serving, steps
-   and macros.
+   nothing salty when they get a lot of sodium) and the asked time. Steps that state amounts are allowed only for a
+   one-serving recipe asked for one person (review fix I1: a 4-serving recipe saying "add 1 teaspoon salt" is never
+   shown with a ¼-teaspoon card). Then put through **every gate a generated dish passes** (`gateGeneratedDishes`, oil
+   repair included) and `pickDish`; the allergen groups for every ranked candidate load in one query, and nothing
+   more is queried once a generated dish has been served (review fix I4). It is held to the stricter of both paths.
+   Served through the same card as a generated dish: the stored amounts divided by the recipe's servings and the
+   stored steps; calories and macros **priced from those amounts** where pricing covers the dish (the stored figures
+   only otherwise) and sodium **computed** the same way (null unless fully known) — only fibre is the stored figure,
+   and it is refused if it is above the declared or the priced carbs.
 6. **Time budget: 8 s per dish** (`DISH_BUDGET_MS`), enforced by aborting the model request; what was gated before the
    deadline still counts; a generator that ignores the abort is cut off 300 ms later; the library gets at most 1.5 s
    beyond the budget. `dish_plan_today` runs each meal's dish with its own budget, in parallel, and the person is
@@ -181,3 +186,37 @@ the minimum cacheable prompt (4,096 tokens) is above the whole prompt. Time to f
 
 Reproduce the tables: `node --import tsx sim/clara-fast-report.ts sim/.snapshot/fast-after-5.5.jsonl --budget=8000`
 (and `--match=sim/.snapshot/fast-after-4.5.jsonl` for the like-for-like subset).
+
+## Review fixes (after the first report)
+
+- **I1** library: no multi-serving recipe whose steps state amounts for one person (or any recipe with step amounts for
+  several people) — a hard filter in `rankLibrary`, so neither the card nor the cook-mode recipe can disagree with its steps.
+- **I2** chat loop: the final round keeps the **same tools** (Haiku 5.5 binds thinking blocks to the system, tools and
+  earlier messages; `tools: []` on the last round could be a 400) and gets `TOOL_BUDGET_SPENT_NOTE` as a text block after
+  the last tool results — append-only, and a text block cannot 400 on any model, where a mid-conversation `role: "system"`
+  message (also append-only per the claude-api guide) is a 400 on models without it. A tool call on that round is still
+  never executed (local hard stop).
+- **I3** tests against the real safety code: `lib/clara/skills/dish-live-gates.test.ts` (in-memory Prisma, fake stream).
+- **I4** library work stops once a generated dish is served; one allergen-groups query; recent dishes once per call.
+- Minors: fibre also checked against the priced carbs; refusals logged (category only, no user content) in chat and the
+  dish generator; the dish tool descriptions say "suggest", made now or from the library, and point at `source`.
+
+## Haiku 5.5 smoke checks
+
+`sim/clara-haiku55-smoke.sim.ts`, real model, in-memory store only (database URLs removed), one vegetarian person with
+egg and dairy allergies. **14 live calls** (cap 24), no retries (every call counted). No 400 anywhere.
+
+| Site | Ran? | Result | Latency |
+|---|---|---|---|
+| Clara chat, plain turn (real loop, all tools, effort low) | yes | `end_turn`, sensible two-sentence answer, no tool | TTFT 0.7 s, total 1.1 s |
+| Clara chat, `dish_suggest` (generated) | yes | `tool_use` → dish generated (Chickpea and Tomato Skillet with Quinoa) → `end_turn`; says nothing is logged yet | TTFT 1.5 s; total 7.1 s (dish call 4.5 s, stopped at the first fitting dish) |
+| Clara chat, `dish_suggest` with a **library** dish | yes | Honours `LIBRARY_NOTE`: *"Here's a lunch idea from the Wondish recipe library: Garbanzo Beans with Kale, Bell Peppers and Cucumbers."* — no "made for you" | total 2.1 s |
+| Clara chat, tool-round limit (maxToolRounds 1, three tools asked) | yes | Round 1 called 3 tools in parallel (numbers, today's log, `dish_plan_today`); the final round (same tools + budget note) answered with `end_turn` and called no tool; no 400. In the plan reply the library lunch was again called "a recipe from the Wondish library" | round 1 TTFT 2.5 s; final round TTFT 3.1 s; total 12.9 s (3 dish calls in parallel inside) |
+| Feedback triage | yes | `tool_use` (forced, thinking skipped as documented); WRONG_FOOD / MEDIUM, sensible title | 1.5 s, 264 out tokens |
+| Fridge route (same call style as cook-day and clara-swap: forced tool, thinking disabled, 5,376 max tokens) | yes | 200, three recipes, all compliant after the filter | 5.1 s, 1,180 out tokens |
+| Meal-plan swap (`clara-swap`) | **no** | Reads `menu`/same-day menus and writes the chosen recipe; the in-memory store does not model menus and refuses writes. Exercising it needs the real database — not done. The fridge row covers its call shape. | — |
+| Cook-day | **no** | Reads pantry rows and writes recipes; same reason. The fridge row covers its call shape. | — |
+| Recipe-generation top-up (8 lunches, the largest chunk) | yes (model call only) | `tool_use`, 8 dishes, 5,605 out tokens — inside the new 10,752 cap (would have been 68% of 8,192 before). All 8 were then rejected by the allergen filter, **an artifact of the smoke**: it passed an empty prompt ban list, so the model was never told the person is vegetarian with egg/dairy allergies; persistence was not reached (read-only store) | 19.0 s |
+
+Not verifiable here: whether the chat rounds carried thinking blocks at effort low (the adapter does not expose them),
+so the "no 400" on the final round shows the request shape is accepted, not that a replayed thinking block was checked.
