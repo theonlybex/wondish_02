@@ -40,6 +40,7 @@ import {
   clampAddedSalt,
   clampCookingFat,
   repairAmount,
+  saltRowTsp,
   readableProse,
   readableDescription,
   longestStepMinutes,
@@ -47,8 +48,9 @@ import {
   BREAKFAST_MAX_MINUTES,
   SNACK_MAX_MINUTES,
 } from "@/lib/dish-plausibility";
-import { FIBRE_TARGET_G, type LevelKey, type LevelSummary } from "@/lib/levels";
-import { dishReasons, FIBRE_REASON_MIN_G, SODIUM_REASON_MAX_MG } from "@/lib/dish-reasons";
+import { priceDish, gramsOf } from "@/lib/staple-density";
+import type { LevelKey, LevelSummary } from "@/lib/levels";
+import { dishReasons, FIBRE_RICH_EXAMPLES, SODIUM_REASON_MAX_MG } from "@/lib/dish-reasons";
 import type { ClaraPart, ClaraRecipe } from "../parts";
 import type { ClaraContext, Skill, ToolResult } from "../types";
 
@@ -73,8 +75,10 @@ export const COULDNT_FIT_NOTE =
 export const EATING_OUT_NOTE =
   "Dinner is out tonight, so it is not planned. Ask them to send the menu (a photo or the dish names) and you will help pick what fits.";
 export const ALL_LOGGED_NOTE = "Every meal today is already logged, so there is nothing left to plan.";
-const SHOWN_NOTE =
-  "The dish card (and its steps) is already shown under your message: name the dish and the reasons in a sentence or two, do not list the recipe.";
+const SUGGEST_SHOWN_NOTE =
+  "The dish card and its steps are already shown under your message: name the dish and the reasons in a sentence or two, do not list the recipe.";
+const PLAN_SHOWN_NOTE =
+  "A card for each dish is already shown under your message: name each dish and its reasons briefly, do not list recipes. The steps are not shown yet; they come when the person picks a dish to cook.";
 
 /** What the generator is asked for. `summary` lets it lean into this week's levels. */
 export interface DishAsk {
@@ -161,7 +165,7 @@ const CANDIDATES = 3;
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function dishSystemPrompt(a: {
+export function dishSystemPrompt(a: {
   ask: DishAsk;
   foodMapText: string;
   bannedNames: string[];
@@ -174,7 +178,7 @@ function dishSystemPrompt(a: {
   const leanInto: string[] = [];
   if (ask.summary.little.includes("fibre")) {
     leanInto.push(
-      `- They have had little fibre this week: build every dish so ONE serving gives at least ${FIBRE_REASON_MIN_G} g of fibre (beans, lentils, whole grains, vegetables, fruit). The day's target is ${FIBRE_TARGET_G} g.`,
+      `- They have had little fibre this week: build every dish around a fibre-rich ingredient (${FIBRE_RICH_EXAMPLES}).`,
     );
   }
   if (ask.summary.aLot.includes("sodium")) {
@@ -186,6 +190,9 @@ function dishSystemPrompt(a: {
     `You are Clara, Wondish's nutrition assistant. Suggest ${CANDIDATES} different, realistic, home-cookable ${meal} dishes for this person to cook today. The app shows the first one that passes its checks.`,
     `Rules:`,
     `- mealType must be exactly "${meal}". servings is ${servings}; every amount and every perServing number is for ONE serving.`,
+    servings > 1
+      ? `- The app scales the amounts to ${servings} people, so write the steps WITHOUT amounts: "add the lentils", never "add 1 cup lentils" or "stir in 2 tablespoons of oil".`
+      : ``,
     ask.maxMinutes !== undefined
       ? `- Each dish must take at most ${ask.maxMinutes} minutes in total (prepMinutes + cookMinutes), and no step may take longer than that.`
       : `- prepMinutes and cookMinutes: realistic whole minutes for a home cook. No single step may take longer than prepMinutes + cookMinutes.`,
@@ -306,7 +313,9 @@ const LEVEL_NAME: Record<LevelKey, string> = {
   sodium: "sodium",
 };
 
-function levelsPart(summary: LevelSummary): ClaraPart {
+/** null when no level has a word: an empty chip row says nothing. */
+function levelsPart(summary: LevelSummary): ClaraPart | null {
+  if (summary.little.length === 0 && summary.aLot.length === 0) return null;
   return {
     kind: "levels",
     little: summary.little.map((key) => ({ key, name: LEVEL_NAME[key] })),
@@ -332,9 +341,10 @@ function buildDish(r: FridgeRecipe, ask: DishAsk): BuiltDish {
     protein: priced?.protein ?? r.perServing.protein,
     carbs: priced?.carbs ?? r.perServing.carbs,
     fat: priced?.fat ?? r.perServing.fat,
-    // Pricing has no fibre column; the generator stores the dish's own figure.
+    // Pricing has no fibre column; this is the dish's own declared figure. It
+    // is stored for the log only — no reason is ever built on it.
     fibre: r.perServing.fiber,
-    sodium: priced ? priced.sodiumMg : null,
+    sodium: completeSodiumMg(r),
   };
   const minutes = minutesOf(r, ask.mealType);
   const recipe: ClaraRecipe = {
@@ -357,7 +367,7 @@ function buildDish(r: FridgeRecipe, ask: DishAsk): BuiltDish {
       name: r.name,
       minutes,
       calories: perServing.calories,
-      reasons: dishReasons({ fibre: perServing.fibre, sodium: perServing.sodium }, ask.summary),
+      reasons: dishReasons({ ingredients: r.usesIngredients, sodium: perServing.sodium }, ask.summary),
       recipe,
     },
     steps: {
@@ -376,13 +386,60 @@ function buildDish(r: FridgeRecipe, ask: DishAsk): BuiltDish {
  * time at all is skipped too: the card has to say how long it takes.
  */
 function pickDish(recipes: FridgeRecipe[], ask: DishAsk): FridgeRecipe | null {
+  const multi = (ask.servings ?? 1) > 1;
   for (const r of recipes) {
     const minutes = minutesOf(r, ask.mealType);
     if (minutes <= 0) continue;
     if (ask.maxMinutes !== undefined && minutes > ask.maxMinutes) continue;
+    // Amounts are per serving and the app scales them; a step that names an
+    // amount would tell a cook for six to use one person's portion.
+    if (multi && r.steps.some(stepStatesAmount)) continue;
     return r;
   }
   return null;
+}
+
+/**
+ * A measured amount in a step: a number (whole, decimal, "1/2" or "½") before a
+ * kitchen unit or a counted thing. Times ("15 minutes"), temperatures and sizes
+ * ("2 cm", "a 12-inch pan") are not amounts. No existing pattern fits: the
+ * dish-plausibility ones are fat-only (FAT_IN_STEP) or decimal-only
+ * (PROSE_AMOUNT), and both are module-private.
+ */
+const STEP_AMOUNT =
+  /(?<![\w.])(?:\d+(?:\.\d+)?(?:\s*\/\s*\d+)?|\d*\s*[½⅓⅔¼¾⅛⅜⅝⅞])\s*(?:-|to)?\s*(?:\d+(?:\.\d+)?\s*)?(?:(?:large|medium|small|whole|fresh)\s+)?(?:teaspoons?|tsp|tablespoons?|tbsp|cups?|grams?|g|kg|kilograms?|ml|millilit(?:er|re)s?|l|lit(?:er|re)s?|ounces?|oz|pounds?|lbs?|cloves?|eggs?|slices?|cans?|tins?|pinch(?:es)?|handfuls?|sprigs?|stalks?|heads?|bunch(?:es)?)\b/i;
+
+export function stepStatesAmount(step: string): boolean {
+  return STEP_AMOUNT.test(step);
+}
+
+/**
+ * Sodium per serving, only when every source of it is known: the dish prices
+ * in full (no unweighable row behind the coverage minimum, which priceDish
+ * counts as 0 mg) and every salty seasoning row has a weight priceDish can
+ * turn into mg. Otherwise null — "only 120 mg" must never be an undercount.
+ */
+const SALT_ROW = /\bsalt\b/i;
+// Seasonings priceDish skips from the calories but prices for sodium, each by
+// a DENSITY row with a sodium figure (lib/staple-density.ts).
+const SODIUM_PRICED_SEASONING = /\b(broths?|stocks?|bouillon|soy sauce|tamari|fish sauce|worcestershire|mustard|hot sauce|sriracha|olives?|capers?)\b/i;
+// Salty names with no sodium figure anywhere: never priceable.
+const SODIUM_UNPRICED_SEASONING = /\b(seasonings?|baking soda|baking powder|bicarbonate|miso|gochujang|bouillon cubes?|stock cubes?|oyster sauce|hoisin|teriyaki|cajun|adobo|furikake|msg)\b/i;
+
+export function completeSodiumMg(r: FridgeRecipe): number | null {
+  const ingredients = toPlausibleDish(r, "").ingredients;
+  const priced = priceDish(ingredients, r.steps ?? null);
+  if (!priced || priced.coverage < 1) return null;
+  for (const i of ingredients) {
+    if (SALT_ROW.test(i.name)) {
+      const pinch = i.quantity != null && i.quantity > 0 && /\b(pinch(es)?|dash(es)?)\b/i.test(i.unit ?? "");
+      if (saltRowTsp(i.quantity, i.unit) === null && !pinch) return null;
+      continue;
+    }
+    if (SODIUM_UNPRICED_SEASONING.test(i.name)) return null;
+    if (SODIUM_PRICED_SEASONING.test(i.name) && gramsOf(i.name, i.quantity, i.unit) === null) return null;
+  }
+  return priced.sodiumMg;
 }
 
 async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Promise<BuiltDish | null> {
@@ -451,6 +508,7 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
     };
     const built = await generateOne(deps, ctx, ask);
     if (!built) return couldntFit();
+    const levels = levelsPart(summary);
 
     return {
       ok: true,
@@ -458,9 +516,9 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
         dish: dishForModel(built, ask.mealType),
         levels: levelsForModel(summary),
         ...(summary.daysCounted === 0 ? { note: NOTHING_LOGGED_NOTE } : {}),
-        shown: SHOWN_NOTE,
+        shown: SUGGEST_SHOWN_NOTE,
       },
-      parts: [levelsPart(summary), built.dish, built.steps],
+      parts: [...(levels ? [levels] : []), built.dish, built.steps],
     };
   };
 
@@ -512,7 +570,7 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
         couldNotFill: asks.filter((_, i) => built[i] === null).map((a) => a.mealType),
         levels: levelsForModel(summary),
         ...notes,
-        shown: SHOWN_NOTE,
+        shown: PLAN_SHOWN_NOTE,
       },
       parts: made.map(({ b }) => b.dish),
     };

@@ -7,11 +7,22 @@ import type { LevelKey } from "@/lib/levels";
 /** A dish as Clara suggested it, with per-serving numbers from its own amounts. */
 export interface ClaraRecipe {
   name: string;
+  /**
+   * How many people the dish is for. The ingredient quantities stay PER
+   * SERVING; the app multiplies them by this to show the shopping and cooking
+   * amounts. When it is more than 1 the steps carry no amounts.
+   */
   servings: number;
   minutes: number;
+  /** quantity and unit are for ONE serving (see `servings`). */
   ingredients: { name: string; quantity: number | null; unit: string }[];
   steps: string[];
-  /** sodium is null when the dish's amounts could not be priced. */
+  /**
+   * Per serving. calories/protein/carbs/fat are priced from the amounts where
+   * the dish prices, else the generator's checked figures. fibre is the dish's
+   * declared figure (pricing has no fibre column). sodium is null unless every
+   * ingredient and salty seasoning was priced.
+   */
   perServing: { calories: number; protein: number; carbs: number; fat: number; fibre: number; sodium: number | null };
 }
 

@@ -7,6 +7,9 @@ import {
   NOTHING_LOGGED_NOTE,
   COULDNT_FIT_NOTE,
   OCCASION_OPTIONS,
+  completeSodiumMg,
+  stepStatesAmount,
+  dishSystemPrompt,
   type DishAsk,
   type DishDeps,
 } from "./dish";
@@ -105,7 +108,7 @@ test("dish_suggest: no logs at all → says nothing is logged yet and still retu
   const res = await makeDishHandlers(deps).suggest(CTX, { mealType: "dinner" });
   assert.equal(res.ok, true);
   if (!res.ok) return;
-  assert.deepEqual(kinds(res.parts), ["levels", "dish", "steps"]);
+  assert.deepEqual(kinds(res.parts), ["dish", "steps"], "no levels card when no level has a word");
   const data = res.data as { note?: string; dish: { name: string } };
   assert.equal(data.note, NOTHING_LOGGED_NOTE);
   assert.match(data.note!, /nothing is logged yet/i);
@@ -151,7 +154,7 @@ test("dish_suggest: the dish part carries the full recipe; the steps part carrie
   const res = await makeDishHandlers(deps).suggest(CTX, { mealType: "dinner" });
   assert.equal(res.ok, true);
   if (!res.ok) return;
-  const [, dish, steps] = res.parts!;
+  const [dish, steps] = res.parts!;
   if (dish.kind !== "dish" || steps.kind !== "steps") return assert.fail("wrong part order");
   assert.equal(dish.dishId, steps.dishId);
   assert.equal(dish.minutes, 25);
@@ -173,21 +176,110 @@ test("dish_suggest: the dish part carries the full recipe; the steps part carrie
   assert.deepEqual(steps.steps.map((s) => s.n), [1, 2, 3]);
 });
 
+async function suggestWith(recipe: FridgeRecipe, summary = LITTLE_FIBRE_LOTS_OF_SODIUM) {
+  const { deps } = spy({ summary, recipes: [recipe] });
+  const res = await makeDishHandlers(deps).suggest(CTX, { mealType: "dinner" });
+  assert.equal(res.ok, true);
+  if (!res.ok) throw new Error("expected a dish");
+  return { res, dish: dishParts(res.parts)[0] };
+}
+
 test("dish_suggest: a dish that cannot be priced passes sodium null and gets no sodium reason", async () => {
   const unpriced = lentils({
-    usesIngredients: ["mystery sauce", "dragonfruit crumble"],
+    usesIngredients: ["red lentils", "mystery sauce", "dragonfruit crumble"],
     amounts: [
+      { name: "red lentils", quantity: 80, unit: "g" },
       { name: "mystery sauce", quantity: 2, unit: "tablespoon" },
       { name: "dragonfruit crumble", quantity: 100, unit: "g" },
     ],
   });
-  const { deps } = spy({ summary: LITTLE_FIBRE_LOTS_OF_SODIUM, recipes: [unpriced] });
-  const res = await makeDishHandlers(deps).suggest(CTX, { mealType: "dinner" });
-  assert.equal(res.ok, true);
-  if (!res.ok) return;
-  const dish = dishParts(res.parts)[0];
+  const { dish } = await suggestWith(unpriced);
   assert.equal(dish.recipe!.perServing.sodium, null);
   assert.deepEqual(dish.reasons.map((r) => r.level), ["fibre"]);
+});
+
+test("dish_suggest: a PARTLY priced dish (coverage above the minimum, below full) stores sodium null and gets no sodium reason", async () => {
+  // 300 g of priced food beside one unweighable row: coverage 0.75–0.99 is
+  // enough for pricedMacros at large portions, but the unpriced row adds 0 mg.
+  const partly = lentils({
+    usesIngredients: ["red lentils", "spinach", "olive oil", "mystery relish"],
+    amounts: [
+      { name: "red lentils", quantity: 400, unit: "g" },
+      { name: "spinach", quantity: 600, unit: "g" },
+      { name: "olive oil", quantity: 1, unit: "teaspoon" },
+      { name: "mystery relish", quantity: 1, unit: "tablespoon" },
+    ],
+  });
+  const { priceDish } = await import("@/lib/staple-density");
+  const p = priceDish(partly.amounts!.map((a) => ({ name: a.name, quantity: a.quantity, unit: a.unit })), partly.steps);
+  assert.ok(p && p.coverage >= 0.9 && p.coverage < 1, `fixture is partly priced (coverage ${p?.coverage})`);
+  assert.equal(completeSodiumMg(partly), null);
+  const { dish } = await suggestWith(partly);
+  assert.equal(dish.recipe!.perServing.sodium, null);
+  assert.ok(!dish.reasons.some((r) => r.level === "sodium"));
+});
+
+test("dish_suggest: an unweighable salty seasoning makes sodium null (no 'only N mg' undercount)", async () => {
+  for (const [name, quantity, unit] of [
+    ["soy sauce", 1, "splash"],
+    ["salt", 1, "to taste"],
+    ["cajun seasoning", 1, "teaspoon"],
+    ["white miso", 1, "tablespoon"],
+    ["baking soda", 0.5, "teaspoon"],
+  ] as const) {
+    const salty = lentils({
+      usesIngredients: [...lentils().usesIngredients, name],
+      amounts: [...lentils().amounts!, { name, quantity, unit }],
+    });
+    assert.equal(completeSodiumMg(salty), null, name);
+    const { dish } = await suggestWith(salty);
+    assert.equal(dish.recipe!.perServing.sodium, null, name);
+    assert.ok(!dish.reasons.some((r) => r.level === "sodium"), name);
+  }
+});
+
+test("dish_suggest: weighed salt and a weighed salty sauce still give a complete sodium figure", async () => {
+  const salted = lentils({
+    usesIngredients: [...lentils().usesIngredients, "salt", "soy sauce"],
+    amounts: [
+      ...lentils().amounts!,
+      { name: "salt", quantity: 1, unit: "pinch" },
+      { name: "soy sauce", quantity: 1, unit: "teaspoon" },
+    ],
+  });
+  const mg = completeSodiumMg(salted);
+  assert.equal(typeof mg, "number");
+  assert.ok(mg! > completeSodiumMg(lentils())!, "the salt and soy sauce are counted");
+});
+
+test("dish_suggest: everything on track → no levels card; parts are [dish, steps]", async () => {
+  const onTrack = summarizeLevels(
+    [day("2026-11-10", 30, 1800), day("2026-11-11", 30, 1800), day("2026-11-12", 30, 1800)],
+    null,
+    RANGE,
+  );
+  const { res } = await suggestWith(lentils(), onTrack);
+  assert.deepEqual(kinds(res.parts), ["dish", "steps"]);
+});
+
+test("dish_suggest: the fibre reason names the fibre-rich ingredient, never a gram figure", async () => {
+  const { dish } = await suggestWith(lentils());
+  const fibre = dish.reasons.find((r) => r.level === "fibre")!;
+  assert.equal(fibre.text, "Red lentils are rich in fibre, and you've had little this week.");
+});
+
+test("dish_suggest: a dish with no fibre-rich ingredient gets no fibre reason, even when the model claims 20 g", async () => {
+  const claimed = lentils({
+    usesIngredients: ["chicken breast", "spinach", "olive oil"],
+    amounts: [
+      { name: "chicken breast", quantity: 150, unit: "g" },
+      { name: "spinach", quantity: 60, unit: "g" },
+      { name: "olive oil", quantity: 1, unit: "teaspoon" },
+    ],
+    perServing: { calories: 300, protein: 36, carbs: 4, fat: 14, fiber: 20 },
+  });
+  const { dish } = await suggestWith(claimed);
+  assert.ok(!dish.reasons.some((r) => r.level === "fibre"));
 });
 
 test("dish_suggest: maxMinutes and servings reach the generator; a slower dish is dropped", async () => {
@@ -426,4 +518,81 @@ test("routing: with the dish skill off, no dish tool is named anywhere", async (
   const active = resolveActiveSkills(ALL_SKILLS, "profile,logs,nutrition,plan");
   assert.ok(!buildToolDefs(active).some((d) => d.name.startsWith("dish_")));
   assert.ok(!/dish_suggest|dish_plan_today/.test(buildSystemPrompt("Sam", "MAP", active, "2026-11-12", "assistant")));
+});
+
+// ─── multi-serving dishes: amounts per serving, steps without amounts ───────
+
+test("stepStatesAmount: amounts in steps are caught; times, temperatures and sizes are not", () => {
+  for (const step of [
+    "Add 1 cup lentils.",
+    "Stir in 2 tablespoons of olive oil.",
+    "Add ½ teaspoon cumin.",
+    "Add 1/2 tsp salt.",
+    "Crack 2 eggs into the pan.",
+    "Crack 2 large eggs into the pan.",
+    "Add 200g spinach.",
+    "Mince 3 cloves garlic.",
+    "Pour in 250 ml stock.",
+    "Add 1.5 oz feta.",
+  ]) {
+    assert.ok(stepStatesAmount(step), step);
+  }
+  for (const step of [
+    "Simmer the lentils for 15 minutes.",
+    "Roast at 200°C for 20-25 minutes.",
+    "Cut into 2 cm pieces.",
+    "Heat a 12-inch skillet over medium heat.",
+    "Add the lentils and the spinach.",
+    "Rest for 1 hour.",
+    "Step 2: stir well.",
+  ]) {
+    assert.ok(!stepStatesAmount(step), step);
+  }
+});
+
+test("dish_plan_today: guests → a dinner whose steps still name amounts is dropped", async () => {
+  const withAmounts = lentils({ id: "frg_amounts", name: "Measured Stew", steps: ["Add 1 cup lentils to the pot.", "Simmer for 15 minutes."] });
+  const clean = lentils({ id: "frg_clean", name: "Plain Stew" });
+  const s = spy({ recipes: (ask) => (ask.mealType === "dinner" ? [withAmounts, clean] : [withAmounts]) });
+  const res = await makeDishHandlers(s.deps).planToday(CTX, { occasion: "guests" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  const dinner = dishParts(res.parts).find((d) => d.recipe!.servings === 6)!;
+  assert.equal(dinner.name, "Plain Stew", "the multi-serving dinner skips the dish with amounts in its steps");
+  // One-serving meals keep amounts in steps: there is nothing to scale.
+  assert.ok(dishParts(res.parts).some((d) => d.name === "Measured Stew" && d.recipe!.servings === 1));
+});
+
+test("dish_suggest: servings > 1 and every candidate names amounts in its steps → couldn't make one", async () => {
+  const { deps } = spy({ recipes: [lentils({ steps: ["Add 2 tablespoons olive oil.", "Simmer 15 minutes."] })] });
+  const res = await makeDishHandlers(deps).suggest(CTX, { mealType: "dinner", servings: 4 });
+  assert.equal(res.ok, false);
+});
+
+test("prompt: more than one serving tells the model to write steps without amounts; one serving does not", () => {
+  const base = { foodMapText: "MAP", bannedNames: [], proteinOptions: [], sodiumLimitMg: 2300 };
+  const six = dishSystemPrompt({ ...base, ask: { mealType: "dinner", servings: 6, summary: NO_LOGS } });
+  assert.match(six, /WITHOUT amounts/);
+  assert.match(six, /6 people/);
+  const one = dishSystemPrompt({ ...base, ask: { mealType: "dinner", summary: NO_LOGS } });
+  assert.doesNotMatch(one, /WITHOUT amounts/);
+});
+
+test("prompt: little fibre asks for a fibre-rich ingredient, never a gram figure", () => {
+  const p = dishSystemPrompt({
+    foodMapText: "MAP", bannedNames: [], proteinOptions: [], sodiumLimitMg: 2300,
+    ask: { mealType: "dinner", summary: LITTLE_FIBRE_LOTS_OF_SODIUM },
+  });
+  assert.match(p, /fibre-rich ingredient \(lentils/);
+  assert.doesNotMatch(p, /\d+ g of fib(re|er)/i);
+});
+
+test("the plan's shown-note does not claim the steps are on screen", async () => {
+  const res = await makeDishHandlers(spy().deps).planToday(CTX, {});
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  const shown = (res.data as { shown: string }).shown;
+  assert.doesNotMatch(shown, /steps are (already )?shown|and its steps/i);
+  const sug = await makeDishHandlers(spy().deps).suggest(CTX, { mealType: "dinner" });
+  if (sug.ok) assert.match((sug.data as { shown: string }).shown, /steps/);
 });
