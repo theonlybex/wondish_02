@@ -368,3 +368,43 @@ test("extra context is kept even when the toolbox is empty", () => {
   const prompt = buildSystemPrompt("Sam", "MY-FOOD-MAP", [], null, "assistant", "EXTRA-CONTEXT");
   assert.ok(prompt.endsWith("\n\nEXTRA-CONTEXT"));
 });
+
+// ─── Short, straight-to-the-point replies (owner, 2026-11) ──────────────────
+// "cut off all unnecessary text only to the point" … "dont cut the text size anywhere give
+// instructions to remove all extra words and only write short straight to the point questions
+// to get to cooking as fast as possible". Instructions only: no word, sentence or token limit.
+
+test("the assistant prompt carries the no-extra-words rule, with the dish skill on and off; the advisor prompt does not", async () => {
+  const { ALL_SKILLS, resolveActiveSkills } = await import("./registry");
+  const { askChoicesSkill } = await import("./ask-choices");
+  const on = buildSystemPrompt("Sam", "MAP", [...resolveActiveSkills(ALL_SKILLS, undefined), askChoicesSkill], "2026-11-12", "assistant");
+  const off = buildSystemPrompt("Sam", "MAP", resolveActiveSkills(ALL_SKILLS, "profile,logs,nutrition,plan"), "2026-11-12", "assistant");
+  for (const prompt of [on, off]) {
+    assert.match(prompt, /How to write every reply/);
+    assert.match(prompt, /Remove every extra word/);
+    assert.match(prompt, /No greeting, no restating their question, no praise, no filler, no closing offers/);
+    assert.match(prompt, /nothing a card already shows/);
+    assert.match(prompt, /ONE short, direct question/);
+    assert.match(prompt, /act instead of asking/);
+    // The content rules that are never cut.
+    assert.match(prompt, /allergy or condition conflict is still explained plainly/);
+    assert.match(prompt, /never say a dish was made for them/);
+    // It is the last thing in the prompt, after every skill fragment.
+    assert.ok(prompt.indexOf("How to write every reply") > prompt.indexOf("About your logs_ tools"));
+    // Instructions only: no size limit of any kind.
+    const rule = prompt.slice(prompt.indexOf("How to write every reply"));
+    assert.ok(!/\b\d+\s*(words?|sentences?|characters|tokens)\b/i.test(rule), "no numeric ceiling");
+    assert.ok(!/\b(one|two|three) (or (one|two|three) )?(short )?sentences?\b/i.test(rule), "no sentence ceiling");
+    // The old length rule (3 to 5 sentences) is gone for this persona.
+    assert.ok(!/3 to 5 sentences/.test(prompt));
+  }
+  assert.match(on, /with answer boxes/);
+  assert.ok(!/with answer boxes\)/.test(off) || !off.includes("ask_choices"), "no boxes promised without the choices skill");
+  const advisor = buildSystemPrompt("Sam", "MAP", resolveActiveSkills(ALL_SKILLS, undefined), "2026-11-12");
+  assert.ok(!/How to write every reply/.test(advisor));
+  assert.match(advisor, /3 to 5 sentences/, "the dish-checker prompt is unchanged");
+});
+
+test("the no-extra-words rule is not added when there is no toolbox", () => {
+  assert.ok(!/How to write every reply/.test(buildSystemPrompt("Sam", "MAP", [], null, "assistant", "EXTRA")));
+});

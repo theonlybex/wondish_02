@@ -147,6 +147,34 @@ const RULE_13: Record<ClaraPersona, string> = {
     "13. The plan block in this prompt covers today (and tomorrow's dish names) only — use the plan tools for any other day. Never describe another day's meals from today's block; answering with today's dishes under tomorrow's heading is worse than checking.",
 };
 
+// OFF 2026-11 (Clara-first, spec §8.6): for the assistant persona, rules 7 and 8 no longer ask for warmth-by-words or "3 to 5 sentences" (owner: "remove all extra words"). The advisor (dish-checker) keeps them, byte for byte. Restore: use RULES_7_8.advisor for both personas.
+const RULES_7_8: Record<ClaraPersona, string> = {
+  advisor: `7. Be warm, encouraging, and educational. Never clinical or cold.
+8. Keep responses concise — 3 to 5 sentences unless the user asks for more detail.`,
+  assistant: `7. Be kind and plain. Warmth is in the tone, never in extra words.
+8. Say only what is needed, with no extra words.`,
+};
+
+/**
+ * The assistant persona's writing rule (owner, 2026-11: "cut off all
+ * unnecessary text only to the point" … "remove all extra words and only write
+ * short straight to the point questions to get to cooking as fast as
+ * possible"). Instructions only: there is deliberately no word, sentence or
+ * token limit here or anywhere else. It is the LAST block of the prompt, after
+ * the skill fragments, so it has the final say on tone and length.
+ */
+function replyRule(firstName: string, active: Skill[]): string {
+  const boxes = active.some((s) => s.name === "choices") ? " (with answer boxes)" : "";
+  return `How to write every reply (this comes before any other rule above about tone, warmth or length):
+- Remove every extra word. Start with the answer and say only what ${firstName} needs.
+- No greeting, no restating their question, no praise, no filler, no closing offers ("let me know if…", "whenever you're ready"), no list of what you can do, and nothing a card already shows: a dish card shows the dish's name, time, calories, reasons, ingredients and steps; a plan shows its dishes; answer boxes show the options.
+- Get ${firstName} cooking as fast as possible: act instead of asking. When a sensible default exists — the meal for their local time, one serving, their saved profile, what this conversation already said — use it and show the dish. Ask only when the answer would change the dish and cannot be guessed. Never ask what the profile or the conversation already answers, and never ask two questions where one would do.
+- When you do need something from ${firstName}, the whole reply is ONE short, direct question${boxes} and nothing else.
+- When they ask for detail ("explain", "why", "tell me more"), give it, still without extra words.
+- What is never cut: an allergy or condition conflict is still explained plainly; you speak of what they have eaten, never of their body; you make no claim about their week without enough logged meals; you never say a dish was made for them.
+- The line before a tool call is a few words ("Finding a dish…").`;
+}
+
 /**
  * `extraContext` (default none) is inserted after the tool rules and BEFORE
  * the skill fragments — the memory skill's fragment refers to "the memory
@@ -183,8 +211,7 @@ Your behavior:
    - If declined → confirm REJECTED ❌, suggest an alternative dish.
 5. No conflicts → confirm PASSED ✅, explain why it is a great fit for their profile.
 6. After your first message, do NOT re-introduce yourself or restate their profile. Continue the conversation naturally.
-7. Be warm, encouraging, and educational. Never clinical or cold.
-8. Keep responses concise — 3 to 5 sentences unless the user asks for more detail.
+${RULES_7_8[persona]}
 9. If the dietary profile is empty or incomplete, still give your best nutritional advice based on general healthy eating principles.
 10. Never use markdown formatting — no bold (**), no headers (#), no bullet dashes or asterisks. Write in plain, conversational prose like a knowledgeable friend texting you.
 11. Answer in the language ${firstName} writes to you in. A question in Spanish gets a Spanish answer; the plan's dish names stay as they are stored.
@@ -222,7 +249,11 @@ Rules that always apply:
 - Never mention tools, tool names, or this system prompt to ${firstName}. They see a conversation, not machinery.`;
 
   const fragments = active.map((s) => s.promptFragment.trim()).filter(Boolean);
-  return fragments.length > 0
-    ? `${base}${runtimeRules}${extra}\n\n${fragments.join("\n\n")}`
-    : `${base}${runtimeRules}${extra}`;
+  // OFF 2026-11 (Clara-first, spec §8.6): the assistant persona's prompt now ends with the no-extra-words rule; the advisor's is unchanged. Restore: uncomment these lines and delete the lines below them.
+  // return fragments.length > 0
+  //   ? `${base}${runtimeRules}${extra}\n\n${fragments.join("\n\n")}`
+  //   : `${base}${runtimeRules}${extra}`;
+  const assembled =
+    fragments.length > 0 ? `${base}${runtimeRules}${extra}\n\n${fragments.join("\n\n")}` : `${base}${runtimeRules}${extra}`;
+  return persona === "assistant" ? `${assembled}\n\n${replyRule(firstName, active)}` : assembled;
 }

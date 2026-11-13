@@ -350,3 +350,43 @@ The first run of "I want to eat better" and both runs of "log my lunch" showed t
 were written after them and the first kind was confirmed on the re-run ("eat better": one question mark). The second
 kind (same question earlier in the text) is unit-tested only.
 
+## Short, straight-to-the-point replies, 2026-11-12
+
+Owner: "it textes too much text, cut off all unnecessary text only to the point", then: "dont cut the text size
+anywhere give instructions to remove all extra words and only write short straight to the point questions to get to
+cooking as fast as possible". So this is **instructions only**: no word or sentence ceiling in any prompt, `max_tokens`
+untouched (2688 per chat round, 4096 for the dish generator), nothing truncated in code.
+
+What changed (chat prompt of the app's Clara only; the dish-checker prompt and its hash pins are byte-identical):
+
+- A writing rule is now the last block of the prompt ("How to write every reply"): remove every extra word; no
+  greeting, restating, praise, filler, closing offers, lists of abilities, or anything a card already shows; act
+  instead of asking when a sensible default exists (the meal for the local time, one serving, the profile, the
+  conversation); when something is needed, the whole reply is ONE short, direct question with answer boxes; detail
+  when asked for. Never cut: allergy and condition conflicts explained plainly, intake wording, no claims about their
+  week without enough logs, never "made for you".
+- Base rules 7 and 8 ("warm, encouraging, and educational", "3 to 5 sentences") are replaced for this persona.
+- Dish tool notes that invited a paragraph around the card were reworded: the "shown" notes (no repeating the card),
+  the nothing-logged / not-enough-logs / from-your-answers notes (a few plain words, nothing about logging unless
+  asked), the request note (no "then the reasons"), and two lines of the dish skill's own prompt text.
+
+Left as they are, and still pulling towards more text: base rules 1 to 5 (the dish-check verdict: assumptions,
+positives first, explain why) and "always write one short sentence before you use a tool", both shared with the
+pinned dish-checker prompt; the logs skill's "state your estimate and ask" (the confirm rule); the plan, nutrition and
+memory fragments (they say what to report, not how long).
+
+### Live measurement (12 calls, fake DB, `COOK_SET=measure`). Words of reply text only, cards and boxes excluded
+
+| Message | Before (router run, same day) | After | Questions before a dish card | Filler left |
+|---|---|---|---|---|
+| "help me cook eggs" | 62 words | 22 words | 0 | none |
+| "What should I eat for dinner?" | 76 words (asked as "What should I eat?") | 26 words | 0 | says twice that it is not based on logs |
+| "plan today's dishes" | 3 words | 3 words | 1 ("Anything happening today?", with boxes) | none |
+| "is salmon ok for me?" | 85 words | 48 words | no card expected | a serving suggestion nobody asked for |
+| "how long do I boil an egg?" | 71 words | 28 words | no card expected | none |
+| "why is fibre important? explain" | not measured | 69 words (detail asked) | no card expected | none |
+| "help me cook eggs" (egg allergy) | 55 words | 34 words | no card (conflict); ends by offering a dinner that fits | none |
+
+The egg-allergy reply ended in a plain-text question, so the answer-box conversion round was triggered, but the
+12-call cap stopped it before it reached the model: still not run live.
+

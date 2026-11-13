@@ -75,10 +75,15 @@ const MAX_MINUTES = 600;
 /** The longest `wants` (what they asked to cook, in their words). */
 const MAX_WANTS_CHARS = 80;
 
+// OFF 2026-11 (Clara-first, spec §8.6): these two notes asked for a sentence about logging after every dish (owner: "remove all extra words"). The rule itself is unchanged: no claim about their week. Restore: uncomment these four lines and delete the two constants below them.
+// export const NOTHING_LOGGED_NOTE =
+//   "Nothing is logged yet this week, so this isn't based on what they've eaten. Say so plainly, and that logging meals lets you tailor the next one.";
+// export const NOT_ENOUGH_LOGS_NOTE =
+//   "Not enough is logged yet this week to say what they have had little or a lot of, so make no such claim. Say plainly that a few more days of logged meals lets you tailor the next dish.";
 export const NOTHING_LOGGED_NOTE =
-  "Nothing is logged yet this week, so this isn't based on what they've eaten. Say so plainly, and that logging meals lets you tailor the next one.";
+  "Nothing is logged yet this week, so this isn't based on what they've eaten: make no claim about their week. Say that in a few plain words (for example \"not based on your logs yet\") and add nothing about logging unless they ask.";
 export const NOT_ENOUGH_LOGS_NOTE =
-  "Not enough is logged yet this week to say what they have had little or a lot of, so make no such claim. Say plainly that a few more days of logged meals lets you tailor the next dish.";
+  "Not enough is logged yet this week to say what they have had little or a lot of, so make no such claim. Say in a few plain words that it is not based on their logs yet, and add nothing about logging unless they ask.";
 export const COULDNT_FIT_NOTE =
   "I couldn't make one that fits right now. Tell them plainly and offer to try again; do not describe a dish.";
 export const EATING_OUT_NOTE =
@@ -90,7 +95,9 @@ export const ALL_LOGGED_NOTE = "Every meal today is already logged, so there is 
 
 /** The served dish says what they asked for: the reply can open with it. */
 export const requestAnsweredNote = (wants: string) =>
-  `This dish answers their request to cook "${wants}": open by saying it is a way to cook that which fits them (for example "Here's a way to cook ${wants} that fits you"), then the reasons.`;
+  // OFF 2026-11 (Clara-first, spec §8.6): "then the reasons" asked for text the card already shows. Restore: uncomment this line and delete the line below it.
+  // `This dish answers their request to cook "${wants}": open by saying it is a way to cook that which fits them (for example "Here's a way to cook ${wants} that fits you"), then the reasons.`;
+  `This dish answers their request to cook "${wants}": say it is a way to cook that which fits them (for example "Here's a way to cook ${wants} that fits you"). The card shows the rest.`;
 /** A dish is served, but its name and ingredients do not say what they asked for. */
 export const requestNotMatchedNote = (wants: string) =>
   `They asked to cook "${wants}", and this dish's name and ingredients do not say that. If it is not what they asked for, say so plainly and say what it is instead; never present it as "${wants}".`;
@@ -101,10 +108,15 @@ export const cannotFitRequestNote = (wants: string, because: readonly string[]) 
 export const couldntMakeRequestNote = (wants: string) =>
   `I couldn't put together "${wants}" in a way that fits them right now, and no library recipe matches it. No dish is shown. Tell them plainly, do not describe a dish, and offer to try again or to suggest a different dish that fits them (dish_suggest without wants).`;
 
+// OFF 2026-11 (Clara-first, spec §8.6): these two notes invited a paragraph around the card (name, reasons, time and calories again). Restore: uncomment these four lines and delete the two constants below them.
+// const SUGGEST_SHOWN_NOTE =
+//   "The dish card and its steps are already shown under your message: name the dish and the reasons in a sentence or two, do not list the recipe.";
+// const PLAN_SHOWN_NOTE =
+//   "A card for each dish is already shown under your message: name each dish and its reasons briefly, do not list recipes. The steps are not shown yet; they come when the person picks a dish to cook.";
 const SUGGEST_SHOWN_NOTE =
-  "The dish card and its steps are already shown under your message: name the dish and the reasons in a sentence or two, do not list the recipe.";
+  "The dish card is already shown under your message with the dish's name, time, calories, reasons, ingredients and steps: repeat none of it. Say only that here is the dish (its name is enough), plus whatever a note in this result tells you to say. No recipe, no closing offer.";
 const PLAN_SHOWN_NOTE =
-  "A card for each dish is already shown under your message: name each dish and its reasons briefly, do not list recipes. The steps are not shown yet; they come when the person picks a dish to cook.";
+  "A card for each dish is already shown under your message with its name and reasons: repeat none of it, and list no recipes. Say only that today's dishes are below, plus whatever a note in this result tells you to say. The steps are not shown yet; they come when the person picks a dish to cook.";
 
 /** What the generator is asked for. `summary` lets it lean into this week's levels. */
 export interface DishAsk {
@@ -1047,8 +1059,11 @@ function dishForModel(b: BuiltDish, mealType: DishMealType, wants?: string) {
 
 const FULL_NAME = new Map<string, string>(LEVELS.map((l) => [l.key, l.name.toLowerCase()]));
 export const ANSWERS_PHRASE = "from your answers";
+// OFF 2026-11 (Clara-first, spec §8.6): the last sentence invited a line about logging after every dish. Restore: uncomment these two lines and delete the constant below them.
+// const PICTURE_NOTE =
+//   "There are not enough logged meals yet, so this is based on their onboarding answers, not on logged meals. Say 'from your answers, you probably get little X' (or 'a lot of X'); never describe their body. Logging meals lets you tailor the next one.";
 const PICTURE_NOTE =
-  "There are not enough logged meals yet, so this is based on their onboarding answers, not on logged meals. Say 'from your answers, you probably get little X' (or 'a lot of X'); never describe their body. Logging meals lets you tailor the next one.";
+  "There are not enough logged meals yet, so this is based on their onboarding answers, not on logged meals. If you give a reason, say 'from your answers, you probably get little X' (or 'a lot of X'); never describe their body, and add nothing about logging unless they ask.";
 
 /**
  * The levels Clara may speak from. Without enough logs (the same rule that
@@ -1259,10 +1274,10 @@ export const dishSkill: Skill = {
   promptFragment: [
     // OFF 2026-11 (Clara-first, spec §8.6): the opening now also covers a request to cook something particular (dish_suggest's wants). Restore: uncomment this line and delete the two strings below it.
     // "About your dish_ tools: dish_suggest suggests ONE dish to cook now, chosen from what they have eaten this week (the levels); dish_plan_today suggests one dish for each of today's meals they have not logged yet. A dish is either made just now or taken from the Wondish recipe library — each result's source says which; for a library dish follow its note and never say you made or created it. Both only suggest — nothing is logged or saved, and the app shows each dish as a card with its reasons and steps, so name the dish and its reasons briefly instead of writing out the recipe.",
-    "About your dish_ tools: dish_suggest suggests ONE dish to cook now, fitted to what they have eaten this week (the levels) — either one you pick for them, or the dish they asked to cook; dish_plan_today suggests one dish for each of today's meals they have not logged yet. A dish is either made just now or taken from the Wondish recipe library — each result's source says which; for a library dish follow its note and never say you made or created it. Both only suggest — nothing is logged or saved, and the app shows each dish as a card with its reasons and steps, so name the dish and its reasons briefly instead of writing out the recipe.",
+    "About your dish_ tools: dish_suggest suggests ONE dish to cook now, fitted to what they have eaten this week (the levels) — either one you pick for them, or the dish they asked to cook; dish_plan_today suggests one dish for each of today's meals they have not logged yet. A dish is either made just now or taken from the Wondish recipe library — each result's source says which; for a library dish follow its note and never say you made or created it. Both only suggest — nothing is logged or saved, and the app shows each dish as a card with its reasons and steps, so do not repeat what the card shows and never write out the recipe.",
     "When they ask to cook or make something particular (\"help me cook eggs\", \"how do I make pancakes\", \"cook salmon with me\"), call dish_suggest with wants set to what they asked for, in their words, and the mealType that dish is usually eaten as unless they say which meal. Do NOT write the recipe or the steps in your reply: only the dish card opens step-by-step cooking with timers. Follow the result's request note: when the dish answers their request, say it is a way to cook that which fits them; when the note says the dish is not what they asked for, say so. If the result says what they asked for does not fit them, tell them why in plain words and offer a dish that does fit; if it says it couldn't put that together right now, say exactly that and offer to try again. A plain technique question with no dish to cook (\"how long do I boil an egg?\") needs no tool: answer it in text.",
     "Talk about what they have EATEN, never their body: \"you've had little fibre this week\", never \"your fibre is low\". When the result's levels say source answers (not enough logs yet), say \"from your answers, you probably get little fibre\". The only level words are little, on track, within limit and a lot.",
-    "If the result has a note that nothing (or not enough) is logged yet, say so plainly, make no little or a lot claim, and still offer the dish. If a dish comes back as couldn't make one that fits, say exactly that and offer to try again — never describe a dish you were not given.",
+    "If the result has a note that nothing (or not enough) is logged yet, say so in a few plain words, make no little or a lot claim, and still offer the dish. If a dish comes back as couldn't make one that fits, say exactly that and offer to try again — never describe a dish you were not given.",
     `Before dish_plan_today, ask "Anything happening today?" once with ask_choices, options exactly "${OCCASION_OPTIONS[0]}", "${OCCASION_OPTIONS[1]}", "${OCCASION_OPTIONS[2]}", "${OCCASION_OPTIONS[3]}" — then pass occasion normal, eating_out, guests or little_time. It is optional: if they already said what today is like, skip the question. When they are eating out, ask them to send the menu.`,
   ].join(" "),
   tools: [
