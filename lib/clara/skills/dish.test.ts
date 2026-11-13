@@ -7,6 +7,10 @@ import {
   NOTHING_LOGGED_NOTE,
   NOT_ENOUGH_LOGS_NOTE,
   COULDNT_FIT_NOTE,
+  requestAnsweredNote,
+  requestNotMatchedNote,
+  cannotFitRequestNote,
+  couldntMakeRequestNote,
   OCCASION_OPTIONS,
   completeSodiumMg,
   stepStatesAmount,
@@ -830,4 +834,144 @@ test("dish_plan_today: too few logs and no picture → no claims either", async 
   assert.ok(dishParts(res.parts).every((d) => d.reasons.length === 0));
   assert.equal((res.data as { note?: string }).note, NOT_ENOUGH_LOGS_NOTE);
   assert.ok(s.asks.every((a) => a.summary.little.length === 0 && a.summary.aLot.length === 0));
+});
+
+// ─── wants: "help me cook eggs" (a dish card for what they asked to cook) ───
+
+test("dish_suggest: wants is trimmed and reaches the generator; absent wants leaves the ask as before", async () => {
+  const s = spy();
+  await makeDishHandlers(s.deps).suggest(CTX, { mealType: "breakfast", wants: "  scrambled   eggs " });
+  assert.equal(s.asks[0].wants, "scrambled eggs");
+  await makeDishHandlers(s.deps).suggest(CTX, { mealType: "breakfast" });
+  assert.ok(!("wants" in s.asks[1]), "no wants key when none was asked");
+});
+
+test("dish_suggest: a bad wants is INVALID_INPUT and costs no generation", async () => {
+  const s = spy();
+  const h = makeDishHandlers(s.deps);
+  for (const wants of ["", "   ", "x".repeat(81), 12, ["eggs"], {}]) {
+    const res = await h.suggest(CTX, { mealType: "dinner", wants });
+    assert.equal(res.ok, false, JSON.stringify(wants));
+    if (!res.ok) {
+      assert.equal(res.reason, "INVALID_INPUT");
+      assert.match(res.message, /wants must be 1 to 80 characters/);
+    }
+  }
+  assert.equal(s.asks.length, 0);
+  const edge = await h.suggest(CTX, { mealType: "dinner", wants: "x".repeat(80) });
+  assert.equal(edge.ok, true, "80 characters is allowed");
+});
+
+test("prompt: wants puts the request in the generator prompt, inside the same rules; no wants, no request line", () => {
+  const base = { foodMapText: "MAP", bannedNames: ["milk"], proteinOptions: ["tofu"], sodiumLimitMg: 2300 };
+  const without = dishSystemPrompt({ ...base, ask: { mealType: "breakfast", summary: NO_LOGS, maxMinutes: 15 } });
+  const withWants = dishSystemPrompt({ ...base, ask: { mealType: "breakfast", summary: NO_LOGS, maxMinutes: 15, wants: 'scrambled "eggs"' } });
+  assert.ok(!/THE REQUEST/.test(without));
+  assert.match(withWants, /THE REQUEST: they asked to cook "scrambled eggs"/);
+  assert.match(withWants, /main idea/);
+  // Every line of the no-wants prompt is still there: the request is added, nothing is relaxed.
+  for (const line of without.split("\n")) assert.ok(withWants.includes(line), line);
+  assert.match(withWants, /FORBIDDEN WORDS/);
+  assert.match(withWants, /at most 15 minutes/);
+});
+
+test("dish_suggest: with wants, the result says the dish answers the request, and never that it was made for them", async () => {
+  const eggs = lentils({
+    id: "frg_eggs", name: "Soft Scrambled Eggs with Spinach", description: "Eggs with spinach.", mealType: "breakfast",
+    usesIngredients: ["eggs", "spinach", "olive oil"],
+    steps: ["Whisk the eggs.", "Cook the eggs in the olive oil for 3 minutes.", "Fold in the spinach."],
+    prepMinutes: 3, cookMinutes: 5,
+    amounts: [{ name: "eggs", quantity: 2, unit: "" }, { name: "spinach", quantity: 40, unit: "g" }, { name: "olive oil", quantity: 1, unit: "teaspoon" }],
+    perServing: { calories: 210, protein: 14, carbs: 2, fat: 16, fiber: 1 },
+  });
+  const res: any = await makeDishHandlers(spy({ recipes: [eggs] }).deps).suggest(CTX, { mealType: "breakfast", wants: "eggs" });
+  assert.equal(res.ok, true);
+  assert.equal(res.data.dish.askedFor, "eggs");
+  assert.equal(res.data.dish.answersRequest, true);
+  assert.equal(res.data.request, requestAnsweredNote("eggs"));
+  assert.match(res.data.request, /answers their request to cook "eggs"/);
+  assert.ok(!/\b(made|created|invented) (it |this |just )?for\b/i.test(JSON.stringify(res.data)), "no 'made for them' promise");
+  assert.deepEqual(kinds(res.parts), ["dish", "steps"]);
+});
+
+test("dish_suggest: with wants, a served dish that does not say the request is flagged, never presented as it", async () => {
+  const res: any = await makeDishHandlers(spy().deps).suggest(CTX, { mealType: "dinner", wants: "salmon" });
+  assert.equal(res.ok, true);
+  assert.equal(res.data.dish.answersRequest, false);
+  assert.equal(res.data.request, requestNotMatchedNote("salmon"));
+  assert.match(res.data.request, /never present it as "salmon"/);
+});
+
+test("dish_suggest: no wants → the result is exactly as before (no request keys)", async () => {
+  const res: any = await makeDishHandlers(spy().deps).suggest(CTX, { mealType: "dinner" });
+  assert.deepEqual(Object.keys(res.data).sort(), ["dish", "levels", "note", "shown"]);
+  assert.deepEqual(Object.keys(res.data.dish).sort(), ["caloriesPerServing", "dishId", "mealType", "minutes", "name", "reasons", "servings", "source"]);
+});
+
+test("dish_suggest: what they asked for breaks one of their rules → says so plainly, no generation, no dish", async () => {
+  const s = spy();
+  const seen: string[] = [];
+  s.deps.requestConflicts = async (_c, wants) => { seen.push(wants); return ["allergy: egg"]; };
+  const res = await makeDishHandlers(s.deps).suggest(CTX, { mealType: "breakfast", wants: "eggs" });
+  assert.deepEqual(seen, ["eggs"]);
+  assert.equal(s.asks.length, 0, "no dish is generated for a request that cannot fit");
+  assert.equal(res.ok, false);
+  if (res.ok) return;
+  assert.equal(res.reason, "FAILED");
+  assert.equal(res.message, cannotFitRequestNote("eggs", ["allergy: egg"]));
+  assert.match(res.message, /"eggs"/);
+  assert.match(res.message, /allergy: egg/);
+  assert.match(res.message, /offer/i);
+  assert.ok(!("parts" in res));
+});
+
+test("dish_suggest: no conflict, or a conflict check that throws, still goes on to the generator (the gates decide)", async () => {
+  const ok = spy();
+  ok.deps.requestConflicts = async () => [];
+  assert.equal((await makeDishHandlers(ok.deps).suggest(CTX, { mealType: "dinner", wants: "lentil stew" })).ok, true);
+  const broken = spy();
+  broken.deps.requestConflicts = async () => { throw new Error("db down"); };
+  assert.equal((await makeDishHandlers(broken.deps).suggest(CTX, { mealType: "dinner", wants: "lentil stew" })).ok, true);
+  assert.equal(broken.asks.length, 1);
+  // Without wants the conflict check is never consulted.
+  const none = spy();
+  let called = 0;
+  none.deps.requestConflicts = async () => { called++; return ["allergy: egg"]; };
+  assert.equal((await makeDishHandlers(none.deps).suggest(CTX, { mealType: "dinner" })).ok, true);
+  assert.equal(called, 0);
+});
+
+test("dish_suggest: with wants and nothing to serve → 'couldn't make that right now', naming the request", async () => {
+  const res = await makeDishHandlers(spy({ recipes: [] }).deps).suggest(CTX, { mealType: "dinner", wants: "pancakes" });
+  assert.equal(res.ok, false);
+  if (res.ok) return;
+  assert.equal(res.message, couldntMakeRequestNote("pancakes"));
+  assert.match(res.message, /"pancakes"/);
+  assert.notEqual(res.message, COULDNT_FIT_NOTE);
+});
+
+test("the dish_suggest schema carries wants, and the description routes cook requests to it while keeping the NOT-for clauses", () => {
+  const def = dishSkill.tools[0].def;
+  assert.equal((def.input_schema.properties.wants as { type: string }).type, "string");
+  assert.deepEqual(def.input_schema.required, ["mealType"]);
+  for (const phrase of ["help me cook eggs", "how do I make pancakes", "cook salmon with me", "I want to make a lentil soup", "what should I eat"]) {
+    assert.ok(def.description.includes(phrase), phrase);
+  }
+  assert.match(def.description, /NOT for what is already on their meal plan \(plan_get\)/);
+  assert.match(def.description, /NOT for whether a named dish fits them \(answer directly\)/);
+  assert.match(def.description, /how long do I boil an egg/);
+  assert.match(dishSkill.promptFragment, /wants/);
+  assert.match(dishSkill.promptFragment, /how long do I boil an egg/);
+  const text = [def.description, dishSkill.promptFragment, requestAnsweredNote("x"), requestNotMatchedNote("x"), cannotFitRequestNote("x", ["y"]), couldntMakeRequestNote("x")].join(" ");
+  assert.ok(!/upgrade|premium|allowance|plus plan|limit reached/i.test(text));
+  assert.ok(!/\b(made|created|invented) (it |this |just )?for\b/i.test(text));
+});
+
+test("routing: with the dish skill on, a request to cook something particular goes to dish_suggest with wants; a technique question does not", async () => {
+  const { ALL_SKILLS, resolveActiveSkills, buildSystemPrompt } = await import("../registry");
+  const prompt = buildSystemPrompt("Sam", "MAP", resolveActiveSkills(ALL_SKILLS, undefined), "2026-11-12", "assistant");
+  assert.match(prompt, /"help me cook eggs"[^\n]*→ dish_suggest with wants/);
+  assert.match(prompt, /"how long do I boil an egg\?"[^\n]*answer directly/);
+  const off = buildSystemPrompt("Sam", "MAP", resolveActiveSkills(ALL_SKILLS, "profile,logs,nutrition,plan"), "2026-11-12", "assistant");
+  assert.ok(!/help me cook eggs/.test(off));
 });

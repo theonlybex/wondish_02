@@ -188,6 +188,9 @@ export const ROUTING_FIXTURE: RoutingCase[] = [
   { utterance: "what should I eat tonight?", expect: "dish_suggest", note: "a NEW dish; 'what's for dinner tonight' stays plan_get" },
   { utterance: "give me a dinner idea", expect: "dish_suggest" },
   { utterance: "what should I cook for lunch? I only have 15 minutes", expect: "dish_suggest" },
+  { utterance: "help me cook eggs", expect: "dish_suggest", note: "a request to cook something particular: dish_suggest with wants, so the dish card (and cooking mode) appears" },
+  { utterance: "how do I make pancakes?", expect: "dish_suggest", note: "wants: pancakes" },
+  { utterance: "how long do I boil an egg?", expect: null, note: "a plain technique question: answered in text" },
   {
     utterance: "plan today's dishes for me",
     expect: null,

@@ -15,14 +15,14 @@ import { CLARA_MODEL } from "@/lib/clara/anthropic-client";
 import { loadIngredientGroups } from "@/lib/ingredient-catalog-db";
 import { specifyCookingOil, oilAllowedBy } from "@/lib/clara/oil";
 import { PATIENT_FOOD_MAP_INCLUDE, buildFoodMapText } from "@/lib/food-map";
-import { derivePatientBans, buildDietMatchers, bannedNamesForPrompt, type DerivedBans, type DietMatchers } from "@/lib/diet-match";
+import { derivePatientBans, buildDietMatchers, bannedNamesForPrompt, evaluateDishAgainstProfile, hasAnyBan, type DerivedBans, type DietMatchers } from "@/lib/diet-match";
 import { dailySodiumLimitMg } from "@/lib/sodium-limit";
 import { currentStartingPicture } from "@/lib/onboarding";
 import { loadClaraLevelSummary } from "@/lib/level-summary";
 import { LEVELS, type FullLevelKey } from "@/lib/level-catalogue";
 import { applyAllergenFilter, parseFridgeRecipes, type FridgeRecipe } from "@/lib/fridge";
 import { DISH_OUTPUT_SCHEMA, DISH_UNITS, DishItemExtractor, toFridgeItem } from "@/lib/clara/dish-output";
-import { libraryToFridge, rankLibrary, type LibraryRecipe, type RecentDishes } from "@/lib/clara/dish-library";
+import { libraryToFridge, matchesRequest, rankLibrary, type LibraryRecipe, type RecentDishes } from "@/lib/clara/dish-library";
 import crypto from "crypto";
 import { MAX_SERVINGS } from "@/lib/meal-log";
 import {
@@ -72,6 +72,8 @@ const PLANNED_MEALS: DishMealType[] = ["breakfast", "lunch", "dinner"];
 const LITTLE_TIME_MINUTES = 20;
 const GUEST_SERVINGS = 6;
 const MAX_MINUTES = 600;
+/** The longest `wants` (what they asked to cook, in their words). */
+const MAX_WANTS_CHARS = 80;
 
 export const NOTHING_LOGGED_NOTE =
   "Nothing is logged yet this week, so this isn't based on what they've eaten. Say so plainly, and that logging meals lets you tailor the next one.";
@@ -82,6 +84,23 @@ export const COULDNT_FIT_NOTE =
 export const EATING_OUT_NOTE =
   "Dinner is out tonight, so it is not planned. Ask them to send the menu (a photo or the dish names) and you will help pick what fits.";
 export const ALL_LOGGED_NOTE = "Every meal today is already logged, so there is nothing left to plan.";
+
+// ─── what the model is told when they asked to cook something particular ────
+// (dish_suggest's `wants`). None of these says a dish was "made" for them.
+
+/** The served dish says what they asked for: the reply can open with it. */
+export const requestAnsweredNote = (wants: string) =>
+  `This dish answers their request to cook "${wants}": open by saying it is a way to cook that which fits them (for example "Here's a way to cook ${wants} that fits you"), then the reasons.`;
+/** A dish is served, but its name and ingredients do not say what they asked for. */
+export const requestNotMatchedNote = (wants: string) =>
+  `They asked to cook "${wants}", and this dish's name and ingredients do not say that. If it is not what they asked for, say so plainly and say what it is instead; never present it as "${wants}".`;
+/** What they asked for breaks one of their own rules: no dish was looked for. */
+export const cannotFitRequestNote = (wants: string, because: readonly string[]) =>
+  `What they asked to cook ("${wants}") does not fit them: it goes against their profile (${because.join("; ")}). No dish was looked for and none is shown. Tell them plainly why, do not describe a dish, and offer to suggest a dish that does fit them (if they say yes, call dish_suggest again without wants).`;
+/** Nothing safe that is what they asked for could be served (the model's dishes failed or ran out of time, and no library recipe matches). */
+export const couldntMakeRequestNote = (wants: string) =>
+  `I couldn't put together "${wants}" in a way that fits them right now, and no library recipe matches it. No dish is shown. Tell them plainly, do not describe a dish, and offer to try again or to suggest a different dish that fits them (dish_suggest without wants).`;
+
 const SUGGEST_SHOWN_NOTE =
   "The dish card and its steps are already shown under your message: name the dish and the reasons in a sentence or two, do not list the recipe.";
 const PLAN_SHOWN_NOTE =
@@ -95,6 +114,13 @@ export interface DishAsk {
   summary: LevelSummary;
   /** Set only while there are not enough logs: levels from the onboarding answers. */
   picture?: StartingPicture;
+  /**
+   * What they asked to cook, in their words ("eggs", "a chicken stir-fry"):
+   * the dish's main idea. Absent for "what should I eat". Travels the same
+   * path as maxMinutes: into the generator prompt, the library ranking and
+   * the pick; every gate runs on the result exactly as without it.
+   */
+  wants?: string;
 }
 
 /** The onboarding "starting picture": levels they probably get little of / a lot of. */
@@ -151,6 +177,13 @@ export interface DishDeps {
   loggedMealTypes(patientId: string, today: string): Promise<string[]>;
   /** Optional so older callers keep working; used only while logs are not enough. */
   loadStartingPicture?(patientId: string): Promise<StartingPicture | null>;
+  /**
+   * Why what they asked to cook breaks one of THEIR rules ("allergy: egg"),
+   * [] when it does not. Asked before any dish is looked for, only when
+   * `wants` is set. A pre-check, not the safety gate: the gates still judge
+   * every dish that is served.
+   */
+  requestConflicts?(ctx: ClaraContext, wants: string): Promise<string[]>;
 }
 
 // ─── gates ──────────────────────────────────────────────────────────────────
@@ -292,6 +325,9 @@ export function dishSystemPrompt(a: {
         ? `- This is a SNACK: small and quick, under ${SNACK_MAX_MINUTES} minutes in total, with no added salt. Fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip.`
         : `- Each dish is a complete meal (protein + carb + vegetables where sensible).`,
     ...leanInto,
+    ask.wants !== undefined
+      ? `- THE REQUEST: they asked to cook "${ask.wants.replace(/["\n\r]+/g, "").replace(/\s+/g, " ").trim()}". Every one of the ${CANDIDATES} dishes must be that: what they asked for is the dish's main idea and is named in the dish name. Make ${CANDIDATES} versions of it, the simplest first, not ${CANDIDATES} unrelated dishes. Where a line above says to build the dish around another ingredient, add that ingredient to this dish instead. Every other rule here still applies in full. If a rule forbids part of what they asked for, the rule wins: use a food that fits in its place and name the dish by what is really in it.`
+      : ``,
     `- Everyday dishes with common, individually named ingredients — no compound items, no brand names.`,
     `- ingredients: EVERY ingredient, each with its per-serving quantity and unit (${units}; "" only for eggs). Grains, pasta and pulses in GRAMS of DRY weight. Use the same ingredient name in the steps.`,
     `- Name the oil you cook with (e.g. "olive oil") in the ingredients and the steps — never "cooking oil", "oil" or "cooking spray". If a step sears, fries, sautés or browns anything, that fat MUST be in ingredients with its amount.`,
@@ -603,6 +639,7 @@ async function libraryGated(ctx: ClaraContext, ask: DishAsk, signal?: AbortSigna
       servings: ask.servings,
       little: ask.picture ? ask.picture.little : ask.summary.little,
       aLot: ask.picture ? ask.picture.aLot : ask.summary.aLot,
+      ...(ask.wants !== undefined ? { wants: ask.wants } : {}),
     },
     { patient: person.patient, matchers: person.matchers, seed: `${ctx.patientId}|${ctx.today}|${ask.mealType}` },
     recent,
@@ -628,6 +665,39 @@ async function libraryGated(ctx: ClaraContext, ask: DishAsk, signal?: AbortSigna
   return out.slice(0, LIBRARY_KEEP);
 }
 
+const BAN_SOURCE_WORDS: Record<string, string> = {
+  allergy: "allergy",
+  avoid: "a food they avoid",
+  condition: "the food list for their condition",
+  preference: "their diet",
+  motivation: "their goal",
+  trial: "a food they are testing as a trigger",
+  dislike: "a food they dislike",
+};
+
+/**
+ * Does what they asked to cook name something their own rules forbid? The
+ * SAME matchers the gates judge with, run over the request's words (and the
+ * catalog's allergen groups for a food whose name says nothing, like ghee).
+ * "peanut-free", "no peanuts" and "without peanuts" say what to leave out, so
+ * those words are not judged. Returns the reasons, [] when there are none.
+ */
+async function liveRequestConflicts(ctx: ClaraContext, wants: string): Promise<string[]> {
+  const person = await personFor(ctx);
+  if (!person || !hasAnyBan(person.matchers)) return [];
+  const asked = wants
+    .replace(/[\p{L}-]+[- ]free\b/giu, " ")
+    .replace(/\b(?:no|without)\s+[\p{L}-]+/giu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!asked) return [];
+  const names = [...new Set([asked, asked.replace(/s$/i, "")])].filter((n) => n.length > 0);
+  const groupsOf = await loadIngredientGroups(names);
+  const { violations } = evaluateDishAgainstProfile(names, person.matchers, names.map((n) => groupsOf(n)));
+  const reasons = violations.map((v) => `${BAN_SOURCE_WORDS[v.source] ?? v.source}: ${v.term.replace(/^BIG9-/, "").replace(/-/g, " ").toLowerCase()}`);
+  return [...new Set(reasons)];
+}
+
 /** The live budget. A mutable object only so the offline simulation can shorten it (sim/clara-first.sim.ts). */
 export const dishTiming = { budgetMs: DISH_BUDGET_MS };
 
@@ -644,6 +714,7 @@ export function createLiveDishDeps(io: { client?: () => DishModelClient } = {}):
     loadSummary: (patientId, today) => loadClaraLevelSummary(patientId, today, 7),
     generate: (ctx, ask, opts) => generateGated(ctx, ask, opts, io.client),
     library: libraryGated,
+    requestConflicts: liveRequestConflicts,
     loadStartingPicture: async (patientId) => {
       // Computed now from the answers and the live pills (the stored column can be stale).
       const row = await prisma.patient.findUnique({
@@ -872,6 +943,10 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  *     the budget (then whatever it already gated still counts);
  *   - no generated dish → the library dish, through the same card;
  *   - neither → null, and the person hears "couldn't make one that fits".
+ * With `ask.wants` the order is: a generated dish that says the request
+ * (matchesRequest) → a library recipe that says it → a fitting generated dish
+ * that does not (served, and flagged to the model as not what they asked) →
+ * null. An unrelated library recipe is never served for a request.
  */
 async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Promise<BuiltDish | null> {
   const budget = deps.budgetMs ?? DISH_BUDGET_MS;
@@ -888,9 +963,16 @@ async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Pro
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), budget);
   let recipes: FridgeRecipe[] = [];
+  // They asked to cook something particular: a dish that says so (the gates can
+  // rename a dish from its ingredients and lose the word) is the one to stop at.
+  const wants = ask.wants;
+  const saysRequest = (r: FridgeRecipe) => wants === undefined || matchesRequest(wants, r.name, r.usesIngredients);
   try {
+    // OFF 2026-11 (Clara-first, spec §8.6): with `wants`, the early stop also needs the dish to say the request; without it the test is the same. Restore: uncomment these two lines and delete the two below them.
+    // const generated = deps
+    //   .generate(ctx, ask, { signal: deadline.signal, accept: (r) => pickDish([r], ask) !== null })
     const generated = deps
-      .generate(ctx, ask, { signal: deadline.signal, accept: (r) => pickDish([r], ask) !== null })
+      .generate(ctx, ask, { signal: deadline.signal, accept: (r) => pickDish([r], ask) !== null && saysRequest(r) })
       .catch((err) => {
         console.warn(`[clara-dish] generate threw: ${(err as Error)?.message ?? String(err)}`);
         return [] as FridgeRecipe[];
@@ -903,16 +985,27 @@ async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Pro
   } finally {
     clearTimeout(timer);
   }
-  const picked = pickDish(recipes, ask);
+  // OFF 2026-11 (Clara-first, spec §8.6): with `wants`, a generated dish that says the request is picked first, and one that does not waits behind a matching library recipe. Restore: uncomment this line and delete the `picked` line and the `unmatched` line below it.
+  // const picked = pickDish(recipes, ask);
+  const picked = pickDish(recipes.filter(saysRequest), ask);
   if (picked) {
     libraryStop.abort();
     return buildDish(picked, ask, "generated");
   }
+  // Only with `wants`: a fitting generated dish that does not say the request. Served last, and flagged to the model.
+  const unmatched = wants !== undefined ? pickDish(recipes, ask) : null;
 
   // The library had the whole budget to load; it gets a little more, never unbounded.
   const waitMs = Math.max(0, started + budget + LIBRARY_GRACE_MS - Date.now());
-  const fromLibrary = pickDish(await Promise.race([library, sleep(waitMs).then(() => [] as FridgeRecipe[])]), ask);
-  return fromLibrary ? buildDish(fromLibrary, ask, "library") : null;
+  // OFF 2026-11 (Clara-first, spec §8.6): with `wants`, a library recipe is served only when it says the request, and a generated dish that does not say it is the last resort. Restore: uncomment these two lines and delete the lines below them.
+  // const fromLibrary = pickDish(await Promise.race([library, sleep(waitMs).then(() => [] as FridgeRecipe[])]), ask);
+  // return fromLibrary ? buildDish(fromLibrary, ask, "library") : null;
+  const offered = await Promise.race([library, sleep(waitMs).then(() => [] as FridgeRecipe[])]);
+  // They asked to cook something particular: an unrelated library dish is never the answer
+  // (the live library already ranks only matches; this holds for any library dep).
+  const fromLibrary = pickDish(offered.filter(saysRequest), ask);
+  if (fromLibrary) return buildDish(fromLibrary, ask, "library");
+  return unmatched ? buildDish(unmatched, ask, "generated") : null;
 }
 
 /** After the budget, how long a slow library load may still be waited for. */
@@ -922,11 +1015,17 @@ const LIBRARY_GRACE_MS = 1_500;
 export const LIBRARY_NOTE =
   "This dish is from the Wondish recipe library, not made just now: never say you made, created or invented it for them. Say it is a recipe from the library that fits them.";
 
-function dishForModel(b: BuiltDish, mealType: DishMealType) {
+/** Does the served dish say what they asked to cook (its name or its ingredients)? */
+function answersRequest(b: BuiltDish, wants: string): boolean {
+  return matchesRequest(wants, b.dish.name, b.recipe.ingredients.map((i) => i.name));
+}
+
+function dishForModel(b: BuiltDish, mealType: DishMealType, wants?: string) {
   return {
     mealType,
     source: b.source,
     ...(b.source === "library" ? { note: LIBRARY_NOTE } : {}),
+    ...(wants !== undefined ? { askedFor: wants, answersRequest: answersRequest(b, wants) } : {}),
     dishId: b.dish.dishId,
     name: b.dish.name,
     minutes: b.dish.minutes,
@@ -989,6 +1088,14 @@ function levelsForModel(summary: LevelSummary) {
 const invalid = (message: string): ToolResult => ({ ok: false, reason: "INVALID_INPUT", message });
 const couldntFit = (): ToolResult => ({ ok: false, reason: "FAILED", message: COULDNT_FIT_NOTE });
 
+/** undefined when absent; null when present but not text of 1 to MAX_WANTS_CHARS characters once trimmed. */
+function optionalWants(v: unknown): string | undefined | null {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "string") return null;
+  const text = v.replace(/\s+/g, " ").trim();
+  return text.length >= 1 && text.length <= MAX_WANTS_CHARS ? text : null;
+}
+
 /** undefined when absent; null when present but not a whole number in [min, max]. */
 function optionalInt(v: unknown, min: number, max: number): number | undefined | null {
   if (v === undefined || v === null) return undefined;
@@ -1006,6 +1113,24 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
     if (maxMinutes === null) return invalid(`maxMinutes must be a whole number from 1 to ${MAX_MINUTES}`);
     const servings = optionalInt(input.servings, 1, MAX_SERVINGS);
     if (servings === null) return invalid(`servings must be a whole number from 1 to ${MAX_SERVINGS}`);
+    const wants = optionalWants(input.wants);
+    if (wants === null) return invalid(`wants must be 1 to ${MAX_WANTS_CHARS} characters: what they asked to cook, in their words`);
+
+    // A fresh object per tool call: the person (and their rules) is loaded once
+    // for this call, never carried over from an earlier one.
+    const call = { ...ctx };
+    // What they asked for names something their own rules forbid (eggs, with an
+    // egg allergy): say so instead of looking for a dish. If the check itself
+    // fails, go on — every served dish still passes the gates.
+    if (wants !== undefined && deps.requestConflicts) {
+      let because: string[] = [];
+      try {
+        because = await deps.requestConflicts(call, wants);
+      } catch (err) {
+        console.warn(`[clara-dish] request check failed: ${(err as Error)?.message ?? String(err)}`);
+      }
+      if (because.length > 0) return { ok: false, reason: "FAILED", message: cannotFitRequestNote(wants, because) };
+    }
 
     const loaded = await deps.loadSummary(ctx.patientId, ctx.today);
     const picture = await pictureFor(deps, ctx, loaded);
@@ -1016,19 +1141,24 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
       ...(picture ? { picture } : {}),
       ...(maxMinutes !== undefined ? { maxMinutes } : {}),
       ...(servings !== undefined ? { servings } : {}),
+      ...(wants !== undefined ? { wants } : {}),
     };
-    // A fresh object per tool call: the person (and their rules) is loaded once
-    // for this call, never carried over from an earlier one.
-    const built = await generateOne(deps, { ...ctx }, ask);
-    if (!built) return couldntFit();
+    // OFF 2026-11 (Clara-first, spec §8.6): the per-call ctx copy is now made above (`call`) so the request check and the dish share one person load, and a missed request gets its own message. Restore: uncomment these lines and delete the two below them.
+    // // A fresh object per tool call: the person (and their rules) is loaded once
+    // // for this call, never carried over from an earlier one.
+    // const built = await generateOne(deps, { ...ctx }, ask);
+    // if (!built) return couldntFit();
+    const built = await generateOne(deps, call, ask);
+    if (!built) return wants !== undefined ? { ok: false, reason: "FAILED", message: couldntMakeRequestNote(wants) } : couldntFit();
     const levels = picture ? null : levelsPart(summary);
 
     return {
       ok: true,
       data: {
-        dish: dishForModel(built, ask.mealType),
+        dish: dishForModel(built, ask.mealType, wants),
         levels: picture ? pictureForModel(picture) : levelsForModel(summary),
         ...levelsNote(summary, picture),
+        ...(wants !== undefined ? { request: answersRequest(built, wants) ? requestAnsweredNote(wants) : requestNotMatchedNote(wants) } : {}),
         shown: SUGGEST_SHOWN_NOTE,
       },
       parts: [...(levels ? [levels] : []), built.dish, built.steps],
@@ -1105,7 +1235,10 @@ const handlers = makeDishHandlers();
 export const dishSkill: Skill = {
   name: "dish",
   promptFragment: [
-    "About your dish_ tools: dish_suggest suggests ONE dish to cook now, chosen from what they have eaten this week (the levels); dish_plan_today suggests one dish for each of today's meals they have not logged yet. A dish is either made just now or taken from the Wondish recipe library — each result's source says which; for a library dish follow its note and never say you made or created it. Both only suggest — nothing is logged or saved, and the app shows each dish as a card with its reasons and steps, so name the dish and its reasons briefly instead of writing out the recipe.",
+    // OFF 2026-11 (Clara-first, spec §8.6): the opening now also covers a request to cook something particular (dish_suggest's wants). Restore: uncomment this line and delete the two strings below it.
+    // "About your dish_ tools: dish_suggest suggests ONE dish to cook now, chosen from what they have eaten this week (the levels); dish_plan_today suggests one dish for each of today's meals they have not logged yet. A dish is either made just now or taken from the Wondish recipe library — each result's source says which; for a library dish follow its note and never say you made or created it. Both only suggest — nothing is logged or saved, and the app shows each dish as a card with its reasons and steps, so name the dish and its reasons briefly instead of writing out the recipe.",
+    "About your dish_ tools: dish_suggest suggests ONE dish to cook now, fitted to what they have eaten this week (the levels) — either one you pick for them, or the dish they asked to cook; dish_plan_today suggests one dish for each of today's meals they have not logged yet. A dish is either made just now or taken from the Wondish recipe library — each result's source says which; for a library dish follow its note and never say you made or created it. Both only suggest — nothing is logged or saved, and the app shows each dish as a card with its reasons and steps, so name the dish and its reasons briefly instead of writing out the recipe.",
+    "When they ask to cook or make something particular (\"help me cook eggs\", \"how do I make pancakes\", \"cook salmon with me\"), call dish_suggest with wants set to what they asked for, in their words, and the mealType that dish is usually eaten as unless they say which meal. Do NOT write the recipe or the steps in your reply: only the dish card opens step-by-step cooking with timers. Follow the result's request note: when the dish answers their request, say it is a way to cook that which fits them; when the note says the dish is not what they asked for, say so. If the result says what they asked for does not fit them, tell them why in plain words and offer a dish that does fit; if it says it couldn't put that together right now, say exactly that and offer to try again. A plain technique question with no dish to cook (\"how long do I boil an egg?\") needs no tool: answer it in text.",
     "Talk about what they have EATEN, never their body: \"you've had little fibre this week\", never \"your fibre is low\". When the result's levels say source answers (not enough logs yet), say \"from your answers, you probably get little fibre\". The only level words are little, on track, within limit and a lot.",
     "If the result has a note that nothing (or not enough) is logged yet, say so plainly, make no little or a lot claim, and still offer the dish. If a dish comes back as couldn't make one that fits, say exactly that and offer to try again — never describe a dish you were not given.",
     `Before dish_plan_today, ask "Anything happening today?" once with ask_choices, options exactly "${OCCASION_OPTIONS[0]}", "${OCCASION_OPTIONS[1]}", "${OCCASION_OPTIONS[2]}", "${OCCASION_OPTIONS[3]}" — then pass occasion normal, eating_out, guests or little_time. It is optional: if they already said what today is like, skip the question. When they are eating out, ask them to send the menu.`,
@@ -1115,13 +1248,20 @@ export const dishSkill: Skill = {
       def: {
         name: "dish_suggest",
         description:
-          "Suggest ONE dish for them to cook, based on what they have eaten this week: made just now, or a recipe from the Wondish library when that fits better or faster (the result's source says which). Use for 'what should I eat', 'what should I cook tonight', 'give me a dinner idea'. NOT for what is already on their meal plan (plan_get) and NOT for whether a named dish fits them (answer directly). Suggests only; logs nothing.",
+          // OFF 2026-11 (Clara-first, spec §8.6): the description now also sends a request to cook something particular here, with wants. Restore: uncomment this line and delete the string below it.
+          // "Suggest ONE dish for them to cook, based on what they have eaten this week: made just now, or a recipe from the Wondish library when that fits better or faster (the result's source says which). Use for 'what should I eat', 'what should I cook tonight', 'give me a dinner idea'. NOT for what is already on their meal plan (plan_get) and NOT for whether a named dish fits them (answer directly). Suggests only; logs nothing.",
+          "Suggest ONE dish for them to cook, based on what they have eaten this week: made just now, or a recipe from the Wondish library when that fits better or faster (the result's source says which). The app shows it as a dish card, the only thing that opens step-by-step cooking with timers. Use for 'what should I eat', 'what should I cook tonight', 'give me a dinner idea'. ALSO use, with wants, whenever they ask to cook or make something particular: 'help me cook eggs', 'how do I make pancakes', 'cook salmon with me', 'I want to make a lentil soup' — pass what they asked for in wants instead of writing the recipe yourself. NOT for what is already on their meal plan (plan_get) and NOT for whether a named dish fits them (answer directly). NOT for a plain technique question with no dish to cook ('how long do I boil an egg?': answer directly). Suggests only; logs nothing.",
         input_schema: {
           type: "object",
           properties: {
             mealType: { type: "string", enum: [...MEAL_TYPES], description: "Which meal the dish is for." },
             maxMinutes: { type: "number", description: "Most minutes the dish may take in total, when they are short of time." },
             servings: { type: "number", description: "How many people it serves; omit for one." },
+            wants: {
+              type: "string",
+              description:
+                "What they asked to cook, in their words, short (1 to 80 characters): 'eggs', 'scrambled eggs', 'a chicken stir-fry'. Set it only when they named a dish or an ingredient to cook; omit it for 'what should I eat'.",
+            },
           },
           required: ["mealType"],
         },

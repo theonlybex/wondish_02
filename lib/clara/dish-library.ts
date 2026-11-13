@@ -48,6 +48,60 @@ export interface LibraryAsk {
   /** The levels the dish may lean into (the claimable summary, or the answers' picture). */
   little: readonly string[];
   aLot: readonly string[];
+  /** What they asked to cook ("eggs"). Set → only recipes that match it (matchesRequest). */
+  wants?: string;
+}
+
+// ─── "does this dish answer what they asked to cook?" ───────────────────────
+
+/** Words in a request that name no food: "help me make some pancakes please" is about pancakes. */
+const REQUEST_FILLER = new Set([
+  "a", "an", "the", "some", "any", "with", "and", "or", "of", "for", "in", "on", "to", "me", "my", "i", "we", "us", "our",
+  "please", "help", "want", "like", "how", "do", "can", "could", "would", "cook", "cooking", "make", "making", "made", "prepare",
+  "dish", "dishes", "meal", "meals", "recipe", "recipes", "food", "something", "anything", "quick", "easy", "simple", "fast",
+  "healthy", "good", "nice", "tasty", "delicious", "breakfast", "lunch", "dinner", "snack", "style", "way", "tonight", "today", "now",
+]);
+
+/** A small stem so "eggs" meets "egg", "stir-fried" meets "stir-fry", "scrambled" meets "scramble". Same on both sides. */
+function requestStem(word: string): string {
+  let w = word;
+  const cut = (suffix: string, add = "") => {
+    if (w.endsWith(suffix) && w.length - suffix.length + add.length >= 3) {
+      w = w.slice(0, w.length - suffix.length) + add;
+      return true;
+    }
+    return false;
+  };
+  if (!(cut("ies", "y") || cut("ied", "y") || cut("oes", "o") || (/(?:s|x|z|ch|sh)es$/.test(w) && cut("es")))) {
+    if (!w.endsWith("ss")) cut("s");
+  }
+  if (!cut("ing")) cut("ed");
+  cut("e");
+  return w;
+}
+
+const wordsOf = (text: string): string[] => text.toLowerCase().split(/[^\p{L}]+/u).filter((w) => w.length > 0);
+
+/** The stems of the words in a request that name food. Empty when it names none ("something quick"). */
+export function requestWords(wants: string): string[] {
+  return [...new Set(wordsOf(wants).filter((w) => !REQUEST_FILLER.has(w)).map(requestStem))];
+}
+
+/** Is every food word of the request in this dish's name? */
+export function requestNamedIn(wants: string, name: string): boolean {
+  const have = new Set(wordsOf(name).map(requestStem));
+  return requestWords(wants).every((w) => have.has(w));
+}
+
+/**
+ * Does this dish answer what they asked to cook? A whole-word match: EVERY
+ * food word of the request ("scrambled eggs" → scrambl, egg) must be in the
+ * dish's name or its ingredient names. Whole words, so "eggplant" is not
+ * "egg". A request that names no food at all rules nothing out.
+ */
+export function matchesRequest(wants: string, name: string, ingredientNames: readonly string[]): boolean {
+  const have = new Set([name, ...ingredientNames].flatMap(wordsOf).map(requestStem));
+  return requestWords(wants).every((w) => have.has(w));
 }
 
 const SALTY_NAME = /\b(salt|soy sauce|tamari|fish sauce|broths?|stocks?|bouillon|bacon|ham|salami|prosciutto|sausages?|olives?|capers?|pickles?|feta|parmesan|cheese|miso|teriyaki|hoisin|oyster sauce)\b/i;
@@ -76,6 +130,9 @@ function hash(s: string): number {
  * get a lot of sodium; the asked time. Steps that state amounts are allowed
  * only for a one-serving recipe asked for one person (the app scales the
  * card's per-serving amounts). Ties break by a hash of person, day and meal.
+ * With `ask.wants` (they asked to cook something particular) only recipes
+ * that match it are kept, on top of every filter above; without it nothing
+ * here changes.
  */
 export function rankLibrary(
   pool: readonly LibraryRecipe[],
@@ -99,6 +156,8 @@ export function rankLibrary(
     if (/\d/.test(r.name)) continue;
     const names = r.ingredients.map((ri) => ri.ingredient.name);
     if (banned && !evaluateDishAgainstProfile(names, person.matchers, ingredientGroupsOf(r.ingredients)).passed) continue;
+    // They asked to cook something particular: a recipe that is not that is never the answer.
+    if (ask.wants !== undefined && !matchesRequest(ask.wants, r.name, names)) continue;
 
     const per = r.servings && r.servings > 0 ? r.servings : 1;
     // The card (and the cook-mode recipe sent back from it) lists ONE serving and the app scales it.
@@ -117,6 +176,8 @@ export function rankLibrary(
     const minutes = (r.prepTime ?? 0) + (r.cookTime ?? 0);
     if (limit !== undefined && minutes > 0 && minutes <= limit) score += 2;
     if (multi) score += 3;
+    // A recipe NAMED for what they asked comes before one that only contains it (eggs in a muffin).
+    if (ask.wants !== undefined && requestNamedIn(ask.wants, r.name)) score += 10;
     scored.push({ r, score, tie: hash(`${person.seed}|${r.id}`) });
   }
   scored.sort((a, b) => b.score - a.score || a.tie - b.tie);

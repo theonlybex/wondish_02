@@ -186,3 +186,55 @@ test("fibre: declared above the declared carbs, or above the PRICED carbs the ca
   assert.ok(priced && priced.carbs < 10, `priced carbs ${priced?.carbs}`);
   assert.equal(dish.fibreIsPlausible(lowCarb), false, "above the priced carbs");
 });
+
+// ─── wants: the real generator, library and conflict check ──────────────────
+
+test("wants: the request is in the generator's prompt, and the gates still drop an unsafe candidate", async () => {
+  const text = JSON.stringify({ dishes: [item("Peanut Lentil Stew", [{ name: "peanut butter", quantity: 1, unit: "tablespoon" }]), item("Red Lentil and Spinach Stew")] });
+  const { client, seen } = fakeClient(text);
+  const trace: string[] = [];
+  const got = await dish.createLiveDishDeps({ client }).generate({ ...CTX }, { ...ASK, wants: "lentil stew" }, { accept: () => true, trace: (e) => trace.push(e.stage) });
+  assert.match(seen.params.system, /THE REQUEST: they asked to cook "lentil stew"/);
+  assert.match(seen.params.system, /FORBIDDEN WORDS/, "their forbidden words are still in the prompt");
+  assert.equal(seen.params.output_config.format.type, "json_schema");
+  assert.deepEqual(got.map((r) => r.name), ["Red Lentil and Spinach Stew"]);
+  assert.deepEqual(trace, ["safety", "accepted"]);
+});
+
+test("wants: every candidate breaks the allergy → nothing generated; a matching library recipe is served instead", async () => {
+  const unsafe = JSON.stringify({ dishes: [item("Peanut Lentil Stew", [{ name: "peanut butter", quantity: 1, unit: "tablespoon" }])] });
+  const deps = () => ({ ...dish.createLiveDishDeps({ client: fakeClient(unsafe).client }), loadSummary: async () => NO_LOGS, loadStartingPicture: undefined });
+  const res: any = await dish.makeDishHandlers(deps()).suggest({ ...CTX }, { mealType: "dinner", wants: "lentil stew" });
+  assert.equal(res.ok, true);
+  assert.equal(res.data.dish.source, "library");
+  assert.equal(res.parts.find((p: any) => p.kind === "dish").name, "Red Lentil and Spinach Stew");
+  assert.equal(res.data.dish.answersRequest, true);
+  assert.ok(!JSON.stringify(res.parts).match(/peanut|groundnut/i));
+
+  // Nothing in the library is a soup: no unrelated library dish stands in for it.
+  const soup: any = await dish.makeDishHandlers(deps()).suggest({ ...CTX }, { mealType: "dinner", wants: "lentil soup" });
+  assert.equal(soup.ok, false);
+  assert.equal(soup.message, dish.couldntMakeRequestNote("lentil soup"));
+});
+
+test("wants: the real library only offers recipes that match the request", async () => {
+  const lib = dish.createLiveDishDeps().library!;
+  assert.deepEqual((await lib({ ...CTX }, { ...ASK, wants: "spinach stew" })).map((r) => r.name), ["Red Lentil and Spinach Stew"]);
+  assert.deepEqual(await lib({ ...CTX }, { ...ASK, wants: "chicken" }), []);
+});
+
+test("wants: a request that names their allergen is refused before any model call, and says why", async () => {
+  const { client, seen } = fakeClient(JSON.stringify({ dishes: [item("Red Lentil and Spinach Stew")] }));
+  const deps = { ...dish.createLiveDishDeps({ client }), loadSummary: async () => NO_LOGS, loadStartingPicture: undefined };
+  for (const wants of ["peanut noodles", "Peanuts", "groundnut oil"]) {
+    const res: any = await dish.makeDishHandlers(deps).suggest({ ...CTX }, { mealType: "dinner", wants });
+    assert.equal(res.ok, false, wants);
+    assert.match(res.message, /does not fit them/, wants);
+    assert.match(res.message, /allergy: peanut/, wants);
+    assert.equal(res.parts, undefined);
+  }
+  assert.equal(seen.params, null, "the model was never called");
+  // "peanut-free" names what they avoid, not what they want: no conflict.
+  assert.deepEqual(await dish.createLiveDishDeps().requestConflicts!({ ...CTX }, "peanut-free lentil stew"), []);
+  assert.deepEqual(await dish.createLiveDishDeps().requestConflicts!({ ...CTX }, "lentil stew"), []);
+});

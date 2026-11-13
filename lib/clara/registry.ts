@@ -89,6 +89,7 @@ function buildTieBreakers(active: Skill[]): string {
   const dishRows = dishOn
     ? [
         '- A NEW dish to cook — "what should I eat", "what should I eat tonight", "what should I cook", "give me a dinner idea" → dish_suggest (one dish, from what they ate this week). What is already on their meal plan stays with the PLANNED row.',
+        '- Asking to COOK or MAKE something particular — "help me cook eggs", "how do I make pancakes", "cook salmon with me", "I want to make a lentil soup" → dish_suggest with wants (what they asked for, in their words). This is not general knowledge to answer directly: the dish card is the only thing that opens step-by-step cooking with timers, so do not write the recipe out in text. A plain technique question with no dish to cook — "how long do I boil an egg?" → no tool; answer directly.',
         '- "Plan today\'s dishes", "plan my day", "what should I eat today" → dish_plan_today, after asking "Anything happening today?" once with ask_choices unless they already said.',
       ]
     : [];

@@ -2,9 +2,9 @@
 // safety net and the time budget (docs/qa/clara-fast-dishes.md).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { makeDishHandlers, forbiddenWordsForPrompt, dishSystemPrompt, COULDNT_FIT_NOTE, LIBRARY_NOTE, type DishDeps, type DishAsk } from "./dish";
+import { makeDishHandlers, forbiddenWordsForPrompt, dishSystemPrompt, COULDNT_FIT_NOTE, LIBRARY_NOTE, requestAnsweredNote, couldntMakeRequestNote, type DishDeps, type DishAsk } from "./dish";
 import { DishItemExtractor, toFridgeItem, DISH_OUTPUT_SCHEMA } from "../dish-output";
-import { rankLibrary, libraryToFridge, type LibraryRecipe } from "../dish-library";
+import { rankLibrary, libraryToFridge, matchesRequest, requestNamedIn, type LibraryRecipe } from "../dish-library";
 import { parseFridgeRecipes, type FridgeRecipe } from "@/lib/fridge";
 import { summarizeLevels, type LevelSummary } from "@/lib/levels";
 import { buildDietMatchers, derivePatientBans, type PatientDietGraph } from "@/lib/diet-match";
@@ -285,4 +285,107 @@ test("when the library dish is served, its signal never fired", async () => {
   let librarySignal: AbortSignal | undefined;
   await makeDishHandlers(deps({ generate: async () => [], library: async (_c, _a, signal) => { librarySignal = signal; return [dish("Library Stew")]; } })).suggest(CTX, { mealType: "dinner" });
   assert.equal(librarySignal?.aborted, false);
+});
+
+// ─── wants: the library serves a requested dish only when it matches ────────
+
+test("matchesRequest: every content word of the request is in the name or the ingredients", () => {
+  assert.equal(matchesRequest("eggs", "Soft Scrambled Egg on Toast", ["bread"]), true, "plural/singular");
+  assert.equal(matchesRequest("eggs", "Spinach Frittata", ["eggs", "spinach"]), true, "in the ingredients");
+  assert.equal(matchesRequest("eggs", "Roasted Eggplant", ["eggplant", "olive oil"]), false, "eggplant is not egg");
+  assert.equal(matchesRequest("scrambled eggs", "Egg Fried Rice", ["eggs", "rice"]), false, "every word, not any word");
+  assert.equal(matchesRequest("a chicken stir-fry", "Stir-Fried Chicken with Broccoli", ["chicken breast", "broccoli"]), true);
+  assert.equal(matchesRequest("help me make some pancakes please", "Buckwheat Pancake Stack", ["buckwheat flour"]), true, "filler words do not count");
+  assert.equal(matchesRequest("lentil soup", "Red Lentil and Spinach Stew", ["red lentils", "spinach"]), false);
+  assert.equal(matchesRequest("salmon", "Red Lentil and Spinach Stew", ["red lentils", "spinach"]), false);
+  assert.equal(matchesRequest("something quick", "Red Lentil and Spinach Stew", ["red lentils"]), true, "a request that names no food rules nothing out");
+  assert.equal(requestNamedIn("eggs", "Spinach Frittata"), false);
+  assert.equal(requestNamedIn("eggs", "Baked Eggs with Tomato"), true);
+});
+
+test("rankLibrary with wants: only recipes that match the request, name matches first; none matching → nothing", () => {
+  const m = buildDietMatchers(derivePatientBans(graph({})));
+  const pool = [
+    lib("stew", [["lentils"], ["spinach"]], { name: "Lentil Stew" }),
+    lib("muffin", [["eggs"], ["oats"]], { name: "Oat Muffins" }),
+    lib("scramble", [["eggs"], ["spinach"]], { name: "Scrambled Eggs with Spinach" }),
+  ];
+  const person = { patient: {} as any, matchers: m, seed: "s" };
+  const eggs = rankLibrary(pool, { mealType: "dinner", little: [], aLot: [], wants: "eggs" }, person, NONE, noAmounts);
+  assert.deepEqual(eggs.map((r) => r.id), ["scramble", "muffin"]);
+  assert.deepEqual(rankLibrary(pool, { mealType: "dinner", little: [], aLot: [], wants: "salmon" }, person, NONE, noAmounts), []);
+  // No wants: the whole pool, exactly as before.
+  assert.equal(rankLibrary(pool, { mealType: "dinner", little: [], aLot: [] }, person, NONE, noAmounts).length, 3);
+});
+
+test("rankLibrary with wants never relaxes the rule filter: a matching recipe with a banned ingredient stays out", () => {
+  const bans = derivePatientBans(graph({ foodAllergies: [{ food: { name: "Dairy", bannedIngredients: [{ name: "milk" }] } }] } as any));
+  const pool = [lib("milky", [["whole milk"], ["oats"]], { name: "Oat Porridge" }), lib("plain", [["oats"], ["blueberries"]], { name: "Oat Bowl" })];
+  const ranked = rankLibrary(pool, { mealType: "breakfast", little: [], aLot: [], wants: "oats" }, { patient: {} as any, matchers: buildDietMatchers(bans), seed: "s" }, NONE, noAmounts);
+  assert.deepEqual(ranked.map((r) => r.id), ["plain"]);
+});
+
+test("wants + the model serves nothing: a library dish that matches the request is served, as a library dish", async () => {
+  const library: DishDeps["library"] = async () => [dish("Chicken Rice Bowl"), dish("Red Lentil Stew")];
+  const res: any = await makeDishHandlers(deps({ library })).suggest(CTX, { mealType: "dinner", wants: "lentil stew" });
+  assert.equal(res.ok, true);
+  assert.equal(dishOf(res).name, "Red Lentil Stew", "the unrelated first library dish is skipped");
+  assert.equal(res.data.dish.source, "library");
+  assert.equal(res.data.dish.note, LIBRARY_NOTE);
+  assert.equal(res.data.dish.answersRequest, true);
+  assert.equal(res.data.request, requestAnsweredNote("lentil stew"));
+});
+
+test("wants + the model serves nothing + no library recipe matches: no unrelated dish, the couldn't-make-that result", async () => {
+  const library: DishDeps["library"] = async () => [dish("Library Stew")];
+  const res: any = await makeDishHandlers(deps({ library })).suggest(CTX, { mealType: "dinner", wants: "pancakes" });
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, "FAILED");
+  assert.equal(res.message, couldntMakeRequestNote("pancakes"));
+  assert.equal(res.parts, undefined);
+  // The same library, asked without wants, still serves its dish (unchanged).
+  const plain: any = await makeDishHandlers(deps({ library })).suggest(CTX, { mealType: "dinner" });
+  assert.equal(dishOf(plain).name, "Library Stew");
+  assert.equal(plain.data.request, undefined);
+});
+
+test("wants reaches the library with the ask", async () => {
+  let asked: DishAsk | undefined;
+  await makeDishHandlers(deps({ library: async (_c, a) => { asked = a; return []; } })).suggest(CTX, { mealType: "dinner", wants: "eggs" });
+  assert.equal(asked?.wants, "eggs");
+});
+
+// A gate can rename a dish from its ingredients (repairProse), losing the word they asked for
+// ("Almond Flour Pancakes" → "Eggs with Greek Yogurt and Almond Flour", seen live). The pick
+// prefers a dish that still says the request; nothing is relaxed for it.
+test("wants: a generated dish that says the request is preferred over an earlier one that does not", async () => {
+  const generate: DishDeps["generate"] = async () => [dish("Eggs with Yogurt and Almond Flour"), dish("Almond Flour Pancakes")];
+  const res: any = await makeDishHandlers(deps({ generate })).suggest(CTX, { mealType: "dinner", wants: "pancakes" });
+  assert.equal(dishOf(res).name, "Almond Flour Pancakes");
+  assert.equal(res.data.dish.source, "generated");
+  assert.equal(res.data.dish.answersRequest, true);
+  // Without wants the first fitting dish is served, as before.
+  const plain: any = await makeDishHandlers(deps({ generate })).suggest(CTX, { mealType: "dinner" });
+  assert.equal(dishOf(plain).name, "Eggs with Yogurt and Almond Flour");
+});
+
+test("wants: the generator's early-stop test only accepts a dish that says the request", async () => {
+  let accept: ((r: FridgeRecipe) => boolean) | undefined;
+  await makeDishHandlers(deps({ generate: async (_c, _a, o) => { accept = o?.accept; return []; } })).suggest(CTX, { mealType: "dinner", wants: "pancakes", maxMinutes: 30 });
+  assert.equal(accept!(dish("Almond Flour Pancakes")), true);
+  assert.equal(accept!(dish("Lentil Stew")), false, "keeps reading for a dish that is what they asked for");
+  assert.equal(accept!(dish("Slow Pancakes", { prepMinutes: 20, cookMinutes: 60 })), false, "the card's own test still applies");
+});
+
+test("wants: no generated dish says the request → a matching library recipe comes before it; with neither, the generated dish is served and flagged", async () => {
+  const generate: DishDeps["generate"] = async () => [dish("Eggs with Yogurt and Almond Flour")];
+  const withLib: any = await makeDishHandlers(deps({ generate, library: async () => [dish("Buckwheat Pancakes")] })).suggest(CTX, { mealType: "dinner", wants: "pancakes" });
+  assert.equal(dishOf(withLib).name, "Buckwheat Pancakes");
+  assert.equal(withLib.data.dish.source, "library");
+  assert.equal(withLib.data.dish.answersRequest, true);
+  const without: any = await makeDishHandlers(deps({ generate, library: async () => [dish("Library Stew")] })).suggest(CTX, { mealType: "dinner", wants: "pancakes" });
+  assert.equal(dishOf(without).name, "Eggs with Yogurt and Almond Flour");
+  assert.equal(without.data.dish.source, "generated");
+  assert.equal(without.data.dish.answersRequest, false);
+  assert.match(without.data.request, /never present it as "pancakes"/);
 });

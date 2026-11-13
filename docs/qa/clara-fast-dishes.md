@@ -220,3 +220,50 @@ egg and dairy allergies. **14 live calls** (cap 24), no retries (every call coun
 
 Not verifiable here: whether the chat rounds carried thinking blocks at effort low (the adapter does not expose them),
 so the "no 400" on the final round shows the request shape is accepted, not that a replayed thinking block was checked.
+
+## Asking to cook something particular (`wants`), 2026-11-12
+
+The owner asked Clara "help me cook eggs" and got a text answer: no dish card, so cooking mode never opened.
+`dish_suggest` now takes an optional `wants` (what they asked to cook, in their words, 1 to 80 characters), and the
+tool description, the skill's prompt text and the routing table send "help me cook eggs", "how do I make pancakes",
+"cook salmon with me" to it. A plain technique question ("how long do I boil an egg?") is still answered in text.
+
+`wants` travels the same path as `maxMinutes`: handler → `DishAsk` → generator prompt (one added line, "THE REQUEST")
+→ library ranking → the pick. The gates, the 8 s budget, the structured output and the early stop are the same code.
+
+What the tool returns with `wants`:
+
+| Situation | Result |
+|---|---|
+| A generated dish that says the request passes the gates | The dish card, `source: generated`, `askedFor`, `answersRequest: true`, and a `request` note: say it is a way to cook that which fits them |
+| No such generated dish, but a library recipe matches the request (every food word of the request is in its name or ingredients) | The library dish, `source: library` with the library note, `answersRequest: true` |
+| Only a fitting generated dish whose name and ingredients do not say the request (a gate can rename a dish from its ingredients) | That dish, `answersRequest: false`, and a note: say so plainly, never present it as what they asked for |
+| Nothing fits and no library recipe matches | `ok: false`, `FAILED`: "I couldn't put together "<wants>" in a way that fits them right now, and no library recipe matches it…" (no card; an unrelated library dish is never served for a request) |
+| What they asked for names something their own rules forbid ("eggs" with an egg allergy) | `ok: false`, `FAILED`, before any model call: "What they asked to cook ("eggs") does not fit them: it goes against their profile (allergy: egg). No dish was looked for…" Clara says why and offers a dish that fits |
+
+The conflict check uses the same matchers as the gates (`evaluateDishAgainstProfile` over the request, plus the
+catalog's allergen groups). It is a pre-check only: every served dish still passes every gate. Without `wants`
+nothing changes.
+
+### Live check (`sim/clara-cook-request-live.sim.ts`)
+
+Real model (`claude-haiku-5-5`) through the real chat loop and the real dish handler, in-memory store only.
+**12 live calls** in total (9 + 1 + 2), no retries, about $0.011.
+
+| Case | `dish_suggest` called | Dish came back | Time (whole turn / dish tool) | Rule check |
+|---|---|---|---|---|
+| "help me cook eggs", no restrictions | yes, `wants: "eggs"`, breakfast | Scrambled Eggs with Butter and Chives (generated), 4 steps, 1 timer; reply opened "Here's a way to cook eggs that fits you" | 6.4 s / 3.0 s | pass |
+| "help me cook eggs", egg allergy | yes, `wants: "eggs"` | no dish, no model call for one: the conflict result; Clara said eggs are on the allergy list and offered a breakfast that fits | 2.9 s / 9 ms | no dish served |
+| "how do I make pancakes", coeliac | yes, `wants: "pancakes"` | Eggs with Greek Yogurt and Almond Flour (generated), `answersRequest: false`; Clara said she could not come up with a pancake recipe and named what she had instead | 6.2 s / 2.7 s | pass (no wheat, no gluten grain) |
+| "What should I eat?" (control) | no: Clara asked which meal it is for | no | 2.3 s | no dish served |
+| "What should I eat for dinner?" (control, stopped after the tool) | yes, no `wants` | Lemon Herb Chicken with Roasted Potatoes and Green Beans (generated); no request line in the generator prompt | 4.0 s / 2.5 s | pass |
+
+One more call ran the generator alone for the coeliac pancakes ask, with a trace: it wrote "Egg and Greek Yogurt
+Pancakes", "Cottage Cheese and Egg Pancakes" and "Black Bean and Egg Pancakes", and all three passed the gates under
+those names. So the model does write pancakes; in the chat run the served name had lost the word. After that run the
+pick was changed to prefer a dish that still says the request (then a matching library recipe, then the flagged
+dish). **That change is covered by unit tests only; it was not re-run live** (the 12-call cap was used up).
+
+Not shown here: the first control did not call the tool for a bare "What should I eat?" (it asked which meal). Whether
+that is new or how it already behaved was not measured; nothing in this change touches the no-`wants` path.
+

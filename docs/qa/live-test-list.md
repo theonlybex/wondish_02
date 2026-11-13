@@ -31,6 +31,7 @@ Written 2026-11-12. Tick each line on the iPhone. "Server" marks checks that nee
 - [ ] The dish respects your allergies and conditions. Report any dish that does not, with a screenshot.
 - [ ] "Something else" gives a different dish.
 - [ ] "Plan today's dishes" asks "Anything happening today?" first.
+- [ ] **Server.** Asking "help me cook eggs" returns a dish card for eggs, and "Cook this with me" opens the steps with timers.
 
 ## 4. Cooking mode
 
