@@ -83,6 +83,14 @@ export function createAnthropicClient(
               })),
             }
           : {}),
+        // A forced tool (the intent router, first round only). Haiku 5.5 accepts
+        // it with adaptive thinking left on: the reply then starts with the tool
+        // call and carries no thinking block (claude-api skill, "Forced tool
+        // calls skip thinking"), so `thinking` and `effort` stay as they are.
+        // One call, not several: the turn shows one card.
+        ...(req.toolChoice && req.tools.length > 0
+          ? { tool_choice: { type: "tool" as const, name: req.toolChoice.name, disable_parallel_tool_use: true } }
+          : {}),
         messages: req.messages as Anthropic.MessageParam[],
       });
 

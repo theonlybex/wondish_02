@@ -975,3 +975,33 @@ test("routing: with the dish skill on, a request to cook something particular go
   const off = buildSystemPrompt("Sam", "MAP", resolveActiveSkills(ALL_SKILLS, "profile,logs,nutrition,plan"), "2026-11-12", "assistant");
   assert.ok(!/help me cook eggs/.test(off));
 });
+
+// ─── avoid: "something else" must not return the dish they were just shown ──
+// (seen live 2026-11-12: the same ask gave the same dish twice).
+
+test("dish_suggest: avoid reaches the generator, and a dish with an avoided name is never served", async () => {
+  const shown = lentils({ name: "Red Lentil and Spinach Stew" });
+  const other = lentils({ id: "frg_other", name: "Chickpea and Tomato Skillet" });
+  const s = spy({ recipes: [shown, other] });
+  const res: any = await makeDishHandlers(s.deps).suggest(CTX, { mealType: "dinner", avoid: ["  red lentil and spinach STEW ", 7, ""] });
+  assert.deepEqual(s.asks[0].avoid, ["red lentil and spinach STEW"]);
+  assert.equal(dishParts(res.parts)[0].name, "Chickpea and Tomato Skillet");
+  const only: any = await makeDishHandlers(spy({ recipes: [shown] }).deps).suggest(CTX, { mealType: "dinner", avoid: ["Red Lentil and Spinach Stew"] });
+  assert.equal(only.ok, false, "the same dish again is not an answer to 'something else'");
+  // No avoid: as before.
+  const plain = spy({ recipes: [shown, other] });
+  const again: any = await makeDishHandlers(plain.deps).suggest(CTX, { mealType: "dinner" });
+  assert.ok(!("avoid" in plain.asks[0]));
+  assert.equal(dishParts(again.parts)[0].name, "Red Lentil and Spinach Stew");
+  const bad = await makeDishHandlers(spy().deps).suggest(CTX, { mealType: "dinner", avoid: "stew" });
+  assert.equal(bad.ok, false);
+  if (!bad.ok) assert.equal(bad.reason, "INVALID_INPUT");
+});
+
+test("prompt: avoid tells the generator which dishes they were just shown", () => {
+  const base = { foodMapText: "MAP", bannedNames: [], proteinOptions: [], sodiumLimitMg: 2300 };
+  const p = dishSystemPrompt({ ...base, ask: { mealType: "dinner", summary: NO_LOGS, avoid: ["Lemon Herb Chicken"] } });
+  assert.match(p, /already shown[^\n]*Lemon Herb Chicken/);
+  assert.ok(!/already shown/.test(dishSystemPrompt({ ...base, ask: { mealType: "dinner", summary: NO_LOGS } })));
+  assert.ok("avoid" in dishSkill.tools[0].def.input_schema.properties);
+});

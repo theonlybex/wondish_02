@@ -10,6 +10,7 @@ import { ALL_SKILLS, resolveActiveSkills, buildToolDefs, buildSystemPrompt, find
 import { memorySkill, buildMemoryBlock, type MemoryDeps } from "./skills/memory";
 import { askChoicesSkill, ASK_CHOICES_TOOL } from "./ask-choices";
 import { resolveToday } from "./dates";
+import { detectIntent, mealForLocalMinutes } from "./intent";
 import { buildTodaysPlanText } from "./today-plan";
 import type { ConversationStore, ToolTraceEntry } from "./conversations";
 import type { ClaraRequestOptions } from "./request";
@@ -64,6 +65,13 @@ export interface ChatServiceDeps {
   todaysPlan?: (patientId: string, localDate: string) => Promise<string>;
   /** Server-side observability. Defaults to console.error. */
   onError?: (err: unknown) => void;
+  /**
+   * Called when the intent router forced a tool. Never carries user content:
+   * the tool, and whether the router read a `wants`. Defaults to a console.info line.
+   */
+  onIntent?: (e: { tool: string; wants: boolean }) => void;
+  /** The clock, for the meal that fits the person's local time. Defaults to the real one. */
+  now?: () => Date;
 }
 
 export type ClaraAppTurnResult =
@@ -110,6 +118,74 @@ export function parseClaraChatBody(
     return { ok: true, message, conversationId, parts: b.parts };
   }
   return { ok: true, message, conversationId };
+}
+
+const DISH_TOOLS = new Set(["dish_suggest", "dish_plan_today"]);
+
+/**
+ * The intent router's decision as the loop takes it, or undefined to leave the
+ * round to the model:
+ *   - cook a named thing / what to eat → dish_suggest (the router's wants as a fill);
+ *   - "something else" → dish_suggest, only when this chat already has a dish;
+ *   - plan the day → dish_plan_today when they said what today is like,
+ *     otherwise the "Anything happening today?" answer boxes come first
+ *     (ask_choices, when it is offered) and nothing is planned yet.
+ */
+export function routeIntent(
+  message: string,
+  history: ModelMessage[],
+  skills: Skill[]
+): { tool: string; fill?: Record<string, unknown> } | undefined {
+  const intent = detectIntent(message);
+  if (!intent) return undefined;
+  const offered = (name: string) => findTool(skills, name) !== undefined;
+  if (intent.tool === "dish_plan_today") {
+    const tool = intent.askFirst ? ASK_CHOICES_TOOL : intent.tool;
+    return offered(tool) ? { tool } : undefined;
+  }
+  if (!offered(intent.tool)) return undefined;
+  if (intent.followUp) {
+    const hadDish = history.some(
+      (m) => m.role === "assistant" && Array.isArray(m.content) && m.content.some((b) => b.type === "tool_use" && DISH_TOOLS.has(b.name))
+    );
+    if (!hadDish) return undefined;
+    const shown = dishesShown(history);
+    return { tool: intent.tool, ...(shown.length > 0 ? { fill: { avoid: shown } } : {}) };
+  }
+  return { tool: intent.tool, ...(intent.wants !== undefined ? { fill: { wants: intent.wants } } : {}) };
+}
+
+/** The names of the dishes this chat's dish tools already returned, oldest first (from the replayed tool results). */
+function dishesShown(history: ModelMessage[]): string[] {
+  const dishIds = new Set<string>();
+  const names: string[] = [];
+  for (const m of history) {
+    if (!Array.isArray(m.content)) continue;
+    for (const b of m.content) {
+      if (b.type === "tool_use" && DISH_TOOLS.has(b.name)) dishIds.add(b.id);
+      if (b.type !== "tool_result" || !dishIds.has(b.tool_use_id)) continue;
+      try {
+        const data = (JSON.parse(b.content) as { data?: { dish?: { name?: unknown }; dishes?: { name?: unknown }[] } }).data;
+        for (const d of [data?.dish, ...(data?.dishes ?? [])]) if (typeof d?.name === "string" && !names.includes(d.name)) names.push(d.name);
+      } catch {
+        // A result cut for storage may no longer parse: that dish is simply not listed.
+      }
+    }
+  }
+  return names;
+}
+
+/**
+ * One line of context: the meal that fits the person's local time (from the
+ * offset their app sent), and the rule that a dish asked for with no meal
+ * named gets that meal instead of a "which meal?" question. A meal, not a
+ * clock time, so the cached prompt changes a few times a day, not every minute.
+ */
+export function mealForNowLine(firstName: string, tzOffsetMinutes: number | undefined, now: Date): string {
+  const rule = `When ${firstName} asks for a dish without naming a meal, do not ask which meal:`;
+  if (typeof tzOffsetMinutes !== "number") return `${rule} pick the meal that fits the dish, or dinner.`;
+  const local = now.getUTCHours() * 60 + now.getUTCMinutes() + tzOffsetMinutes;
+  return `Meal for now: ${mealForLocalMinutes(local)} (from ${firstName}'s local time). ${rule} use this meal, unless the dish they ask for clearly belongs to another.`;
 }
 
 export async function startClaraAppTurn(
@@ -174,9 +250,14 @@ export async function startClaraAppTurn(
   // The memory fragment points at "the memory block above", so it is always
   // present — with an explicit empty state rather than nothing.
   const memoryBlock = buildMemoryBlock(firstName, memoryRows) || `What you remember about ${firstName}\n(nothing saved yet)`;
-  const extraContext = [todaysPlanText.trim(), memoryBlock].filter((s) => s.length > 0).join("\n\n");
-
   const skills = deps.skills;
+  const dishOn = skills.some((s) => s.name === "dish");
+  // OFF 2026-11 (Clara-first, spec §8.6): with the dish skill on, the context also names the meal for the person's local time, so a dish asked for with no meal named never needs a "which meal?" question. Restore: uncomment this line and delete the lines below it.
+  // const extraContext = [todaysPlanText.trim(), memoryBlock].filter((s) => s.length > 0).join("\n\n");
+  const extraContext = [todaysPlanText.trim(), memoryBlock, dishOn ? mealForNowLine(firstName, options.tzOffsetMinutes, (deps.now ?? (() => new Date()))()) : ""]
+    .filter((s) => s.length > 0)
+    .join("\n\n");
+
   const activeNames = new Set(skills.map((s) => s.name));
   const ctx: ClaraContext = {
     patientId: patient.id,
@@ -251,6 +332,21 @@ export async function startClaraAppTurn(
     return result;
   };
 
+  // The intent router: a deterministic read of what they typed. Only with the
+  // dish skill on, and never on a reply to a question Clara just asked (answer
+  // boxes, or a saved reply that ended in a question): that answer is the
+  // model's to read.
+  const answeringClara =
+    newest !== undefined &&
+    newest.role === "assistant" &&
+    (history.lastAssistantHadChoices || (typeof newest.content === "string" && /\?\s*$/.test(newest.content)));
+  const forceFirst = dishOn && !answeringClara ? routeIntent(message, history.messages, skills) : undefined;
+  if (forceFirst) {
+    const event = { tool: forceFirst.tool, wants: forceFirst.fill?.wants !== undefined };
+    // No user content: the tool and whether a wants was read, nothing else.
+    (deps.onIntent ?? ((e) => console.info(`[clara-intent] forced ${e.tool}${e.wants ? " (wants)" : ""}`)))(event);
+  }
+
   // Only records the value — it must never throw inside the loop.
   let choices: ClaraChoices | null = null;
   // Every part the turn's tools produced, in order (stored, and sent as events
@@ -278,6 +374,7 @@ export async function startClaraAppTurn(
         turnParts.push(p);
       },
       partsEnabled: input.parts === true,
+      ...(forceFirst ? { forceFirst } : {}),
     });
   } catch (err) {
     onError(err);

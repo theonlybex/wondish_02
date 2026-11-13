@@ -121,6 +121,11 @@ export interface DishAsk {
    * the pick; every gate runs on the result exactly as without it.
    */
   wants?: string;
+  /**
+   * Dishes this chat already showed them ("something else"): the generator is
+   * told not to repeat them, and a dish with one of these names is never served.
+   */
+  avoid?: string[];
 }
 
 /** The onboarding "starting picture": levels they probably get little of / a lot of. */
@@ -327,6 +332,9 @@ export function dishSystemPrompt(a: {
     ...leanInto,
     ask.wants !== undefined
       ? `- THE REQUEST: they asked to cook "${ask.wants.replace(/["\n\r]+/g, "").replace(/\s+/g, " ").trim()}". Every one of the ${CANDIDATES} dishes must be that: what they asked for is the dish's main idea and is named in the dish name. Make ${CANDIDATES} versions of it, the simplest first, not ${CANDIDATES} unrelated dishes. Where a line above says to build the dish around another ingredient, add that ingredient to this dish instead. Every other rule here still applies in full. If a rule forbids part of what they asked for, the rule wins: use a food that fits in its place and name the dish by what is really in it.`
+      : ``,
+    ask.avoid && ask.avoid.length > 0
+      ? `- They were already shown these and asked for something else: suggest a clearly different dish, not one of these and not a small variation of one: ${ask.avoid.map((n) => n.replace(/["\n\r]+/g, "")).join("; ")}.`
       : ``,
     `- Everyday dishes with common, individually named ingredients — no compound items, no brand names.`,
     `- ingredients: EVERY ingredient, each with its per-serving quantity and unit (${units}; "" only for eggs). Grains, pasta and pulses in GRAMS of DRY weight. Use the same ingredient name in the steps.`,
@@ -846,7 +854,9 @@ function buildDish(r: FridgeRecipe, ask: DishAsk, source: DishSource): BuiltDish
  */
 function pickDish(recipes: FridgeRecipe[], ask: DishAsk): FridgeRecipe | null {
   const multi = (ask.servings ?? 1) > 1;
+  const shown = new Set((ask.avoid ?? []).map((n) => n.trim().toLowerCase()));
   for (const r of recipes) {
+    if (shown.has(r.name.trim().toLowerCase())) continue; // the dish they were just shown
     if (rawMinutesOf(r, ask.mealType) <= 0) continue; // names no time at all
     const minutes = minutesOf(r, ask.mealType);
     if (ask.maxMinutes !== undefined && minutes > ask.maxMinutes) continue;
@@ -1096,6 +1106,15 @@ function optionalWants(v: unknown): string | undefined | null {
   return text.length >= 1 && text.length <= MAX_WANTS_CHARS ? text : null;
 }
 
+const MAX_AVOID = 12;
+/** undefined when absent or empty; null when present but not a list. Non-text and blank entries are dropped. */
+function optionalAvoid(v: unknown): string[] | undefined | null {
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v)) return null;
+  const names = v.filter((x): x is string => typeof x === "string").map((x) => x.replace(/\s+/g, " ").trim().slice(0, 120)).filter((x) => x.length > 0);
+  return names.length > 0 ? names.slice(-MAX_AVOID) : undefined;
+}
+
 /** undefined when absent; null when present but not a whole number in [min, max]. */
 function optionalInt(v: unknown, min: number, max: number): number | undefined | null {
   if (v === undefined || v === null) return undefined;
@@ -1115,6 +1134,8 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
     if (servings === null) return invalid(`servings must be a whole number from 1 to ${MAX_SERVINGS}`);
     const wants = optionalWants(input.wants);
     if (wants === null) return invalid(`wants must be 1 to ${MAX_WANTS_CHARS} characters: what they asked to cook, in their words`);
+    const avoid = optionalAvoid(input.avoid);
+    if (avoid === null) return invalid("avoid must be a list of dish names");
 
     // A fresh object per tool call: the person (and their rules) is loaded once
     // for this call, never carried over from an earlier one.
@@ -1142,6 +1163,7 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
       ...(maxMinutes !== undefined ? { maxMinutes } : {}),
       ...(servings !== undefined ? { servings } : {}),
       ...(wants !== undefined ? { wants } : {}),
+      ...(avoid !== undefined ? { avoid } : {}),
     };
     // OFF 2026-11 (Clara-first, spec §8.6): the per-call ctx copy is now made above (`call`) so the request check and the dish share one person load, and a missed request gets its own message. Restore: uncomment these lines and delete the two below them.
     // // A fresh object per tool call: the person (and their rules) is loaded once
@@ -1261,6 +1283,11 @@ export const dishSkill: Skill = {
               type: "string",
               description:
                 "What they asked to cook, in their words, short (1 to 80 characters): 'eggs', 'scrambled eggs', 'a chicken stir-fry'. Set it only when they named a dish or an ingredient to cook; omit it for 'what should I eat'.",
+            },
+            avoid: {
+              type: "array",
+              items: { type: "string" },
+              description: "Names of dishes you already showed them in this chat, when they ask for something else or another one, so the same dish does not come back.",
             },
           },
           required: ["mealType"],

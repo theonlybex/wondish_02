@@ -785,3 +785,95 @@ test("writesAllowed undefined: the CONFIRM_REQUIRED message is unchanged when as
       "This change needs the user's explicit confirmation first. Propose it in plain words and wait for their yes.",
   });
 });
+
+// ─── forced first tool (the intent router, lib/clara/intent.ts) ─────────────
+
+const DISH_TOOLS = [
+  { name: "dish_suggest", description: "d", input_schema: { type: "object" as const, properties: {} } },
+  { name: "x_get", description: "d", input_schema: { type: "object" as const, properties: {} } },
+];
+
+test("forceFirst: the first round carries the forced tool_choice, the second does not", async () => {
+  const { client, seen } = stubClient([
+    { content: [toolUse("t1", "dish_suggest", { mealType: "breakfast", wants: "eggs" })] },
+    { deltas: ["Here's a way to cook eggs."] },
+  ]);
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: DISH_TOOLS, messages: [{ role: "user", content: "help me cook eggs" }], maxToolRounds: 2, execute: okTool,
+      forceFirst: { tool: "dish_suggest" },
+    })
+  );
+  assert.equal(out, "Here's a way to cook eggs.");
+  assert.deepEqual(seen[0].toolChoice, { type: "tool", name: "dish_suggest" });
+  assert.ok(!("toolChoice" in seen[1]), "later rounds go back to the model's own choice");
+  // Same system and tools on both rounds: nothing else about the request changes.
+  assert.deepEqual(seen[1].tools, seen[0].tools);
+  assert.equal(seen[1].system, seen[0].system);
+});
+
+test("no forceFirst: the request is exactly what it was (no toolChoice key at all)", async () => {
+  const { client, seen } = stubClient([{ deltas: ["Hi."] }]);
+  await drain(await startClaraLoop({ client, system: "s", tools: DISH_TOOLS, messages: [{ role: "user", content: "hi" }], maxToolRounds: 2, execute: okTool }));
+  assert.deepEqual(Object.keys(seen[0]).sort(), ["messages", "system", "tools"]);
+});
+
+test("forceFirst naming a tool that is not offered forces nothing", async () => {
+  const { client, seen } = stubClient([{ deltas: ["Hi."] }]);
+  await drain(
+    await startClaraLoop({ client, system: "s", tools: TOOLS, messages: [], maxToolRounds: 2, execute: okTool, forceFirst: { tool: "dish_suggest", fill: { wants: "eggs" } } })
+  );
+  assert.ok(!("toolChoice" in seen[0]));
+});
+
+test("forceFirst.fill: a missing or empty argument is filled before the handler runs; the model's own value is kept", async () => {
+  const run = async (input: Record<string, unknown>) => {
+    const got: Record<string, unknown>[] = [];
+    const { client } = stubClient([{ content: [toolUse("t1", "dish_suggest", input)] }, { deltas: ["Done."] }]);
+    await drain(
+      await startClaraLoop({
+        client, system: "s", tools: DISH_TOOLS, messages: [], maxToolRounds: 2,
+        execute: async (_n, i) => { got.push(i); return { ok: true, data: {} }; },
+        forceFirst: { tool: "dish_suggest", fill: { wants: "eggs" } },
+      })
+    );
+    return got[0];
+  };
+  assert.deepEqual(await run({ mealType: "breakfast" }), { mealType: "breakfast", wants: "eggs" });
+  assert.deepEqual(await run({ mealType: "breakfast", wants: "  " }), { mealType: "breakfast", wants: "eggs" });
+  assert.deepEqual(await run({ mealType: "breakfast", wants: "scrambled eggs" }), { mealType: "breakfast", wants: "scrambled eggs" });
+});
+
+test("forceFirst.fill applies to the forced tool on the first round only", async () => {
+  const got: [string, Record<string, unknown>][] = [];
+  const { client } = stubClient([
+    { content: [toolUse("t1", "x_get", {}), toolUse("t2", "dish_suggest", { mealType: "dinner" })] },
+    { content: [toolUse("t3", "dish_suggest", { mealType: "dinner" })] },
+    { deltas: ["Done."] },
+  ]);
+  await drain(
+    await startClaraLoop({
+      client, system: "s", tools: DISH_TOOLS, messages: [], maxToolRounds: 3,
+      execute: async (n, i) => { got.push([n, i]); return { ok: true, data: {} }; },
+      forceFirst: { tool: "dish_suggest", fill: { wants: "eggs" } },
+    })
+  );
+  assert.deepEqual(got, [["x_get", {}], ["dish_suggest", { mealType: "dinner", wants: "eggs" }], ["dish_suggest", { mealType: "dinner" }]]);
+});
+
+test("forceFirst + a FAILED tool result (the allergy conflict) still ends in a normal text reply", async () => {
+  const { client, seen } = stubClient([
+    { content: [toolUse("t1", "dish_suggest", { mealType: "breakfast", wants: "eggs" })] },
+    { deltas: ["Eggs are on your allergy list, so I can't suggest that. Want a breakfast that fits?"] },
+  ]);
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: DISH_TOOLS, messages: [], maxToolRounds: 2,
+      execute: async () => ({ ok: false, reason: "FAILED", message: "does not fit them (allergy: egg)" }),
+      forceFirst: { tool: "dish_suggest" },
+    })
+  );
+  assert.match(out, /allergy list/);
+  const last = seen[1].messages.at(-1)!;
+  assert.match(JSON.stringify(last.content), /does not fit them/);
+});

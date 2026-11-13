@@ -267,3 +267,50 @@ dish). **That change is covered by unit tests only; it was not re-run live** (th
 Not shown here: the first control did not call the tool for a bare "What should I eat?" (it asked which meal). Whether
 that is new or how it already behaved was not measured; nothing in this change touches the no-`wants` path.
 
+## The intent router (deterministic tool choice), 2026-11-12
+
+The model was deciding whether to call the dish tools, and sometimes answered in text. `lib/clara/intent.ts`
+(`detectIntent`) now reads the latest user message with patterns (no model call, no I/O). When it names a tool and the
+dish skill is on, the chat service forces that tool on the **first round only** (`tool_choice: {type: "tool"}`); the
+model still writes the arguments, and later rounds are unforced. Haiku 5.5 accepts a forced tool with adaptive thinking
+left on (the reply then starts with the tool call and has no thinking block), so nothing else about the request changes.
+
+| The person writes | Forced on round 1 |
+|---|---|
+| A request to cook a named thing: "help me cook eggs", "cook salmon with me", "how do I make pancakes", "how to make an omelette", "I want to make a lentil soup", "let's cook pasta", "recipe for chicken curry", "chicken curry recipe", "make me a smoothie", "help me make dinner with rice" | `dish_suggest`; the router's food phrase is filled in as `wants` if the model leaves it out (the model's own `wants` is kept) |
+| The same with no food left ("help me cook", "let's cook", "help me make dinner") | `dish_suggest`, no `wants` |
+| What to eat: "what should I eat", "what can I cook tonight", "give me a dinner idea", "suggest a lunch", "any dinner ideas", "I'm hungry" | `dish_suggest`, no `wants` |
+| Another dish: "something else", "another one", "a different dish" | `dish_suggest`, only when this chat already has a dish; the names already shown are passed as `avoid`, and a dish with one of those names is never served |
+| Plan the day, with the day described: "plan my day, we have guests tonight" | `dish_plan_today` |
+| Plan the day, nothing said about today: "plan today's dishes", "plan my day", "what should I eat today", "plan my meals for today" | `ask_choices` ("Anything happening today?" with its four boxes); the plan runs after the answer, as before |
+
+Never forced (the message stays with the model): technique and fact questions ("how long do I boil an egg?", "is
+salmon ok for me?", "can I eat eggs with IBS?"); anything naming the saved meal plan, the log, the journal, numbers,
+nutrients, pills, weight, shopping; negations ("I don't want to cook"); reports of something already eaten or cooked ("I
+cooked eggs", "I made pasta yesterday"); the app's own "Cook this with me: …" message; any reply to a question Clara
+just asked (answer boxes, or a saved reply ending in "?"); messages over 200 characters; a thing to cook longer than 6
+words; the dish skill switched off. When unsure the router returns nothing.
+
+Meal with no meal named: the prompt now carries one line with the meal for the person's local time (breakfast
+04:00–10:29, lunch 10:30–14:59, otherwise dinner, from the offset the app sends) and tells Clara not to ask which meal.
+With no offset it only tells her not to ask.
+
+Each forced turn logs `[clara-intent] forced <tool>` (plus `(wants)`), never the message.
+
+### Live check (16 calls, fake DB, `COOK_SET=router`, local time set to 18:30)
+
+| Message | Router | Forced tool called | Card | Time (turn / dish tool) | Rule check |
+|---|---|---|---|---|---|
+| "help me cook eggs" | `dish_suggest`, fill `wants: eggs` | yes (`breakfast`, `wants: "eggs"`) | Scrambled Eggs with Butter and Chives | 5.1 s / 2.7 s | pass |
+| "how do I make pancakes" (coeliac) | `dish_suggest`, fill `wants: pancakes` | yes | Greek Yogurt Pancakes with Eggs (says the request) | 3.7 s to the card / 2.6 s (closing round not run) | pass |
+| "What should I eat?" (no meal named) | `dish_suggest` | yes (`dinner`, from the local time; no "which meal?") | Lemon Herb Chicken with Roasted Potatoes and Green Beans | 5.8 s / 2.8 s | pass |
+| "something else" (next turn of that chat) | `dish_suggest` | yes | **the same dish again** (Lemon Herb Chicken…) | 3.7 s to the card / 2.7 s (closing round not run) | pass |
+| "plan today's dishes" | `ask_choices` | yes: "Anything happening today?" with the four boxes | no (nothing planned yet) | 2.2 s | — |
+| "how long do I boil an egg?" | none | — | no; answered in text | 1.4 s | — |
+| "is salmon ok for me?" | none | — | no; answered in text | 1.4 s | — |
+| "I cooked eggs this morning" | none | — | no; Clara proposed logging it, with answer boxes | 2.5 s | — |
+| "help me cook eggs" (egg allergy) | `dish_suggest`, fill `wants: eggs` | yes | no; the conflict result, explained plainly | 1.9 s / 10 ms | no dish served |
+
+About $0.015. The repeated dish on "something else" is why `avoid` was added afterwards; **`avoid` is unit-tested only,
+not re-run live.**
+

@@ -323,3 +323,21 @@ test("a refusal (Haiku 5.5, no server-side fallback) is logged with no user cont
   assert.match(logged[0], /stop_reason refusal/);
   assert.doesNotMatch(logged[0], /secret/);
 });
+
+// The intent router forces one tool on a round (lib/clara/intent.ts). Haiku 5.5 accepts a forced
+// tool with adaptive thinking on (claude-api skill, "Forced tool calls skip thinking"): nothing
+// else about the request changes.
+test("toolChoice is sent as tool_choice for that round only; thinking stays omitted", async () => {
+  const { anthropic, sent } = fakeAnthropic({ deltas: ["hi"] });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = createAnthropicClient(anthropic as any);
+  await collect(await client.openRound({ system: "S", messages: [], tools: [TOOL], toolChoice: { type: "tool", name: "x_get" } }));
+  assert.deepEqual(sent[0].tool_choice, { type: "tool", name: "x_get", disable_parallel_tool_use: true });
+  assert.ok(!("thinking" in sent[0]));
+  assert.deepEqual(sent[0].output_config, { effort: "low" });
+  await collect(await client.openRound({ system: "S", messages: [], tools: [TOOL] }));
+  assert.ok(!("tool_choice" in sent[1]), "absent, not auto: the request is what it always was");
+  // No tools ⇒ nothing to force.
+  await collect(await client.openRound({ system: "S", messages: [], tools: [], toolChoice: { type: "tool", name: "x_get" } }));
+  assert.ok(!("tool_choice" in sent[2]));
+});

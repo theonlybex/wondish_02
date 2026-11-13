@@ -787,3 +787,169 @@ test("a handler that throws is recorded with the FAILED result the model was giv
   assert.ok(modelSaw.type === "tool_result");
   assert.deepEqual(savedTrace(rows), [{ id: "toolu_b", name: "boom_read", input: "{}", result: modelSaw.content }]);
 });
+
+// ─── The intent router (lib/clara/intent.ts) ────────────────────────────────
+
+function dishSkillStub() {
+  const calls: [string, Record<string, unknown>][] = [];
+  const tool = (name: string) => ({
+    def: { name, description: name, input_schema: { type: "object" as const, properties: {} } },
+    handler: async (_ctx: unknown, input: Record<string, unknown>): Promise<ToolResult> => {
+      calls.push([name, input]);
+      return { ok: true, data: { dish: { name: "Scrambled Eggs" } } };
+    },
+  });
+  const skill: Skill = { name: "dish", promptFragment: "DISH-FRAGMENT", tools: [tool("dish_suggest"), tool("dish_plan_today")] };
+  return { skill, calls };
+}
+const dishCall = (input: Record<string, unknown>, name = "dish_suggest"): ScriptedRound => ({ content: [{ type: "tool_use", id: "t1", name, input }] });
+
+test("router: 'help me cook eggs' forces dish_suggest on the first round only, and is logged without the message", async () => {
+  const { skill, calls } = dishSkillStub();
+  const { deps, seen } = setup({ rounds: [dishCall({ mealType: "breakfast" }), { deltas: ["Here's a way to cook eggs."] }], extraSkills: [skill] });
+  const fired: unknown[] = [];
+  deps.onIntent = (e) => fired.push(e);
+  const res = await turn(deps, "help me cook eggs");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.deepEqual(seen[0].toolChoice, { type: "tool", name: "dish_suggest" });
+  assert.ok(!("toolChoice" in seen[1]));
+  // The model left wants out: the router's value is filled in before the handler runs.
+  assert.deepEqual(calls, [["dish_suggest", { mealType: "breakfast", wants: "eggs" }]]);
+  assert.deepEqual(fired, [{ tool: "dish_suggest", wants: true }]);
+  assert.ok(!JSON.stringify(fired).includes("eggs"), "no user content in the log");
+});
+
+test("router: the model's own wants is kept", async () => {
+  const { skill, calls } = dishSkillStub();
+  const { deps } = setup({ rounds: [dishCall({ mealType: "breakfast", wants: "soft scrambled eggs" }), { deltas: ["Ok."] }], extraSkills: [skill] });
+  deps.onIntent = () => {};
+  const res = await turn(deps, "help me cook eggs");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.equal(calls[0][1].wants, "soft scrambled eggs");
+});
+
+test("router: no intent → the first request is unchanged (no toolChoice key), and nothing is logged", async () => {
+  const { skill } = dishSkillStub();
+  const { deps, seen } = setup({ rounds: [{ deltas: ["About 7 minutes."] }], extraSkills: [skill] });
+  const fired: unknown[] = [];
+  deps.onIntent = (e) => fired.push(e);
+  const res = await turn(deps, "how long do I boil an egg?");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.deepEqual(Object.keys(seen[0]).sort(), ["messages", "system", "tools"]);
+  assert.deepEqual(fired, []);
+});
+
+test("router: with the dish skill off, nothing is ever forced", async () => {
+  const { deps, seen } = setup({ rounds: [{ deltas: ["Sure."] }] });
+  const fired: unknown[] = [];
+  deps.onIntent = (e) => fired.push(e);
+  for (const m of ["help me cook eggs", "what should I eat", "plan today's dishes"]) {
+    const res = await turn(deps, m);
+    assert.ok(res.ok);
+    await collect(res.events);
+  }
+  assert.ok(seen.every((r) => !("toolChoice" in r)));
+  assert.deepEqual(fired, []);
+});
+
+test("router: a reply to a question Clara just asked is never routed", async () => {
+  const { skill } = dishSkillStub();
+  const boxes: ClaraChoices = { question: "Anything happening today?", options: ["A normal day", "Eating out"] };
+  const rows: Row[] = [
+    { id: "boxes", patientId: "p1", title: "t", messages: [msg(1, "user", "plan today's dishes"), msg(2, "assistant", "Anything happening today?", boxes)] },
+    { id: "asked", patientId: "p1", title: "t", messages: [msg(1, "user", "hi"), msg(2, "assistant", "Which meal should it be for?")] },
+  ];
+  const { deps, seen } = setup({ rows, rounds: [{ deltas: ["Ok."] }, { deltas: ["Ok."] }], extraSkills: [skill] });
+  deps.onIntent = () => {};
+  for (const id of ["boxes", "asked"]) {
+    const res = await turn(deps, "what should I eat", id);
+    assert.ok(res.ok);
+    await collect(res.events);
+  }
+  assert.ok(seen.every((r) => !("toolChoice" in r)));
+});
+
+test("router: 'something else' forces dish_suggest only when this chat already has a dish", async () => {
+  const { skill } = dishSkillStub();
+  const rows: Row[] = [
+    { id: "plain", patientId: "p1", title: "t", messages: [msg(1, "user", "hi"), msg(2, "assistant", "Hello.")] },
+    {
+      id: "dish", patientId: "p1", title: "t",
+      messages: [msg(1, "user", "what should I eat"), { ...msg(2, "assistant", "Lentil stew."), toolTrace: [{ id: "old1", name: "dish_suggest", input: '{"mealType":"dinner"}', result: '{"ok":true}' }] }],
+    },
+  ];
+  const { deps, seen } = setup({ rows, rounds: [{ deltas: ["What would you like instead?"] }, dishCall({ mealType: "dinner" }), { deltas: ["Here is another."] }], extraSkills: [skill] });
+  deps.onIntent = () => {};
+  let res = await turn(deps, "something else", "plain");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.ok(!("toolChoice" in seen[0]));
+  res = await turn(deps, "something else", "dish");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.deepEqual(seen[1].toolChoice, { type: "tool", name: "dish_suggest" });
+});
+
+test("router: 'plan today's dishes' forces the 'Anything happening today?' answer boxes; with the day described it forces dish_plan_today", async () => {
+  const { skill, calls } = dishSkillStub();
+  const ask: ScriptedRound = { content: [{ type: "tool_use", id: "c1", name: "ask_choices", input: { question: "Anything happening today?", options: ["A normal day", "Eating out"] } }] };
+  const { deps, seen } = setup({ rounds: [ask, dishCall({ occasion: "guests" }, "dish_plan_today"), { deltas: ["Here is today."] }], extraSkills: [skill] });
+  const fired: unknown[] = [];
+  deps.onIntent = (e) => fired.push(e);
+  let res = await turn(deps, "plan today's dishes");
+  assert.ok(res.ok);
+  const events = await collect(res.events);
+  assert.deepEqual(seen[0].toolChoice, { type: "tool", name: "ask_choices" });
+  assert.ok(events.some((e) => e.type === "choices"));
+  assert.deepEqual(calls, [], "no dish is planned before they answer");
+  res = await turn(deps, "plan my day, we have guests tonight");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.deepEqual(seen[1].toolChoice, { type: "tool", name: "dish_plan_today" });
+  assert.deepEqual(calls, [["dish_plan_today", { occasion: "guests" }]]);
+  assert.deepEqual(fired, [{ tool: "ask_choices", wants: false }, { tool: "dish_plan_today", wants: false }]);
+});
+
+test("the prompt names the meal for the person's local time, only with the dish skill on", async () => {
+  const { skill } = dishSkillStub();
+  const at = (iso: string) => () => new Date(iso);
+  const on = setup({ rounds: [{ deltas: ["Hi."] }, { deltas: ["Hi."] }, { deltas: ["Hi."] }], extraSkills: [skill] });
+  on.deps.now = at("2026-11-12T08:00:00Z");
+  await collect(((await turn(on.deps, "hello")) as { events: AsyncGenerator<ClaraEvent> }).events);
+  assert.match(on.seen[0].system, /Meal for now: breakfast/);
+  assert.match(on.seen[0].system, /do not ask which meal/);
+  // 08:00 UTC is 19:00 for someone eleven hours east.
+  const east = await startClaraAppTurn(on.deps, { patient, account, isPremium: false, message: "hello", options: { ...options, tzOffsetMinutes: 660 } });
+  assert.ok(east.ok);
+  await collect(east.events);
+  assert.match(on.seen[1].system, /Meal for now: dinner/);
+  // No offset sent: the local time is unknown, so no meal is asserted — only the rule.
+  const unknown = await startClaraAppTurn(on.deps, { patient, account, isPremium: false, message: "hello", options: { surface: "ios" } });
+  assert.ok(unknown.ok);
+  await collect(unknown.events);
+  assert.ok(!/Meal for now: (breakfast|lunch|dinner)/.test(on.seen[2].system));
+  assert.match(on.seen[2].system, /do not ask which meal/);
+  const off = setup({ rounds: [{ deltas: ["Hi."] }] });
+  off.deps.now = at("2026-11-12T08:00:00Z");
+  await collect(((await turn(off.deps, "hello")) as { events: AsyncGenerator<ClaraEvent> }).events);
+  assert.ok(!/Meal for now/.test(off.seen[0].system));
+});
+
+test("router: 'something else' hands dish_suggest the dishes this chat already showed, so the same one is not served again", async () => {
+  const { skill, calls } = dishSkillStub();
+  const trace = [{ id: "old1", name: "dish_suggest", input: '{"mealType":"dinner"}', result: JSON.stringify({ ok: true, data: { dish: { name: "Lemon Herb Chicken" } } }) }];
+  const planTrace = [{ id: "old2", name: "dish_plan_today", input: "{}", result: JSON.stringify({ ok: true, data: { dishes: [{ name: "Oat Bowl" }, { name: "Lentil Soup" }] } }) }];
+  const rows: Row[] = [{
+    id: "dish", patientId: "p1", title: "t",
+    messages: [msg(1, "user", "plan my day"), { ...msg(2, "assistant", "Here is today."), toolTrace: planTrace }, msg(3, "user", "what should I eat"), { ...msg(4, "assistant", "Lemon Herb Chicken."), toolTrace: trace }],
+  }];
+  const { deps } = setup({ rows, rounds: [dishCall({ mealType: "dinner" }), { deltas: ["Here is another."] }], extraSkills: [skill] });
+  deps.onIntent = () => {};
+  const res = await turn(deps, "something else", "dish");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.deepEqual(calls, [["dish_suggest", { mealType: "dinner", avoid: ["Oat Bowl", "Lentil Soup", "Lemon Herb Chicken"] }]]);
+});

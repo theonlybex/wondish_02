@@ -47,6 +47,13 @@ export interface LoopParams {
    * old build never shows a blank or part-less answer.
    */
   partsEnabled?: boolean;
+  /**
+   * The intent router's decision (lib/clara/intent.ts): force this tool on the
+   * FIRST round only. The model still writes the arguments; `fill` supplies an
+   * argument it left out or left empty (the router's `wants`), never one it
+   * gave. Ignored when the tool is not in `tools`. Later rounds are unforced.
+   */
+  forceFirst?: { tool: string; fill?: Record<string, unknown> };
 }
 
 const CONFIRM_REQUIRED_MESSAGE =
@@ -72,6 +79,17 @@ export const MID_STREAM_FALLBACK =
  */
 export const EMPTY_ANSWER_FALLBACK =
   "Sorry — I couldn't put an answer together just then. Could you ask me that again?";
+
+/** The model's own arguments win; only a missing, null or blank one is filled. */
+function withFilled(input: Record<string, unknown>, fill: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!fill) return input;
+  const out = { ...input };
+  for (const [key, value] of Object.entries(fill)) {
+    const given = out[key];
+    if (given === undefined || given === null || (typeof given === "string" && given.trim().length === 0)) out[key] = value;
+  }
+  return out;
+}
 
 /**
  * Runs Clara's bounded tool-use loop.
@@ -116,10 +134,20 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
 
   const partsEnabled = params.partsEnabled === true;
 
+  const forced =
+    params.forceFirst && params.tools.some((t) => t.name === params.forceFirst!.tool) ? params.forceFirst : null;
+
+  // OFF 2026-11 (Clara-first, spec §8.6): the first round may now carry a forced tool from the intent router; with no forced tool the request is the same three keys. Restore: uncomment these lines and delete the call below them.
+  // const firstRound = await params.client.openRound({
+  //   system: params.system,
+  //   messages,
+  //   tools: params.tools,
+  // });
   const firstRound = await params.client.openRound({
     system: params.system,
     messages,
     tools: params.tools,
+    ...(forced ? { toolChoice: { type: "tool" as const, name: forced.tool } } : {}),
   });
 
   async function* run(): AsyncGenerator<string> {
@@ -245,7 +273,10 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
           };
         } else {
           try {
-            result = await params.execute(call.name, call.input, call.id);
+            // OFF 2026-11 (Clara-first, spec §8.6): the forced tool's input may get the router's arguments filled in first. Restore: uncomment this line and delete the two below it.
+            // result = await params.execute(call.name, call.input, call.id);
+            const input = forced && toolRoundsUsed === 0 && call.name === forced.tool ? withFilled(call.input, forced.fill) : call.input;
+            result = await params.execute(call.name, input, call.id);
           } catch (err) {
             // A handler that throws is a bug, not a user-facing event: log it and
             // hand the model a narratable result so the turn still completes.

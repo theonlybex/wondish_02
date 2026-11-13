@@ -27,7 +27,7 @@ if (process.env.SIM_LIVE !== "1") { console.log("opt-in: SIM_LIVE=1"); process.e
 const key = (globalThis as any).__simLiveKey as string | undefined;
 if (!key) { console.log("no key"); process.exit(0); }
 process.env.ANTHROPIC_API_KEY = key;
-const CAP = Math.min(12, Number(process.env.COOK_CAP ?? 12));
+const CAP = Math.min(16, Number(process.env.COOK_CAP ?? 12));
 let calls = 0;
 const spend = () => { if (++calls > CAP) throw new Error(`cook-request: cap ${CAP} reached`); };
 
@@ -76,17 +76,38 @@ mock.module(pathToFileURL(join(__dirname, "..", "lib", "anthropic.ts")).href, {
 const store = createClaraStore(snap);
 (globalThis as any).prisma = store.client;
 
-type Case = { label: string; says: string; rules: RuleKey[]; expectWants: boolean; direct?: Record<string, unknown> };
+type Case = {
+  label: string; says: string; rules: RuleKey[]; expectWants: boolean; direct?: Record<string, unknown>;
+  /** Ends the chat once its tool has run (no closing round, no reply). */
+  stopAfterTool?: boolean;
+  /** Runs as the next turn of that case's chat (its saved history comes first). */
+  after?: number;
+};
+// COOK_SET picks the list: "wants" (the first check, 2026-11-12), "router" (the intent router).
+const SET = process.env.COOK_SET ?? "wants";
 const ONLY = process.env.COOK_ONLY ? new Set(process.env.COOK_ONLY.split(",").map((x) => Number(x.trim()))) : null;
 const STOP_AFTER_TOOL = process.env.COOK_STOP_AFTER_TOOL === "1";
 const DIRECT = process.env.COOK_DIRECT === "1";
-const CASES: Case[] = [
+const ROUTER_CASES: Case[] = [
+  { label: "cook eggs", says: "help me cook eggs", rules: [], expectWants: true },
+  { label: "pancakes, coeliac", says: "how do I make pancakes", rules: ["condition:Celiac Disease"], expectWants: true, stopAfterTool: true },
+  { label: "bare what should I eat", says: "What should I eat?", rules: [], expectWants: false },
+  { label: "something else, after a dish", says: "something else", rules: [], expectWants: false, stopAfterTool: true, after: 3 },
+  { label: "plan today's dishes", says: "plan today's dishes", rules: [], expectWants: false },
+  { label: "boil an egg (no card)", says: "how long do I boil an egg?", rules: [], expectWants: false, stopAfterTool: true },
+  { label: "is salmon ok (no card)", says: "is salmon ok for me?", rules: [], expectWants: false, stopAfterTool: true },
+  { label: "I cooked eggs (no card)", says: "I cooked eggs this morning", rules: [], expectWants: false, stopAfterTool: true },
+  { label: "cook eggs, egg allergy", says: "help me cook eggs", rules: ["allergy:Eggs"], expectWants: true },
+];
+const WANTS_CASES: Case[] = [
   { label: "cook eggs, no restrictions", says: "help me cook eggs", rules: [], expectWants: true },
   { label: "cook eggs, egg allergy", says: "help me cook eggs", rules: ["allergy:Eggs"], expectWants: true },
   { label: "pancakes, coeliac", says: "how do I make pancakes", rules: ["condition:Celiac Disease"], expectWants: true, direct: { mealType: "breakfast", wants: "pancakes" } },
   { label: "control: what should I eat", says: "What should I eat?", rules: [], expectWants: false },
   { label: "control: what should I eat for dinner", says: "What should I eat for dinner?", rules: [], expectWants: false },
 ];
+
+const CASES = SET === "router" ? ROUTER_CASES : WANTS_CASES;
 
 (async () => {
   const { NextRequest } = await import("next/server");
@@ -98,6 +119,10 @@ const CASES: Case[] = [
   const { startClaraLoop } = await import("@/lib/clara/loop");
   const { buildFoodMapText, PATIENT_FOOD_MAP_INCLUDE } = await import("@/lib/food-map");
   const { buildDietMatchers, derivePatientBans } = await import("@/lib/diet-match");
+  const { routeIntent, mealForNowLine } = await import("@/lib/clara/chat-service");
+  // 18:30 for the person (offset 0): the meal for now is dinner.
+  const NOW = new Date("2026-11-12T18:30:00Z");
+  const saved = new Map<number, { messages: any[]; ctx: any; system: string; oracle: any; matchers: any }>();
   const req = (method: string, body: unknown) => new NextRequest(new URL("http://sim.local/api"), { method, body: JSON.stringify(body), headers: { "content-type": "application/json" } });
   const ids = (kind: any, prefix: string, rules: RuleKey[]) => rules.filter((k) => k.startsWith(prefix)).map((k) => store.ref(kind, k.slice(prefix.length)).id);
   const today = "2026-11-12";
@@ -128,7 +153,15 @@ const CASES: Case[] = [
     const oracle = makeOracle(patient, c.rules);
     const matchers = buildDietMatchers(derivePatientBans(patient, new Date(`${today}T12:00:00`)));
     const ctx = { patientId: pid, accountId: acc.id, firstName: "Sam", isPremium: true, today, surface: "ios", disabledSkills: [] };
-    const system = buildSystemPrompt("Sam", buildFoodMapText(patient), active, today, "assistant");
+    let system = buildSystemPrompt("Sam", buildFoodMapText(patient), active, today, "assistant", SET === "router" ? mealForNowLine("Sam", 0, NOW) : "");
+    const prior = c.after !== undefined ? saved.get(c.after) : undefined;
+    if (c.after !== undefined && !prior) { console.log(`\n### ${c.label}: NOT RUN (case ${c.after} did not leave a chat to continue)`); continue; }
+    let turnCtx: any = ctx, turnOracle = oracle, turnMatchers = matchers;
+    if (prior) { system = prior.system; turnCtx = prior.ctx; turnOracle = prior.oracle; turnMatchers = prior.matchers; }
+    const history: any[] = prior ? prior.messages : [];
+    const forceFirst = SET === "router" ? routeIntent(c.says, history, active) : undefined;
+    let choices: any = null;
+    let lastRequest: any = null;
 
     dishCalls = [];
     if (DIRECT) {
@@ -152,8 +185,9 @@ const CASES: Case[] = [
     });
     const client = {
       openRound: async (r: any) => {
-        if (STOP_AFTER_TOOL && toolCalls.length > 0) throw new Error("stopped after the tool (COOK_STOP_AFTER_TOOL)");
+        if ((STOP_AFTER_TOOL || c.stopAfterTool) && toolCalls.length > 0) throw new Error("stopped after the tool");
         spend();
+        lastRequest = r;
         return base.openRound(r);
       },
     };
@@ -161,7 +195,9 @@ const CASES: Case[] = [
     const t0 = Date.now();
     try {
       const stream = await startClaraLoop({
-        client, system, tools, messages: [{ role: "user", content: c.says }], maxToolRounds: 1, writesAllowed: false, partsEnabled: true,
+        client, system, tools, messages: [...history, { role: "user", content: c.says }], maxToolRounds: 1, writesAllowed: false, partsEnabled: true,
+        ...(forceFirst ? { forceFirst } : {}),
+        onChoices: (ch: any) => { choices = ch; },
         onError: (e) => errors.push(String((e as Error)?.message ?? e).slice(0, 160)),
         execute: async (name, input) => {
           const h = handlerOf(name);
@@ -169,7 +205,7 @@ const CASES: Case[] = [
           const quiet = console.info;
           console.info = () => {};
           let result: any;
-          try { result = h ? await h(ctx as any, input) : { ok: false, reason: "NOT_FOUND", message: `no tool ${name}` }; } finally { console.info = quiet; }
+          try { result = h ? await h(turnCtx as any, input) : { ok: false, reason: "NOT_FOUND", message: `no tool ${name}` }; } finally { console.info = quiet; }
           toolCalls.push({ name, input, ms: Date.now() - t, result });
           return result;
         },
@@ -184,11 +220,16 @@ const CASES: Case[] = [
     let verdict = "-";
     if (part) {
       const items = part.recipe.ingredients.map((x: any) => ({ name: x.name, allergenGroups: ingByName.get(String(x.name).toLowerCase())?.allergenGroups ?? [] }));
-      const bad = oracle.judgeMany(items).map((v, k) => ({ v, name: items[k].name })).filter(({ v }) => v.engine.length || v.groups.length);
+      const bad = turnOracle.judgeMany(items).map((v, k) => ({ v, name: items[k].name })).filter(({ v }) => v.engine.length || v.groups.length);
       // Allergies are judged on every word shown: the name and each step too.
       const prose = [part.name, ...part.recipe.steps].join(" \n ");
-      const proseHit = matchers.allergyMatchers.filter((m: RegExp) => m.test(prose)).map((m: any) => m.term);
+      const proseHit = turnMatchers.allergyMatchers.filter((m: RegExp) => m.test(prose)).map((m: any) => m.term);
       verdict = bad.length || proseHit.length ? `VIOLATION: ${[...bad.map((b) => b.name), ...proseHit].join(", ")}` : "pass";
+    }
+    // The chat as the next turn would get it from the store: tool calls and results, no thinking blocks.
+    if (lastRequest && errors.length === 0) {
+      const replay = lastRequest.messages.map((m: any) => (Array.isArray(m.content) ? { ...m, content: m.content.filter((b: any) => b.type !== "thinking" && b.type !== "redacted_thinking" && !(b.type === "text" && /No more tool calls/.test(b.text))) } : m));
+      saved.set(n, { messages: [...replay, { role: "assistant", content: reply }], ctx: turnCtx, system, oracle: turnOracle, matchers: turnMatchers });
     }
     const wants = suggest ? (suggest.input.wants ?? null) : null;
     const wantsOk = suggest ? (c.expectWants ? typeof wants === "string" : wants === null) : false;
@@ -196,6 +237,9 @@ const CASES: Case[] = [
     console.log([
       ``,
       `### ${c.label} — "${c.says}" (rules: ${c.rules.join(", ") || "none"})`,
+      SET === "router" ? `router: ${forceFirst ? `forced ${forceFirst.tool}${forceFirst.fill ? ` (fill ${JSON.stringify(forceFirst.fill)})` : ""}` : "null (left to the model)"} · forced tool called: ${forceFirst ? (forceFirst.tool === "ask_choices" ? (choices ? "yes" : "NO") : toolCalls[0]?.name === forceFirst.tool ? "yes" : "NO") : "-"}` : ``,
+      choices ? `answer boxes: "${choices.question}" → ${JSON.stringify(choices.options)}` : ``,
+      `card: ${toolCalls.some((t) => t.result?.ok && (t.result.parts ?? []).some((p: any) => p.kind === "dish")) ? "yes" : "no"}`,
       `tools called: ${toolCalls.map((t) => `${t.name} ${JSON.stringify(t.input)} (${t.ms} ms)`).join("; ") || "none"}`,
       `dish_suggest with wants: ${suggest ? (wants !== null ? `yes ("${wants}")` : "no wants") : "not called"} · as expected: ${wantsOk ? "yes" : "NO"}`,
       suggest ? `tool result: ${suggest.result.ok ? `dish "${suggest.result.data.dish.name}" · source ${suggest.result.data.dish.source} · answersRequest ${suggest.result.data.dish.answersRequest ?? "-"} · ${part?.minutes} min · steps ${stepsPart?.steps.length ?? 0} (timers on ${stepsPart?.steps.filter((s: any) => s.timerMinutes != null).length ?? 0})` : `no dish — ${suggest.result.message}`}` : `tool result: -`,

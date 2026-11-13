@@ -129,6 +129,12 @@ export interface ModelRoundRequest {
   messages: ModelMessage[];
   /** Empty array ⇒ the model cannot call tools this round (forced final answer). */
   tools: ToolDef[];
+  /**
+   * Force this one tool on this round (Messages API `tool_choice`). Absent ⇒
+   * the model decides, and the request is exactly what it always was. Set by
+   * the loop on the first round only, from the intent router.
+   */
+  toolChoice?: { type: "tool"; name: string };
 }
 
 /**
