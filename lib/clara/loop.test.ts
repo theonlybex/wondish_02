@@ -877,3 +877,183 @@ test("forceFirst + a FAILED tool result (the allergy conflict) still ends in a n
   const last = seen[1].messages.at(-1)!;
   assert.match(JSON.stringify(last.content), /does not fit them/);
 });
+
+// ─── a plain-text question gets answer boxes (the conversion round) ─────────
+
+const BOX_TOOLS = [...TOOLS, askChoicesSkill.tools[0].def];
+const boxes = (question: string, options: string[]): ScriptedRound => ({ content: [toolUse("c1", ASK_CHOICES_TOOL, { question, options })] });
+
+async function convertRun(rounds: ScriptedRound[], extra: Partial<Parameters<typeof startClaraLoop>[0]> = {}) {
+  const { client, seen } = stubClient(rounds);
+  const got: ClaraChoices[] = [];
+  const log: { produced: boolean }[] = [];
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: BOX_TOOLS, messages: [{ role: "user", content: "log my lunch" }], maxToolRounds: 2, execute: okTool,
+      onChoices: (c) => got.push(c), questionBoxes: true, onConversion: (e) => log.push({ produced: e.produced }),
+      ...extra,
+    })
+  );
+  return { out, seen, got, log };
+}
+
+test("conversion: a text reply ending in a question → one forced ask_choices round; boxes once, the question not written twice", async () => {
+  const { out, seen, got, log } = await convertRun([
+    { deltas: ["Sure. ", "What did you have for lunch?"] },
+    boxes("What did you eat for lunch today?", ["A sandwich", "Salad", "Leftovers"]),
+  ]);
+  assert.equal(out, "Sure. What did you have for lunch?", "the text is exactly what the model wrote, once");
+  assert.equal(seen.length, 2);
+  assert.deepEqual(seen[1].toolChoice, { type: "tool", name: ASK_CHOICES_TOOL });
+  // Append-only: same system and tools, the reply and a note added after it.
+  assert.equal(seen[1].system, seen[0].system);
+  assert.deepEqual(seen[1].tools, seen[0].tools);
+  assert.deepEqual(seen[1].messages.slice(0, 2), [{ role: "user", content: "log my lunch" }, { role: "assistant", content: [textBlock("Sure. What did you have for lunch?")] }]);
+  assert.match(JSON.stringify(seen[1].messages[2]), /2 to 4 short likely answers/);
+  // The boxes carry the question as it is on screen, with the model's options.
+  assert.deepEqual(got, [{ question: "What did you have for lunch?", options: ["A sandwich", "Salad", "Leftovers"] }]);
+  assert.deepEqual(log, [{ produced: true }]);
+});
+
+test("conversion: a statement, or a question only in the middle, runs no extra round", async () => {
+  for (const text of ["Salmon is fine for you.", "Why fibre? It keeps you full."]) {
+    const { out, seen, got, log } = await convertRun([{ deltas: [text] }]);
+    assert.equal(out, text);
+    assert.equal(seen.length, 1);
+    assert.deepEqual(got, []);
+    assert.deepEqual(log, []);
+  }
+});
+
+test("conversion: when the forced round fails, throws mid-stream, answers in text or gives bad options, the reply stays as it was", async () => {
+  const question = "Which meal was it?";
+  const failing: ScriptedRound[][] = [
+    [{ deltas: [question] }, { deltas: ["Breakfast or lunch?"] }],
+    [{ deltas: [question] }, boxes("Which meal?", ["Only one"])],
+    [{ deltas: [question] }, { content: [toolUse("x", "x_get")] }],
+  ];
+  for (const rounds of failing) {
+    const { out, got, log } = await convertRun(rounds);
+    assert.equal(out, question);
+    assert.deepEqual(got, []);
+    assert.deepEqual(log, [{ produced: false }]);
+  }
+  // The connect itself fails.
+  let n = 0;
+  const client: ModelClient = {
+    async openRound() {
+      if (n++ > 0) throw new Error("529");
+      return (async function* () {
+        yield { type: "text", text: question } as ModelRoundEvent;
+        yield { type: "end", content: [textBlock(question)], stopReason: "end_turn" } as ModelRoundEvent;
+      })();
+    },
+  };
+  const errors: unknown[] = [];
+  const got: ClaraChoices[] = [];
+  const out = await drain(
+    await startClaraLoop({ client, system: "s", tools: BOX_TOOLS, messages: [], maxToolRounds: 2, execute: okTool, questionBoxes: true, onChoices: (c) => got.push(c), onError: (e) => errors.push(e), onConversion: () => {} })
+  );
+  assert.equal(out, question);
+  assert.deepEqual(got, []);
+  assert.equal(errors.length, 1);
+});
+
+test("conversion: a forced round slower than its budget is dropped, and the reply is not held", async () => {
+  const question = "Which meal was it?";
+  let n = 0;
+  const client: ModelClient = {
+    async openRound() {
+      if (n++ === 0) {
+        return (async function* () {
+          yield { type: "text", text: question } as ModelRoundEvent;
+          yield { type: "end", content: [textBlock(question)], stopReason: "end_turn" } as ModelRoundEvent;
+        })();
+      }
+      return new Promise(() => {}); // never answers
+    },
+  };
+  const got: ClaraChoices[] = [];
+  const log: { produced: boolean }[] = [];
+  const t0 = Date.now();
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: BOX_TOOLS, messages: [], maxToolRounds: 2, execute: okTool, questionBoxes: true, conversionBudgetMs: 40,
+      onChoices: (c) => got.push(c), onConversion: (e) => log.push({ produced: e.produced }),
+    })
+  );
+  assert.equal(out, question);
+  assert.deepEqual(got, []);
+  assert.deepEqual(log, [{ produced: false }]);
+  assert.ok(Date.now() - t0 < 1000);
+});
+
+test("conversion: a turn that already ended in answer boxes runs no extra round", async () => {
+  const { out, seen, got, log } = await convertRun([boxes("Anything happening today?", ["A normal day", "Eating out"])]);
+  assert.equal(out, "Anything happening today?");
+  assert.equal(seen.length, 1);
+  assert.equal(got.length, 1);
+  assert.deepEqual(log, []);
+});
+
+test("conversion: a turn that showed a card (parts) runs no extra round, even when the text ends in a question", async () => {
+  const part = { kind: "levels", little: [], aLot: [] } as never;
+  const { out, seen, got } = await convertRun(
+    [{ content: [toolUse("t1", "x_get")] }, { deltas: ["Here it is. Want another?"] }],
+    { execute: async () => ({ ok: true, data: {}, parts: [part] }), partsEnabled: true },
+  );
+  assert.equal(out, "Here it is. Want another?");
+  assert.equal(seen.length, 2);
+  assert.deepEqual(got, []);
+});
+
+test("conversion: off when the choices skill is off, or when the caller did not ask for it (unchanged callers)", async () => {
+  const noSkill = await convertRun([{ deltas: ["Which meal was it?"] }], { tools: TOOLS });
+  assert.equal(noSkill.seen.length, 1);
+  const notAsked = await convertRun([{ deltas: ["Which meal was it?"] }], { questionBoxes: undefined });
+  assert.equal(notAsked.seen.length, 1);
+  assert.deepEqual(notAsked.got, []);
+});
+
+test("conversion: after tool rounds it still runs once, and a truncated reply is left alone", async () => {
+  const afterTool = await convertRun([{ content: [toolUse("t1", "x_get")] }, { deltas: ["You had ramen. Log it as lunch?"] }, boxes("Log it?", ["Yes, log it", "No"])]);
+  assert.equal(afterTool.out, "You had ramen. Log it as lunch?");
+  assert.equal(afterTool.seen.length, 3);
+  assert.deepEqual(afterTool.got, [{ question: "Log it as lunch?", options: ["Yes, log it", "No"] }]);
+  const cut = await convertRun([{ deltas: ["Which meal was it?"], stopReason: "max_tokens" }]);
+  assert.equal(cut.seen.length, 1);
+});
+
+// Seen live 2026-11-12: the model wrote its question in the text AND passed it to ask_choices,
+// so the person read it twice ("What did you have for lunch? … What did you eat for lunch?").
+test("ask_choices after text that already ends in a question: the question is not written a second time", async () => {
+  const { client } = stubClient([
+    {
+      deltas: ["Sure. What did you have for lunch?"],
+      content: [textBlock("Sure. What did you have for lunch?"), toolUse("c1", ASK_CHOICES_TOOL, { question: "What did you eat for lunch?", options: ["A sandwich", "Salad"] })],
+    },
+  ]);
+  const got: ClaraChoices[] = [];
+  const out = await drain(
+    await startClaraLoop({ client, system: "s", tools: BOX_TOOLS, messages: [], maxToolRounds: 2, execute: okTool, onChoices: (c) => got.push(c), questionBoxes: true })
+  );
+  assert.equal(out, "Sure. What did you have for lunch?");
+  assert.deepEqual(got, [{ question: "What did you have for lunch?", options: ["A sandwich", "Salad"] }], "the boxes carry the question as it is on screen");
+});
+
+test("ask_choices after text that ends in a statement still writes its question (as before)", async () => {
+  const { client } = stubClient([
+    { deltas: ["I can swap it."], content: [textBlock("I can swap it."), toolUse("c1", ASK_CHOICES_TOOL, { question: "Swap it?", options: ["Yes, swap it", "No, keep it"] })] },
+  ]);
+  const out = await drain(await startClaraLoop({ client, system: "s", tools: BOX_TOOLS, messages: [], maxToolRounds: 2, execute: okTool, questionBoxes: true }));
+  assert.equal(out, "I can swap it.\n\nSwap it?");
+});
+
+test("ask_choices whose question the text already asked earlier, in other words, is not written again", async () => {
+  const text = "What did you have for lunch? Tell me the dish, or pick one of these if it's close.";
+  const { client } = stubClient([{ deltas: [text], content: [textBlock(text), toolUse("c1", ASK_CHOICES_TOOL, { question: "What did you eat for lunch today?", options: ["A sandwich", "Leftovers"] })] }]);
+  const got: ClaraChoices[] = [];
+  const out = await drain(await startClaraLoop({ client, system: "s", tools: BOX_TOOLS, messages: [], maxToolRounds: 2, execute: okTool, onChoices: (c) => got.push(c), questionBoxes: true }));
+  assert.equal(out, text);
+  assert.deepEqual(got, [{ question: "What did you eat for lunch today?", options: ["A sandwich", "Leftovers"] }]);
+});

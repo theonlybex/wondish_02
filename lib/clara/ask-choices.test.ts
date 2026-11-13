@@ -119,6 +119,12 @@ test("askChoicesSkill: the prompt fragment carries the usage rules", () => {
   assert.match(f, /ask_choices/);
   assert.match(f, /always/i, "always for the confirm step of a change");
   assert.match(f, /confirm/i);
-  assert.match(f, /open question/i, "not for open questions");
+  // OFF 2026-11 (Clara-first, spec §8.6): every question now gets answer boxes, open ones too. Restore: uncomment this line and delete the three below it.
+  // assert.match(f, /open question/i, "not for open questions");
+  assert.match(f, /Whenever your reply ends by asking/, "every question gets boxes");
+  assert.match(f, /"What did you eat\?"/, "open questions too, with likely answers");
+  assert.ok(!/Do not use it for open questions/.test(f));
+  assert.match(askChoicesSkill.tools[0].def.description, /whenever your reply ends with a question/i);
+  assert.ok(!/Not for open questions/.test(askChoicesSkill.tools[0].def.description));
   assert.match(f, /"Other"/, "never list Other");
 });

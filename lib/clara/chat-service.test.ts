@@ -881,7 +881,7 @@ test("router: 'something else' forces dish_suggest only when this chat already h
       messages: [msg(1, "user", "what should I eat"), { ...msg(2, "assistant", "Lentil stew."), toolTrace: [{ id: "old1", name: "dish_suggest", input: '{"mealType":"dinner"}', result: '{"ok":true}' }] }],
     },
   ];
-  const { deps, seen } = setup({ rows, rounds: [{ deltas: ["What would you like instead?"] }, dishCall({ mealType: "dinner" }), { deltas: ["Here is another."] }], extraSkills: [skill] });
+  const { deps, seen } = setup({ rows, rounds: [{ deltas: ["Tell me what you fancy."] }, dishCall({ mealType: "dinner" }), { deltas: ["Here is another."] }], extraSkills: [skill] });
   deps.onIntent = () => {};
   let res = await turn(deps, "something else", "plain");
   assert.ok(res.ok);
@@ -952,4 +952,32 @@ test("router: 'something else' hands dish_suggest the dishes this chat already s
   assert.ok(res.ok);
   await collect(res.events);
   assert.deepEqual(calls, [["dish_suggest", { mealType: "dinner", avoid: ["Oat Bowl", "Lentil Soup", "Lemon Herb Chicken"] }]]);
+});
+
+// ─── Every question gets answer boxes ───────────────────────────────────────
+
+test("a reply that asks in plain text gets answer boxes from one extra forced round; text once, boxes saved with the message", async () => {
+  const ask: ScriptedRound = { content: [{ type: "tool_use", id: "c1", name: "ask_choices", input: { question: "What did you eat?", options: ["A sandwich", "Salad", "Leftovers"] } }] };
+  const { deps, seen, rows } = setup({ rounds: [{ deltas: ["Sure. What did you have for lunch?"] }, ask] });
+  const ran: unknown[] = [];
+  deps.onConversion = (e) => ran.push(e.produced);
+  const res = await turn(deps, "log my lunch");
+  assert.ok(res.ok);
+  const events = await collect(res.events);
+  assert.equal(textOf(events), "Sure. What did you have for lunch?");
+  assert.deepEqual(events.filter((e) => e.type === "choices"), [{ type: "choices", question: "What did you have for lunch?", options: ["A sandwich", "Salad", "Leftovers"] }]);
+  assert.deepEqual(seen[1].toolChoice, { type: "tool", name: "ask_choices" });
+  const saved = rows[0].messages.at(-1)!;
+  assert.equal(saved.content, "Sure. What did you have for lunch?");
+  assert.deepEqual(saved.choices, { question: "What did you have for lunch?", options: ["A sandwich", "Salad", "Leftovers"] });
+  assert.deepEqual(ran, [true]);
+});
+
+test("a statement reply runs no extra round and has no boxes", async () => {
+  const { deps, seen } = setup({ rounds: [{ deltas: ["Salmon is fine for you."] }] });
+  const res = await turn(deps, "is salmon ok for me?");
+  assert.ok(res.ok);
+  const events = await collect(res.events);
+  assert.equal(seen.length, 1);
+  assert.ok(!events.some((e) => e.type === "choices"));
 });

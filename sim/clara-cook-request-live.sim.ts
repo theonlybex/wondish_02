@@ -27,7 +27,7 @@ if (process.env.SIM_LIVE !== "1") { console.log("opt-in: SIM_LIVE=1"); process.e
 const key = (globalThis as any).__simLiveKey as string | undefined;
 if (!key) { console.log("no key"); process.exit(0); }
 process.env.ANTHROPIC_API_KEY = key;
-const CAP = Math.min(16, Number(process.env.COOK_CAP ?? 12));
+const CAP = Math.min(16, Number(process.env.COOK_CAP ?? 12)); // per run; each task's own limit is passed as COOK_CAP
 let calls = 0;
 const spend = () => { if (++calls > CAP) throw new Error(`cook-request: cap ${CAP} reached`); };
 
@@ -99,6 +99,25 @@ const ROUTER_CASES: Case[] = [
   { label: "I cooked eggs (no card)", says: "I cooked eggs this morning", rules: [], expectWants: false, stopAfterTool: true },
   { label: "cook eggs, egg allergy", says: "help me cook eggs", rules: ["allergy:Eggs"], expectWants: true },
 ];
+// Every question gets answer boxes (the conversion round).
+const BOXES_CASES: Case[] = [
+  { label: "I want to eat better", says: "I want to eat better", rules: [], expectWants: false },
+  { label: "plan today's dishes", says: "plan today's dishes", rules: [], expectWants: false },
+  { label: "log my lunch", says: "log my lunch", rules: [], expectWants: false },
+  { label: "statement only", says: "thanks, that helps", rules: [], expectWants: false },
+  // Asks for the question in plain words, to exercise the conversion round live.
+  { label: "question in plain text", says: "I had breakfast. Ask me what it was, in plain words in your message.", rules: [], expectWants: false },
+];
+// Reply length in words (text only), and questions asked before a card.
+const MEASURE_CASES: Case[] = [
+  { label: "cook eggs", says: "help me cook eggs", rules: [], expectWants: true },
+  { label: "dinner", says: "What should I eat for dinner?", rules: [], expectWants: false },
+  { label: "plan today's dishes", says: "plan today's dishes", rules: [], expectWants: false },
+  { label: "is salmon ok", says: "is salmon ok for me?", rules: [], expectWants: false },
+  { label: "boil an egg", says: "how long do I boil an egg?", rules: [], expectWants: false },
+  { label: "fibre, detail asked", says: "why is fibre important? explain", rules: [], expectWants: false },
+  { label: "cook eggs, egg allergy", says: "help me cook eggs", rules: ["allergy:Eggs"], expectWants: true },
+];
 const WANTS_CASES: Case[] = [
   { label: "cook eggs, no restrictions", says: "help me cook eggs", rules: [], expectWants: true },
   { label: "cook eggs, egg allergy", says: "help me cook eggs", rules: ["allergy:Eggs"], expectWants: true },
@@ -107,7 +126,8 @@ const WANTS_CASES: Case[] = [
   { label: "control: what should I eat for dinner", says: "What should I eat for dinner?", rules: [], expectWants: false },
 ];
 
-const CASES = SET === "router" ? ROUTER_CASES : WANTS_CASES;
+const CASES = SET === "router" ? ROUTER_CASES : SET === "boxes" ? BOXES_CASES : SET === "measure" ? MEASURE_CASES : WANTS_CASES;
+const ROUTED = SET !== "wants";
 
 (async () => {
   const { NextRequest } = await import("next/server");
@@ -153,14 +173,15 @@ const CASES = SET === "router" ? ROUTER_CASES : WANTS_CASES;
     const oracle = makeOracle(patient, c.rules);
     const matchers = buildDietMatchers(derivePatientBans(patient, new Date(`${today}T12:00:00`)));
     const ctx = { patientId: pid, accountId: acc.id, firstName: "Sam", isPremium: true, today, surface: "ios", disabledSkills: [] };
-    let system = buildSystemPrompt("Sam", buildFoodMapText(patient), active, today, "assistant", SET === "router" ? mealForNowLine("Sam", 0, NOW) : "");
+    let system = buildSystemPrompt("Sam", buildFoodMapText(patient), active, today, "assistant", ROUTED ? mealForNowLine("Sam", 0, NOW) : "");
     const prior = c.after !== undefined ? saved.get(c.after) : undefined;
     if (c.after !== undefined && !prior) { console.log(`\n### ${c.label}: NOT RUN (case ${c.after} did not leave a chat to continue)`); continue; }
     let turnCtx: any = ctx, turnOracle = oracle, turnMatchers = matchers;
     if (prior) { system = prior.system; turnCtx = prior.ctx; turnOracle = prior.oracle; turnMatchers = prior.matchers; }
     const history: any[] = prior ? prior.messages : [];
-    const forceFirst = SET === "router" ? routeIntent(c.says, history, active) : undefined;
+    const forceFirst = ROUTED ? routeIntent(c.says, history, active) : undefined;
     let choices: any = null;
+    let conversion: { produced: boolean; ms: number } | null = null;
     let lastRequest: any = null;
 
     dishCalls = [];
@@ -198,6 +219,7 @@ const CASES = SET === "router" ? ROUTER_CASES : WANTS_CASES;
         client, system, tools, messages: [...history, { role: "user", content: c.says }], maxToolRounds: 1, writesAllowed: false, partsEnabled: true,
         ...(forceFirst ? { forceFirst } : {}),
         onChoices: (ch: any) => { choices = ch; },
+        ...(ROUTED ? { questionBoxes: true, onConversion: (e: any) => { conversion = e; } } : {}),
         onError: (e) => errors.push(String((e as Error)?.message ?? e).slice(0, 160)),
         execute: async (name, input) => {
           const h = handlerOf(name);
@@ -237,7 +259,8 @@ const CASES = SET === "router" ? ROUTER_CASES : WANTS_CASES;
     console.log([
       ``,
       `### ${c.label} — "${c.says}" (rules: ${c.rules.join(", ") || "none"})`,
-      SET === "router" ? `router: ${forceFirst ? `forced ${forceFirst.tool}${forceFirst.fill ? ` (fill ${JSON.stringify(forceFirst.fill)})` : ""}` : "null (left to the model)"} · forced tool called: ${forceFirst ? (forceFirst.tool === "ask_choices" ? (choices ? "yes" : "NO") : toolCalls[0]?.name === forceFirst.tool ? "yes" : "NO") : "-"}` : ``,
+      ROUTED ? `router: ${forceFirst ? `forced ${forceFirst.tool}${forceFirst.fill ? ` (fill ${JSON.stringify(forceFirst.fill)})` : ""}` : "null (left to the model)"} · forced tool called: ${forceFirst ? (forceFirst.tool === "ask_choices" ? (choices ? "yes" : "NO") : toolCalls[0]?.name === forceFirst.tool ? "yes" : "NO") : "-"}` : ``,
+      ROUTED ? `reply: ${reply.trim().split(/\s+/).filter(Boolean).length} words · question marks: ${(reply.match(/\?/g) ?? []).length} · boxes from: ${choices ? (conversion ? `the conversion round (+${(conversion as any).ms} ms)` : "the model's own ask_choices call") : conversion ? `none (conversion round ran ${(conversion as any).ms} ms, no boxes)` : "none"}` : ``,
       choices ? `answer boxes: "${choices.question}" → ${JSON.stringify(choices.options)}` : ``,
       `card: ${toolCalls.some((t) => t.result?.ok && (t.result.parts ?? []).some((p: any) => p.kind === "dish")) ? "yes" : "no"}`,
       `tools called: ${toolCalls.map((t) => `${t.name} ${JSON.stringify(t.input)} (${t.ms} ms)`).join("; ") || "none"}`,

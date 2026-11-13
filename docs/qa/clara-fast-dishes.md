@@ -314,3 +314,39 @@ Each forced turn logs `[clara-intent] forced <tool>` (plus `(wants)`), never the
 About $0.015. The repeated dish on "something else" is why `avoid` was added afterwards; **`avoid` is unit-tested only,
 not re-run live.**
 
+## Every question gets answer boxes, 2026-11-12
+
+Owner: "when it asks questions it need to give buttons to choose from or other for custom option". The mechanism
+(`ask_choices`, the app's boxes and its own "Other…" box, which opens the keyboard) already existed; the model often
+asked in plain text instead.
+
+- **Prompt.** The `ask_choices` fragment and tool description now say: whenever the reply ends by asking the person
+  something, call `ask_choices` with 2 to 4 short likely answers (open questions too; the app adds "Other"). Kept:
+  never list "Other", never name the tool, the yes/no confirm rule. Only the chat prompt of builds that have the
+  `choices` skill changes; the dish-checker prompt and its hash pins are untouched.
+- **Enforcement.** When a turn ends in plain text whose last sentence is a question (`endsWithQuestion`,
+  `lib/clara/question.ts`) and no `ask_choices` call was made, the loop runs ONE extra round that forces `ask_choices`
+  for likely answers. Nothing is streamed from it: the boxes carry the question sentence already on screen, so it is
+  never shown twice and the stored message matches the stream. Budget 3 s; on failure, timeout or bad options the
+  reply stays as it is. Skipped when the turn already has boxes, showed a card, was cut off, or the `choices` skill is
+  off. Logged as `[clara-choices] conversion round: choices|none (N ms)`.
+- **No doubled question.** Seen live: the model wrote its question in the text and passed it to `ask_choices` again.
+  When the round's text already asks it (as its last sentence, or earlier in other words), the question is not
+  written a second time.
+
+### Live check (7 calls, fake DB, `COOK_SET=boxes`)
+
+| Message | Question | Options | Boxes came from |
+|---|---|---|---|
+| "I want to eat better" | "What would eating better look like for you?" | More energy / More protein or vegetables / Fewer processed foods / Better portions or calories | the model's own `ask_choices` call |
+| "plan today's dishes" | "Anything happening today?" | A normal day / Eating out / Guests or a party at home / Very little time | the router's forced `ask_choices` |
+| "log my lunch" | "What did you eat for lunch today?" | It was my planned lunch / A sandwich or wrap / Leftovers / Rice bowl or pasta | the model's own `ask_choices` call |
+| "thanks, that helps" | none (a statement) | none | no extra round |
+| "I had breakfast. Ask me what it was, in plain words in your message." | "What did you have?" in the middle of the reply, which ended in a statement | none | no extra round (the last sentence was not a question) |
+
+With the new prompt the model called `ask_choices` itself every time it ended on a question, so **the conversion round
+never ran live**: it is covered by unit tests only, and its added time is not measured (its ceiling is the 3 s budget).
+The first run of "I want to eat better" and both runs of "log my lunch" showed the doubled question; the fixes above
+were written after them and the first kind was confirmed on the re-run ("eat better": one question mark). The second
+kind (same question earlier in the text) is unit-tested only.
+

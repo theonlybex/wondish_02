@@ -7,7 +7,8 @@ import type {
   ToolResult,
 } from "./types";
 import { partAsText, type ClaraPart } from "./parts";
-import { ASK_CHOICES_INVALID_MESSAGE, ASK_CHOICES_TOOL, parseChoices } from "./ask-choices";
+import { ASK_CHOICES_INVALID_MESSAGE, ASK_CHOICES_MAX_QUESTION_CHARS, ASK_CHOICES_TOOL, parseChoices } from "./ask-choices";
+import { asksAlready, finalQuestion } from "./question";
 
 export interface LoopParams {
   client: ModelClient;
@@ -54,7 +55,25 @@ export interface LoopParams {
    * gave. Ignored when the tool is not in `tools`. Later rounds are unforced.
    */
   forceFirst?: { tool: string; fill?: Record<string, unknown> };
+  /**
+   * true ⇒ a reply that ends in plain text with a question to the person gets
+   * answer boxes: ONE extra short round forces ask_choices for likely answers
+   * (see convertQuestion). Needs the ask_choices tool in `tools`. Omitted ⇒
+   * the turn ends exactly as it always did.
+   */
+  questionBoxes?: boolean;
+  /** How long that extra round may take before it is dropped (CONVERSION_BUDGET_MS when absent). */
+  conversionBudgetMs?: number;
+  /** Called once when that extra round ran. No user content: whether it produced boxes, and how long it took. */
+  onConversion?: (e: { produced: boolean; ms: number }) => void;
 }
+
+/** The extra round's time budget: past it the reply stands without boxes. */
+export const CONVERSION_BUDGET_MS = 3_000;
+
+/** What the forced round is told, after the reply it is about. */
+export const CONVERSION_NOTE =
+  "(Your reply ended with a question. Offer 2 to 4 short likely answers to that question, in the person's own voice, by calling ask_choices with that same question. The app adds \"Other\" itself. Write nothing else.)";
 
 const CONFIRM_REQUIRED_MESSAGE =
   "This change needs the user's explicit confirmation first. Propose it in plain words and wait for their yes.";
@@ -134,6 +153,50 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
 
   const partsEnabled = params.partsEnabled === true;
 
+  /**
+   * Answer boxes for a reply that asked its question in plain text. One forced
+   * ask_choices round, appended after the reply (same system and tools, so
+   * nothing already sent changes). The question is ALREADY on screen: nothing
+   * is streamed, and the boxes carry that sentence as their question so the
+   * stored message and the stream agree. null on any failure, a bad answer or
+   * the budget running out — the reply is never held or lost for boxes.
+   */
+  async function convertQuestion(assistant: ModelContentBlock[], question: string): Promise<ClaraChoices | null> {
+    const started = Date.now();
+    let abandoned = false;
+    const attempt = (async (): Promise<ClaraChoices | null> => {
+      const round = await params.client.openRound({
+        system: params.system,
+        messages: [...messages, { role: "assistant", content: assistant }, { role: "user", content: [{ type: "text", text: CONVERSION_NOTE }] }],
+        tools: params.tools,
+        toolChoice: { type: "tool", name: ASK_CHOICES_TOOL },
+      });
+      for await (const event of round) {
+        if (abandoned) break; // ends the round's stream
+        if (event.type !== "end" || event.stopReason === "max_tokens") continue;
+        const call = event.content.find((b) => b.type === "tool_use" && b.name === ASK_CHOICES_TOOL);
+        if (!call || call.type !== "tool_use") return null;
+        // The model's options under the question as the person already read it.
+        return parseChoices({ ...call.input, question: question.slice(-ASK_CHOICES_MAX_QUESTION_CHARS) });
+      }
+      return null;
+    })().catch((err) => {
+      if (!abandoned) params.onError?.(err);
+      return null;
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((resolve) => {
+      timer = setTimeout(() => {
+        abandoned = true;
+        resolve(null);
+      }, params.conversionBudgetMs ?? CONVERSION_BUDGET_MS);
+    });
+    const choices = await Promise.race([attempt, late]);
+    clearTimeout(timer);
+    params.onConversion?.({ produced: choices !== null, ms: Date.now() - started });
+    return choices;
+  }
+
   const forced =
     params.forceFirst && params.tools.some((t) => t.name === params.forceFirst!.tool) ? params.forceFirst : null;
 
@@ -162,6 +225,8 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
     // Parts collected from tool results this turn, not yet written out as text.
     const fallbackParts: ClaraPart[] = [];
     let partsShown = false;
+    // Whether any tool result this turn carried a part (a card with its own buttons).
+    let hadParts = false;
 
     // At every normal end of the turn: the old-build text for the parts.
     function* partsText(): Generator<string> {
@@ -223,6 +288,18 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
       if (calls.length === 0) {
         yield* partsText();
         if (!emitted && !partsShown) yield EMPTY_ANSWER_FALLBACK;
+        // The reply is complete and on screen. If it ended by asking the person
+        // something in plain text, give the question answer boxes: once per
+        // turn (the turn ends here either way), never when a card was shown,
+        // never for a cut-off or declined reply.
+        if (params.questionBoxes === true && offersChoices && !hadParts && stopReason !== "max_tokens" && stopReason !== "refusal") {
+          const said = assistant.filter((b): b is Extract<ModelContentBlock, { type: "text" }> => b.type === "text").map((b) => b.text).join("");
+          const question = finalQuestion(said);
+          if (question) {
+            const choices = await convertQuestion(assistant, question);
+            if (choices) params.onChoices?.(choices);
+          }
+        }
         return;
       }
 
@@ -286,6 +363,7 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
         }
         let forModel: ToolResult = result;
         if (result.ok && Array.isArray(result.parts) && result.parts.length > 0) {
+          hadParts = true;
           for (const part of result.parts) {
             params.onPart?.(part);
             if (partsEnabled) partsShown = true;
@@ -312,6 +390,21 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
       if (choices) {
         // The question stays the end of the message, so parts go before it.
         yield* partsText();
+        // The model sometimes writes its question in the text AND passes it to
+        // ask_choices (seen live): the person would read it twice. When this
+        // round's own text already ends by asking, that sentence IS the
+        // question — nothing more is written, and the boxes carry it.
+        const said = assistant.filter((b): b is Extract<ModelContentBlock, { type: "text" }> => b.type === "text").map((b) => b.text).join("");
+        const asked = params.questionBoxes === true ? finalQuestion(said) : null;
+        if (asked) {
+          params.onChoices?.({ ...choices, question: asked.slice(-ASK_CHOICES_MAX_QUESTION_CHARS) });
+          return;
+        }
+        // The same question earlier in the text, in other words: also not written again.
+        if (params.questionBoxes === true && asksAlready(said, choices.question)) {
+          params.onChoices?.(choices);
+          return;
+        }
         // Same separator rule as between rounds: the question is a new piece
         // of text after whatever this or an earlier round streamed.
         if (emitted && /\S$/.test(lastChar) && /^\S/.test(choices.question)) yield "\n\n";

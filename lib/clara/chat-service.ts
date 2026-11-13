@@ -70,6 +70,8 @@ export interface ChatServiceDeps {
    * the tool, and whether the router read a `wants`. Defaults to a console.info line.
    */
   onIntent?: (e: { tool: string; wants: boolean }) => void;
+  /** Called when the answer-box conversion round ran (no user content). Defaults to a console.info line. */
+  onConversion?: (e: { produced: boolean; ms: number }) => void;
   /** The clock, for the meal that fits the person's local time. Defaults to the real one. */
   now?: () => Date;
 }
@@ -375,6 +377,13 @@ export async function startClaraAppTurn(
       },
       partsEnabled: input.parts === true,
       ...(forceFirst ? { forceFirst } : {}),
+      // Every question gets answer boxes: a reply that asked in plain text is
+      // given them by one short extra round (the loop skips it without the
+      // choices skill, after a card, and when the turn already has boxes).
+      questionBoxes: true,
+      // No user content: whether boxes came out, and the added time.
+      onConversion:
+        deps.onConversion ?? ((e) => console.info(`[clara-choices] conversion round: ${e.produced ? "choices" : "none"} (${e.ms} ms)`)),
     });
   } catch (err) {
     onError(err);

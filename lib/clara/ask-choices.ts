@@ -49,13 +49,17 @@ export function parseChoices(input: Record<string, unknown>): ClaraChoices | nul
 export const askChoicesSkill: Skill = {
   name: "choices",
   promptFragment:
-    "About ask_choices: it shows the user tappable answer boxes under your message. Use it when there is a short set of likely answers (2 to 4), for example which meal they mean or which of two swaps they prefer. ALWAYS use it for the yes/no confirm step of any change before you make it — propose the change in a sentence, then call ask_choices with options such as \"Yes, swap it\" and \"No, keep it\". Do not use it for open questions (\"What did you eat?\"). Keep each option short and in the user's own voice. Never list \"Other\" as an option; the app adds it. The question you pass is shown to the user as the end of your message, so do not repeat it in your text. After calling it, stop and wait for their answer. Never mention the tool name to the user.",
+    // OFF 2026-11 (Clara-first, spec §8.6): every question Clara asks now comes with answer boxes, open questions included (the app adds "Other" for a typed answer). Restore: uncomment this line and delete the string below it.
+    // "About ask_choices: it shows the user tappable answer boxes under your message. Use it when there is a short set of likely answers (2 to 4), for example which meal they mean or which of two swaps they prefer. ALWAYS use it for the yes/no confirm step of any change before you make it — propose the change in a sentence, then call ask_choices with options such as \"Yes, swap it\" and \"No, keep it\". Do not use it for open questions (\"What did you eat?\"). Keep each option short and in the user's own voice. Never list \"Other\" as an option; the app adds it. The question you pass is shown to the user as the end of your message, so do not repeat it in your text. After calling it, stop and wait for their answer. Never mention the tool name to the user.",
+    "About ask_choices: it shows the user tappable answer boxes under your message. Whenever your reply ends by asking the person something, call ask_choices with 2 to 4 short likely answers in the person's own voice — the app adds an \"Other\" box for anything else, so the answers need not cover every case. This includes questions with many possible answers: for \"What did you eat?\" offer likely ones such as \"Eggs\", \"A sandwich\", \"Leftovers\", \"Nothing yet\". ALWAYS use it for the yes/no confirm step of any change before you make it — propose the change in a sentence, then call ask_choices with options such as \"Yes, swap it\" and \"No, keep it\". Keep each option short. Never list \"Other\" as an option; the app adds it. The question you pass is shown to the user as the end of your message, so do not also write it in your text. After calling it, stop and wait for their answer. Never mention the tool name to the user.",
   tools: [
     {
       def: {
         name: ASK_CHOICES_TOOL,
         description:
-          "Ask the user a question with 2-4 short tappable answers, and end your turn. Always use it for the yes/no confirm of a change. Not for open questions. Never include \"Other\" — the app adds it.",
+          // OFF 2026-11 (Clara-first, spec §8.6): no longer "not for open questions"; every question gets answer boxes. Restore: uncomment this line and delete the string below it.
+          // "Ask the user a question with 2-4 short tappable answers, and end your turn. Always use it for the yes/no confirm of a change. Not for open questions. Never include \"Other\" — the app adds it.",
+          "Ask the user a question with 2-4 short tappable likely answers, and end your turn. Use it whenever your reply ends with a question to them, and always for the yes/no confirm of a change. Never include \"Other\" — the app adds it.",
         input_schema: {
           type: "object",
           properties: {

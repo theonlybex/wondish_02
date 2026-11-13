@@ -32,6 +32,7 @@ Written 2026-11-12. Tick each line on the iPhone. "Server" marks checks that nee
 - [ ] "Something else" gives a different dish.
 - [ ] "Plan today's dishes" asks "Anything happening today?" first.
 - [ ] **Server.** Asking "help me cook eggs" returns a dish card for eggs, and "Cook this with me" opens the steps with timers.
+- [ ] **Server.** Every question Clara asks comes with answer boxes under it, plus "Other…", which opens the keyboard for your own answer. The question is written once.
 
 ## 4. Cooking mode
 
