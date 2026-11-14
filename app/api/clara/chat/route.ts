@@ -84,6 +84,7 @@ async function handleChat(req: NextRequest) {
       message: parsed.message,
       options,
       parts: parsed.parts === true,
+      ...(parsed.photo ? { photo: parsed.photo } : {}),
     }
   );
   if (!turn.ok) return NextResponse.json(turn.body, { status: turn.status });

@@ -7,6 +7,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { ClaraChoices, ModelContentBlock, ModelMessage } from "./types";
 import { latestStepCount } from "./cook-dishes";
+import { PHOTO_TITLE, photoReplayText, splitPhotoMarker } from "./photo";
 
 export type { ClaraChoices } from "./types";
 
@@ -252,6 +253,9 @@ const prismaConversationDeps: ConversationDeps = {
  * kept whole — a lone surrogate would be rejected when the row is saved.
  */
 export function titleFrom(message: string): string {
+  // A chat that starts with a photo is titled by its words, or "Photo of my food".
+  const split = splitPhotoMarker(message);
+  if (split) message = split.text.trim().length > 0 ? split.text : PHOTO_TITLE;
   const flat = message.replace(/\s+/g, " ").trim();
   const chars = Array.from(flat);
   if (chars.length <= TITLE_MAX_CHARS) return flat;
@@ -309,7 +313,8 @@ export function makeConversationStore(deps: ConversationDeps = prismaConversatio
       const messages: ModelMessage[] = [];
       for (const m of oldestFirst) {
         if (m.role !== "assistant") {
-          messages.push({ role: "user", content: m.content });
+          // A photo row replays as text: the photo itself was never stored.
+          messages.push({ role: "user", content: photoReplayText(m.content) });
           continue;
         }
         const calls = parseToolTrace(m.toolTrace);

@@ -16,6 +16,7 @@ import type { ConversationStore, ToolTraceEntry } from "./conversations";
 import type { ClaraRequestOptions } from "./request";
 import type { ClaraEvent } from "./ndjson";
 import { partAsText, type ClaraPart } from "./parts";
+import { parsePhoto, photoContent, photoInstructions, photoReplayText, photoStoredText, type ClaraPhoto } from "./photo";
 import type { ClaraChoices, ClaraContext, ModelClient, ModelMessage, Skill, ToolResult } from "./types";
 
 /** Tool rounds on this route: the same for every tier (spec §2). */
@@ -97,12 +98,18 @@ export function claraAppSkills(envValue: string | undefined): Skill[] {
  */
 export function parseClaraChatBody(
   body: unknown
-): { ok: true; message: string; conversationId: string | undefined; parts?: boolean } | { ok: false; error: string } {
+):
+  | { ok: true; message: string; conversationId: string | undefined; parts?: boolean; photo?: ClaraPhoto }
+  | { ok: false; error: string } {
   if (typeof body !== "object" || body === null) return { ok: false, error: "Invalid body" };
   const b = body as Record<string, unknown>;
   if (typeof b.message !== "string") return { ok: false, error: "Invalid message" };
   const message = b.message.trim();
-  if (message.length === 0) return { ok: false, error: "Invalid message" };
+  // Optional photo (lib/clara/photo.ts). A photo may come with no words.
+  const photoParse = parsePhoto(b.photo);
+  if (!photoParse.ok) return { ok: false, error: photoParse.error };
+  const photo = photoParse.photo;
+  if (message.length === 0 && !photo) return { ok: false, error: "Invalid message" };
   if (message.length > MAX_MESSAGE_CHARS) {
     return { ok: false, error: `A message can be at most ${MAX_MESSAGE_CHARS.toLocaleString()} characters.` };
   }
@@ -117,9 +124,9 @@ export function parseClaraChatBody(
   // when the body sent it, so a body without it parses exactly as before.
   if (b.parts !== undefined) {
     if (typeof b.parts !== "boolean") return { ok: false, error: "Invalid parts" };
-    return { ok: true, message, conversationId, parts: b.parts };
+    return { ok: true, message, conversationId, parts: b.parts, ...(photo ? { photo } : {}) };
   }
-  return { ok: true, message, conversationId };
+  return { ok: true, message, conversationId, ...(photo ? { photo } : {}) };
 }
 
 const DISH_TOOLS = new Set(["dish_suggest", "dish_plan_today"]);
@@ -201,6 +208,8 @@ export async function startClaraAppTurn(
     options: ClaraRequestOptions;
     /** The build can draw typed parts (body `parts: true`). Omitted ⇒ plain text. */
     parts?: boolean;
+    /** A photo sent with this message (lib/clara/photo.ts). */
+    photo?: ClaraPhoto;
   }
 ): Promise<ClaraAppTurnResult> {
   const { patient, account, options } = input;
@@ -212,6 +221,10 @@ export async function startClaraAppTurn(
   }
 
   const message = input.message.trim();
+  const photo = input.photo;
+  // What is saved for the member's row: their words, behind a photo marker
+  // when a photo came with them (the photo itself is not stored).
+  const storedMessage = photo ? photoStoredText(photo.id, message) : message;
   const surface = options.surface;
   const firstName = account.firstName ?? "there";
   const resolution = resolveToday(options.clientDate, options.tzOffsetMinutes, new Date());
@@ -256,7 +269,13 @@ export async function startClaraAppTurn(
   const dishOn = skills.some((s) => s.name === "dish");
   // OFF 2026-11 (Clara-first, spec §8.6): with the dish skill on, the context also names the meal for the person's local time, so a dish asked for with no meal named never needs a "which meal?" question. Restore: uncomment this line and delete the lines below it.
   // const extraContext = [todaysPlanText.trim(), memoryBlock].filter((s) => s.length > 0).join("\n\n");
-  const extraContext = [todaysPlanText.trim(), memoryBlock, dishOn ? mealForNowLine(firstName, options.tzOffsetMinutes, (deps.now ?? (() => new Date()))()) : ""]
+  const extraContext = [
+    todaysPlanText.trim(),
+    memoryBlock,
+    dishOn ? mealForNowLine(firstName, options.tzOffsetMinutes, (deps.now ?? (() => new Date()))()) : "",
+    // A photo turn also tells Clara how to read it (and to ask before logging).
+    photo ? photoInstructions(firstName) : "",
+  ]
     .filter((s) => s.length > 0)
     .join("\n\n");
 
@@ -284,13 +303,14 @@ export async function startClaraAppTurn(
     newest !== undefined &&
     newest.role === "user" &&
     typeof newest.content === "string" &&
-    newest.content.trim() === message;
+    // A saved photo row reads back as its replay text (conversations.ts).
+    newest.content.trim() === (photo ? photoReplayText(storedMessage) : message);
   let conversationId: string;
   if (input.conversationId !== undefined) {
     conversationId = input.conversationId;
-    if (!reuseTrailingUser) await deps.store.appendUser(conversationId, message, surface);
+    if (!reuseTrailingUser) await deps.store.appendUser(conversationId, storedMessage, surface);
   } else {
-    conversationId = (await deps.store.create(patient.id, message, surface)).id;
+    conversationId = (await deps.store.create(patient.id, storedMessage, surface)).id;
   }
 
   const runTool = async (name: string, toolInput: Record<string, unknown>, toolUseId: string): Promise<ToolResult> => {
@@ -342,7 +362,8 @@ export async function startClaraAppTurn(
     newest !== undefined &&
     newest.role === "assistant" &&
     (history.lastAssistantHadChoices || (typeof newest.content === "string" && /\?\s*$/.test(newest.content)));
-  const forceFirst = dishOn && !answeringClara ? routeIntent(message, history.messages, skills) : undefined;
+  // A photo turn is never routed: what is in the picture is the model's to read.
+  const forceFirst = dishOn && !answeringClara && !photo ? routeIntent(message, history.messages, skills) : undefined;
   if (forceFirst) {
     const event = { tool: forceFirst.tool, wants: forceFirst.fill?.wants !== undefined };
     // No user content: the tool and whether a wants was read, nothing else.
@@ -364,7 +385,13 @@ export async function startClaraAppTurn(
       client: deps.client,
       system,
       tools: buildToolDefs(skills),
-      messages: reuseTrailingUser ? history.messages : [...history.messages, { role: "user", content: message }],
+      // This turn's member message: the photo and words when a photo came
+      // (replacing a reused row's replay text), else the words as before.
+      messages: photo
+        ? [...(reuseTrailingUser ? history.messages.slice(0, -1) : history.messages), { role: "user", content: photoContent(photo, message) }]
+        : reuseTrailingUser
+          ? history.messages
+          : [...history.messages, { role: "user", content: message }],
       maxToolRounds: CLARA_APP_TOOL_ROUNDS,
       execute,
       onError,

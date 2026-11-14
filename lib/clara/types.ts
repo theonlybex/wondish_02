@@ -102,6 +102,9 @@ export type ModelContentBlock =
   | { type: "text"; text: string }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_result"; tool_use_id: string; content: string }
+  // A photo the person sent this turn (lib/clara/photo.ts). Only ever in the
+  // current turn's user message; saved rows replay as text.
+  | { type: "image"; source: { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/webp"; data: string } }
   // Thinking blocks pass through VERBATIM (signature included): with thinking
   // enabled, the API requires the thinking block that preceded a tool_use to be
   // replayed in the assistant turn, or the follow-up round is rejected. They
