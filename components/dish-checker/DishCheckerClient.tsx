@@ -8,6 +8,7 @@ import { readClaraEvents } from "@/lib/clara/ndjson-client";
 import { pickResumeId, retryableKey } from "@/lib/clara/chat-client";
 import ConversationList, { type ConversationSummary } from "@/components/clara/ConversationList";
 import AnswerChoices from "@/components/clara/AnswerChoices";
+import { splitPhotoMarker } from "@/lib/clara/photo";
 
 interface ChatMessage {
   key: string;
@@ -373,6 +374,13 @@ export default function DishCheckerClient({ firstName }: Props) {
     inputRef.current?.focus();
   }, []);
 
+  /** A photo sent from the app is saved as `[photo:<id>] words`; the website has no copy of it. */
+  const savedText = (content: string): string => {
+    const split = splitPhotoMarker(content);
+    if (!split) return content;
+    return split.text.length > 0 ? `(Photo) ${split.text}` : "(Photo)";
+  };
+
   /** Show a saved chat from GET /api/clara/conversations/:id. */
   const applyConversation = useCallback((data: unknown) => {
     const raw = (data as { messages?: unknown } | null)?.messages;
@@ -380,7 +388,7 @@ export default function DishCheckerClient({ firstName }: Props) {
     setMessages(
       saved
         .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
-        .map((m) => ({ key: nextKey(), role: m.role as "user" | "assistant", content: m.content as string }))
+        .map((m) => ({ key: nextKey(), role: m.role as "user" | "assistant", content: savedText(m.content as string) }))
     );
     // Boxes come back only when Clara's question is still the last word.
     const last = saved[saved.length - 1];
