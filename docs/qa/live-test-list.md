@@ -34,6 +34,18 @@ Written 2026-11-12. Tick each line on the iPhone. "Server" marks checks that nee
 - [ ] **Server.** Asking "help me cook eggs" returns a dish card for eggs, and "Cook this with me" opens the steps with timers.
 - [ ] **Server.** Every question Clara asks comes with answer boxes under it, plus "Other…", which opens the keyboard for your own answer. The question is written once.
 
+## 3b. Photo of your food (added 2026-11-14)
+
+Needs the server branch `feat/clara-photo` on production. Before it is deployed, a photo with no words fails with "Couldn't finish", and a photo with words gets an answer to the words only.
+
+- [ ] The camera button left of the message box offers "Choose from library" (and "Take photo" on a phone).
+- [ ] A picked or taken photo waits above the box with an ×; × removes it. The box says "Add a note (optional)".
+- [ ] Send with no words: the photo shows on the right of the chat. Clara names the food, gives calories, protein, carbs and fat, says what it adds to your day, and asks with boxes: "Log as lunch" (the meal for now), another meal, "Don't log".
+- [ ] "Log as lunch" puts it in Log under today's lunch. "Don't log" logs nothing.
+- [ ] A photo of something that is not food (a menu, a label): Clara says what she sees and helps with that.
+- [ ] Close and reopen the chat: the photo is still there on this phone. The chat is titled by your words, or "Photo of my food".
+- [ ] Turn off Wi-Fi, send a photo, see "Couldn't finish — Tap to retry", turn Wi-Fi on, tap retry: the photo is sent again, with one bubble only.
+
 ## 4. Cooking mode
 
 - [ ] "Cook this with me" opens the steps. Next and Back move between steps.
