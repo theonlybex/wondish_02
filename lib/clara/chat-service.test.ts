@@ -345,6 +345,49 @@ test("the turn directly after a saved ask_choices message may write", async () =
   assert.equal(toolResultIn(seen[1]).ok, true);
 });
 
+// Photo meals (2026-11-14): Clara asks gram questions with boxes before she
+// prices the meal. Answering one of those must not count as a yes to logging.
+const photoRows = (answerBoxes: ClaraChoices): Row[] => [
+  {
+    id: "mine",
+    patientId: "p1",
+    title: "t",
+    messages: [msg(1, "user", "[photo:photo-1234abcd] my lunch"), msg(2, "assistant", answerBoxes.question, answerBoxes)],
+  },
+];
+
+test("photo meal: answering a gram question with a box → writes refused, and Clara keeps the gram steps", async () => {
+  const { skill, ran } = writeSkill();
+  const boxes = { question: "How much rice?", options: ["Small bowl, about 100 g", "Medium, about 180 g", "Just estimate"] };
+  const { deps, seen } = setup({ rows: photoRows(boxes), rounds: swapRounds(), extraSkills: [skill] });
+  const res = await turn(deps, "Medium, about 180 g", "mine");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.equal(ran.length, 0);
+  assert.equal(!toolResultIn(seen[1]).ok && (toolResultIn(seen[1]) as { reason: string }).reason, "CONFIRM_REQUIRED");
+  assert.ok(seen[0].system.includes("foods_nutrition"), "the follow-up turn still has the gram steps");
+});
+
+test("photo meal: tapping 'Log as lunch' → the write runs", async () => {
+  const { skill, ran } = writeSkill();
+  const boxes = { question: "Log it?", options: ["Log as lunch", "Log as dinner", "Don't log"] };
+  const { deps } = setup({ rows: photoRows(boxes), rounds: swapRounds(), extraSkills: [skill] });
+  const res = await turn(deps, "Log as lunch", "mine");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.equal(ran.length, 1);
+});
+
+test("photo meal: 'Don't log' → writes refused", async () => {
+  const { skill, ran } = writeSkill();
+  const boxes = { question: "Log it?", options: ["Log as lunch", "Log as dinner", "Don't log"] };
+  const { deps } = setup({ rows: photoRows(boxes), rounds: swapRounds(), extraSkills: [skill] });
+  const res = await turn(deps, "Don't log", "mine");
+  assert.ok(res.ok);
+  await collect(res.events);
+  assert.equal(ran.length, 0);
+});
+
 // A dropped stream after the member tapped "Yes" leaves an unanswered user row
 // after the boxes. Their retry is NOT "directly after" the boxes any more.
 test("a trailing unanswered user row after the boxes → writes refused", async () => {

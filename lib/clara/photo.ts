@@ -5,7 +5,7 @@
 // (the app keeps its own copy under that id). Clara's reply, which names what
 // she saw, carries the photo's meaning into later turns.
 // Types-only imports: the loop and the service import this module.
-import type { ModelContentBlock } from "./types";
+import type { ModelContentBlock, ModelMessage } from "./types";
 
 export type PhotoMediaType = "image/jpeg" | "image/png" | "image/webp";
 const MEDIA_TYPES: readonly PhotoMediaType[] = ["image/jpeg", "image/png", "image/webp"];
@@ -38,12 +38,63 @@ export const PHOTO_TITLE = "Photo of my food";
 export function photoInstructions(firstName: string): string {
   return [
     `${firstName} sent a photo with this message, usually of food they are eating or about to eat.`,
-    "Look at it closely. In one short line, name the dish or foods you see and roughly how much (a plate, a bowl, about 300 g).",
-    "Then give your estimate per serving: calories, protein, carbs and fat, and say in one line what it adds to their day (intake words: \"this adds a good amount of fibre\", never \"your fibre is low\").",
-    "If you cannot tell what something is, say so and ask, with answer boxes. If the photo is not food (a menu, a label, a fridge), say what you see and help with that instead.",
-    "End by asking whether to log it, with answer boxes: the meal for now first (\"Log as lunch\"), then the other likely meal, then \"Don't log\".",
-    "Never log on this turn. When they pick a log answer, call logs_create with the name and exactly the numbers you stated.",
+    "Look at it closely. If it is not food (a menu, a label, a fridge), say what you see and help with that instead; the steps below are for food.",
+    "In your first line, name every food you can see with your gram guess for each (\"chicken breast about 120 g, white rice about 150 g, salad leaves about 40 g\"). Write this line every time: later messages do not have the photo, only this line.",
+    PHOTO_GRAM_STEPS,
   ].join(" ");
+}
+
+/**
+ * The gram questions and the pricing, shared by the photo turn and the turns
+ * that answer its questions (those turns no longer have the photo).
+ */
+const PHOTO_GRAM_STEPS = [
+  "Your goal is the grams of each food inside the meal. Ask up to 3 short questions to pin them down, ONE per message, each with answer boxes that give amounts in everyday words with grams (\"Small bowl, about 100 g\", \"Medium, about 180 g\", \"Large, about 250 g\").",
+  "Ask first about what the photo cannot show and what changes calories most: oil, butter, dressing or sauce (\"None\", \"1 tsp, about 5 g\", \"1 tbsp, about 14 g\", \"More\"), then the portion of the most filling food. Skip anything their note already answers. A simple food with nothing hidden (an apple, a yoghurt pot) needs no questions.",
+  "Every question's boxes end with \"Just estimate\", which means stop asking and use your best guesses.",
+  "When the grams are settled, call foods_nutrition with every food and its grams (oil, butter, dressing and sauce as their own rows). Estimate any `unknown` foods yourself.",
+  "Then give one short list of the foods with their grams, the totals per serving (calories, protein, carbs, fat), and one line on what it adds to their day (intake words: \"this adds a good amount of fibre\", never \"your fibre is low\").",
+  "End by asking whether to log it, with answer boxes: the meal for now first (\"Log as lunch\"), then the other likely meal, then \"Don't log\".",
+  "Logging only happens after they tap a \"Log as …\" box: then call logs_create with the name and exactly the totals you stated. Answering a gram question never logs anything.",
+].join(" ");
+
+/** Said to Clara on the turns that follow a photo, while its questions run. */
+export function photoFollowUpInstructions(firstName: string): string {
+  return [
+    `${firstName} recently sent a photo of food (marked [I sent a photo of my food]); you no longer have the photo, only your own description of it.`,
+    "If you are still working out that meal, carry on:",
+    PHOTO_GRAM_STEPS,
+  ].join(" ");
+}
+
+/** Text a saved photo row starts with when the model reads it later. */
+export const PHOTO_REPLAY_PREFIX = "[I sent a photo of my food]";
+
+/** How many of the newest member messages a photo's questions may run over. */
+export const PHOTO_FLOW_USER_TURNS = 5;
+
+/**
+ * True when one of the newest member messages in the history was a photo,
+ * so its gram questions may still be running.
+ */
+export function inPhotoFlow(history: readonly ModelMessage[]): boolean {
+  let seen = 0;
+  for (let i = history.length - 1; i >= 0 && seen < PHOTO_FLOW_USER_TURNS; i--) {
+    const m = history[i];
+    if (m.role !== "user" || typeof m.content !== "string") continue; // tool results are user rows too
+    seen++;
+    if (m.content.startsWith(PHOTO_REPLAY_PREFIX)) return true;
+  }
+  return false;
+}
+
+/**
+ * While a photo's questions run, a reply only counts as a yes to logging when
+ * it is a log answer ("Log as lunch", "log it"). Answering "Medium, about
+ * 180 g" must not let logs_create run.
+ */
+export function isLogAnswer(message: string): boolean {
+  return /^\s*log\b/i.test(message);
 }
 
 /**
@@ -83,7 +134,7 @@ export function splitPhotoMarker(content: string): { photoId: string; text: stri
 export function photoReplayText(content: string): string {
   const split = splitPhotoMarker(content);
   if (!split) return content;
-  return split.text.length > 0 ? `[I sent a photo of my food] ${split.text}` : "[I sent a photo of my food]";
+  return split.text.length > 0 ? `${PHOTO_REPLAY_PREFIX} ${split.text}` : PHOTO_REPLAY_PREFIX;
 }
 
 /** This turn's user content: the photo first, then the words. */

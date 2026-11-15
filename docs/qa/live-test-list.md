@@ -40,8 +40,10 @@ Needs the server branch `feat/clara-photo` on production. Before it is deployed,
 
 - [ ] The camera button left of the message box offers "Choose from library" (and "Take photo" on a phone).
 - [ ] A picked or taken photo waits above the box with an ×; × removes it. The box says "Add a note (optional)".
-- [ ] Send with no words: the photo shows on the right of the chat. Clara names the food, gives calories, protein, carbs and fat, says what it adds to your day, and asks with boxes: "Log as lunch" (the meal for now), another meal, "Don't log".
-- [ ] "Log as lunch" puts it in Log under today's lunch. "Don't log" logs nothing.
+- [ ] Send with no words: the photo shows on the right of the chat. Clara names each food with a gram guess, then asks one question at a time (up to 3) with gram boxes, oil or sauce first, each ending in "Just estimate".
+- [ ] Tapping a gram answer logs nothing. A note like "200 g rice, no oil" skips those questions. An apple gets no questions.
+- [ ] After the answers (or "Just estimate"): a list of foods with grams, calories, protein, carbs and fat, what it adds to your day, and boxes: "Log as lunch" (the meal for now), another meal, "Don't log".
+- [ ] "Log as lunch" puts it in Log under today's lunch with the same numbers. "Don't log" logs nothing.
 - [ ] A photo of something that is not food (a menu, a label): Clara says what she sees and helps with that.
 - [ ] Close and reopen the chat: the photo is still there on this phone. The chat is titled by your words, or "Photo of my food".
 - [ ] Turn off Wi-Fi, send a photo, see "Couldn't finish — Tap to retry", turn Wi-Fi on, tap retry: the photo is sent again, with one bubble only.

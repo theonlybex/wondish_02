@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   MAX_PHOTO_BASE64_CHARS,
   PHOTO_ONLY_TEXT,
+  inPhotoFlow,
+  isLogAnswer,
   parsePhoto,
   photoReplayText,
   photoStoredText,
@@ -218,4 +220,32 @@ test("service: a later turn replays the photo row as text", async () => {
   for await (const _ of res.events) void _;
   assert.equal(requests[0].messages[0].content, "[I sent a photo of my food] my lunch");
   assert.ok(!requests[0].system.includes("sent a photo with this message"));
+});
+
+// ─── Gram questions (2026-11-14) ────────────────────────────────────────────
+
+test("inPhotoFlow: a photo among the newest member messages → true; long ago or none → false", () => {
+  const u = (content: string) => ({ role: "user" as const, content });
+  const a = (content: string) => ({ role: "assistant" as const, content });
+  assert.equal(inPhotoFlow([u("[I sent a photo of my food] lunch"), a("How much rice?")]), true);
+  assert.equal(inPhotoFlow([u("hi"), a("hello")]), false);
+  const old = [u("[I sent a photo of my food]"), a("q")];
+  for (let i = 0; i < 5; i++) old.push(u(`m${i}`), a("r"));
+  assert.equal(inPhotoFlow(old), false);
+});
+
+test("isLogAnswer: log answers yes, gram answers and Don't log no", () => {
+  assert.equal(isLogAnswer("Log as lunch"), true);
+  assert.equal(isLogAnswer("log it"), true);
+  assert.equal(isLogAnswer("Don't log"), false);
+  assert.equal(isLogAnswer("Medium, about 180 g"), false);
+  assert.equal(isLogAnswer("Just estimate"), false);
+});
+
+test("service: the photo turn asks for grams, prices with foods_nutrition, and never writes", async () => {
+  const { svc, requests } = setup();
+  await turn(svc, "");
+  assert.ok(requests[0].system.includes("grams of each food"));
+  assert.ok(requests[0].system.includes("foods_nutrition"));
+  assert.ok(requests[0].system.includes("Just estimate"));
 });

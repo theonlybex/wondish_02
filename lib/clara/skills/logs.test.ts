@@ -68,11 +68,11 @@ function fakeDeps(over: Partial<LogsDeps> = {}) {
 const h = (deps: LogsDeps) => makeLogsHandlers(deps);
 
 // ── shape ──
-test("the skill registers 4 logs_ tools with no identity fields", () => {
+test("the skill registers 4 logs_ tools plus foods_nutrition, with no identity fields", () => {
   assert.equal(logsSkill.name, "logs");
   assert.deepEqual(
     logsSkill.tools.map((t) => t.def.name),
-    ["logs_search", "logs_day_summary", "logs_create", "logs_delete"]
+    ["logs_search", "logs_day_summary", "logs_create", "logs_delete", "foods_nutrition"]
   );
 });
 
@@ -263,5 +263,6 @@ test("S3: both logs write tools carry the structural-guard flag; reads do not", 
     logs_day_summary: false,
     logs_create: true,
     logs_delete: true,
+    foods_nutrition: false,
   });
 });

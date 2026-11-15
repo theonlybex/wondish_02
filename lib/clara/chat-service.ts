@@ -16,7 +16,17 @@ import type { ConversationStore, ToolTraceEntry } from "./conversations";
 import type { ClaraRequestOptions } from "./request";
 import type { ClaraEvent } from "./ndjson";
 import { partAsText, type ClaraPart } from "./parts";
-import { parsePhoto, photoContent, photoInstructions, photoReplayText, photoStoredText, type ClaraPhoto } from "./photo";
+import {
+  inPhotoFlow,
+  isLogAnswer,
+  parsePhoto,
+  photoContent,
+  photoFollowUpInstructions,
+  photoInstructions,
+  photoReplayText,
+  photoStoredText,
+  type ClaraPhoto,
+} from "./photo";
 import type { ClaraChoices, ClaraContext, ModelClient, ModelMessage, Skill, ToolResult } from "./types";
 
 /** Tool rounds on this route: the same for every tier (spec §2). */
@@ -254,7 +264,16 @@ export async function startClaraAppTurn(
   // explicit boolean: undefined would fall back to the loop's weaker
   // first-turn guard.
   const newest = history.messages.at(-1);
-  const writesAllowed: boolean = newest !== undefined && newest.role === "assistant" && history.lastAssistantHadChoices;
+  // Photo meals (2026-11-14): while a photo's gram questions run, only a log
+  // answer ("Log as lunch") is a yes to writing; "Medium, about 180 g" is not.
+  // The photo turn itself never writes: Clara asks first.
+  const photoFlow = !photo && inPhotoFlow(history.messages);
+  const writesAllowed: boolean =
+    newest !== undefined &&
+    newest.role === "assistant" &&
+    history.lastAssistantHadChoices &&
+    !photo &&
+    (!photoFlow || isLogAnswer(message));
 
   // Prompt context, read before anything is written so a failure here leaves
   // no orphan user row.
@@ -275,6 +294,8 @@ export async function startClaraAppTurn(
     dishOn ? mealForNowLine(firstName, options.tzOffsetMinutes, (deps.now ?? (() => new Date()))()) : "",
     // A photo turn also tells Clara how to read it (and to ask before logging).
     photo ? photoInstructions(firstName) : "",
+    // The turns after a photo no longer have it, but its questions go on.
+    photoFlow ? photoFollowUpInstructions(firstName) : "",
   ]
     .filter((s) => s.length > 0)
     .join("\n\n");
@@ -363,7 +384,8 @@ export async function startClaraAppTurn(
     newest.role === "assistant" &&
     (history.lastAssistantHadChoices || (typeof newest.content === "string" && /\?\s*$/.test(newest.content)));
   // A photo turn is never routed: what is in the picture is the model's to read.
-  const forceFirst = dishOn && !answeringClara && !photo ? routeIntent(message, history.messages, skills) : undefined;
+  // Nor are the turns answering its gram questions.
+  const forceFirst = dishOn && !answeringClara && !photo && !photoFlow ? routeIntent(message, history.messages, skills) : undefined;
   if (forceFirst) {
     const event = { tool: forceFirst.tool, wants: forceFirst.fill?.wants !== undefined };
     // No user content: the tool and whether a wants was read, nothing else.

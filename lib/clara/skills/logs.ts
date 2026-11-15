@@ -14,6 +14,7 @@ import { parseLocalDateStrict } from "@/lib/journal";
 import { rateLimit } from "@/lib/rate-limit";
 import { sumMealLogs } from "@/lib/macros";
 import type { ClaraContext, Skill, ToolResult } from "../types";
+import { foodsNutritionDef, foodsNutritionHandler } from "../food-grams";
 
 export const MAX_SEARCH_DAYS = 90;
 export const MAX_SEARCH_ROWS = 50;
@@ -307,6 +308,12 @@ export const logsSkill: Skill = {
         },
       },
       handler: handlers.del,
+    },
+    {
+      // Read-only: prices foods with gram amounts from the food data
+      // (lib/clara/food-grams.ts). Used for photo meals before logging.
+      def: foodsNutritionDef,
+      handler: foodsNutritionHandler,
     },
   ],
 };
