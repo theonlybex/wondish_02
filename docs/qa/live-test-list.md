@@ -73,6 +73,15 @@ Needs the server branch `feat/clara-photo` on production. Before it is deployed,
 - [ ] About 30 minutes after "Done cooking", "How was the <dish>?" arrives. Long-press shows I ate it / I ate some of it / I didn't eat it.
 - [ ] "I ate it" puts the dish in Log under the right day and meal. "I didn't eat it" logs nothing.
 
+## 6b. Meal reminders (added 2026-11-17)
+
+- [ ] Account, Notifications shows "Meal reminders": breakfast off, lunch on at 1:00 PM, dinner on at 7:00 PM. Each time can be changed.
+- [ ] Set lunch time to two minutes from now and leave the app: "Did you have lunch?" arrives.
+- [ ] Tap it: the app opens a new chat where Clara asks "What did you have for lunch?".
+- [ ] Hold it: "Tell Clara what you had" (a text box), "Take a picture" and "Not yet". Typed words are sent to Clara in a new chat; "Take a picture" opens the camera; "Not yet" does nothing.
+- [ ] Log lunch first, then wait for lunch time: no reminder that day.
+- [ ] Turning a meal's switch off stops its reminder.
+
 ## 7. Numbers
 
 - [ ] New account: shows "Your starting picture" from your answers, marked "An estimate".
