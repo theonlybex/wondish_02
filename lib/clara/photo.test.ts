@@ -249,3 +249,11 @@ test("service: the photo turn asks for grams, prices with foods_nutrition, and n
   assert.ok(requests[0].system.includes("foods_nutrition"));
   assert.ok(requests[0].system.includes("Just estimate"));
 });
+
+test("service: the photo turn tells Clara how to read a menu and a fridge", async () => {
+  const { svc, requests } = setup();
+  await turn(svc, "This is a restaurant menu. Which dishes fit me?");
+  assert.ok(requests[0].system.includes("A restaurant menu: pick up to 4 dishes"));
+  assert.ok(requests[0].system.includes("Never invent a dish that is not on the menu"));
+  assert.ok(requests[0].system.includes("call dish_suggest once"));
+});

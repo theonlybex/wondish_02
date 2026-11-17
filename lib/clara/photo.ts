@@ -38,11 +38,29 @@ export const PHOTO_TITLE = "Photo of my food";
 export function photoInstructions(firstName: string): string {
   return [
     `${firstName} sent a photo with this message, usually of food they are eating or about to eat.`,
-    "Look at it closely. If it is not food (a menu, a label, a fridge), say what you see and help with that instead; the steps below are for food.",
+    "Look at it closely and first decide what it is: a plate or food to eat, a restaurant menu, a fridge or ingredients, or something else (a label, a receipt). The gram steps below are only for a plate or food to eat.",
+    PHOTO_MENU_STEPS,
+    PHOTO_FRIDGE_STEPS,
+    "Something else: say what you see and help with that.",
     "In your first line, name every food you can see with your gram guess for each (\"chicken breast about 120 g, white rice about 150 g, salad leaves about 40 g\"). Write this line every time: later messages do not have the photo, only this line.",
     PHOTO_GRAM_STEPS,
   ].join(" ");
 }
+
+/** A restaurant menu (the start list's "Photo of a menu", 2026-11-17). */
+const PHOTO_MENU_STEPS = [
+  "A restaurant menu: pick up to 4 dishes from it that fit their conditions, allergies and numbers, best first.",
+  "One short line each: the dish as the menu names it, then why it fits. Then one line on what to ask the kitchen (an allergen to check, sauce on the side, a swap).",
+  "If a dish they might want does not fit, say so in one line. Never invent a dish that is not on the menu; if you cannot read part of it, say which part.",
+  "No gram questions and no logging for a menu. End by asking which one they will have, with the dish names as answer boxes.",
+].join(" ");
+
+/** A fridge, a shelf or ingredients on a counter ("Photo of my fridge"). */
+const PHOTO_FRIDGE_STEPS = [
+  "A fridge or ingredients: in your first line, name what you can see that is useful for cooking (\"eggs, spinach, feta, half a lemon, cooked rice\"). Later messages do not have the photo, only this line.",
+  "Then call dish_suggest once, with wants set to a dish built from those ingredients (\"an omelette with spinach and feta\"), so the app shows a dish card they can cook. Do not write a recipe yourself.",
+  "After the card, say in one line which of the ingredients it uses and anything it needs that you did not see. No gram questions and no logging for a fridge.",
+].join(" ");
 
 /**
  * The gram questions and the pricing, shared by the photo turn and the turns
