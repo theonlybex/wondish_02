@@ -65,9 +65,11 @@ test("parseCookBody rejects unknown actions and non-objects", () => {
   assert.equal(parseCookBody({}).ok, false);
 });
 
-test("parseCookBody: ate accepts only portion 1 or 0.5", () => {
-  assert.equal(parseCookBody({ action: "ate", portion: 2 }).ok, false);
-  assert.equal(parseCookBody({ action: "ate", portion: 0.25 }).ok, false);
+test("parseCookBody: ate accepts only portion 0.25, 0.5, 1 or 2", () => {
+  assert.equal(parseCookBody({ action: "ate", portion: 2 }).ok, true);
+  assert.equal(parseCookBody({ action: "ate", portion: 0.25 }).ok, true);
+  assert.equal(parseCookBody({ action: "ate", portion: 3 }).ok, false);
+  assert.equal(parseCookBody({ action: "ate", portion: 0.75 }).ok, false);
   assert.equal(parseCookBody({ action: "ate" }).ok, false);
   assert.equal(parseCookBody({ action: "ate", portion: "1" }).ok, false);
   const a = parsed({ action: "ate", portion: 0.5 });

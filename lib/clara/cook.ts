@@ -33,11 +33,15 @@ const MAX_UNIT_CHARS = 40;
 const MAX_QUANTITY = 100000;
 const MAX_SODIUM_MG = 100000;
 
+/** Servings an "ate" answer may log. */
+export const ATE_PORTIONS = [0.25, 0.5, 1, 2] as const;
+export type AtePortion = (typeof ATE_PORTIONS)[number];
+
 export type CookAction =
   | { action: "start"; dish: { dishId: string; name: string; recipe: ClaraRecipe } }
   // dishId absent (older app builds): the most recently started dish.
   | { action: "done"; dishId?: string }
-  | { action: "ate"; portion: 1 | 0.5; mealType: MealType; today: string | undefined; dishId?: string };
+  | { action: "ate"; portion: AtePortion; mealType: MealType; today: string | undefined; dishId?: string };
 
 const fail = (error: string, status = 400): ParseResult<never> => ({ ok: false, error, status });
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -123,7 +127,9 @@ export function parseCookBody(raw: unknown): ParseResult<CookAction> {
       return { ok: true, value: d.value === undefined ? { action: "done" } : { action: "done", dishId: d.value } };
     }
     case "ate": {
-      if (raw.portion !== 1 && raw.portion !== 0.5) return fail("portion must be 1 or 0.5");
+      // 1 and 0.5 are "I ate it" and "I ate some of it"; 2 and 0.25 come from
+      // a double or half portion cooked ("How hungry are you?", 2026-11-17).
+      if (!ATE_PORTIONS.includes(raw.portion as AtePortion)) return fail("portion must be 0.25, 0.5, 1 or 2");
       let mealType: MealType = "dinner";
       if (raw.mealType !== undefined) {
         if (typeof raw.mealType !== "string" || !MEAL_TYPES.includes(raw.mealType as MealType)) {
@@ -139,7 +145,7 @@ export function parseCookBody(raw: unknown): ParseResult<CookAction> {
       }
       const d = optionalDishId(raw);
       if (!d.ok) return d;
-      const ate: CookAction = { action: "ate", portion: raw.portion, mealType, today };
+      const ate: CookAction = { action: "ate", portion: raw.portion as AtePortion, mealType, today };
       return { ok: true, value: d.value === undefined ? ate : { ...ate, dishId: d.value } };
     }
     default:
