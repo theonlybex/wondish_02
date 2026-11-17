@@ -12,6 +12,18 @@ Written 2026-11-17 from the owner's replies to the feature list. Each item says 
 | Settings in the chats list | A Settings row at the bottom of the chats list opens the account screen (notifications, What Clara remembers, account). |
 | Haptics | One helper (`Haptics`): a tap on send, timer start, pause and resume; a tick on answer boxes, start-list lines, next step, people and checklist; success on a photo attached and Done cooking; warning on a deleted log; error on a reply that could not finish. |
 
+## Done in batch 2 (2026-11-17)
+
+| Item | What was built |
+|---|---|
+| Share a dish as a picture | "Share dish" from cooking mode and the chats list: the person's photo on top (or a crimson header), the recipe, "by Wondish" bottom right. The photo is kept on the phone per chat and dish. |
+| Sunday summary | Sunday 18:00 notification; a tap asks Clara for the week and one easy win. Own switch. |
+| Learned meal times | The time a meal is logged in a chat is noted; after 5 days the reminder moves to that time plus 30 minutes. A hand-set time wins. A dish cooked with Clara keeps that meal's reminder quiet that day. |
+| Shopping list | "Add what's missing to my shopping list" on "What you need"; a list in Settings with tick, remove and share. Sending straight into Apple Reminders as separate items is not built. |
+| Menu and fridge photos, server | Specific instructions for a menu (up to 4 dishes, what to ask the kitchen) and a fridge (ingredients seen, one dish card). Needs a deploy. |
+
+Every feature has a phone check and a simulator check in `docs/qa/live-test-list.md`, section 6c.
+
 ## Next, in this order
 
 ### 1. Share a dish as a picture (owner: priority)
