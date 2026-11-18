@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
 
   const rows = await prisma.mealLog.findMany({
     where: { patientId: patient.id, localDate: { gte: from, lte: to }, deletedAt: null },
-    select: { id: true, localDate: true, mealType: true, name: true, source: true, estimated: true, loggedAt: true, deletedAt: true },
+    select: { id: true, localDate: true, mealType: true, name: true, source: true, estimated: true, loggedAt: true, deletedAt: true, pictureResultId: true, servings: true, calories: true, protein: true, carbs: true, fat: true },
     orderBy: { loggedAt: "asc" },
   });
   return NextResponse.json({ days: groupLogByDate(rows) });

@@ -68,6 +68,11 @@ export interface ClaraContext {
    * disabled" — the model sees the same absence either way.
    */
   disabledSkills: readonly string[];
+  /**
+   * The chat photo a meal logged this turn came from (set only while that
+   * photo's questions run). From the saved conversation, never from model input.
+   */
+  photoId?: string;
 }
 
 export interface SkillTool {

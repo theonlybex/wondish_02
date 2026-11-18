@@ -7,7 +7,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { ClaraChoices, ModelContentBlock, ModelMessage } from "./types";
 import { latestStepCount } from "./cook-dishes";
-import { PHOTO_TITLE, photoReplayText, splitPhotoMarker } from "./photo";
+import { PHOTO_TITLE, photoIdInFlow, photoReplayText, splitPhotoMarker } from "./photo";
 
 export type { ClaraChoices } from "./types";
 
@@ -296,8 +296,10 @@ export function makeConversationStore(deps: ConversationDeps = prismaConversatio
     async history(
       conversationId: string,
       limit: number = HISTORY_LIMIT
-    ): Promise<{ messages: ModelMessage[]; lastAssistantHadChoices: boolean }> {
+    ): Promise<{ messages: ModelMessage[]; lastAssistantHadChoices: boolean; photoId?: string }> {
       const newestFirst = await deps.recentMessages(conversationId, limit);
+      // The photo a running photo flow belongs to (newest member rows first).
+      const photoId = photoIdInFlow(newestFirst.filter((m) => m.role !== "assistant").map((m) => m.content));
       const lastAssistantHadChoices = newestFirst.find((m) => m.role === "assistant")?.choices != null;
       const oldestFirst = [...newestFirst].reverse();
       while (oldestFirst.length > 0 && oldestFirst[0].role === "assistant") oldestFirst.shift();
@@ -335,7 +337,7 @@ export function makeConversationStore(deps: ConversationDeps = prismaConversatio
         }
         messages.push({ role: "assistant", content: replayText(m.content, m.choices) });
       }
-      return { messages, lastAssistantHadChoices };
+      return { messages, lastAssistantHadChoices, ...(photoId ? { photoId } : {}) };
     },
 
     appendUser: (conversationId: string, content: string, surface: string) =>

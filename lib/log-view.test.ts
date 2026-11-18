@@ -50,3 +50,19 @@ test("grouping uses the localDate string, not the timestamp", () => {
   const out = groupLogByDate([row({ localDate: "2026-11-10", loggedAt: new Date("2026-11-11T02:00:00Z") })]);
   assert.equal(out[0].date, "2026-11-10");
 });
+
+test("a meal logged from a chat photo carries the photo's id; others do not", () => {
+  const out = groupLogByDate([row({ id: "p", pictureResultId: "abc12345" }), row({ id: "q", pictureResultId: null })]);
+  assert.equal(out[0].entries.find((e) => e.id === "p")?.photoId, "abc12345");
+  assert.equal("photoId" in out[0].entries.find((e) => e.id === "q")!, false);
+});
+
+test("totals are per serving times servings; unknown numbers are left out", () => {
+  const out = groupLogByDate([
+    row({ id: "t", servings: 2, calories: 250.4, protein: 10.26, carbs: 30, fat: null }),
+    row({ id: "u" }),
+  ]);
+  const t = out[0].entries.find((e) => e.id === "t")!;
+  assert.deepEqual([t.calories, t.protein, t.carbs, t.fat], [501, 20.5, 60, undefined]);
+  assert.equal("calories" in out[0].entries.find((e) => e.id === "u")!, false);
+});

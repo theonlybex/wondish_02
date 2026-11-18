@@ -6,6 +6,7 @@ import {
   inPhotoFlow,
   isLogAnswer,
   parsePhoto,
+  photoIdInFlow,
   photoReplayText,
   photoStoredText,
   splitPhotoMarker,
@@ -256,4 +257,11 @@ test("service: the photo turn tells Clara how to read a menu and a fridge", asyn
   assert.ok(requests[0].system.includes("A restaurant menu: pick up to 4 dishes"));
   assert.ok(requests[0].system.includes("Never invent a dish that is not on the menu"));
   assert.ok(requests[0].system.includes("call dish_suggest once"));
+});
+
+test("the running photo flow's photo is the newest photo row among the newest member rows", () => {
+  assert.equal(photoIdInFlow(["Log as lunch", "Medium, about 180 g", "[photo:abc12345] what is this"]), "abc12345");
+  assert.equal(photoIdInFlow(["[photo:newer-123] plate", "x", "[photo:older-123]"]), "newer-123");
+  assert.equal(photoIdInFlow(["a", "b", "c", "d", "e", "[photo:abc12345]"]), undefined, "six rows back is no longer the flow");
+  assert.equal(photoIdInFlow([]), undefined);
 });

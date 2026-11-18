@@ -107,6 +107,19 @@ export function inPhotoFlow(history: readonly ModelMessage[]): boolean {
 }
 
 /**
+ * The id of the photo whose questions may still be running: the newest photo
+ * row among the newest member rows, as saved (`[photo:<id>] words`). A meal
+ * logged in that flow is tied to it, so the Log can show the picture.
+ */
+export function photoIdInFlow(savedUserRows: readonly string[]): string | undefined {
+  for (const content of savedUserRows.slice(0, PHOTO_FLOW_USER_TURNS)) {
+    const split = splitPhotoMarker(content);
+    if (split) return split.photoId;
+  }
+  return undefined;
+}
+
+/**
  * While a photo's questions run, a reply only counts as a yes to logging when
  * it is a log answer ("Log as lunch", "log it"). Answering "Medium, about
  * 180 g" must not let logs_create run.

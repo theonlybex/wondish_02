@@ -244,7 +244,7 @@ export async function startClaraAppTurn(
 
   // Ownership FIRST: someone else's (or an unknown) id is a 404 with nothing
   // read and nothing written (Review Focus 2). Appends do not re-check.
-  let history: { messages: ModelMessage[]; lastAssistantHadChoices: boolean } = {
+  let history: { messages: ModelMessage[]; lastAssistantHadChoices: boolean; photoId?: string } = {
     messages: [],
     lastAssistantHadChoices: false,
   };
@@ -309,6 +309,8 @@ export async function startClaraAppTurn(
     today: resolution.localDate,
     surface,
     disabledSkills: ALL_SKILLS.filter((s) => !activeNames.has(s.name)).map((s) => s.name),
+    // A meal logged while a photo's questions run is tied to that photo.
+    ...(photoFlow && history.photoId ? { photoId: history.photoId } : {}),
   };
   const system = buildSystemPrompt(firstName, buildFoodMapText(patient), skills, promptToday, "assistant", extraContext);
 

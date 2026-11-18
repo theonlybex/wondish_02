@@ -266,3 +266,19 @@ test("S3: both logs write tools carry the structural-guard flag; reads do not", 
     foods_nutrition: false,
   });
 });
+
+// ── photo meals keep their photo (2026-11-17) ──
+test("a meal logged in a photo chat is tied to that photo; the model cannot set it", async () => {
+  const { deps, writes } = fakeDeps();
+  const r = await h(deps).create(
+    { ...ctx, photoId: "abc12345" },
+    { name: "Chicken and rice", mealType: "lunch", date: "2026-08-01", calories: 600, pictureResultId: "smuggled" },
+    "toolu_photo"
+  );
+  assert.ok(r.ok);
+  assert.equal((writes[0] as { create: { pictureResultId: string | null } }).create.pictureResultId, "abc12345");
+
+  const plain = fakeDeps();
+  await h(plain.deps).create(ctx, { name: "Soup", mealType: "lunch", date: "2026-08-01", pictureResultId: "smuggled" }, "toolu_plain");
+  assert.equal((plain.writes[0] as { create: { pictureResultId: string | null } }).create.pictureResultId, null);
+});

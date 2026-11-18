@@ -196,6 +196,9 @@ export function makeLogsHandlers(deps: LogsDeps = prismaDeps) {
       // caller-supplied sources; {} yields all-NULL macros + incomplete.
       perServing,
       ...(typeof input.note === "string" ? { note: input.note } : {}),
+      // The chat photo this meal came from (the server's own value, from the
+      // saved conversation): the Log shows the picture next to the entry.
+      ...(ctx.photoId ? { pictureResultId: ctx.photoId } : {}),
       clientRequestId: `clara:${toolUseId}`,
     });
     if (!parsed.ok) return invalid(parsed.error);
