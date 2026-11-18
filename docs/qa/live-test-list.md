@@ -225,6 +225,17 @@ Three of these need a server deploy before the phone check works: the dish sugge
 - [ ] **Phone.** Sign out: the widget shows no numbers.
 - [ ] **Simulator.** Add `-UITestFixture logEmpty -openScreen widget`: both sizes are drawn inside the app with "For dinner" or "For lunch" and a dish. `-UITestFixture logLoaded -openScreen widget` shows 520 kcal and 2 meals logged. The widget was not placed on the simulator's Home Screen.
 
+## 6e. Everything in one session (added 2026-11-17)
+
+The checks above start the app fresh for each feature. This one runs them one after another without closing the app, to catch one feature slowing or breaking the next.
+
+- [ ] **Phone.** In one sitting, without closing the app: switch to Dark, ask "What should I eat?", tap "Cook this with me", turn the microphone on, say "next step" and "start the timer", open the share picture and close it, open "Ingredients" and add what's missing to the shopping list, go back to the chat, open Settings, send the shopping list to Reminders, turn Apple Health on, open the Log, then leave the app for the Home Screen and come back.
+- [ ] **Phone.** Nothing freezes for more than a moment at any step. The timer keeps counting through all of it and its notification still arrives.
+- [ ] **Phone.** The first time you say "start the timer" on a new install, iOS asks about notifications and Clara says "Timer started" only after you answer. The timer itself has already started.
+- [ ] **Phone.** With a weak connection (one bar, or Settings, Developer, Network Link Conditioner, "3G"): come back to the app from the Home Screen. The screen is usable at once; the widget, Health and the reminders catch up in the background.
+- [ ] **Simulator.** Delete the app from the simulator first, then start with `-UITestFixture cookMode -cookPeople 2 -cookSteps -cookVoiceSay next-step+start-the-timer -appearance dark` and do the same steps by hand. Run on 2026-11-17: every step worked and the system log showed no hang or fault. The Log tab cannot be checked this way: this fixture has no log, so it shows "Couldn't load your log."
+- [ ] **Simulator.** A slow server is covered by the app test `testRemindersHealthAndTheWidgetShareOneReadOfASlowServer`: with 0.4 seconds per read, the reminders, Apple Health and the widget finish together on one request.
+
 ## 7. Numbers
 
 - [ ] New account: shows "Your starting picture" from your answers, marked "An estimate".
