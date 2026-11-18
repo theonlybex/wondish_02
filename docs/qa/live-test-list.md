@@ -146,6 +146,85 @@ Add the extra words given in each check to the end of that line. Stop the app fi
 - [ ] **Phone.** Add the same dish's missing items again: "Already on your shopping list."
 - [ ] **Simulator.** Start with `-UITestFixture cookMode`, tap "Ingredients", then the add button; then check Settings, "Shopping list" (person button, top right of Clara).
 
+## 6d. Features added in the second round, 2026-11-17
+
+Same rules as 6c. Two things to know for the simulator:
+- A launch word that carries a sentence uses dashes for spaces (`-mealSuggestTapped Lentil-soup`).
+- The first launch after a new build sometimes ignores the launch words. Stop the app and launch it again.
+
+Three of these need a server deploy before the phone check works: the dish suggestion, the photo in the Log, and Apple Health's numbers. Each says so.
+
+### Dark mode
+- [ ] **Phone.** Settings, "Appearance": choose Dark. Every screen turns to a warm near-black with cream text; buttons stay crimson with white text; crimson words and icons turn light rose. Check Clara, a dish card, cooking mode, Numbers, Log, Notifications.
+- [ ] **Phone.** Choose "Same as iPhone": the app follows the phone's own Light and Dark setting. Choose Light: it stays light.
+- [ ] **Phone.** Sign out: the welcome screens are always light.
+- [ ] **Phone.** Look for any text that is hard to read in Dark and send a screenshot.
+- [ ] **Simulator.** Add `-appearance dark` to any launch, for example `-UITestFixture chatDishAdvice -appearance dark`, `-UITestFixture numbersFull -tab numbers -appearance dark`, `-UITestFixture logLoaded -tab log -appearance dark`, `-UITestFixture cookMode -appearance dark`.
+
+### Dish suggestion on the meal reminder
+- [ ] **Phone. Server (not deployed yet).** Open the app once in the morning. At your lunch time the notification reads "How does <dish> sound for lunch, <your first name>?".
+- [ ] **Phone.** Hold the notification: it offers "Yes", "Already ate" and "Already ate: take a picture".
+- [ ] **Phone.** "Yes": the app opens a new chat, sends "I'd like <dish> for lunch. Cook it with me." and Clara answers with that dish's card.
+- [ ] **Phone.** "Already ate": a text box opens in the notification. Type what you had and send: the app opens and Clara estimates it and asks before logging.
+- [ ] **Phone.** "Already ate: take a picture": the app opens on the camera.
+- [ ] **Phone.** Tap the banner itself: the chat shows the same question with the boxes Yes, Already ate and Other.
+- [ ] **Phone.** Settings, Notifications, turn "Suggest a dish" off: the next reminder reads "Did you have lunch?" again.
+- [ ] **Phone.** The dish never contains a food you are allergic to or avoid, and is not a dish you logged in the last 7 days.
+- [ ] **Simulator.** Add `-mealSuggestTapped Lentil-soup`: the chat shows "How does lentil-soup sound for lunch, Fixture?" with Yes, Already ate, Other. Tap "Already ate": Clara asks "What did you have for lunch?" and the keyboard opens.
+- [ ] **Simulator.** Add `-mealSuggestYes Lentil-soup`: a new chat opens with "I'd like Lentil-soup for lunch. Cook it with me." sent.
+- [ ] **Simulator.** `-UITestFixture notificationSettings`: "Suggest a dish" shows under the meal reminders.
+
+### Voice mode while cooking
+- [ ] **Phone.** In cooking mode tap the microphone (top right). iOS asks for Speech Recognition and the Microphone once. The microphone turns crimson and a box above the buttons says "Listening".
+- [ ] **Phone.** Say "next step": the screen moves on and Clara reads the step aloud. Say "repeat": she reads it again. Say "go back": the step before.
+- [ ] **Phone.** On a step with a timer say "start the timer": it starts and she says how many minutes. "Pause the timer", "resume the timer" and "how long is left on the timer" work.
+- [ ] **Phone.** Ask a question ("It's too salty, what can I do?"): the box shows "Clara is thinking", then she reads the answer. The question and answer are in the chat afterwards.
+- [ ] **Phone.** When Clara's answer ends with answer boxes she says "You can say: ...". Say one of them: it is sent.
+- [ ] **Phone.** While she speaks she does not hear her own voice as a question.
+- [ ] **Phone.** Say "stop listening", or tap the microphone: it goes off. Leaving cooking mode also turns it off.
+- [ ] **Phone.** Try it with a pan sizzling or an extractor fan on. Note what it mishears. Note the battery after 20 minutes.
+- [ ] **Phone.** Refuse the microphone permission: the box says to allow it in iOS Settings.
+- [ ] **Simulator.** Start with `-UITestFixture cookMode -cookPeople 2 -cookSteps -cookVoiceSay next-step+start-the-timer`: cooking is on step 4, its timer runs, and the box shows "You: start the timer" and "Clara: Timer started: 2 minutes." The simulator build has no microphone and no sound: the sentences come from the launch words.
+
+### Siri commands
+- [ ] **Phone.** While cooking a dish, say "Hey Siri, next step in Clara": Siri reads the next step and cooking mode has moved on.
+- [ ] **Phone.** On a step with a timer say "Hey Siri, start the timer in Clara": the timer starts and Siri says how long.
+- [ ] **Phone.** With nothing cooking: Siri says "You are not cooking anything in Clara right now."
+- [ ] **Phone.** The Shortcuts app lists "Next step" and "Start the timer" under Clara.
+- [ ] **Simulator.** Checked by the app tests (`CookVoiceTests.testSiriNextStepAndTimer`). Siri itself was not run in the simulator.
+
+### Shopping list to Apple Reminders
+- [ ] **Phone.** Settings, "Shopping list", with items on it: tap "Send to Reminders". iOS asks for access to Reminders once. The line under the button reads "Added 3 items to Reminders, in the list Clara shopping."
+- [ ] **Phone.** Open Apple Reminders: a list "Clara shopping" holds one reminder per item, with the amount in brackets.
+- [ ] **Phone.** Tap "Send to Reminders" again: "Everything is already in Reminders". Items ticked in the app are not sent.
+- [ ] **Phone.** Refuse the permission: the line says to allow Reminders in iOS Settings.
+- [ ] **Simulator.** Add `-openScreen shoppingList`: the list opens with three items and "Send to Reminders". Tapping it shows "Added 3 items to Reminders" (the simulator build does not touch Reminders).
+
+### Photo in the Log
+- [ ] **Phone. Server (not deployed yet).** Send a photo of a plate, answer the gram questions, tap "Log as lunch". In Log the meal shows "From a photo" and a small picture of your photo on the right.
+- [ ] **Phone.** A meal logged without a photo has no picture.
+- [ ] **Phone.** The picture is kept on this phone only: after deleting and reinstalling the app, old photo meals show without a picture.
+- [ ] **Simulator.** Start with `-UITestFixture logLoaded -tab log`: "Tuna salad sandwich" shows "From a photo" and a small picture of a plate.
+
+### Apple Health
+- [ ] **Phone. Needs the HealthKit capability** (add your Apple ID in Xcode, then Signing & Capabilities, + Capability, HealthKit). Without it the switch says "Apple Health is not available in this build of Clara."
+- [ ] **Phone. Server (not deployed yet).** Settings, "Apple Health", turn on "Use Apple Health" and allow everything on the iOS sheet. The line under the switch says how many meals from the last two weeks are in Health.
+- [ ] **Phone.** Open the Health app, Browse, Nutrition, Dietary Energy: today's logged meals are there with their calories, from Clara. Protein, Carbohydrates and Total Fat too.
+- [ ] **Phone.** Delete a meal in Clara's Log, open Clara again: that meal is gone from Health.
+- [ ] **Phone.** Add a weight in the Health app, open Clara: Numbers shows that weight without typing it.
+- [ ] **Phone.** Turn the switch off: nothing new is written.
+- [ ] **Simulator.** Add `-openScreen health`: the Apple Health screen opens. Turn the switch on: it reads "1 meal from the last two weeks in Health." (a stand-in for Health; the real Health app is not used).
+
+### Home Screen widget
+- [ ] **Phone. Needs the App Groups capability** (Apple ID in Xcode, then Signing & Capabilities, + Capability, App Groups, `group.io.wondish.clara`, on both the Clara and the ClaraLiveActivity targets). Not in builds I install from here.
+- [ ] **Phone.** Hold the Home Screen, tap +, search Clara, add "Clara today" in the small and the medium size.
+- [ ] **Phone.** Before lunch it shows the calories logged today and "For lunch" with a dish. After lunch is logged, or after 3:00 PM, it shows "For dinner". After both are logged it shows only the numbers.
+- [ ] **Phone.** Log a meal in a chat, go to the Home Screen: the number has gone up.
+- [ ] **Phone.** Tap the dish: Clara opens on a chat asking how that dish sounds, with Yes and Already ate.
+- [ ] **Phone.** The next morning it starts at 0 again.
+- [ ] **Phone.** Sign out: the widget shows no numbers.
+- [ ] **Simulator.** Add `-UITestFixture logEmpty -openScreen widget`: both sizes are drawn inside the app with "For dinner" or "For lunch" and a dish. `-UITestFixture logLoaded -openScreen widget` shows 520 kcal and 2 meals logged. The widget was not placed on the simulator's Home Screen.
+
 ## 7. Numbers
 
 - [ ] New account: shows "Your starting picture" from your answers, marked "An estimate".

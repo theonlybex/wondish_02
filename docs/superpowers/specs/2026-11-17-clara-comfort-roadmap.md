@@ -24,6 +24,21 @@ Written 2026-11-17 from the owner's replies to the feature list. Each item says 
 
 Every feature has a phone check and a simulator check in `docs/qa/live-test-list.md`, section 6c.
 
+## Done in batch 3 (2026-11-17)
+
+| Item | What was built | Still needed |
+|---|---|---|
+| Dark mode | Every colour in `Theme.swift` has a dark value (warm near-black, cream text, crimson fills, light rose for crimson text). Settings, "Appearance": Same as iPhone, Light, Dark. The welcome screens stay light. | Nothing. |
+| Dish suggestion notification | "How does <dish> sound for lunch, <name>?" with Yes, Already ate (text box) and Already ate: take a picture. The dish comes from `GET /api/clara/meal-suggestions` (recipe library, the person's food rules, no model call). "Suggest a dish" switch. | Server deploy. |
+| Voice mode while cooking | A microphone in cooking mode. Commands on the phone: next step, go back, repeat, start, pause and resume the timer, how long is left, stop listening. Anything else goes to Clara through Ask Clara's path and is read aloud. Captions show what was heard and said. | A real kitchen test (noise, battery). |
+| Siri commands | "Next step in Clara", "Start the timer in Clara" (App Intents, also in Shortcuts). | A phone test. |
+| Shopping list to Reminders | "Send to Reminders": one reminder per item in a list "Clara shopping"; nothing is added twice. | Nothing. |
+| Photo in the Log | A meal logged in a photo chat keeps that photo's id (the existing `pictureResultId` column, so no migration). The Log shows the phone's copy as a small picture. | Server deploy. |
+| Apple Health | Logged meals are written as energy, protein, carbs and fat and removed when deleted; the newest weight is read. One switch. Active energy is not read: nothing in the app uses it yet. | Server deploy (the log's numbers); the HealthKit capability, which needs the Apple ID in Xcode. |
+| Home Screen widget | "Clara today", small and medium: calories logged today and the dish idea for the next meal; a tap opens the chat on that dish. Lives in the existing `ClaraLiveActivity` extension. | The App Groups capability on both targets, which needs the Apple ID in Xcode. |
+
+Checks for these are in `docs/qa/live-test-list.md`, section 6d. The numbered list below is the plan as written before batches 2 and 3; items 1 to 12 are now built.
+
 ## Next, in this order
 
 ### 1. Share a dish as a picture (owner: priority)
