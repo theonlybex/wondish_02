@@ -22,7 +22,7 @@ import { loadClaraLevelSummary } from "@/lib/level-summary";
 import { LEVELS, type FullLevelKey } from "@/lib/level-catalogue";
 import { applyAllergenFilter, parseFridgeRecipes, type FridgeRecipe } from "@/lib/fridge";
 import { DISH_OUTPUT_SCHEMA, DISH_UNITS, DishItemExtractor, toFridgeItem } from "@/lib/clara/dish-output";
-import { libraryToFridge, matchesRequest, rankLibrary, type LibraryRecipe, type RecentDishes } from "@/lib/clara/dish-library";
+import { libraryToFridge, matchesRequest, rankLibrary, suggestionName, type LibraryRecipe, type RecentDishes } from "@/lib/clara/dish-library";
 import crypto from "crypto";
 import { MAX_SERVINGS } from "@/lib/meal-log";
 import {
@@ -628,6 +628,35 @@ async function recentDishes(patientId: string, today: string): Promise<RecentDis
     recipeIds: new Set(rows.map((r) => r.recipeId).filter((x): x is string => !!x)),
     names: new Set(rows.map((r) => r.name.trim().toLowerCase())),
   };
+}
+
+/**
+ * One dish name per meal for the phone's meal notification (2026-11-17,
+ * owner: "How does <dish> sound for lunch, <name>?"). The same library pool,
+ * rule filter and "not one of their recent dishes" as the fallback above; no
+ * model call. A meal with nothing suitable is left out.
+ */
+export async function mealSuggestionNames(
+  patientId: string,
+  today: string,
+  meals: readonly DishMealType[],
+): Promise<Partial<Record<DishMealType, string>>> {
+  const ctx = { patientId, today } as ClaraContext;
+  const [person, recent] = await Promise.all([personFor(ctx), recentFor(ctx)]);
+  if (!person) return {};
+  const out: Partial<Record<DishMealType, string>> = {};
+  for (const mealType of meals) {
+    const ranked = rankLibrary(
+      await libraryPool(mealType),
+      { mealType, little: [], aLot: [] },
+      { patient: person.patient, matchers: person.matchers, seed: `${patientId}|${today}|${mealType}` },
+      recent,
+      stepStatesAmount,
+    );
+    const name = suggestionName(ranked);
+    if (name) out[mealType] = name;
+  }
+  return out;
 }
 
 /** How many ranked library recipes are gated at a time (CPU only), until enough pass. */

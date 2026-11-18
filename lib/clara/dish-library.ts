@@ -217,3 +217,22 @@ export function libraryToFridge(r: LibraryRecipe, mealName: string, servings: nu
     amounts,
   };
 }
+
+// ─── the meal notification's dish ───────────────────────────────────────────
+
+/** A notification title has room for a short name only. */
+export const SUGGESTION_NAME_MAX = 40;
+
+/**
+ * The dish a meal notification names ("How does <dish> sound for lunch?"):
+ * the best ranked library recipe whose name is short enough to read on a
+ * lock screen. Only the NAME leaves the server; when the person says yes the
+ * dish is made through the normal dish tool and all of its gates.
+ */
+export function suggestionName(ranked: readonly Pick<LibraryRecipe, "name">[]): string | null {
+  for (const r of ranked) {
+    const name = r.name.trim();
+    if (name.length > 0 && name.length <= SUGGESTION_NAME_MAX) return name;
+  }
+  return null;
+}
