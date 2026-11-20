@@ -263,6 +263,32 @@ Replaces the older behaviour in 6b and 6d, where a typed answer opened a chat an
 ### What still opens a chat
 - [ ] **Phone.** Tapping the reminder's banner (not holding it) opens Clara on a chat, as before.
 
+## 6g. Share my diet with a chef (added 2026-11-20)
+
+**Server (not deployed yet):** the phone checks need `/api/diet-share` and the page `/diet/<link>` live.
+
+### In the app
+- [ ] **Phone.** Settings, "Share my diet": a short explanation, "Create a link", "Send as picture", and under "What they see" your own card: allergies in a red box first, then Leave out, Go easy on, Likes.
+- [ ] **Phone.** The card matches what you set in "Conditions and eating": every allergy is in the red box, every food you avoid is under Leave out.
+- [ ] **Phone.** Tap "Create a link": the buttons change to "Send the link", "Copy link" and "Send as picture", with "Works until <date>" (90 days from today).
+- [ ] **Phone.** "Send the link" opens the share sheet with a www.wondish.io/diet/... address. Send it to yourself.
+- [ ] **Phone.** "Send as picture" shares one image of the card with "by Wondish" bottom right. It reads well when opened in Messages.
+- [ ] **Phone.** "Show my health conditions" is off. The card names no condition; a heart or blood-pressure condition still shows "Low salt".
+- [ ] **Phone.** Turn the switch on: the preview gains "Health conditions" and the cooking guidance for them.
+- [ ] **Phone.** "Turn off link" asks first, then the screen goes back to "Create a link".
+
+### The chef's page
+- [ ] **Phone or computer.** Open the link in a browser where you are not signed in to Wondish: the card shows, with no sign-in asked.
+- [ ] **Phone.** Change an allergy in "Conditions and eating", reload the chef's page: it shows the change. The address is the same.
+- [ ] **Phone.** With conditions off, the page shows no condition name anywhere. Turn the switch on and reload: they appear.
+- [ ] **Phone.** After "Turn off link", the old address shows "This link is no longer active". A new link has a different address.
+- [ ] **Computer.** Print the page (Cmd+P): one clean page, black text, no crimson block.
+- [ ] **Computer.** Search for the page in Google a few days later: it is not listed.
+
+### Simulator and local
+- [ ] **Simulator.** Start with `-UITestFixture claraEmpty -openScreen diet`: the screen shows a sample card for "Fixture". "Create a link" switches to the link buttons with "Works until February 18"; "Turn off link" goes back.
+- [ ] **Local web.** Run the site (`npm run dev`) and open `http://localhost:3000/diet/sample` (conditions hidden) and `http://localhost:3000/diet/sample-conditions`: a sample card for "Mia". Any other address shows "This link is no longer active". The sample address does not work on the live site.
+
 ## 7. Numbers
 
 - [ ] New account: shows "Your starting picture" from your answers, marked "An estimate".
