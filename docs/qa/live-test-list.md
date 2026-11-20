@@ -289,6 +289,28 @@ Replaces the older behaviour in 6b and 6d, where a typed answer opened a chat an
 - [ ] **Simulator.** Start with `-UITestFixture claraEmpty -openScreen diet`: the screen shows a sample card for "Fixture". "Create a link" switches to the link buttons with "Works until February 18"; "Turn off link" goes back.
 - [ ] **Local web.** Run the site (`npm run dev`) and open `http://localhost:3000/diet/sample` (conditions hidden) and `http://localhost:3000/diet/sample-conditions`: a sample card for "Mia". Any other address shows "This link is no longer active". The sample address does not work on the live site.
 
+## 6h. Posting a dish or your diet to social media (added 2026-11-20)
+
+Both use the iPhone share sheet, which lists Instagram, TikTok, WhatsApp, Facebook, X and Messages when they are installed. No server change is needed.
+
+### A dish
+- [ ] **Phone.** In cooking mode tap the share button. Under the picture there are three shapes: Recipe, Post, Story. The picture changes as you switch.
+- [ ] **Phone.** Take or choose a photo of the dish. "Post": your photo fills the top, the name and ingredients are under it, "Cooked with Clara" and "by Wondish" at the bottom.
+- [ ] **Phone.** "Post", then "Post or share", choose Instagram, then Post: the whole picture shows with nothing cut off.
+- [ ] **Phone.** "Story", then "Post or share", choose Instagram, then Story: it fills the screen. The first four steps show, then "and N more steps".
+- [ ] **Phone.** Try the same picture in WhatsApp, TikTok and Facebook, whichever you have.
+- [ ] **Phone.** "Post or share", then "Save Image": iOS asks once for permission to add to Photos, and the picture is in Photos. The app does not crash.
+- [ ] **Phone.** A dish with a very long recipe: Post and Story stay the same size and nothing overflows.
+- [ ] **Phone.** Close and reopen "Share dish" for another dish: the shape you used last is still selected.
+- [ ] **Simulator.** Start with `-UITestFixture cookMode -cookShareOpen -dishShare.format post` (or `story`): the picture shows in that shape, with a crimson top when there is no photo.
+
+### Your diet
+- [ ] **Phone.** Settings, "Share my diet", "As a picture": Card, Post, Story. Post and Story read "How I eat" with your name, allergies under "Never: allergy", "I leave out" and "I like".
+- [ ] **Phone.** Turn "Show my health conditions" on, then choose Post or Story: no condition is named and there is no salt note. Conditions only ever show on the chef's Card and link.
+- [ ] **Phone.** "Post or share" to an Instagram story and to a feed post: nothing is cut off.
+- [ ] **Phone.** A long avoid list ends with "and N more".
+- [ ] **Simulator.** Start with `-UITestFixture claraEmpty -openScreen diet -dietShare.format story` and scroll down: "The picture" shows the story shape for "Fixture".
+
 ## 7. Numbers
 
 - [ ] New account: shows "Your starting picture" from your answers, marked "An estimate".
