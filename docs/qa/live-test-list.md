@@ -236,6 +236,33 @@ The checks above start the app fresh for each feature. This one runs them one af
 - [ ] **Simulator.** Delete the app from the simulator first, then start with `-UITestFixture cookMode -cookPeople 2 -cookSteps -cookVoiceSay next-step+start-the-timer -appearance dark` and do the same steps by hand. Run on 2026-11-17: every step worked and the system log showed no hang or fault. The Log tab cannot be checked this way: this fixture has no log, so it shows "Couldn't load your log."
 - [ ] **Simulator.** A slow server is covered by the app test `testRemindersHealthAndTheWidgetShareOneReadOfASlowServer`: with 0.4 seconds per read, the reminders, Apple Health and the widget finish together on one request.
 
+## 6f. Answering a meal reminder is a finished interaction (added 2026-11-20)
+
+Replaces the older behaviour in 6b and 6d, where a typed answer opened a chat and Clara asked before logging. **Server (not deployed yet):** none of the phone checks work until `POST /api/clara/quick-log` is live.
+
+### Typed answer: the app stays closed
+- [ ] **Phone.** With Clara closed, hold "Did you have lunch?" (or the dish suggestion), tap "Tell Clara what you had" (or "Already ate"), type "chicken wrap and an apple", Send. The app does not open.
+- [ ] **Phone.** Within about 15 seconds a notification "Lunch logged" arrives with the meal's name and "about N kcal". The reminder itself is gone.
+- [ ] **Phone.** Open Clara, Log: the meal is under today, marked "estimate". Numbers include it.
+- [ ] **Phone.** Hold "Lunch logged" and tap "Undo": the notification goes and the meal is no longer in the Log. The app does not open.
+- [ ] **Phone.** Type something that is not food ("what time is it"): "Clara could not tell what that was" arrives and nothing is logged.
+- [ ] **Phone.** Turn on Airplane Mode and answer a reminder: "Not logged yet" arrives. Turn Airplane Mode off and open Clara: "Lunch logged" arrives and the meal is in the Log once, not twice.
+- [ ] **Phone.** Answer with the phone locked: it still logs.
+- [ ] **Phone.** Compare the calories with what you would expect for three different meals and note any that are far off.
+- [ ] **Simulator.** Start with `-UITestFixture claraEmpty -mealNoteTyped chicken-wrap-and-an-apple`: the start screen stays as it is (no chat opens) and a banner "Lunch logged: chicken wrap and an apple, about 520 kcal." shows. Allow notifications first if the simulator asks.
+
+### Picture: logged as soon as it is taken
+- [ ] **Phone.** Hold the reminder, tap "Take a picture" (or "Already ate: take a picture"): the app opens on the camera. Take the photo and tap "Use Photo".
+- [ ] **Phone.** The chat shows your photo and "Logging your lunch…", which turns into "Logged for lunch: <name>, about N kcal. It's in your Log." Clara asks no questions and shows no answer boxes.
+- [ ] **Phone.** Log shows the meal with "From a photo · estimate" and the small picture.
+- [ ] **Phone.** A photo of something that is not food: "I couldn't see a meal in that photo, so nothing was logged."
+- [ ] **Phone.** Cancel the camera, then ten minutes later send a normal photo in a chat: Clara asks her usual gram questions (the reminder no longer applies).
+- [ ] **Phone.** A photo sent from "Photo of my plate" in the start list still gets the gram questions: only a photo taken from a reminder is logged at once.
+- [ ] **Simulator.** Start with `-UITestFixture claraEmpty -mealPictureTapped -chatPhotoSample`: the chat shows the drawn plate and "Logged for lunch: Chicken salad with tomatoes, about 520 kcal. It's in your Log." The simulator's camera does not take pictures, so the sample photo stands in.
+
+### What still opens a chat
+- [ ] **Phone.** Tapping the reminder's banner (not holding it) opens Clara on a chat, as before.
+
 ## 7. Numbers
 
 - [ ] New account: shows "Your starting picture" from your answers, marked "An estimate".
