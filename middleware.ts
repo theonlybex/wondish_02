@@ -15,6 +15,9 @@ export const isPublicRoute = createRouteMatcher([
   // Phase 3: the QR scan entry point. The whole point is that a diner with no
   // account can scan a table code — this must never redirect to login.
   "/r/(.*)",
+  // The diet card a person shares with whoever cooks for them. The chef has
+  // no account; the page checks the link's own token (lib/diet-share.ts).
+  "/diet/(.*)",
   "/terms(.*)",
   "/privacy(.*)",
   "/api/stripe/webhook",
