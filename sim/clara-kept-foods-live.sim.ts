@@ -296,6 +296,7 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
   const { RICH_FOODS } = await import("@/lib/clara/level-steer");
   const judgeMod = await import("@/lib/clara/dish-judge");
   const catalogMod = await import("@/lib/ingredient-catalog");
+  const groceryMod = await import("@/lib/clara/grocery");
   const { DishItemExtractor } = await import("@/lib/clara/dish-output");
   const { priceDish } = await import("@/lib/staple-density");
   const FISH = /\b(salmon|tuna|cod|haddock|tilapia|trout|mackerel|sardines?|anchov(y|ies)|halibut|bass|snapper|pollock|catfish|swordfish|fish)\b/i;
@@ -865,9 +866,27 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
     for (const r of gRows) for (const [key, groupKey] of [["variety:produce", "produce"], ["variety:grains", "grains"]] as const) {
       const have = r.atHome.filter((n: string) => CAT.find((c: any) => c.key === groupKey)?.items.includes(n)).length;
       const has = r.before.some((g: any) => g.key === key);
-      if ((have < 2) !== has) bad.push(`${id(r)} ${key} (have ${have}, group ${has})`);
+      // Or the nutrient groups already offer two foods of the family.
+      const offered = r.before.filter((g: any) => g.kind === "level").flatMap((g: any) => g.items).filter((i: any) => CAT.find((c: any) => c.key === groupKey)?.items.includes(i.name)).length;
+      if ((have < 2 && offered < 2) !== has) bad.push(`${id(r)} ${key} (have ${have}, offered ${offered}, group ${has})`);
     }
     return bad.length ? bad.join(", ") : null;
+  });
+  whole("G4 grocery: every nutrient they are low on has a group, a real source at home or on the list, or a note", gRows, () => {
+    const bad: string[] = [];
+    for (const r of gRows) for (const k of (r.picture?.little ?? []) as string[]) {
+      const src = groceryMod.SOURCES[k as keyof typeof groceryMod.SOURCES];
+      if (!src) continue;
+      const strong = src.foods.slice(0, src.strong);
+      const group = r.before.find((g: any) => g.key === `level:${k}`);
+      const covered = strong.some((n: string) => r.atHome.includes(n)) || r.before.some((g: any) => g.items.some((i: any) => strong.includes(i.name)));
+      if (!group && !covered && r.before.filter((g: any) => g.kind === "level" && g.items.length).length < groceryMod.MAX_LEVEL_GROUPS) bad.push(`${id(r)} ${k}`);
+    }
+    return bad.length ? bad.join(", ") : null;
+  });
+  whole("G5 grocery: at most 26 foods, 4 to a nutrient group and 3 to a variety group", gRows, () => {
+    const bad = gRows.filter((r) => r.before.flatMap((g: any) => g.items).length > 26 || r.before.some((g: any) => g.items.length > (g.kind === "level" ? 4 : 3)));
+    return bad.length ? bad.map(id).join(", ") : null;
   });
   whole("G3 grocery: 'Got it' takes the food off the list", gRows, () => {
     const bad = gRows.filter((r) => r.bought.some((n: string) => r.after.some((g: any) => g.items.some((i: any) => i.name === n))));
