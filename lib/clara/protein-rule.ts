@@ -58,7 +58,19 @@ export function proteinRuleBreak(a: {
  *  - "free": this week's logs put protein on track and today is not behind: the dish may have none;
  *  - "push": everything else (behind, a muscle goal, or nothing logged to go by).
  */
-export type ProteinNeed = "push" | "free" | "hold";
+export type ProteinNeed = "push" | "free" | "hold" | "skip";
+
+/**
+ * "skip": with protein on track ("free"), one lunch in two is asked to have no meat, fish or eggs at
+ * its centre (owner, 2026-11-22: "sometimes a salad can also be an option"). Chosen in code, by
+ * person and day like the rotation, because the model left to itself picked an egg dish every time.
+ */
+export function skipsProtein(need: ProteinNeed, mealType: MealType, patientId: string, today: string): boolean {
+  if (need !== "free" || mealType !== "lunch") return false;
+  const [y, m, d] = today.split("-").map(Number);
+  const dayNumber = Math.floor(Date.UTC(y, m - 1, d) / 86_400_000);
+  return (fnv1a(patientId) + dayNumber) % 2 === 0;
+}
 export function proteinNeed(a: {
   conditionNames: readonly string[];
   motivationNames: readonly string[];

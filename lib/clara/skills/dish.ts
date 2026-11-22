@@ -27,7 +27,7 @@ import { foodMatches, proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib
 import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
 import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type AskSteer, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
 import { builtOn, eggsOnlyKitchen, proteinKind } from "@/lib/clara/dish-protein";
-import { dishShape, judgeDish, keepWayOfCooking, starchFamily, type DishVerdict } from "@/lib/clara/dish-judge";
+import { dishShape, judgeDish, keepWayOfCooking, starchFamily, type DishShape, type DishVerdict } from "@/lib/clara/dish-judge";
 import { plainSwap, swapInRecipe, swapOptions } from "@/lib/clara/exchange";
 import { chooseProtein, fnv1a, fromHomeLine, requestedProtein, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
 import { targetLines } from "@/lib/clara/meal-target";
@@ -415,6 +415,8 @@ export function shapeOfTheDay(a: {
   homeStarches: readonly { family: string; name: string }[];
   /** Dish names they had today or in the last days, or were just shown. */
   used: readonly string[];
+  /** Shapes already taken that have no name yet (a day plan's lunch, when choosing its dinner). */
+  usedShapes?: readonly DishShape[];
 }): { style: string; starch: string | null } {
   const all: readonly string[] = a.mealType === "lunch" ? LUNCH_STYLES : DINNER_STYLES;
   const hasBread = a.homeStarches.some((x) => x.family === "bread");
@@ -429,7 +431,7 @@ export function shapeOfTheDay(a: {
   const starchesFor = (style: string) =>
     /wrap|sandwich/.test(style) ? a.homeStarches.filter((x) => x.family === "bread") : a.homeStarches.filter((x) => x.family !== "bread" || a.homeStarches.length === 1);
   const protein = a.protein && a.protein.startsWith("ground ") ? a.protein.slice(7) : a.protein;
-  const usedShapes = a.used.map(dishShape);
+  const usedShapes = [...a.used.map(dishShape), ...(a.usedShapes ?? [])];
   const repeats = (style: string, family: string | null) => {
     const way = dishShape(style).way;
     return usedShapes.some((u) => u.way === way && (protein === null || u.protein === protein) && (family === null || u.starch === family));
@@ -449,11 +451,8 @@ export function shapeOfTheDay(a: {
 }
 
 /** The day plan's lunch and dinner lines (see DishAsk.dayPlan). */
-export const DAY_PLAN_LUNCH_LINE = `- This is the day's lunch: make it the lighter, quicker dish (a bowl, a salad, a wrap or a quick skillet).`;
-export const DAY_PLAN_DINNER_LINE = `- This is the day's dinner: make it the fuller cooked dish (a bake, a roast, a braise, stuffed vegetables or a pan dish with a sauce), not a bowl.`;
-
-/** The dinner line when the day has a time limit: nothing that needs an oven hour. */
-export const DAY_PLAN_QUICK_DINNER_LINE = `- This is the day's dinner: make it the fuller, warm dish (a pan dish with a sauce, or a stir-fry with a cooked side), not a bowl, a salad or a wrap.`;
+export const DAY_PLAN_LUNCH_LINE = `- This is the day's lunch: make it the lighter, quicker of the day's two main dishes.`;
+export const DAY_PLAN_DINNER_LINE = `- This is the day's dinner: make it the fuller of the day's two main dishes, and a different kind of dish from the lunch.`;
 
 export function dishSystemPrompt(a: {
   ask: DishAsk;
@@ -494,12 +493,16 @@ export function dishSystemPrompt(a: {
   const freeMain = steer.ruleOn && isMainMeal && eggsOnlyKitchen(brain.home);
   // The at-home protein rule replaces today's protein line, banned names or not.
   let proteinLine = "";
-  if (steer.ruleOn && steer.choice) {
+  if (steer.need === "skip") {
+    // One lunch in two, with protein on track: a dish with no meat, fish or eggs at its centre.
+    proteinLine = `- Make this ${meal} without meat, fish or eggs: a salad, a vegetable plate, a soup, or a potato or grain dish. They are getting enough protein this week, so this one does not need it.`;
+  } else if (steer.ruleOn && steer.choice) {
     // Lunch and dinner with no request of their own: built on ONE at-home protein, chosen in code.
     const choiceName = cleanOne(steer.choice.name);
     // Protein is a need of the day (see proteinNeed): asked for when they need it, optional when
     // the week is on track, kept modest when a condition calls for that.
     proteinLine = steer.need === "push"
+      // One protein to a dish: with a small kitchen the model put an egg on four beef dishes in six (live run 4).
       ? `- Build this ${meal} on ${choiceName}, which they have at home.`
       : steer.need === "hold"
         ? `- Their condition calls for modest protein: keep the protein portion of this ${meal} small. If it has a protein food, make it ${choiceName}, which they have at home.`
@@ -512,7 +515,7 @@ export function dishSystemPrompt(a: {
       ? ` Any other meat, fish or seafood in it must be one of these, which they have at home: ${clean(homeMeats)}; use no other meat, fish or seafood: not in an ingredient, the dish name, the description or a step.`
       : ` Use no meat, fish or seafood: not in an ingredient, the dish name, the description or a step.`;
     if (steer.need === "push") {
-      proteinLine += ` This protein is the heart of the dish. Where a line above says to build the dish on or around another food, add a portion of that food to this dish instead; do not replace ${choiceName}.`;
+      proteinLine += ` This protein is the heart of the dish. Where a line above says to build the dish on or around another food, add a portion of that food to this dish instead; do not replace ${choiceName}. Use that one protein only: no egg on top and no second meat or fish.`;
     }
   } else if (freeMain) {
     const eggs = clean(brain.home.filter((p) => p.cls === "egg").map((p) => p.name));
@@ -552,7 +555,7 @@ export function dishSystemPrompt(a: {
     ? ask.mealType === "lunch"
       ? DAY_PLAN_LUNCH_LINE
       : ask.mealType === "dinner"
-        ? ask.maxMinutes !== undefined ? DAY_PLAN_QUICK_DINNER_LINE : DAY_PLAN_DINNER_LINE
+        ? DAY_PLAN_DINNER_LINE
         : ``
     : ``;
   // The week stays varied two ways (live run, 2026-11-22: one rice bowl four times in a week):
@@ -569,12 +572,23 @@ export function dishSystemPrompt(a: {
     const family = starchFamily(n);
     if (family && !homeStarches.some((x) => x.family === family)) homeStarches.push({ family, name: cleanOne(n) });
   }
-  const shape = plainMain && !ask.dayPlan
-    ? shapeOfTheDay({
-        patientId: whoIs.patientId, today: whoIs.today, mealType: ask.mealType as "lunch" | "dinner", maxMinutes: ask.maxMinutes,
-        protein: steer.choice?.key ?? null, homeStarches,
-        used: [...brain.usedToday, ...brain.usedRecently, ...(ask.avoid ?? [])],
-      })
+  const shapeFor = (mealType: "lunch" | "dinner", usedShapes: readonly DishShape[] = []) =>
+    shapeOfTheDay({
+      patientId: whoIs.patientId, today: whoIs.today, mealType, maxMinutes: ask.maxMinutes,
+      protein: steer.need === "skip" ? null : steer.choice?.key ?? null, homeStarches,
+      used: [...brain.usedToday, ...brain.usedRecently, ...(ask.avoid ?? [])],
+      usedShapes,
+    });
+  // A day plan writes lunch and dinner at the same moment, so neither can see the other (live runs
+  // 3-5: the same beef-and-rice dish as a bowl and as a skillet). Code decides both kinds up front:
+  // the dinner's kind is chosen with the lunch's already taken.
+  const lunchTaken = (): DishShape[] => {
+    const lunch = shapeFor("lunch");
+    const key = steer.choice?.key ?? null;
+    return [{ protein: key && key.startsWith("ground ") ? key.slice(7) : key, starch: lunch.starch ? starchFamily(lunch.starch) : null, way: dishShape(lunch.style).way }];
+  };
+  const shape = plainMain
+    ? shapeFor(ask.mealType as "lunch" | "dinner", ask.dayPlan && ask.mealType === "dinner" ? lunchTaken() : [])
     : null;
   const styleLine = shape
     ? `- To keep their week varied, make today's ${meal} ${shape.style}${shape.starch ? `, with ${shape.starch} as its starch,` : ""} if that suits what they have; otherwise the nearest thing to it.`
@@ -958,6 +972,7 @@ function judgeGated(gated: FridgeRecipe, ask: DishAsk, person: Person, steer: As
     ...(ask.swap ? { mustKeep: { names: ask.swap.others, calories: ask.swap.calories, band: SWAP_REWRITE_BAND } } : {}),
     ceilings: steer.ceilings,
     notLike: [...person.brain.usedToday, ...person.brain.usedRecently, ...(ask.avoid ?? [])],
+    ...(steer.need === "skip" ? { skipProtein: true } : {}),
     ...(ask.without && ask.without.length > 0 ? { without: ask.without } : {}),
   });
   const fromHome = fromHomeLine(ingredients.map((i) => i.name), person.brain.kept, builtOn(ingredients, r.steps));

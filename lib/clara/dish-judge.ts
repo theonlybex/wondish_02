@@ -29,6 +29,8 @@ export interface JudgeInput {
    * foods) are among the ingredients, and the calories stay inside the band around what they were.
    */
   mustKeep?: { names: readonly string[]; calories: number; band: { min: number; max: number } };
+  /** This main was asked to have no meat, fish or eggs (protein on track, one lunch in two). */
+  skipProtein?: boolean;
   /** Foods the person said they do not have for this dish: a dish that uses one is out. */
   without?: readonly string[];
   /** Dish names they had today or in the last days, or were just shown. A dish that is one of them reworded is only served when nothing else passes. */
@@ -122,7 +124,7 @@ export const REPEAT_OVERLAP = 0.6;
 export interface DishVerdict {
   /** "pass": every check. "relaxed": only the size or the repeat check failed (ladder step 2). "fail": out. */
   level: "pass" | "relaxed" | "fail";
-  /** In check order; [] for a pass. "protein:<ProteinBreak>", "honest:named-after-ingredient", "size:too-small", "size:too-large", "repeat", "starches", "limit:<level key>". */
+  /** In check order; [] for a pass. "protein:<ProteinBreak>", "honest:named-after-ingredient", "size:too-small", "size:too-large", "repeat", "starches", "proteins", "limit:<level key>". */
   reasons: string[];
   /** The key of the protein the dish is built on, or null. */
   builtOn: string | null;
@@ -181,6 +183,14 @@ export function judgeDish(input: JudgeInput): DishVerdict {
   const shape: DishShape = { protein: builtKey ?? named.protein, starch: starches[0] ?? named.starch, way: named.way };
   const repeats = (n: string) => (shape.protein === null && shape.starch === null ? sameDish(input.name, n) : sameDish(shape, n));
   if (input.wants === undefined && (input.notLike ?? []).some(repeats)) reasons.push("repeat");
+  // One protein to a main: a meat or fish dish with eggs as well, or two meats (live run 4: an egg on
+  // four beef dishes in six). Served only when nothing else passes; never judged on a request.
+  if (input.wants === undefined && (input.mealType === "lunch" || input.mealType === "dinner")) {
+    const kinds = new Set(input.ingredients.map((i) => proteinKind(i.name)).filter((k) => k && (k.cls === "meat" || k.cls === "egg")).map((k) => (k!.key.startsWith("ground ") ? k!.key.slice(7) : k!.key)));
+    if (kinds.size > 1 && [...kinds].some((k) => k !== "egg")) reasons.push("proteins");
+    // The lunch asked to go without: meat, fish or eggs in it.
+    if (input.skipProtein && kinds.size > 0) reasons.push("proteins");
+  }
   // One starch per dish (rice with potatoes, potatoes with barley): served only when nothing else passes.
   if (input.wants === undefined && starches.length > 1) reasons.push("starches");
 

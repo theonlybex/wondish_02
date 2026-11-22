@@ -248,6 +248,9 @@ SCENARIOS.push(
     asks: rep(2, { meal: "dinner" }, (k) => 20 + 6 * k) },
   { id: "Q", title: "MARKS + potatoes: five days of lunch and dinner, each dish cooked and logged", rules: [], atHome: [...MARKS, "Russet potatoes"], cooks: true,
     asks: Array.from({ length: 5 }, (_, d) => [{ meal: "lunch" as const, day: 3 + d }, { meal: "dinner" as const, day: 3 + d }]).flat() },
+  // Round A3 (2026-11-22): with protein on track, one lunch in two goes without meat, fish or eggs.
+  { id: "T", title: "MARKS + potatoes; protein on track; four lunches", rules: [], atHome: [...MARKS, "Russet potatoes"], week: wk3("Logged", 45, 500),
+    asks: [15, 18, 21, 24].map((day) => ({ meal: "lunch" as const, day })) },
   // Round B (2026-11-22): the ingredients check before cooking.
   { id: "R", title: "swaps: MARKS + kale, potatoes, mushrooms at home", rules: [], swaps: true,
     atHome: [...MARKS, "Russet potatoes", "Kale", "Mushrooms"], asks: [{ meal: "dinner", day: 9 }, { meal: "lunch", day: 10 }] },
@@ -278,6 +281,7 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
   const { chooseProtein, sameProteinKind } = await import("@/lib/clara/protein-rule");
   const { sizeProblem, proteinShareLow } = await import("@/lib/clara/meal-target");
   const { RICH_FOODS } = await import("@/lib/clara/level-steer");
+  const judgeMod = await import("@/lib/clara/dish-judge");
   const { DishItemExtractor } = await import("@/lib/clara/dish-output");
   const { priceDish } = await import("@/lib/staple-density");
   const FISH = /\b(salmon|tuna|cod|haddock|tilapia|trout|mackerel|sardines?|anchov(y|ies)|halibut|bass|snapper|pollock|catfish|swordfish|fish)\b/i;
@@ -780,6 +784,29 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
   }, true);
   each("all every lunch and dinner is inside the size band or was served as 'relaxed'", rows.filter((r) => r.meal !== "plan" && r.meal !== "swap"), (r) => r.sizeProblem === null || r.ladder === "relaxed" || r.ladder === "stored recipe");
   each("all each single dish's sodium is unknown or at most its ceiling", rows.filter((r) => r.meal !== "plan" && r.meal !== "swap"), (r) => r.sodium === null || r.sodiumCeiling == null || r.sodium <= r.sodiumCeiling);
+  const tR = of("T");
+  const noMeatFishEgg = (r: any) => !r.proteinKinds.some((k: string) => ["meat", "egg"].includes(proteinKind(k)?.cls ?? ""));
+  whole("T1 protein on track: the lunches asked to go without (need skip) have no meat, fish or eggs", tR, () => {
+    const asked = tR.filter((r) => r.need === "skip");
+    if (!asked.length) return "no lunch was asked to go without";
+    const bad = asked.filter((r) => r.ok && !noMeatFishEgg(r));
+    return bad.length ? bad.map((r) => `${id(r)} [${r.proteinKinds.join(", ")}]`).join(", ") : null;
+  }, true);
+  whole("T2 protein on track: some lunches go without and some do not", tR, () => {
+    const n = tR.filter((r) => r.need === "skip").length;
+    return n > 0 && n < tR.length ? null : `${n} of ${tR.length} asked to go without`;
+  });
+  const mains = rows.filter((r) => r.meal === "lunch" || r.meal === "dinner");
+  whole("all a meat or fish main has no eggs added (unless served as relaxed)", mains, () => {
+    const bad = mains.filter((r) => r.ok && !r.request && r.ladder === "pass" && r.proteinKinds.some((k: string) => proteinKind(k)?.cls === "meat") && r.proteinKinds.some((k: string) => proteinKind(k)?.cls === "egg"));
+    return bad.length ? bad.map(id).join(", ") : null;
+  }, true);
+  whole("J5 a plan's lunch and dinner are not the same starch cooked the same way", plans, () => {
+    const { dishShape, starchesIn } = judgeMod;
+    const bad = plans.filter((r) => { const l = planDishes(r, "lunch")[0], d = planDishes(r, "dinner")[0];
+      return l && d && dishShape(l.name).way === dishShape(d.name).way && (starchesIn(l.ingredients)[0] ?? null) === (starchesIn(d.ingredients)[0] ?? null); });
+    return bad.length ? bad.map((r) => `${id(r)} (${planDishes(r, "lunch")[0].name} / ${planDishes(r, "dinner")[0].name})`).join(", ") : null;
+  }, true);
   const swapRows = rows.filter((r) => r.meal === "swap");
   const swapResults = swapRows.flatMap((r) => r.results.map((x: any) => ({ r, x })));
   const swapLine = (line: string, bad: (a: { r: any; x: any }) => boolean, pick: (a: { r: any; x: any }) => boolean = () => true) => whole(line, swapRows, () => {

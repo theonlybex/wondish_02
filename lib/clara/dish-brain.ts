@@ -14,7 +14,7 @@ import { DEFAULT_DISH_RULES, keptUnderRules, type DishRules } from "./dish-rules
 import type { KeptFoods } from "./kept-foods";
 import { levelCeilings, steerLevels, type LevelSteer, type PictureLevels, type SteerRow, type TodayTotals } from "./level-steer";
 import { mealTarget, type MealTarget } from "./meal-target";
-import { chooseProtein, proteinNeed, proteinRuleApplies, type ProteinChoice, type ProteinNeed } from "./protein-rule";
+import { chooseProtein, proteinNeed, proteinRuleApplies, skipsProtein, type ProteinChoice, type ProteinNeed } from "./protein-rule";
 
 export interface BrainRows {
   week: { range: { fromDate: string; toDate: string }; days: FullDay[] } | null;
@@ -205,7 +205,7 @@ export function steerForAsk(
     : [];
   // Limits have no switch.
   const ceilings = levelCeilings({ mealType: ask.mealType, sodiumLimitMg: brain.sodiumLimitMg, week: brain.week });
-  const need: ProteinNeed = brain.rules.mainsOnProtein
+  const base: ProteinNeed = brain.rules.mainsOnProtein
     ? proteinNeed({
         conditionNames: brain.conditionNames,
         motivationNames: brain.motivationNames,
@@ -213,5 +213,7 @@ export function steerForAsk(
         behindToday: levels.some((l) => l.key === "protein" && l.direction === "more" && l.why === "today"),
       })
     : "free";
+  // Never for a request: they asked for the dish they want.
+  const need: ProteinNeed = brain.rules.mainsOnProtein && ask.wants === undefined && skipsProtein(base, ask.mealType, who.patientId, who.today) ? "skip" : base;
   return { ruleOn, choice, need, target, levels, ceilings };
 }

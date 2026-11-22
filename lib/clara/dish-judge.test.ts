@@ -96,7 +96,7 @@ test("a repeat is the same protein, starch and way of cooking; one starch per di
 
 // Live run 5, 2026-11-22: a name rebuilt from the ingredients lost the potatoes and the oven, and a repeat got through.
 test("the candidate is judged by what it is built on and the starch in it, and a rebuilt name keeps the way of cooking", () => {
-  const beefPotato = [g("ground beef", 150), g("russet potatoes", 200), g("spinach", 60), g("eggs", 1, "")];
+  const beefPotato = [g("ground beef", 150), g("russet potatoes", 200), g("spinach", 60)];
   const home = homeProteins(splitKeptFoods([{ name: "Ground beef", groupKey: "proteins", atHome: true, favorite: false }]));
   // The rebuilt name says neither "potato" nor "bake"; the ingredients and the kept word do.
   const v = j({ name: "Ground Beef with Eggs and Spinach Bake", ingredients: beefPotato, home, notLike: ["Baked Ground Beef and Spinach Stuffed Potato"] });
@@ -131,4 +131,18 @@ test("an exchange must still be the dish: two thirds of its other foods, and its
   assert.deepEqual(j({ mustKeep, wants: "salmon fillets", calories: 400 }).reasons, ["exchange:size"]);
   assert.deepEqual(j({ mustKeep, wants: "salmon fillets", calories: 760 }).reasons, ["exchange:size"]);
   assert.equal(j({ mustKeep, wants: "salmon fillets", calories: 490 }).level, "pass");
+});
+
+// Live run 4, 2026-11-22: an egg on four beef dishes in six.
+test("one protein to a main: meat with eggs, or two meats, is only served when nothing else passes", () => {
+  const withEgg = [...BASE.ingredients, g("eggs", 1, "")];
+  assert.deepEqual(j({ ingredients: withEgg }), { level: "relaxed", reasons: ["proteins"], builtOn: "salmon" });
+  assert.deepEqual(j({ ingredients: [...BASE.ingredients, g("ground beef", 60)], home: homeProteins(splitKeptFoods([{ name: "Salmon fillets", groupKey: "proteins", atHome: true, favorite: false }, { name: "Ground beef", groupKey: "proteins", atHome: true, favorite: false }])) }).reasons, ["proteins"]);
+  // Eggs alone, meat with beans, a breakfast, and a request are not judged on it.
+  assert.equal(j({ ingredients: [g("eggs", 3, ""), g("spinach", 60)], name: "Spinach Omelette", home: homeProteins(splitKeptFoods([{ name: "Large eggs", groupKey: "dairy", atHome: true, favorite: false }])) }).reasons.includes("proteins"), false);
+  assert.equal(j({ ingredients: withEgg, mealType: "breakfast" }).reasons.includes("proteins"), false);
+  assert.equal(j({ ingredients: withEgg, wants: "salmon with a fried egg" }).level, "pass");
+  // A lunch asked to go without: any meat, fish or egg in it.
+  assert.deepEqual(j({ mealType: "lunch", skipProtein: true, targetCalories: null }).reasons, ["proteins"]);
+  assert.equal(j({ mealType: "lunch", skipProtein: true, targetCalories: null, name: "Spinach Rice", ingredients: [g("spinach", 120), g("jasmine rice", 60)] }).level, "pass");
 });

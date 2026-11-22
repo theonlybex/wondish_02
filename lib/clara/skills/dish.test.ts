@@ -20,7 +20,6 @@ import {
   DISH_CRAFT_LINES,
   DAY_PLAN_LUNCH_LINE,
   DAY_PLAN_DINNER_LINE,
-  DAY_PLAN_QUICK_DINNER_LINE,
   styleOfTheDay,
   shapeOfTheDay,
   promptDishName,
@@ -1187,7 +1186,7 @@ const lineOf = (p: string, start: string) => p.split("\n").find((l) => l.startsW
 test("prompt: a rule-on dinner makes the chosen protein the heart of the dish and puts the closest fit first", () => {
   const p = withBrain({ kept: SALMON_AND_BEEF, rows: SALMON_TODAY });
   const build = lineOf(p, "- Build this Dinner on Salmon fillets");
-  assert.ok(build.endsWith(" This protein is the heart of the dish. Where a line above says to build the dish on or around another food, add a portion of that food to this dish instead; do not replace Salmon fillets."), build);
+  assert.ok(build.endsWith(" This protein is the heart of the dish. Where a line above says to build the dish on or around another food, add a portion of that food to this dish instead; do not replace Salmon fillets. Use that one protein only: no egg on top and no second meat or fish."), build);
   assert.ok(p.includes(CLOSEST) && !p.includes(SIMPLEST));
   // Foods marked at home without a protein rule: the closest-fit opening too.
   const spinach = withBrain({ kept: { ...NO_KEPT_FOODS, atHome: ["Spinach"] } });
@@ -1380,8 +1379,8 @@ test("prompt: the week stays varied: recent dishes are not repeated and each day
   for (const d of ["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14"]) {
     assert.doesNotMatch(style(on(d, { ...DINNER, maxMinutes: 20 }))!, /bake|roast|stew|stuffed/);
   }
-  // Not for breakfast, a request or a day plan (which has its own lines).
-  for (const ask of [{ mealType: "breakfast" as const, summary: NO_LOGS }, { ...DINNER, wants: "a curry" }, { ...DINNER, dayPlan: true }]) {
+  // Not for breakfast or a request. (A day plan gets one too: see the day-plan test.)
+  for (const ask of [{ mealType: "breakfast" as const, summary: NO_LOGS }, { ...DINNER, wants: "a curry" }]) {
     assert.equal(style(on("2026-11-09", ask)), undefined);
   }
   // What their log says they had this week.
@@ -1438,6 +1437,30 @@ test("prompt: with a protein chosen and pushed, no second line asks to build the
   assert.match(withBrain({ kept: NO_KEPT_FOODS }, ask), /little protein this week/);
 });
 
+// Owner, 2026-11-22: "sometimes a salad can also be an option". With protein on track, one lunch in two goes without.
+test("prompt: with protein on track, one lunch in two is asked for with no meat, fish or eggs; never a dinner or a request", () => {
+  const day = (localDate: string) => ({ localDate, meals: 3, calories: 1900, protein: 55, carbs: 220, fibre: 28, sodium: 1500, saturatedFat: 8, addedSugar: 10 });
+  const week = (to: string) => { const d = new Date(`${to}T12:00:00Z`); return [4, 3, 2, 1].map((n) => { const x = new Date(d); x.setUTCDate(x.getUTCDate() - n); return day(x.toISOString().slice(0, 10)); }); };
+  const lunch = (today: string, ask: object = {}) => dishSystemPrompt({
+    ...KEPT_BASE, ask: { mealType: "lunch", summary: NO_LOGS, ...ask } as DishAsk, bannedNames: [],
+    brain: brainFrom({ kept: SALMON_AND_BEEF, today, patient: NOBODY as never, rows: { ...NO_BRAIN_ROWS, week: { range: { fromDate: "2026-11-01", toDate: today }, days: week(today) } } }),
+    who: { patientId: "p1", today },
+  });
+  const SKIP = /- Make this Lunch without meat, fish or eggs: a salad, a vegetable plate, a soup, or a potato or grain dish\. They are getting enough protein this week/;
+  const days = ["2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13"];
+  const skipped = days.map((d) => SKIP.test(lunch(d)));
+  assert.deepEqual(skipped.filter(Boolean).length, 2);
+  for (let i = 0; i < 3; i++) assert.notEqual(skipped[i], skipped[i + 1]);
+  const skipDay = days[skipped.indexOf(true)];
+  // The skipped lunch has no "build on" and no protein in its complete-meal line.
+  assert.doesNotMatch(lunch(skipDay), /Build this Lunch on|If it has a protein at its centre/);
+  // The same day's dinner, and a request at lunch, are not skipped.
+  assert.doesNotMatch(lunch(skipDay, { mealType: "dinner" }), /without meat, fish or eggs/);
+  assert.doesNotMatch(lunch(skipDay, { wants: "a salmon bowl" }), /without meat, fish or eggs/);
+  // Not on track (nothing logged): never.
+  for (const d of days) assert.doesNotMatch(dishSystemPrompt({ ...KEPT_BASE, ask: { mealType: "lunch", summary: NO_LOGS }, bannedNames: [], brain: brainFrom({ kept: SALMON_AND_BEEF }), who: { patientId: "p1", today: d } }), /without meat, fish or eggs/);
+});
+
 // Owner, 2026-11-22: eggs as the only protein at home.
 test("prompt: an eggs-only kitchen gets a main on any meat-free protein, and no meat or fish", () => {
   const eggsOnly: KeptFoods = { proteinKeys: [], proteinNames: [], atHome: ["Large eggs", "Spinach"], favorites: ["Red lentils", "Chicken thighs"] };
@@ -1466,25 +1489,29 @@ test("prompt: an eggs-only kitchen gets a main on any meat-free protein, and no 
 
 // Final review, 2026-11-21: a day plan made lunch and dinner at once on the same protein with nothing
 // keeping them apart. Each now carries its part of the day.
-test("prompt: a day plan's lunch and dinner carry their own line; a plain dish and a breakfast do not", () => {
-  const plan = (mealType: "breakfast" | "lunch" | "dinner", dayPlan?: boolean) =>
-    withBrain({ kept: SALMON_AND_BEEF }, { mealType, summary: NO_LOGS, ...(dayPlan ? { dayPlan } : {}) }).split("\n");
-  assert.equal(DAY_PLAN_LUNCH_LINE, "- This is the day's lunch: make it the lighter, quicker dish (a bowl, a salad, a wrap or a quick skillet).");
-  assert.equal(DAY_PLAN_DINNER_LINE, "- This is the day's dinner: make it the fuller cooked dish (a bake, a roast, a braise, stuffed vegetables or a pan dish with a sauce), not a bowl.");
-  const lunch = plan("lunch", true);
-  const dinner = plan("dinner", true);
-  assert.ok(lunch.includes(DAY_PLAN_LUNCH_LINE) && !lunch.includes(DAY_PLAN_DINNER_LINE));
-  assert.ok(dinner.includes(DAY_PLAN_DINNER_LINE) && !dinner.includes(DAY_PLAN_LUNCH_LINE));
-  // Right after the protein line.
-  assert.match(dinner[dinner.indexOf(DAY_PLAN_DINNER_LINE) - 1], /^- Build this Dinner on /);
-  // Short of time: the dinner line asks for nothing slow, and the lunch line is as it was.
-  const quick = (mealType: "lunch" | "dinner") =>
-    withBrain({ kept: SALMON_AND_BEEF }, { mealType, summary: NO_LOGS, dayPlan: true, maxMinutes: 20 }).split("\n");
-  assert.equal(DAY_PLAN_QUICK_DINNER_LINE, "- This is the day's dinner: make it the fuller, warm dish (a pan dish with a sauce, or a stir-fry with a cooked side), not a bowl, a salad or a wrap.");
-  assert.ok(quick("dinner").includes(DAY_PLAN_QUICK_DINNER_LINE) && !quick("dinner").includes(DAY_PLAN_DINNER_LINE));
-  assert.doesNotMatch(quick("dinner").join("\n"), /a bake, a roast, a braise/);
-  assert.ok(quick("lunch").includes(DAY_PLAN_LUNCH_LINE));
-  // A plain dish_suggest, a breakfast in a plan, and a plan with no protein chosen: no line.
+test("prompt: a day plan's lunch and dinner get different kinds of dish, chosen in code; a plain dish and a breakfast are untouched", () => {
+  const kitchen = { ...SALMON_AND_BEEF, atHome: ["Jasmine rice", "Russet potatoes", "Spinach"] };
+  const plan = (mealType: "breakfast" | "lunch" | "dinner", dayPlan?: boolean, extra: object = {}, today = "2026-11-12") =>
+    dishSystemPrompt({ ...KEPT_BASE, ask: { mealType, summary: NO_LOGS, ...(dayPlan ? { dayPlan } : {}), ...extra }, bannedNames: [], brain: brainFrom({ kept: kitchen }), who: { patientId: "p1", today } }).split("\n");
+  assert.equal(DAY_PLAN_LUNCH_LINE, "- This is the day's lunch: make it the lighter, quicker of the day's two main dishes.");
+  assert.equal(DAY_PLAN_DINNER_LINE, "- This is the day's dinner: make it the fuller of the day's two main dishes, and a different kind of dish from the lunch.");
+  const kind = (lines: string[]) => /make today's (Lunch|Dinner) (.+?)(?:, with (.+?) as its starch,)? if that suits/.exec(lines.join("\n"));
+  for (const today of ["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15"]) {
+    for (const extra of [{}, { maxMinutes: 20 }]) {
+      const lunch = plan("lunch", true, extra, today);
+      const dinner = plan("dinner", true, extra, today);
+      assert.ok(lunch.includes(DAY_PLAN_LUNCH_LINE) && !lunch.includes(DAY_PLAN_DINNER_LINE));
+      assert.ok(dinner.includes(DAY_PLAN_DINNER_LINE) && !dinner.includes(DAY_PLAN_LUNCH_LINE));
+      // Right after the protein line.
+      assert.match(dinner[dinner.indexOf(DAY_PLAN_DINNER_LINE) - 1], /^- Build this Dinner on /);
+      // The two are never the same starch cooked the same way.
+      const l = kind(lunch)!, d = kind(dinner)!;
+      assert.ok(l && d, today);
+      assert.ok(!(l[3] === d[3] && dishShape(l[2]).way === dishShape(d[2]).way), `${today}: ${l[2]} with ${l[3]} / ${d[2]} with ${d[3]}`);
+      if ("maxMinutes" in extra) assert.doesNotMatch(d[2], /bake|roast|stew|stuffed/);
+    }
+  }
+  // A plain dish_suggest, a breakfast in a plan, and a plan with no protein chosen: no day-plan line.
   for (const p of [plan("lunch"), plan("dinner"), plan("breakfast", true), withBrain({ kept: NO_KEPT_FOODS }, { ...DINNER, dayPlan: true }).split("\n")]) {
     assert.ok(!p.includes(DAY_PLAN_LUNCH_LINE) && !p.includes(DAY_PLAN_DINNER_LINE));
   }
