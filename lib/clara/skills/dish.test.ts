@@ -1231,6 +1231,46 @@ test("prompt: breakfast and snack name only what is at home when the rule is on,
   assert.match(withBrain({ kept: NO_KEPT_FOODS }, snack), /Fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip\.\n/);
 });
 
+// Final review, 2026-11-21: the level examples were filtered by the at-home rule only, so a fish
+// and tree-nut allergy read "build the dish on foods rich in it (salmon, sardines, mackerel, walnuts, …)"
+// beside FORBIDDEN WORDS naming the same foods.
+const bansOf = (allergyNames: string[], exact: string[] = []) =>
+  buildDietMatchers({ allergyNames, exactBanned: exact.map((name) => ({ name, source: "preference" as const })) });
+test("prompt: level examples never name a food the diet bans, with or without foods marked", () => {
+  const ask = { ...DINNER, summary: { ...NO_LOGS, little: ["omega3", "iron", "calcium", "fibre"] } as unknown as LevelSummary };
+  const line = (p: string, what: string) => p.split("\n").find((l) => l.startsWith(`- They have had little ${what} this week`)) ?? "";
+  // Fish and tree-nut allergy, nothing marked.
+  const fishNuts = bansOf(["fish", "salmon", "sardines", "mackerel", "tree nuts", "walnuts", "almonds", "cashews"]);
+  const p = withBrain({ kept: NO_KEPT_FOODS, matchers: fishNuts }, ask);
+  const omega = line(p, "omega-3");
+  assert.equal(omega, "- They have had little omega-3 this week: build the dish on foods rich in it (chia or flax seeds).");
+  assert.doesNotMatch(omega, /salmon|sardine|mackerel|walnut/);
+  assert.doesNotMatch(line(p, "calcium"), /sardines/);
+  // Vegetarian (here: meat and fish banned by name): no beef for iron.
+  const veg = bansOf([], ["beef", "chicken", "pork", "fish", "salmon", "sardines"]);
+  const v = withBrain({ kept: NO_KEPT_FOODS, matchers: veg }, ask);
+  assert.equal(line(v, "iron"), "- They have had little iron this week: build the dish on foods rich in it (lentils, beans, chickpeas, spinach, tofu).");
+  // Dairy allergy: the calcium line keeps only what is allowed.
+  const dairy = bansOf(["milk", "yogurt", "cheese"]);
+  assert.equal(line(withBrain({ kept: NO_KEPT_FOODS, matchers: dairy }, ask), "calcium"), "- They have had little calcium this week: build the dish on foods rich in it (tofu, sardines, kale).");
+  // Every example banned: the line is stated without a list.
+  const allOmega = bansOf(["salmon", "sardines", "mackerel", "walnuts", "chia or flax seeds"]);
+  assert.equal(line(withBrain({ kept: NO_KEPT_FOODS, matchers: allOmega }, ask), "omega-3"), "- They have had little omega-3 this week: build the dish on foods rich in it.");
+  // The fibre sentence gets the same filter.
+  const legumes = bansOf(["lentils", "chickpeas", "beans", "peas"]);
+  assert.equal(line(withBrain({ kept: NO_KEPT_FOODS, matchers: legumes }, ask), "fibre"), "- They have had little fibre this week: build every dish around a fibre-rich ingredient (oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds).");
+  // With the at-home rule on, both filters apply.
+  const ruled = withBrain({ kept: { ...SALMON_AND_BEEF, atHome: ["Spinach"] }, rows: SALMON_TODAY, matchers: veg }, ask);
+  assert.doesNotMatch(line(ruled, "iron"), /beef/);
+  // No bans (matchers with nothing in them, or none at all): unchanged.
+  const none = bansOf([]);
+  for (const m of [undefined, none]) {
+    const q = withBrain({ kept: NO_KEPT_FOODS, ...(m ? { matchers: m } : {}) }, ask);
+    assert.equal(line(q, "omega-3"), "- They have had little omega-3 this week: build the dish on foods rich in it (salmon, sardines, mackerel, walnuts, chia or flax seeds).");
+    assert.equal(line(q, "iron"), "- They have had little iron this week: build the dish on foods rich in it (lentils, beans, chickpeas, spinach, beef, tofu).");
+  }
+});
+
 test("prompt: today's dish names are capped at the latest 6, 60 characters each, with no semicolons", () => {
   const names = ["Salmon One", "Two", "Three", "Four", "Five;Six", "Seven", `Salmon ${"x".repeat(80)}`];
   const p = withBrain({ kept: SALMON_AND_BEEF, rows: { ...NO_BRAIN_ROWS, todayDishes: names } });

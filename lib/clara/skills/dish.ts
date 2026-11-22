@@ -457,7 +457,7 @@ export function dishSystemPrompt(a: {
   // Level examples, with the rule on: only proteins the dish may use. A main keeps the chosen meat
   // and any other protein at home; a breakfast or snack keeps no meat or fish; a request keeps what is at home.
   const choiceKey = steer.ruleOn && steer.choice ? steer.choice.key : null;
-  const keepExample = steer.ruleOn
+  const ruleKeeps = steer.ruleOn
     ? (food: string) => {
         const k = proteinKind(food);
         if (!k) return true;
@@ -467,6 +467,16 @@ export function dishSystemPrompt(a: {
         return brain.home.some((p) => p.cls === "meat" && sameProteinKind(p.key, k.key));
       }
     : undefined;
+  // Level examples, for everyone with a ban: never a food their diet bans ("walnuts" for a tree-nut
+  // allergy, "beef" for a vegetarian), through the same check as liked foods. A line whose every
+  // example is banned is stated without examples.
+  const dietMatchers = brain.matchers && hasAnyBan(brain.matchers) ? brain.matchers : null;
+  const dietKeeps = dietMatchers
+    ? (food: string) => evaluateDishAgainstProfile([food], dietMatchers).passed
+    : undefined;
+  const keepExample = ruleKeeps && dietKeeps
+    ? (food: string) => ruleKeeps(food) && dietKeeps(food)
+    : ruleKeeps ?? dietKeeps;
   const levelLines = steerLines(steer.levels, {
     ...(marked ? { atHome: homeNames } : {}),
     ...(keepExample ? { keepExample } : {}),

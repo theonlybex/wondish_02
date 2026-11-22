@@ -61,6 +61,8 @@ export interface DishBrain {
   picture: PictureLevels | null;
   today: TodayTotals | null;
   usedToday: string[];
+  /** The diet matchers the brain was built with; absent without them. Level examples are filtered through them. */
+  matchers?: DietMatchers;
 }
 
 const MAX_FAVOURITES = 40;
@@ -147,6 +149,7 @@ export function brainFrom(a: {
     picture,
     today,
     usedToday: [...rows.todayDishes],
+    ...(a.matchers ? { matchers: a.matchers } : {}),
   };
 }
 
