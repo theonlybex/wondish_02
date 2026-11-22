@@ -189,7 +189,11 @@ export interface GenerateOptions {
 }
 
 /** A dish that passed the gates, with the judge's verdict and its "from your kitchen" line (null when nothing is marked). */
-export interface JudgedDish { recipe: FridgeRecipe; verdict: DishVerdict; fromHome: FromHome | null }
+export interface JudgedDish {
+  recipe: FridgeRecipe; verdict: DishVerdict; fromHome: FromHome | null;
+  /** Set by the generator: built on the protein chosen for today. Absent from the library and when no protein is chosen. */
+  onTodaysProtein?: boolean;
+}
 
 export type CandidateTrace = {
   /** ms since the generator started. */
@@ -778,8 +782,9 @@ async function generateGated(
       if (ev.type === "message_delta") stopReason = ev.delta.stop_reason ?? stopReason;
       if (ev.type !== "content_block_delta" || ev.delta.type !== "text_delta") continue;
       for (const item of items.push(ev.delta.text)) {
-        const j = await gateOne(item, ask, person, catalogFoodTokens, seen, note, steer);
-        if (!j) continue;
+        const gotten = await gateOne(item, ask, person, catalogFoodTokens, seen, note, steer);
+        if (!gotten) continue;
+        const j: JudgedDish = steer.choice && onChoice(gotten) ? { ...gotten, onTodaysProtein: true } : gotten;
         const r = j.recipe;
         opts.judged?.(j);
         if (j.verdict.level === "relaxed") {
@@ -910,7 +915,7 @@ export async function mealSuggestionNames(
           stepStatesAmount,
         ),
       );
-    // As the dish fallback: with nothing at-home-friendly, a name as before beats none.
+    // The reminder's own fallback (the dish no longer does this): with nothing at-home-friendly, a name as before beats none.
     const name = nameFor() ?? (proteinRuleOn(person.kept, undefined) ? nameFor(false) : null);
     if (name) out[mealType] = name;
   }
@@ -1301,9 +1306,12 @@ async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Pro
   // What the judge said about each dish the deps hand back, and the relaxed generated dishes in arrival order.
   const judgedBy = new Map<FridgeRecipe, JudgedDish>();
   const relaxedDishes: FridgeRecipe[] = [];
+  // Full passes as they were reported: if the deadline wins the race (`late`), a dish already in hand is not lost.
+  const passedDishes: JudgedDish[] = [];
   const onGenerated = (j: JudgedDish) => {
     judgedBy.set(j.recipe, j);
     if (j.verdict.level === "relaxed") relaxedDishes.push(j.recipe);
+    if (j.verdict.level === "pass") passedDishes.push(j);
   };
   // Fired once a generated dish is served: the library stops making queries.
   const libraryStop = new AbortController();
@@ -1341,6 +1349,14 @@ async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Pro
   }
   // A relaxed dish is never a full pass, even from a dep that also returned it.
   recipes = recipes.filter((r) => judgedBy.get(r)?.verdict.level !== "relaxed");
+  // The deadline won (or the generator returned nothing) after it had reported full passes: serve from those,
+  // today's protein first, then arrival order. Only "pass" verdicts are here; pickDish still judges each below.
+  if (recipes.length === 0 && passedDishes.length > 0) {
+    recipes = passedDishes
+      .map((j, i) => ({ j, i }))
+      .sort((a, b) => Number(!!b.j.onTodaysProtein) - Number(!!a.j.onTodaysProtein) || a.i - b.i)
+      .map((x) => x.j.recipe);
+  }
   // OFF 2026-11 (Clara-first, spec §8.6): with `wants`, a generated dish that says the request is picked first, and one that does not waits behind a matching library recipe. Restore: uncomment this line and delete the `picked` line and the `unmatched` line below it.
   // const picked = pickDish(recipes, ask);
   const picked = pickDish(recipes.filter(saysRequest), ask);

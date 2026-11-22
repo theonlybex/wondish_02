@@ -427,3 +427,42 @@ test("fromHome rides on the dish part when the judge gives one, and is absent ot
   assert.deepEqual(dishOf(await suggest({ generate: async () => [], library: async (_c, _a, _s, judged) => { judged?.(j); return [r]; } })).fromHome, fromHome);
   assert.ok(!("fromHome" in dishOf(await suggest({ generate: async () => [dish("Model Stew")] }))));
 });
+
+// ─── the deadline never loses a dish already in hand (Task 8 fix round 1) ───
+
+const passed = (recipe: FridgeRecipe, onTodaysProtein?: boolean) => ({ recipe, verdict: verdict("pass"), fromHome: null, ...(onTodaysProtein ? { onTodaysProtein } : {}) });
+const hangs = (report: (o: any) => void): DishDeps["generate"] => (_c, _a, o) => { report(o); return new Promise(() => {}); };
+
+test("deadline: a full pass reported before the generator hangs past budget + grace is served, generated", async () => {
+  const t0 = Date.now();
+  const res = await suggest({ budgetMs: 40, generate: hangs((o) => o?.judged?.(passed(dish("In-Hand Salmon")))), library: async () => [dish("Library Stew")] });
+  assert.deepEqual([dishOf(res).name, res.data.dish.source], ["In-Hand Salmon", "generated"]);
+  assert.ok(Date.now() - t0 < 1000, `took ${Date.now() - t0} ms`);
+});
+test("deadline: a full pass on another at-home protein beats a relaxed dish on today's protein, whichever came first", async () => {
+  for (const order of ["relaxed first", "pass first"]) {
+    const generate = hangs((o) => {
+      const r = () => o?.judged?.(relaxed(dish("Big Beef Bowl")));
+      const p = () => o?.judged?.(passed(dish("Salmon Plate")));
+      if (order === "relaxed first") { r(); p(); } else { p(); r(); }
+    });
+    const res = await suggest({ budgetMs: 40, generate, library: async () => [dish("Library Stew")] });
+    assert.deepEqual([dishOf(res).name, res.data.dish.source], ["Salmon Plate", "generated"], order);
+  }
+  // Two passes in hand: the one on today's protein first, though it came second.
+  const res = await suggest({ budgetMs: 40, generate: hangs((o) => { o?.judged?.(passed(dish("Salmon Plate"))); o?.judged?.(passed(dish("Beef Plate"), true)); }) });
+  assert.equal(dishOf(res).name, "Beef Plate");
+});
+test("deadline: a pass in hand still has to fit the card", async () => {
+  const slow = dish("Slow Salmon", { prepMinutes: 30, cookMinutes: 90 });
+  const res = await suggest({ budgetMs: 40, generate: hangs((o) => o?.judged?.(passed(slow))), library: async () => [dish("Library Stew")] }, { maxMinutes: 45 });
+  assert.deepEqual([dishOf(res).name, res.data.dish.source], ["Library Stew", "library"]);
+});
+test("deadline: nothing reported before the hang → relaxed, then library, then the honest note, as before", async () => {
+  const a = await suggest({ budgetMs: 40, generate: hangs((o) => o?.judged?.(relaxed(dish("Big Salmon Bowl")))), library: async () => [dish("Library Stew")] });
+  assert.equal(dishOf(a).name, "Big Salmon Bowl");
+  const b = await suggest({ budgetMs: 40, generate: hangs(() => {}), library: async () => [dish("Library Stew")] });
+  assert.equal(dishOf(b).name, "Library Stew");
+  const c = await suggest({ budgetMs: 40, generate: hangs(() => {}), library: async () => [] });
+  assert.deepEqual([c.ok, c.message], [false, COULDNT_FIT_NOTE]);
+});
