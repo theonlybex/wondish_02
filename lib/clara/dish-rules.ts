@@ -1,6 +1,7 @@
 // The switches a person can turn off on how Clara builds a dish, and the rules
 // they add in their own words ("How Clara cooks" in the app, piece D).
 // Pure: no database, no model client.
+import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
 import type { KeptFoods } from "./kept-foods";
 
 export interface DishRules {
@@ -40,14 +41,14 @@ export const DEFAULT_DISH_RULES: Readonly<DishRules> = Object.freeze({
 export const DISH_RULE_COPY: Readonly<Record<keyof DishRules, { title: string; detail: string }>> = {
   cookFromHome: { title: "Cook from what I have", detail: "Dishes are built from the foods you marked at home." },
   onlyHomeProteins: { title: "Only proteins I have", detail: "No meat, fish or other protein you did not mark at home, unless you ask for it by name." },
-  mainsOnProtein: { title: "Build meals on protein when I need it", detail: "Lunch and dinner are built on a protein when you are behind on it." },
+  mainsOnProtein: { title: "Build meals on protein", detail: "Lunch and dinner are built on a protein, unless your week shows you are getting enough. Off: a dish may have none." },
   sameProteinToday: { title: "Same protein through the day", detail: "What you open at lunch is used again at dinner." },
   sizeToCalories: { title: "Size dishes to my calories", detail: "Each dish is sized for its meal from your day's calories." },
-  followMacroSplit: { title: "Follow my macro split", detail: "Dishes aim for your split of protein, carbs and fat." },
-  steerByLevels: { title: "Steer by my Numbers", detail: "Dishes favour what you have had little of and hold back what you have had a lot of." },
+  followMacroSplit: { title: "Follow my macro split", detail: "Dishes built on a protein aim for your split of protein, carbs and fat." },
+  steerByLevels: { title: "Steer by my Numbers", detail: "Dishes favour what you have had little of and hold back what you have had a lot of. Your sodium limit applies either way." },
   favourFavourites: { title: "Favour my favourites", detail: "Your favourite foods come up more often." },
-  keepWeekVaried: { title: "Keep my week varied", detail: "A different kind of dish each day, and no repeats of the last few days." },
-  proteinFreeLunches: { title: "Protein-free lunches", detail: "When you are getting enough protein, some lunches have no meat, fish or eggs." },
+  keepWeekVaried: { title: "Keep my week varied", detail: "A different kind of dish each day, and no repeats of the last few days. Off: the same dish can come back often." },
+  proteinFreeLunches: { title: "Protein-free lunches", detail: "When you are getting enough protein, some lunches have no meat, fish or eggs. Needs \"Build meals on protein\" on." },
 };
 
 /** A rule the person added in their own words. */
@@ -87,18 +88,47 @@ export function storedRulesFrom(raw: unknown): StoredRules {
   return { switches: dishRulesFrom(o.switches), mine: userRulesFrom(o.mine) };
 }
 
+const singularWord = (w: string) => (/ies$/.test(w) ? `${w.slice(0, -3)}y` : /(oes|ses|shes|ches|xes)$/.test(w) ? w.slice(0, -2) : /s$/.test(w) && !/ss$/.test(w) ? w.slice(0, -1) : w);
+const wordsOf = (name: string) => name.toLowerCase().replace(/[^a-z\s-]/g, " ").split(/[\s-]+/).filter(Boolean).map(singularWord);
+// Every word a catalog food is named with: what "a food" means here. A rule is held in code only when it names one of these.
+const FOOD_WORDS: ReadonlySet<string> = new Set(INGREDIENT_CATALOG.flatMap((g) => g.items.flatMap(wordsOf)));
+// Words that describe a food but are not one, and the kitchen's essentials: "no oil" or "no salt" as
+// a food ban would drop nearly every dish, so those stay an instruction to Clara.
+const NOT_A_FOOD = new Set(["red", "green", "white", "yellow", "black", "brown", "wild", "sweet", "fresh", "ground", "whole", "large", "plain", "extra", "firm", "sliced", "shredded", "grated", "canned", "diced", "crushed", "heavy", "unsalted", "boneless", "oil", "salt", "water", "pepper", "sugar", "flour", "sauce", "paste", "powder", "seasoning", "broth", "stock"]);
+
 /**
- * The food a "no such food" rule names, when the rule is that simple: "no mushrooms", "never put
- * cilantro in my dishes", "without pork". Such a rule is held in code (a dish that uses the food is
- * dropped); any other rule is an instruction only. null for a rule that is not about one food.
+ * The food a "no such food" rule names, when the rule is that simple and the food is one the app
+ * knows: "no mushrooms", "never put cilantro in my dishes, please", "without pork". Such a rule is
+ * held in code (a dish that uses the food is dropped); any other rule is an instruction to Clara
+ * only, and is said to be. null for a list ("onions or garlic"), a kind of food ("red meat",
+ * "dairy", "nuts"), an essential ("oil", "salt"), a rule with a time or an amount in it, anything
+ * about an allergy (that belongs in the profile), and any word that is not a catalog food.
  */
 export function ruleFood(text: string): string | null {
-  const m = /^(?:no|never(?: use| put| add| cook with| give me)?|don'?t(?: use| put| add| give me)|do not(?: use| put| add| give me)|without|i (?:don'?t|do not|never) eat|i hate|i can'?t stand)\s+(?:any\s+)?(.+?)(?:\s+(?:in|on|with)\s+(?:my|any|the)\s+(?:dish|dishes|food|meal|meals))?[.!]?$/i.exec(text.trim());
+  const m = /^(?:no|never(?: use| put| add| cook with| give me)?|don'?t(?: use| put| add| give me)|do not(?: use| put| add| give me)|without|avoid|skip(?: the)?|i (?:don'?t|do not|never) eat|i hate|i can'?t stand)\s+(?:any\s+|the\s+)?(.+?)(?:\s+(?:in|on|with)\s+(?:my|any|the)\s+(?:dish|dishes|food|meal|meals))?$/i.exec(
+    text.trim().replace(/[.!,]+$/g, "").replace(/[,]?\s+(?:please|ever|at all|anymore|any more)$/i, "").trim(),
+  );
   if (!m) return null;
   const food = m[1].trim().toLowerCase();
-  // One food, a few words, and not a sentence ("no cooking over 30 minutes" is not a food).
-  if (food.split(/\s+/).length > 3 || /\d|\b(over|under|more|less|than|after|before|on|at|when|cooking|dishes|meals|days?|minutes?|hours?|weekdays?|spicy|fried|raw|cold|hot)\b/.test(food)) return null;
+  if (/[^a-z\s-]/.test(food) || /\b(and|or|allerg\w*|intoleran\w*|this|next|today|tonight|week|month)\b/.test(food)) return null;
+  const words = wordsOf(food);
+  if (words.length === 0 || words.length > 3) return null;
+  // Every word a catalog food's word, and at least one of them a food itself (not "red" or "ground").
+  if (!words.every((w) => FOOD_WORDS.has(w)) || !words.some((w) => !NOT_A_FOOD.has(w))) return null;
   return food;
+}
+
+/**
+ * A rule food against one ingredient: the ingredient IS that food. Its last word is the food's
+ * last word and it has every other word of the food: "mushrooms" is "cremini mushrooms", "rice" is
+ * "jasmine rice" but not "rice vinegar" or "rice noodles", "eggs" is not "egg noodles", and "olives"
+ * is never "olive oil" (grocery and rule review, 2026-11-22).
+ */
+export function ruleFoodMatches(food: string, ingredientName: string): boolean {
+  const want = wordsOf(food);
+  const have = wordsOf(ingredientName);
+  if (want.length === 0 || have.length === 0) return false;
+  return have[have.length - 1] === want[want.length - 1] && want.every((w) => have.includes(w));
 }
 
 /** Piece D's stored JSON. Not an object, an unknown key, or a non-boolean value: the default for that key. */

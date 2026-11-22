@@ -9,6 +9,7 @@ import { builtOn, proteinKind, type DishIngredient, type HomeProtein } from "./d
 import type { DishRules } from "./dish-rules";
 import { proteinRuleBreak } from "./protein-rule";
 import { foodMatches } from "./kept-foods";
+import { ruleFoodMatches } from "./dish-rules";
 import { sizeProblem } from "./meal-target";
 
 export interface JudgeInput {
@@ -31,6 +32,8 @@ export interface JudgeInput {
   mustKeep?: { names: readonly string[]; calories: number; band: { min: number; max: number } };
   /** This main was asked to have no meat, fish or eggs (protein on track, one lunch in two). */
   skipProtein?: boolean;
+  /** The foods their own "no such food" rules name ("How Clara cooks"): a dish that has one is out. */
+  ruleFoods?: readonly string[];
   /** Foods the person said they do not have for this dish: a dish that uses one is out. */
   without?: readonly string[];
   /** Dish names they had today or in the last days, or were just shown. A dish that is one of them reworded is only served when nothing else passes. */
@@ -159,6 +162,10 @@ export function judgeDish(input: JudgeInput): DishVerdict {
     if (input.ingredients.some((i) => foodMatches(w, i.name))) reasons.push(`without:${w}`);
   }
 
+  for (const f of input.ruleFoods ?? []) {
+    if (input.ingredients.some((i) => ruleFoodMatches(f, i.name))) reasons.push(`rule:${f}`);
+  }
+
   if (input.mustKeep) {
     const { names, calories, band } = input.mustKeep;
     const kept = names.filter((n) => input.ingredients.some((i) => foodMatches(n, i.name))).length;
@@ -199,6 +206,6 @@ export function judgeDish(input: JudgeInput): DishVerdict {
     if (amount !== undefined && ceiling !== undefined && amount > ceiling) reasons.push(`limit:${key}`);
   }
 
-  const hard = reasons.some((r) => r.startsWith("protein:") || r.startsWith("honest:") || r.startsWith("limit:") || r.startsWith("without:") || r.startsWith("exchange:"));
+  const hard = reasons.some((r) => r.startsWith("protein:") || r.startsWith("honest:") || r.startsWith("limit:") || r.startsWith("without:") || r.startsWith("exchange:") || r.startsWith("rule:"));
   return { level: hard ? "fail" : reasons.length ? "relaxed" : "pass", reasons, builtOn: built?.key ?? null };
 }

@@ -92,10 +92,18 @@ test("the list stays short: five nutrient groups at most, and no variety group f
   for (const x of g.filter((y) => y.kind === "variety")) assert.ok(x.items.length <= MAX_VARIETY_ITEMS);
   const all = g.flatMap((x) => x.items.map((i) => i.id));
   assert.equal(new Set(all).size, all.length);
-  assert.ok(all.length <= 26, String(all.length));
-  // The fibre and iron groups already offer pulses and oats: no separate protein or grain variety group for the same thing.
-  const listedProteins = g.filter((x) => x.kind === "level").flatMap(names).filter((n) => /lentils|beans|tofu|salmon|beef|tuna/i.test(n)).length;
-  if (listedProteins >= 2) assert.equal(g.some((x) => x.key === "variety:proteins"), false);
+  assert.ok(all.length <= 29, String(all.length));
+  // The list never grows when something is bought: buy the first food of every group, one group at a time.
+  let rows = catalog(["Large eggs", "Spinach", "Jasmine rice"]);
+  let before = groceryGroups({ rows, week: [], picture: poor });
+  for (let step = 0; step < 12 && before.some((x) => x.items.length > 0); step++) {
+    const first = before.find((x) => x.items.length > 0)!.items[0];
+    rows = rows.map((r) => (r.id === first.id ? { ...r, atHome: true } : r));
+    const after = groceryGroups({ rows, week: [], picture: poor });
+    const titlesBefore = new Set(before.filter((x) => x.kind === "variety").map((x) => x.key));
+    for (const v of after.filter((x) => x.kind === "variety")) assert.ok(titlesBefore.has(v.key), `a variety group appeared after buying ${first.name}: ${v.key}`);
+    before = after;
+  }
 });
 
 test("a variety group opens for a family with fewer than two foods at home", () => {
@@ -144,4 +152,15 @@ test("a vegan low on omega-3 gets the small plant sources with a note; a salty w
   assert.deepEqual(rices.map((x) => x.key), ["variety:grains"]);
   const bacon = groceryGroups({ rows: catalog(["Bacon", "Large eggs", "Spinach", "Kale", "Jasmine rice", "Spaghetti"]), week: [], picture: null });
   assert.deepEqual(bacon.map((x) => x.key), ["variety:proteins"]);
+});
+
+test("fortified plant milks are a vegan's source of B12 and vitamin D, and one already on the list is named, not contradicted", () => {
+  const animal = (n: string) => /salmon|tuna|tilapia|catfish|shrimp|beef|steak|chicken|turkey|pork|bacon|eggs|whole milk|yogurt|cheddar|mozzarella|parmesan|feta|butter|cream/i.test(n);
+  const g = groceryGroups({ rows: catalog(["Extra-firm tofu", "Black beans", "Spinach", "Kale", "Jasmine rice", "Spaghetti"], [], animal), week: [], picture: little("vitaminB12", "vitaminD") });
+  const b12 = g.find((x) => x.key === "level:vitaminB12")!;
+  assert.deepEqual([names(b12), b12.note], [["Oat milk"], undefined]); // one of each kind: one plant milk
+  // Vitamin D has no group of its own: the oat milk above is its source, and the group says so.
+  assert.equal(g.some((x) => x.key === "level:vitaminD"), false);
+  assert.deepEqual(b12.also, [{ level: "vitamin D", food: "Oat milk" }]);
+  assert.ok(!g.some((x) => x.note === NO_FOOD_NOTE));
 });

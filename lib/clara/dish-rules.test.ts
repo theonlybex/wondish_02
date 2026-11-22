@@ -18,7 +18,7 @@ test("keptUnderRules", () => {
 });
 
 // Piece D (2026-11-22): the person's own rules and the stored value.
-import { cleanRuleText, userRulesFrom, storedRulesFrom, ruleFood, DISH_RULE_COPY, DISH_RULE_KEYS, MAX_USER_RULES } from "./dish-rules";
+import { cleanRuleText, userRulesFrom, storedRulesFrom, ruleFood, ruleFoodMatches, DISH_RULE_COPY, DISH_RULE_KEYS, MAX_USER_RULES } from "./dish-rules";
 
 test("stored rules: switches and the person's own rules, anything malformed is the default", () => {
   assert.deepEqual(storedRulesFrom(null), { switches: { ...DEFAULT_DISH_RULES }, mine: [] });
@@ -40,10 +40,24 @@ test("stored rules: switches and the person's own rules, anything malformed is t
 test("ruleFood: a rule that is just 'no such food' names it; anything else is an instruction only", () => {
   const yes: [string, string][] = [
     ["No mushrooms", "mushrooms"], ["never put cilantro in my dishes", "cilantro"], ["Don't use pork.", "pork"],
-    ["without bell peppers", "bell peppers"], ["I don't eat lamb", "lamb"], ["I hate blue cheese", "blue cheese"], ["no any olives", "olives"],
+    ["without bell peppers", "bell peppers"], ["I hate feta cheese", "feta cheese"], ["no any spinach", "spinach"],
+    ["No cilantro please", "cilantro"], ["no mushrooms, ever", "mushrooms"], ["avoid mushrooms", "mushrooms"], ["skip the rice", "rice"],
+    ["Never put spinach in my dishes", "spinach"], ["no sweet potatoes", "sweet potatoes"], ["no olive oil", "olive oil"], ["I can't stand olives", "olives"],
   ];
   for (const [text, food] of yes) assert.equal(ruleFood(text), food, text);
-  for (const text of ["No cooking over 30 minutes on weekdays", "Vegetarian on Fridays", "No spicy dishes", "never more than 2 pans", "Keep dinners light", "no fried food after 8"]) {
-    assert.equal(ruleFood(text), null, text);
-  }
+  // Not held in code: a sentence, a list, a kind of food, an essential, a time, an allergy, a word that is no catalog food.
+  for (const text of [
+    "No cooking over 30 minutes on weekdays", "Vegetarian on Fridays", "No spicy dishes", "never more than 2 pans", "Keep dinners light", "no fried food after 8",
+    "no onions or garlic", "no pork and beef", "no red meat", "no dairy", "no nuts", "no fish", "no meat", "no seafood", "no carbs", "no gluten",
+    "no oil", "no salt", "no extra salt", "less salt", "no water", "no black pepper",
+    "no salmon this week", "no peanuts (allergy)", "I'm allergic to peanuts", "no leftovers", "no microwave", "no desserts", "no lamb",
+  ]) assert.equal(ruleFood(text), null, text);
+});
+
+test("ruleFoodMatches: the ingredient is that food, not a food made from it or one that shares a word", () => {
+  const hit: [string, string][] = [["mushrooms", "cremini mushrooms"], ["rice", "jasmine rice"], ["spinach", "Baby spinach"], ["sweet potatoes", "sweet potato"], ["eggs", "large eggs"], ["olive oil", "extra virgin olive oil"], ["bell peppers", "red bell pepper"]];
+  for (const [food, ing] of hit) assert.equal(ruleFoodMatches(food, ing), true, `${food} / ${ing}`);
+  const miss: [string, string][] = [["rice", "rice vinegar"], ["rice", "rice noodles"], ["eggs", "egg noodles"], ["sweet potatoes", "russet potatoes"], ["tomatoes", "tomato paste"], ["mushrooms", "mushroom broth"], ["spinach", "kale"], ["bell peppers", "black pepper"], ["olives", "olive oil"], ["olives", "extra virgin olive oil"]];
+  assert.equal(ruleFoodMatches("olives", "kalamata olives"), true);
+  for (const [food, ing] of miss) assert.equal(ruleFoodMatches(food, ing), false, `${food} / ${ing}`);
 });

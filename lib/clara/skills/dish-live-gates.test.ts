@@ -69,6 +69,8 @@ let pantryHangs = false;
 let queries: string[] = [];
 /** The arguments of every mealLog.findMany, so a test can tell the queries apart by shape. */
 let mealLogArgs: any[] = [];
+/** Patient.claraRules ("How Clara cooks"); null except in the rules tests. */
+let patientRules: unknown = null;
 const fakePrisma = {
   patient: {
     findFirst: async () => ({
@@ -76,6 +78,7 @@ const fakePrisma = {
       foodAllergies: [{ food: { name: "Peanuts", bannedIngredients: [{ name: "peanut" }, { name: "peanut butter" }] } }],
       foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [], triggerTrials: [],
       ingredientPreferences: [], dishPreferences: [], journalEntries: [],
+      claraRules: patientRules,
     }),
   },
   ingredient: {
@@ -720,4 +723,45 @@ test("swap: 'nothing similar' gives a different dish without the food, never the
     const none: any = await dish.makeSwapHandlers(swapDeps([salmonItem()]).deps).without({ ...CTX }, { mealType: "dinner", recipe, ingredient: "salmon fillet" });
     assert.ok(!none.ok || !none.dish.recipe.ingredients.some((i: any) => /salmon/.test(i.name)));
   } finally { pantry = []; }
+});
+
+// ─── piece D: the person's own rules and switches, from their profile, through the real gates ───
+
+test("rules: a 'no such food' rule of theirs drops a dish that uses it, takes it off the at-home list and out of the exchanges", async () => {
+  pantry = ["salmon fillets", "spinach"];
+  patientRules = { mine: [{ id: "r1", text: "Never put spinach in my dishes", on: true }, { id: "r2", text: "Keep dinners light", on: true }, { id: "r3", text: "No lentils", on: false }] };
+  try {
+    // The salmon dish has spinach: dropped by the judge for the rule; nothing else to serve from the model.
+    const trace: any[] = [];
+    const fc = fakeClient(JSON.stringify({ dishes: [salmonItem()] }));
+    const deps = dish.createLiveDishDeps({ client: fc.client, brainRows: async () => ({ week: null, dayTarget: null, pills: null, todayDishes: [], liked: [] }) });
+    const got = await deps.generate({ ...CTX }, ASK, { accept: () => true, trace: (e: any) => trace.push(e) });
+    assert.deepEqual(got, []);
+    assert.deepEqual(trace.map((t) => [t.stage, t.reasons]), [["judge", ["rule:spinach"]]]);
+    // In the instructions: their rules in their words (the switched-off one is not), and spinach is not "at home".
+    const system: string = fc.seen.params.system;
+    assert.match(system, /Their own rules for their dishes; follow each one, except where a rule about their diet, allergies or safety here says otherwise: Never put spinach in my dishes; Keep dinners light\./);
+    assert.doesNotMatch(system, /No lentils/);
+    assert.doesNotMatch(system.split("\n").find((l: string) => l.includes("At home:")) ?? "", /spinach/i);
+  } finally { pantry = []; patientRules = null; }
+});
+
+test("rules: a switch they turned off is off for their dishes; a malformed stored value is every switch on", async () => {
+  pantry = ["salmon fillets"];
+  try {
+    const prompt = async () => {
+      const fc = fakeClient(JSON.stringify({ dishes: [salmonItem()] }));
+      await dish.createLiveDishDeps({ client: fc.client, brainRows: async () => ({ week: null, dayTarget: null, pills: null, todayDishes: [], liked: [] }) }).generate({ ...CTX }, ASK, { accept: () => true });
+      return fc.seen.params.system as string;
+    };
+    patientRules = { switches: { keepWeekVaried: false, onlyHomeProteins: false } };
+    const off = await prompt();
+    assert.doesNotMatch(off, /To keep their week varied|Build this Dinner on/);
+    for (const bad of [null, "nonsense", { switches: "x", mine: 7 }, []]) {
+      patientRules = bad;
+      const on = await prompt();
+      assert.match(on, /To keep their week varied/);
+      assert.match(on, /Build this Dinner on Salmon fillets/);
+    }
+  } finally { pantry = []; patientRules = null; }
 });

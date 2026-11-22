@@ -99,11 +99,11 @@ export const SOURCES: Readonly<Partial<Record<FullLevelKey, { foods: readonly st
   iodine: { foods: ["Whole milk", "Plain Greek yogurt", "Large eggs", "Shrimp", "Canned tuna", "Tilapia fillets"], strong: 3 },
   vitaminA: { foods: ["Sweet potatoes", "Carrots", "Spinach", "Kale", "Large eggs"], strong: 4 },
   vitaminB6: { foods: ["Garbanzo beans", "Salmon fillets", "Boneless chicken breasts", "Russet potatoes", "Bananas"], strong: 5 },
-  // The plant milks are usually fortified with B12 and D; nothing else a vegan eats carries them.
-  vitaminB12: { foods: ["Salmon fillets", "Ground beef", "Canned tuna", "Sirloin steak", "Whole milk", "Plain Greek yogurt", "Large eggs", "Oat milk", "Almond milk"], strong: 6 },
+  // The plant milks count as sold: fortified with calcium, B12 and D. For a vegan they are the main source of the last two.
+  vitaminB12: { foods: ["Salmon fillets", "Ground beef", "Canned tuna", "Sirloin steak", "Whole milk", "Plain Greek yogurt", "Oat milk", "Almond milk", "Large eggs"], strong: 8 },
   vitaminC: { foods: ["Bell peppers", "Broccoli", "Oranges", "Strawberries", "Brussels sprouts", "Kale", "Roma tomatoes", "Lemons"], strong: 6 },
   // Salmon, and milk as sold (fortified). A can of tuna or an egg gives about a twentieth of the day.
-  vitaminD: { foods: ["Salmon fillets", "Whole milk", "Oat milk", "Almond milk", "Canned tuna", "Large eggs"], strong: 2 },
+  vitaminD: { foods: ["Salmon fillets", "Whole milk", "Oat milk", "Almond milk", "Canned tuna", "Large eggs"], strong: 4 },
   vitaminE: { foods: ["Almonds", "Avocados", "Spinach"], strong: 2 },
   vitaminK: { foods: ["Kale", "Spinach", "Broccoli", "Green cabbage", "Brussels sprouts"], strong: 5 },
   folate: { foods: ["Green lentils", "Garbanzo beans", "Black beans", "Spinach", "Asparagus", "Broccoli", "Avocados"], strong: 7 },
@@ -164,8 +164,7 @@ export const NO_FOOD_NOTE = "Nothing your diet allows is a good source of it. Fo
  *    with a note in place of foods (a vegan low on B12 is not passed over in silence).
  *  - At most five level groups with foods, in the Numbers list's order; none for a level whose
  *    real source is already on the list in a group above.
- *  - A variety group when the family has fewer than two foods at home, unless the level groups
- *    above already list two foods of that family.
+ *  - A variety group when the family has fewer than two kinds of food at home.
  *  - A food is listed once, in the first group that names it.
  */
 export function groceryGroups(a: { rows: readonly CatalogRow[]; week: readonly SteerRow[]; picture: PictureLevels | null }): GroceryGroup[] {
@@ -191,8 +190,15 @@ export function groceryGroups(a: { rows: readonly CatalogRow[]; week: readonly S
     const opening = low.why === "week" ? `You've had little ${lower} this week` : `From your answers you probably get little ${lower}`;
     const strong = rich.filter((x) => x.strong).map((x) => x.row);
     if (strong.length === 0) {
-      // Nothing they eat is a real source: say so, and list the small sources they may eat, if any.
+      // Nothing they eat is a real source. A small source already on the list is named there; else
+      // say so, and list the small sources they may eat, if any.
+      const already = rich.map((x) => x.row).find((r) => listed.has(r.id));
+      if (already) {
+        const g = groupOf.get(already.id);
+        if (g) g.also = [...(g.also ?? []), { level: `a little ${lower}`, food: already.name }];
+      }
       const small = take(rich.map((x) => x.row), MAX_VARIETY_ITEMS);
+      if (already && small.length === 0) continue;
       const g: GroceryGroup = { key: `level:${low.key}`, kind: "level", title: `For ${lower}`, reason: `${opening}.`, items: small, note: small.length > 0 ? SMALL_SOURCES_NOTE : NO_FOOD_NOTE };
       for (const i of small) groupOf.set(i.id, g);
       groups.push(g);
@@ -219,8 +225,8 @@ export function groceryGroups(a: { rows: readonly CatalogRow[]; week: readonly S
     const have = a.rows.filter((r) => r.atHome && f.has(r));
     // Two kinds, not two foods: jasmine and basmati are one rice.
     if (new Set(have.map(kindOf)).size >= MIN_FAMILY_AT_HOME) continue;
-    // The groups above already offer two foods of this family: buying from them fixes it.
-    if (new Set([...listed.values()].filter(f.has).map(kindOf)).size >= MIN_FAMILY_AT_HOME) continue;
+    // Shown whatever the groups above offer: hiding it while they do made it appear after a
+    // purchase closed one of them, so the list grew when something was bought (rules review, 2026-11-22).
     // Not another of what they already have (a second rice is no variety).
     const haveKinds = new Set(have.map(kindOf));
     const items = take(f.offer(a.rows).filter((r) => !haveKinds.has(kindOf(r))), MAX_VARIETY_ITEMS);

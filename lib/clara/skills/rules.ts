@@ -70,11 +70,39 @@ export function applyRulesBody(current: StoredRules, raw: unknown): StoredRules 
       seenText.add(text.toLowerCase());
       // An id is kept only when it is one of theirs; anything else is a new rule.
       const known = typeof r.id === "string" ? current.mine.find((x) => x.id === r.id) : undefined;
+      if (r.on !== undefined && typeof r.on !== "boolean") return null;
       next.push({ id: known?.id ?? newRuleId(), text, on: r.on !== false });
     }
     mine = next;
   }
   return { switches, mine };
+}
+
+const fold = (t: string) => t.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+const singular = (w: string) => (/ies$/.test(w) ? `${w.slice(0, -3)}y` : /(oes|ses|shes|ches|xes)$/.test(w) ? w.slice(0, -2) : /s$/.test(w) && !/ss$/.test(w) ? w.slice(0, -1) : w);
+
+/**
+ * The rules a request to remove means, never a guess from a few shared letters:
+ *  - the rule with exactly those words; else
+ *  - EVERY rule about a food the request names as a whole word, in either number ("you can use
+ *    mushrooms again", "forget the mushroom rule" → both "No mushrooms" and "Never put mushrooms in
+ *    my dishes"); else
+ *  - a rule whose whole text the request contains, or that contains the whole request when the
+ *    request is at least three words.
+ */
+export function rulesMatching(mine: readonly UserRule[], text: string): UserRule[] {
+  const asked = fold(text);
+  if (asked.length === 0) return [];
+  const exact = mine.filter((r) => fold(r.text) === asked);
+  if (exact.length > 0) return exact;
+  const askedWords = new Set(asked.split(" ").map(singular));
+  const byFood = mine.filter((r) => {
+    const food = ruleFood(r.text);
+    return food !== null && fold(food).split(" ").map(singular).every((w) => askedWords.has(w));
+  });
+  if (byFood.length > 0) return byFood;
+  const long = asked.split(" ").length >= 3;
+  return mine.filter((r) => { const t = fold(r.text); return ` ${asked} `.includes(` ${t} `) || (long && ` ${t} `.includes(` ${asked} `)); });
 }
 
 const newRuleId = () => `r_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -84,6 +112,10 @@ export function makeRuleHandlers(deps: RulesDeps = prismaRulesDeps) {
   const add = async (ctx: ClaraContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const text = cleanRuleText(input.text);
     if (!text) return invalid(`text is required: one short rule, at most ${MAX_USER_RULE_CHARS} characters`);
+    // An allergy or an intolerance is never a rule: a rule is an instruction, the profile is enforced.
+    if (/\b(allerg\w*|anaphyla\w*|intoleran\w*|c[oe]?eliac)\b/i.test(text)) {
+      return { ok: false, reason: "INVALID_INPUT", message: "That is an allergy or an intolerance, not a cooking rule. Do not save it as a rule: tell them to add it under Conditions and eating in their profile, where it is checked on every dish." };
+    }
     try {
       const rules = await deps.load(ctx.patientId);
       if (!rules) return { ok: false, reason: "NOT_FOUND", message: "No profile to save the rule on." };
@@ -104,9 +136,10 @@ export function makeRuleHandlers(deps: RulesDeps = prismaRulesDeps) {
         data: {
           saved: true,
           rule: rule.text,
+          checkedByApp: food !== null,
           note: food
-            ? `Saved. From now on no dish you suggest will use ${food}; the app checks it. Tell them in one short sentence, and that they can switch it off under How Clara cooks in settings.`
-            : "Saved. You will follow it when you suggest dishes; it is an instruction to you, not something the app checks. Tell them in one short sentence, and that they can switch it off under How Clara cooks in settings.",
+            ? `Saved. From now on no dish you suggest will use ${food}; the app checks every dish for it. Tell them in one short sentence, and that they can switch it off under How Clara cooks in settings.`
+            : "Saved. You will follow it when you suggest dishes. It is an instruction to you, NOT something the app checks, so do not say it is guaranteed. Tell them in one short sentence, and that they can switch it off under How Clara cooks in settings.",
         },
       };
     } catch {
@@ -115,22 +148,19 @@ export function makeRuleHandlers(deps: RulesDeps = prismaRulesDeps) {
   };
 
   const remove = async (ctx: ClaraContext, input: Record<string, unknown>): Promise<ToolResult> => {
+    const all = input.all === true;
     const text = cleanRuleText(input.text);
-    if (!text) return invalid("text is required: the rule to remove, as they said it or as it is saved");
+    if (!all && !text) return invalid("text is required: the rule to remove, as they said it or as it is saved (or all: true for every rule)");
     try {
       const rules = await deps.load(ctx.patientId);
       if (!rules) return { ok: false, reason: "NOT_FOUND", message: "No profile." };
-      const lower = text.toLowerCase();
-      const food = ruleFood(text);
-      // The same words, or a rule about the same food ("mushrooms are fine again").
-      const hit = rules.mine.find((r) => r.text.toLowerCase() === lower)
-        ?? rules.mine.find((r) => { const f = ruleFood(r.text); return f !== null && (f === food || lower.includes(f)); })
-        ?? rules.mine.find((r) => r.text.toLowerCase().includes(lower) || lower.includes(r.text.toLowerCase()));
-      if (!hit) {
-        return { ok: false, reason: "NOT_FOUND", message: `No rule of theirs matches that. Their rules: ${rules.mine.map((r) => r.text).join("; ") || "none"}.` };
+      const hits = all ? rules.mine : rulesMatching(rules.mine, text as string);
+      if (hits.length === 0) {
+        return { ok: false, reason: "NOT_FOUND", message: `No rule of theirs matches that. Their rules: ${rules.mine.map((r) => r.text).join("; ") || "none"}. Use the rule's own words.` };
       }
-      await deps.save(ctx.patientId, { ...rules, mine: rules.mine.filter((r) => r.id !== hit.id) });
-      return { ok: true, data: { removed: true, rule: hit.text } };
+      const gone = new Set(hits.map((r) => r.id));
+      await deps.save(ctx.patientId, { ...rules, mine: rules.mine.filter((r) => !gone.has(r.id)) });
+      return { ok: true, data: { removed: hits.map((r) => r.text) } };
     } catch {
       return { ok: false, reason: "FAILED", message: "Could not remove that rule right now." };
     }
@@ -159,7 +189,7 @@ export function makeRuleHandlers(deps: RulesDeps = prismaRulesDeps) {
 
 /** One sentence for the dish skill's prompt, and the three tools. */
 export const RULES_PROMPT =
-  "They can give you standing rules for their dishes in their own words (\"never put mushrooms in my dishes\", \"no cooking over 30 minutes on weekdays\"): save one with dish_rule_add when they state a lasting preference about how you cook for them, and say in one sentence that it is saved. A one-off wish for the dish at hand (\"no rice tonight\") is not a rule: just suggest the dish without it. An allergy, an intolerance or a diet is NEVER a rule: tell them to add it to their profile, where it is enforced. Remove a rule with dish_rule_remove only when they ask.";
+  "They can give you standing rules for their dishes in their own words (\"never put mushrooms in my dishes\", \"no cooking over 30 minutes on weekdays\"): save one with dish_rule_add when they state a lasting preference about how you cook for them, and say in one sentence that it is saved. A one-off wish for the dish at hand (\"no rice tonight\") is not a rule: just suggest the dish without it. An allergy, an intolerance or a diet is NEVER a rule: tell them to add it to their profile, where it is enforced. A wish with an end (\"no salmon this week\") is not a rule either: keep to it in this chat. Remove a rule with dish_rule_remove only when they ask. Say what the result's note says about a saved rule, no more: do not promise the app checks a rule unless the note says it does.";
 
 export function ruleTools(deps: RulesDeps = prismaRulesDeps): SkillTool[] {
   const h = makeRuleHandlers(deps);
@@ -180,11 +210,13 @@ export function ruleTools(deps: RulesDeps = prismaRulesDeps): SkillTool[] {
     {
       def: {
         name: "dish_rule_remove",
-        description: "Remove one of their own rules when they ask ('you can use mushrooms again'). text is the rule as saved, or what they said. Never call it unless they asked.",
+        description: "Remove their own rules when they ask ('you can use mushrooms again'). text is the rule as saved, or the food it is about: every rule about that food goes. all: true removes every rule of theirs, only when they ask for exactly that. Never call it unless they asked.",
         input_schema: {
           type: "object",
-          properties: { text: { type: "string", description: "The rule to remove, or the food it is about." } },
-          required: ["text"],
+          properties: {
+            text: { type: "string", description: "The rule to remove in its own words, or the food it is about." },
+            all: { type: "boolean", description: "true to remove every one of their own rules." },
+          },
         },
       },
       handler: h.remove,

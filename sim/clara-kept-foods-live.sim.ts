@@ -892,9 +892,7 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
     for (const r of gRows) for (const [key, groupKey] of [["variety:produce", "produce"], ["variety:grains", "grains"]] as const) {
       const have = r.atHome.filter((n: string) => CAT.find((c: any) => c.key === groupKey)?.items.includes(n)).length;
       const has = r.before.some((g: any) => g.key === key);
-      // Or the nutrient groups already offer two foods of the family.
-      const offered = r.before.filter((g: any) => g.kind === "level").flatMap((g: any) => g.items).filter((i: any) => CAT.find((c: any) => c.key === groupKey)?.items.includes(i.name)).length;
-      if ((have < 2 && offered < 2) !== has) bad.push(`${id(r)} ${key} (have ${have}, offered ${offered}, group ${has})`);
+      if ((have < 2) !== has) bad.push(`${id(r)} ${key} (have ${have}, group ${has})`);
     }
     return bad.length ? bad.join(", ") : null;
   });
@@ -921,8 +919,9 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
     const bad = gRows.filter((r) => r.before.flatMap((g: any) => g.items).length > 29 || r.before.some((g: any) => g.items.length > (g.kind === "level" ? 4 : 3)));
     return bad.length ? bad.map(id).join(", ") : null;
   });
-  whole("G3 grocery: 'Got it' takes the food off the list", gRows, () => {
-    const bad = gRows.filter((r) => r.bought.some((n: string) => r.after.some((g: any) => g.items.some((i: any) => i.name === n))));
+  whole("G3 grocery: 'Got it' takes the food off the list, and no variety group appears that was not there", gRows, () => {
+    const bad = gRows.filter((r) => r.bought.some((n: string) => r.after.some((g: any) => g.items.some((i: any) => i.name === n)))
+      || r.after.some((g: any) => g.kind === "variety" && !r.before.some((b: any) => b.key === g.key)));
     return bad.length ? bad.map(id).join(", ") : null;
   });
   const swapRows = rows.filter((r) => r.meal === "swap");

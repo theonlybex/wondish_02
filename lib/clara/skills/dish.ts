@@ -36,7 +36,7 @@ import { targetLines } from "@/lib/clara/meal-target";
 import { exampleAllergenGroups, steerLines, levelCeilings } from "@/lib/clara/level-steer";
 import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
 import { loadBrainRows } from "@/lib/clara/dish-brain-db";
-import { DEFAULT_DISH_RULES, DISH_RULE_KEYS, storedRulesFrom, type DishRules } from "@/lib/clara/dish-rules";
+import { DEFAULT_DISH_RULES, DISH_RULE_KEYS, ruleFood, ruleFoodMatches, storedRulesFrom, type DishRules } from "@/lib/clara/dish-rules";
 import crypto from "crypto";
 import { MAX_SERVINGS } from "@/lib/meal-log";
 import {
@@ -509,7 +509,10 @@ export function dishSystemPrompt(a: {
       ? `- Build this ${meal} on ${choiceName}, which they have at home.`
       : steer.need === "hold"
         ? `- Their condition calls for modest protein: keep the protein portion of this ${meal} small. If it has a protein food, make it ${choiceName}, which they have at home.`
-        : `- This ${meal} does not have to be built on a protein: they are getting enough this week, so a salad, a vegetable plate or a potato dish is fine too. If it has a protein at its centre, make it ${choiceName}, which they have at home.`;
+        : brain.rules.mainsOnProtein
+          ? `- This ${meal} does not have to be built on a protein: they are getting enough this week, so a salad, a vegetable plate or a potato dish is fine too. If it has a protein at its centre, make it ${choiceName}, which they have at home.`
+          // Their own switch, not their week: nothing is claimed about how much protein they get.
+          : `- This ${meal} does not have to be built on a protein: a salad, a vegetable plate or a potato dish is fine too. If it has a protein at its centre, make it ${choiceName}, which they have at home.`;
     if (steer.choice.why === "today" && brain.usedToday.length > 0) {
       const used = brain.usedToday.slice(-MAX_USED_TODAY_IN_PROMPT).map(promptDishName);
       proteinLine += ` It is already open today, so make a different dish from: ${used.join("; ")}. Different means another starch or another way of cooking; the same dish with its name reworded, or with one food added, does not count.`;
@@ -794,6 +797,23 @@ function rulesFor(patient: { claraRules?: unknown }): { rules: DishRules; userRu
   return { rules, userRules: stored.mine.filter((r) => r.on).map((r) => r.text) };
 }
 
+/**
+ * A food their own rule rules out is not something to cook from, whatever is marked: "Never put
+ * spinach in my dishes" beside "At home: Spinach" in one prompt (live rules run, 2026-11-22).
+ */
+function keptWithoutRuleFoods(kept: KeptFoods, userRules: readonly string[]): KeptFoods {
+  const foods = userRules.map(ruleFood).filter((f): f is string => f !== null);
+  if (foods.length === 0) return kept;
+  const ok = (name: string) => !foods.some((f) => ruleFoodMatches(f, name));
+  const proteinNames = kept.proteinNames.filter(ok);
+  return {
+    proteinNames,
+    proteinKeys: kept.proteinKeys.filter((k) => proteinNames.some((n) => proteinKind(n)?.key === k)),
+    atHome: kept.atHome.filter(ok),
+    favorites: kept.favorites.filter(ok),
+  };
+}
+
 /** The brain reads, injectable so tests can stand in for the database (createLiveDishDeps). */
 type BrainRowsLoader = (patientId: string, today: string) => Promise<BrainRows>;
 
@@ -868,7 +888,7 @@ function personFor(ctx: ClaraContext, loadRows: BrainRowsLoader = loadBrainRows)
         matchers,
         sodiumLimitMg,
         kept,
-        brain: safeBrainFrom({ kept, ...rulesFor(patient), rows: brainRows, today: ctx.today, patient, matchers, sodiumLimitMg }),
+        brain: safeBrainFrom({ kept: keptWithoutRuleFoods(kept, rulesFor(patient).userRules), ...rulesFor(patient), rows: brainRows, today: ctx.today, patient, matchers, sodiumLimitMg }),
       };
     })();
     personMemo.set(ctx, p);
@@ -992,8 +1012,9 @@ function judgeGated(gated: FridgeRecipe, ask: DishAsk, person: Person, steer: As
     ceilings: steer.ceilings,
     notLike: [...person.brain.usedToday, ...person.brain.usedRecently, ...(ask.avoid ?? [])],
     ...(steer.need === "skip" ? { skipProtein: true } : {}),
-    // What they said they do not have for this dish, and the foods their own rules rule out.
-    ...((ask.without?.length ?? 0) + person.brain.ruleFoods.length > 0 ? { without: [...(ask.without ?? []), ...person.brain.ruleFoods] } : {}),
+    ...(ask.without && ask.without.length > 0 ? { without: ask.without } : {}),
+    // The foods their own rules rule out.
+    ...(person.brain.ruleFoods.length > 0 ? { ruleFoods: person.brain.ruleFoods } : {}),
   });
   const fromHome = fromHomeLine(ingredients.map((i) => i.name), person.brain.kept, builtOn(ingredients, r.steps));
   return { recipe: r, verdict, fromHome };
@@ -2057,7 +2078,10 @@ export function makeSwapHandlers(deps: DishDeps = prismaDeps) {
       // Kitchen basics are in the house too (oil, butter, dried herbs).
       atHome: [...person.kept.proteinNames, ...person.kept.atHome, ...person.brain.basics],
       home: person.brain.home,
-      allowed: (food) => !banned || evaluateDishAgainstProfile([food], person.matchers, [exampleAllergenGroups(food)]).passed,
+      // The diet, and their own "no such food" rules: an exchange the judge would turn down is not offered.
+      allowed: (food) =>
+        !person.brain.ruleFoods.some((f) => ruleFoodMatches(f, food))
+        && (!banned || evaluateDishAgainstProfile([food], person.matchers, [exampleAllergenGroups(food)]).passed),
     });
   };
 
