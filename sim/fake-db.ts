@@ -488,7 +488,22 @@ export const CLARA_SCHEMA: Record<string, ModelDef> = {
   journalSymptom: { fields: { id: ID(), journalEntryId: S() }, relations: {}, unique: [["id"]], readOnly: true },
   conditionTrackingItem: { fields: { id: ID() }, relations: {}, unique: [["id"]], readOnly: true },
   triggerTrial: { fields: { id: ID(), patientId: S() }, relations: {}, unique: [["id"]], readOnly: true },
-  patientIngredientPreference: { fields: { id: ID(), patientId: S() }, relations: {}, unique: [["id"]], readOnly: true },
+  // The at-home and favourite marks (Ingredients tab). Writable so a simulation
+  // can mark foods; the dish skill's kept-foods path reads them by patient.
+  patientIngredientPreference: {
+    idPrefix: "ipf",
+    fields: { id: ID(), patientId: S(), ingredientId: S(), liked: B(true), createdAt: DNOW() },
+    relations: { patient: one("patient", "patientId"), ingredient: one("ingredient", "ingredientId") },
+    unique: [["id"], ["patientId", "ingredientId"]], compound: { patientId_ingredientId: ["patientId", "ingredientId"] },
+    fks: [{ field: "patientId", model: "patient" }, { field: "ingredientId", model: "ingredient" }],
+  },
+  patientPantryItem: {
+    idPrefix: "pan",
+    fields: { id: ID(), patientId: S(), ingredientId: S(), createdAt: DNOW() },
+    relations: { patient: one("patient", "patientId"), ingredient: one("ingredient", "ingredientId") },
+    unique: [["id"], ["patientId", "ingredientId"]], compound: { patientId_ingredientId: ["patientId", "ingredientId"] },
+    fks: [{ field: "patientId", model: "patient" }, { field: "ingredientId", model: "ingredient" }],
+  },
   patientDishPreference: { fields: { id: ID(), patientId: S() }, relations: {}, unique: [["id"]], readOnly: true },
   patientCustomIngredient: { fields: { id: ID(), patientId: S() }, relations: {}, unique: [["id"]], readOnly: true },
   restaurantDish: { fields: { id: ID() }, relations: {}, unique: [["id"]], readOnly: true },
@@ -632,6 +647,7 @@ export function createClaraStore(snap: Snapshot) {
   // ── relations and projection ─────────────────────────────────────────────
   const rowsOf = (model: string): any[] => {
     if (model === "recipe") return snap.recipes as any[];
+    if (model === "ingredient") return snap.ingredients as any[];
     return tables[model];
   };
   function related(model: string, row: any, key: string): any {
@@ -701,7 +717,7 @@ export function createClaraStore(snap: Snapshot) {
       return list.map((r) => ({ ...r }));
     }
     if (rel.kind === "one") {
-      if (rel.model === "recipe") return related(model, row, key);
+      if (rel.model === "recipe" || rel.model === "ingredient") return related(model, row, key);
       return project(rel.model, related(model, row, key), sub);
     }
     let list = related(model, row, key) as any[];
@@ -756,7 +772,7 @@ export function createClaraStore(snap: Snapshot) {
     for (const fk of def(model).fks ?? []) {
       const v = row[fk.field];
       if (v == null) continue;
-      const ok = fk.model === "recipe" ? recipeIds.has(v) : tables[fk.model].some((r) => r.id === v);
+      const ok = fk.model === "recipe" ? recipeIds.has(v) : fk.model === "ingredient" ? snap.ingredients.some((i) => i.id === v) : tables[fk.model].some((r) => r.id === v);
       if (!ok) throw known("P2003", `Foreign key constraint failed on the field: ${model}.${fk.field}`, { field_name: fk.field });
     }
   };
@@ -904,7 +920,6 @@ export function createClaraStore(snap: Snapshot) {
   const client: any = {
     recipe: base.recipe,
     ingredient: base.ingredient,
-    patientPantryItem: { findMany: async () => [] },
     menu: { findMany: async () => [] },
     ingredientUnitConversion: { findMany: async () => [] },
     $queryRaw: (strings: TemplateStringsArray, ...values: unknown[]) => lazy(() => {
