@@ -41,6 +41,8 @@ export type ClaraPart =
        * cookable, and partAsText never reads it.
        */
       recipe?: ClaraRecipe;
+      /** What the dish uses from the person's at-home list. Optional: absent when nothing is marked, and for older servers. partAsText never reads it. */
+      fromHome?: { text: string; foods: string[]; proteinNotAtHome?: string };
     }
   | { kind: "steps"; dishId: string; steps: { n: number; text: string; timerMinutes: number | null }[] };
 

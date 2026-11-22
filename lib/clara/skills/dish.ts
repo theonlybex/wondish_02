@@ -23,10 +23,12 @@ import { LEVELS, type FullLevelKey } from "@/lib/level-catalogue";
 import { applyAllergenFilter, parseFridgeRecipes, type FridgeRecipe } from "@/lib/fridge";
 import { DISH_OUTPUT_SCHEMA, DISH_UNITS, DishItemExtractor, toFridgeItem } from "@/lib/clara/dish-output";
 import { libraryToFridge, matchesRequest, rankLibrary, suggestionName, type LibraryRecipe, type RecentDishes } from "@/lib/clara/dish-library";
-import { breaksProteinRule, proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-foods";
+import { proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-foods";
 import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
-import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
-import { proteinKind } from "@/lib/clara/dish-protein";
+import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type AskSteer, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
+import { builtOn, proteinKind } from "@/lib/clara/dish-protein";
+import { judgeDish, type DishVerdict } from "@/lib/clara/dish-judge";
+import { fromHomeLine, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
 import { targetLines } from "@/lib/clara/meal-target";
 import { steerLines } from "@/lib/clara/level-steer";
 import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
@@ -178,14 +180,27 @@ export interface GenerateOptions {
   accept?: (r: FridgeRecipe) => boolean;
   /** Simulation/diagnostics only: where each candidate ended up. */
   trace?: (e: CandidateTrace) => void;
+  /**
+   * Every candidate the judge did not fail, "pass" or "relaxed", before
+   * `accept` is asked. A "relaxed" one is reported here only, never returned:
+   * it is ladder step 2 (generateOne).
+   */
+  judged?: (j: JudgedDish) => void;
 }
+
+/** A dish that passed the gates, with the judge's verdict and its "from your kitchen" line (null when nothing is marked). */
+export interface JudgedDish { recipe: FridgeRecipe; verdict: DishVerdict; fromHome: FromHome | null }
 
 export type CandidateTrace = {
   /** ms since the generator started. */
   ms: number;
   name: string;
-  /** "kept": the dish uses a meat or fish they have not marked as at home (the at-home protein rule). */
-  stage: "parse" | "safety" | "gates" | "kept" | "card" | "accepted";
+  /**
+   * "kept": the judge failed it on the at-home protein rule. "judge": the judge
+   * failed it on honesty or a level limit. "relaxed": only the size or the
+   * protein share failed; kept aside for ladder step 2.
+   */
+  stage: "parse" | "safety" | "gates" | "kept" | "judge" | "relaxed" | "card" | "accepted";
 };
 
 /** Effects, injected so every handler path is unit-tested without a DB or a model. */
@@ -197,8 +212,9 @@ export interface DishDeps {
    * The safety net: library recipes that ALREADY passed the planner's rule
    * filter and every gate a generated dish passes, best first; [] when none.
    * Started alongside the model call, read only when no generated dish is served.
+   * `judged` hears the verdict of each recipe returned.
    */
-  library?(ctx: ClaraContext, ask: DishAsk, signal?: AbortSignal): Promise<FridgeRecipe[]>;
+  library?(ctx: ClaraContext, ask: DishAsk, signal?: AbortSignal, judged?: (j: JudgedDish) => void): Promise<FridgeRecipe[]>;
   /** The model's time budget per dish, ms (DISH_BUDGET_MS when absent). */
   budgetMs?: number;
   loggedMealTypes(patientId: string, today: string): Promise<string[]>;
@@ -582,7 +598,8 @@ async function gateOne(
   catalogFoodTokens: Set<string>,
   seen: Set<string>,
   note: (name: string, stage: CandidateTrace["stage"]) => void,
-): Promise<FridgeRecipe | null> {
+  steer: AskSteer,
+): Promise<JudgedDish | null> {
   const meal = capitalize(ask.mealType);
   const raw = toFridgeItem(item, meal, ask.servings ?? 1);
   const label = typeof (item as { name?: unknown })?.name === "string" ? String((item as { name: string }).name) : "?";
@@ -610,12 +627,51 @@ async function gateOne(
     note(label, applyAllergenFilter([named], person.matchers, groupsOf).length === 0 ? "safety" : "gates");
     return null;
   }
-  if (proteinRuleOn(person.kept, ask.wants) && breaksProteinRule([...r.usesIngredients, ...r.missingIngredients], person.kept)) {
-    note(label, "kept");
+  // The judge runs after the gates: the protein rule, honesty, size, protein share and the level ceilings.
+  const judged = judgeGated(r, ask, person, steer);
+  if (judged.verdict.level === "fail") {
+    note(label, judged.verdict.reasons.some((x) => x.startsWith("protein:")) ? "kept" : "judge");
     return null;
   }
   seen.add(r.name.trim().toLowerCase());
-  return readableAmounts(r);
+  return judged;
+}
+
+/**
+ * The judge (lib/clara/dish-judge.ts) on a dish that already passed every gate,
+ * with the numbers the card will show: the readable recipe, priced as buildDish
+ * prices it, sodium only when it is fully known. The level ceilings come from
+ * the steer and hold with every switch off.
+ */
+function judgeGated(gated: FridgeRecipe, ask: DishAsk, person: Person, steer: AskSteer): JudgedDish {
+  const r = readableAmounts(gated);
+  const ingredients = toPlausibleDish(r, capitalize(ask.mealType)).ingredients.map((i) => ({
+    name: i.name,
+    quantity: i.quantity ?? null,
+    unit: i.unit ?? "",
+  }));
+  const card = cardNumbers(r);
+  const verdict = judgeDish({
+    mealType: ask.mealType,
+    ...(ask.wants !== undefined ? { wants: ask.wants } : {}),
+    name: r.name,
+    ingredients,
+    steps: r.steps,
+    calories: card.calories,
+    proteinG: card.protein,
+    known: card.sodium !== null ? { sodium: card.sodium } : {},
+    home: person.brain.home,
+    rules: person.brain.rules,
+    targetCalories: steer.target.calories,
+    ceilings: steer.ceilings,
+  });
+  const fromHome = fromHomeLine(ingredients.map((i) => i.name), person.brain.kept, builtOn(ingredients, r.steps));
+  return { recipe: r, verdict, fromHome };
+}
+
+/** The steer for one ask: the protein to build on, the size and the level ceilings. Once per generator or library call. */
+function steerFor(ctx: ClaraContext, ask: DishAsk, person: Person): AskSteer {
+  return steerForAsk(person.brain, ask, { patientId: ctx.patientId, today: ctx.today });
 }
 
 /**
@@ -641,13 +697,16 @@ async function generateGated(
   const [person, catalogFoodTokens] = await Promise.all([personFor(ctx, loadRows), catalogTokens()]);
   if (!person || opts.signal?.aborted) return [];
   const meal = capitalize(ask.mealType);
+  const steer = steerFor(ctx, ask, person);
+  // With a protein chosen for today, the stream stops early only on a dish built on it.
+  const onChoice = (j: JudgedDish) => !steer.choice || (j.verdict.builtOn !== null && sameProteinKind(j.verdict.builtOn, steer.choice.key));
 
   // Our own controller: aborted by the deadline, or by us once a dish is accepted.
   const stop = new AbortController();
   const onAbort = () => stop.abort();
   opts.signal?.addEventListener("abort", onAbort, { once: true });
 
-  const accepted: FridgeRecipe[] = [];
+  const accepted: JudgedDish[] = [];
   const seen = new Set<string>();
   try {
     const stream = await client().messages.create(
@@ -678,10 +737,16 @@ async function generateGated(
       if (ev.type === "message_delta") stopReason = ev.delta.stop_reason ?? stopReason;
       if (ev.type !== "content_block_delta" || ev.delta.type !== "text_delta") continue;
       for (const item of items.push(ev.delta.text)) {
-        const r = await gateOne(item, ask, person, catalogFoodTokens, seen, note);
-        if (!r) continue;
-        accepted.push(r);
-        if (!opts.accept || opts.accept(r)) {
+        const j = await gateOne(item, ask, person, catalogFoodTokens, seen, note, steer);
+        if (!j) continue;
+        const r = j.recipe;
+        opts.judged?.(j);
+        if (j.verdict.level === "relaxed") {
+          note(r.name, "relaxed");
+          continue;
+        }
+        accepted.push(j);
+        if ((!opts.accept || opts.accept(r)) && onChoice(j)) {
           note(r.name, "accepted");
           break read;
         }
@@ -701,7 +766,11 @@ async function generateGated(
     stop.abort(); // ends the stream if we stopped early; a no-op after a full read
   }
   if (accepted.length === 0) console.info(`[clara-dish] ${meal}: accepted=0 in ${Date.now() - t0} ms`);
-  return accepted;
+  // Dishes built on today's protein first; otherwise the order they arrived in (a stable sort).
+  return accepted
+    .map((j, i) => ({ j, i, first: steer.choice && onChoice(j) ? 0 : 1 }))
+    .sort((a, b) => a.first - b.first || a.i - b.i)
+    .map((x) => x.j.recipe);
 }
 
 /**
@@ -783,7 +852,8 @@ export async function mealSuggestionNames(
   meals: readonly DishMealType[],
 ): Promise<Partial<Record<DishMealType, string>>> {
   const ctx = { patientId, today } as ClaraContext;
-  const [person, recent] = await Promise.all([personFor(ctx), recentFor(ctx)]);
+  // No brain reads: the reminder names a library dish and never uses them.
+  const [person, recent] = await Promise.all([personFor(ctx, async () => NO_BRAIN_ROWS), recentFor(ctx)]);
   if (!person) return {};
   const out: Partial<Record<DishMealType, string>> = {};
   for (const mealType of meals) {
@@ -817,10 +887,17 @@ const LIBRARY_KEEP = 3;
  * `signal` fires once a generated dish is served: from then on no further
  * query is made (the allergen groups for every ranked candidate are loaded in
  * ONE query, after the check).
- * With the at-home protein rule on and nothing passing, it ranks and gates
- * once more without that rule: a dish they could cook beats no dish.
+ * Each recipe kept is judged like a generated dish: a "fail" is dropped (the
+ * protein rule never gives way), "pass" and "relaxed" are both kept (ladder
+ * step 3 keeps the diet and protein checks only) and reported to `judged`.
  */
-async function libraryGated(ctx: ClaraContext, ask: DishAsk, signal?: AbortSignal, loadRows?: BrainRowsLoader): Promise<FridgeRecipe[]> {
+async function libraryGated(
+  ctx: ClaraContext,
+  ask: DishAsk,
+  signal?: AbortSignal,
+  judged?: (j: JudgedDish) => void,
+  loadRows?: BrainRowsLoader,
+): Promise<FridgeRecipe[]> {
   const [person, pool, recent, catalogFoodTokens] = await Promise.all([
     personFor(ctx, loadRows),
     libraryPool(ask.mealType),
@@ -829,44 +906,46 @@ async function libraryGated(ctx: ClaraContext, ask: DishAsk, signal?: AbortSigna
   ]);
   if (!person || signal?.aborted) return [];
   const meal = capitalize(ask.mealType);
-  // proteinRule undefined = rankLibrary's default (the rule on when it applies to this ask).
-  const rankAndGate = async (proteinRule?: false): Promise<FridgeRecipe[]> => {
-    const ranked = rankLibrary(
-      pool,
-      {
-        mealType: ask.mealType,
-        maxMinutes: ask.maxMinutes,
-        servings: ask.servings,
-        little: ask.picture ? ask.picture.little : ask.summary.little,
-        aLot: ask.picture ? ask.picture.aLot : ask.summary.aLot,
-        ...(ask.wants !== undefined ? { wants: ask.wants } : {}),
-      },
-      { patient: person.patient, matchers: person.matchers, seed: `${ctx.patientId}|${ctx.today}|${ask.mealType}`, kept: person.kept, proteinRule },
-      recent,
-      stepStatesAmount,
-    );
-    if (ranked.length === 0) return [];
-    const oil = oilAllowedBy(person.matchers);
-    const candidates = ranked.map((r) => specifyCookingOil(libraryToFridge(r, meal, ask.servings ?? 1, `frg_${crypto.randomUUID()}`), oil));
-    if (signal?.aborted) return [];
-    // The same catalog lookup a generated dish gets, for every candidate at once.
-    const groupsOf = await loadIngredientGroups(candidates.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
-    const out: FridgeRecipe[] = [];
-    for (let i = 0; i < candidates.length && out.length < LIBRARY_KEEP && !signal?.aborted; i += LIBRARY_CHUNK) {
-      const gated = gateGeneratedDishes(candidates.slice(i, i + LIBRARY_CHUNK), {
-        mealTypeName: meal,
-        matchers: person.matchers,
-        groupsOf,
-        catalogFoodTokens,
-        sodiumLimitMg: person.sodiumLimitMg,
-      });
-      for (const r of gated) if (fibreIsPlausible(r) && pickDish([r], ask)) out.push(readableAmounts(r));
+  const steer = steerFor(ctx, ask, person);
+  // Removed 2026-11 (dish brain, "Always answers"): the second pass that ranked again with `proteinRule: false` when nothing passed. The protein rule is never relaxed.
+  const ranked = rankLibrary(
+    pool,
+    {
+      mealType: ask.mealType,
+      maxMinutes: ask.maxMinutes,
+      servings: ask.servings,
+      little: ask.picture ? ask.picture.little : ask.summary.little,
+      aLot: ask.picture ? ask.picture.aLot : ask.summary.aLot,
+      ...(ask.wants !== undefined ? { wants: ask.wants } : {}),
+    },
+    { patient: person.patient, matchers: person.matchers, seed: `${ctx.patientId}|${ctx.today}|${ask.mealType}`, kept: person.brain.kept },
+    recent,
+    stepStatesAmount,
+  );
+  if (ranked.length === 0) return [];
+  const oil = oilAllowedBy(person.matchers);
+  const candidates = ranked.map((r) => specifyCookingOil(libraryToFridge(r, meal, ask.servings ?? 1, `frg_${crypto.randomUUID()}`), oil));
+  if (signal?.aborted) return [];
+  // The same catalog lookup a generated dish gets, for every candidate at once.
+  const groupsOf = await loadIngredientGroups(candidates.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
+  const out: JudgedDish[] = [];
+  for (let i = 0; i < candidates.length && out.length < LIBRARY_KEEP && !signal?.aborted; i += LIBRARY_CHUNK) {
+    const gated = gateGeneratedDishes(candidates.slice(i, i + LIBRARY_CHUNK), {
+      mealTypeName: meal,
+      matchers: person.matchers,
+      groupsOf,
+      catalogFoodTokens,
+      sodiumLimitMg: person.sodiumLimitMg,
+    });
+    for (const r of gated) {
+      if (!fibreIsPlausible(r) || !pickDish([r], ask)) continue;
+      const j = judgeGated(r, ask, person, steer);
+      if (j.verdict.level !== "fail") out.push(j);
     }
-    return out.slice(0, LIBRARY_KEEP);
-  };
-  const out = await rankAndGate();
-  if (out.length > 0 || !proteinRuleOn(person.kept, ask.wants) || signal?.aborted) return out;
-  return rankAndGate(false);
+  }
+  const kept = out.slice(0, LIBRARY_KEEP);
+  for (const j of kept) judged?.(j);
+  return kept.map((j) => j.recipe);
 }
 
 const BAN_SOURCE_WORDS: Record<string, string> = {
@@ -886,8 +965,8 @@ const BAN_SOURCE_WORDS: Record<string, string> = {
  * "peanut-free", "no peanuts" and "without peanuts" say what to leave out, so
  * those words are not judged. Returns the reasons, [] when there are none.
  */
-async function liveRequestConflicts(ctx: ClaraContext, wants: string): Promise<string[]> {
-  const person = await personFor(ctx);
+async function liveRequestConflicts(ctx: ClaraContext, wants: string, loadRows?: BrainRowsLoader): Promise<string[]> {
+  const person = await personFor(ctx, loadRows);
   if (!person || !hasAnyBan(person.matchers)) return [];
   const asked = wants
     .replace(/[\p{L}-]+[- ]free\b/giu, " ")
@@ -919,8 +998,9 @@ export function createLiveDishDeps(
     // Claims only where Numbers says the same (simulation finding 2).
     loadSummary: (patientId, today) => loadClaraLevelSummary(patientId, today, 7),
     generate: (ctx, ask, opts) => generateGated(ctx, ask, opts, io.client, io.brainRows),
-    library: (ctx, ask, signal) => libraryGated(ctx, ask, signal, io.brainRows),
-    requestConflicts: liveRequestConflicts,
+    library: (ctx, ask, signal, judged) => libraryGated(ctx, ask, signal, judged, io.brainRows),
+    // The same loader as the dish: the person is memoised per call, so the first load decides the rows.
+    requestConflicts: (ctx, wants) => liveRequestConflicts(ctx, wants, io.brainRows),
     loadStartingPicture: async (patientId) => {
       // Computed now from the answers and the live pills (the stored column can be stale).
       const row = await prisma.patient.findUnique({
@@ -987,10 +1067,10 @@ function minutesOf(r: FridgeRecipe, mealType: DishMealType): number {
   return Math.max(1, Math.round(rawMinutesOf(r, mealType)));
 }
 
-/** The dish as the app shows and cooks it. Numbers per serving, priced from its own amounts. */
-function buildDish(r: FridgeRecipe, ask: DishAsk, source: DishSource): BuiltDish {
+/** The per-serving numbers the card shows (and the judge judges), priced from the dish's own amounts. */
+function cardNumbers(r: FridgeRecipe): ClaraRecipe["perServing"] {
   const priced = pricedMacros(r);
-  const perServing = {
+  return {
     calories: Math.round(priced?.calories ?? reconcileCalories(r) ?? r.perServing.calories),
     protein: priced?.protein ?? r.perServing.protein,
     carbs: priced?.carbs ?? r.perServing.carbs,
@@ -1000,6 +1080,15 @@ function buildDish(r: FridgeRecipe, ask: DishAsk, source: DishSource): BuiltDish
     fibre: r.perServing.fiber,
     sodium: completeSodiumMg(r),
   };
+}
+
+/**
+ * The dish as the app shows and cooks it. Numbers per serving, priced from its
+ * own amounts. `judged.fromHome`, when there is one, rides on the dish part;
+ * otherwise the part has no fromHome key at all.
+ */
+function buildDish(r: FridgeRecipe, ask: DishAsk, source: DishSource, judged?: JudgedDish): BuiltDish {
+  const perServing = cardNumbers(r);
   const minutes = minutesOf(r, ask.mealType);
   const recipe: ClaraRecipe = {
     name: r.name,
@@ -1034,6 +1123,7 @@ function buildDish(r: FridgeRecipe, ask: DishAsk, source: DishSource): BuiltDish
           )
         : dishReasons({ ingredients: r.usesIngredients, sodium: perServing.sodium }, ask.summary),
       recipe,
+      ...(judged?.fromHome ? { fromHome: judged.fromHome } : {}),
     },
     steps: {
       kind: "steps",
@@ -1155,14 +1245,29 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  * (matchesRequest) → a library recipe that says it → a fitting generated dish
  * that does not (served, and flagged to the model as not what they asked) →
  * null. An unrelated library recipe is never served for a request.
+ *
+ * The ladder (dish brain, "Always answers"): a generated dish the judge fully
+ * passed → a generated dish it passed with only the size or protein share
+ * relaxed (reported through `judged`, never returned) → a library recipe →
+ * the honest message. With `wants`, each step first looks for a dish that says
+ * the request, and only after the library do the generated dishes that do not
+ * (a full pass, then a relaxed one). A dep that never calls `judged` behaves
+ * exactly as before.
  */
 async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Promise<BuiltDish | null> {
   const budget = deps.budgetMs ?? DISH_BUDGET_MS;
   const started = Date.now();
+  // What the judge said about each dish the deps hand back, and the relaxed generated dishes in arrival order.
+  const judgedBy = new Map<FridgeRecipe, JudgedDish>();
+  const relaxedDishes: FridgeRecipe[] = [];
+  const onGenerated = (j: JudgedDish) => {
+    judgedBy.set(j.recipe, j);
+    if (j.verdict.level === "relaxed") relaxedDishes.push(j.recipe);
+  };
   // Fired once a generated dish is served: the library stops making queries.
   const libraryStop = new AbortController();
   const library: Promise<FridgeRecipe[]> = deps.library
-    ? deps.library(ctx, ask, libraryStop.signal).catch((err) => {
+    ? deps.library(ctx, ask, libraryStop.signal, (j) => judgedBy.set(j.recipe, j)).catch((err) => {
         console.warn(`[clara-dish] library failed: ${(err as Error)?.message ?? String(err)}`);
         return [];
       })
@@ -1180,7 +1285,7 @@ async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Pro
     // const generated = deps
     //   .generate(ctx, ask, { signal: deadline.signal, accept: (r) => pickDish([r], ask) !== null })
     const generated = deps
-      .generate(ctx, ask, { signal: deadline.signal, accept: (r) => pickDish([r], ask) !== null && saysRequest(r) })
+      .generate(ctx, ask, { signal: deadline.signal, accept: (r) => pickDish([r], ask) !== null && saysRequest(r), judged: onGenerated })
       .catch((err) => {
         console.warn(`[clara-dish] generate threw: ${(err as Error)?.message ?? String(err)}`);
         return [] as FridgeRecipe[];
@@ -1193,12 +1298,21 @@ async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Pro
   } finally {
     clearTimeout(timer);
   }
+  // A relaxed dish is never a full pass, even from a dep that also returned it.
+  recipes = recipes.filter((r) => judgedBy.get(r)?.verdict.level !== "relaxed");
   // OFF 2026-11 (Clara-first, spec §8.6): with `wants`, a generated dish that says the request is picked first, and one that does not waits behind a matching library recipe. Restore: uncomment this line and delete the `picked` line and the `unmatched` line below it.
   // const picked = pickDish(recipes, ask);
   const picked = pickDish(recipes.filter(saysRequest), ask);
   if (picked) {
     libraryStop.abort();
-    return buildDish(picked, ask, "generated");
+    return buildDish(picked, ask, "generated", judgedBy.get(picked));
+  }
+  // Ladder step 2: a generated dish with only the size or protein share relaxed, before any stored recipe.
+  // Read here, where the library is read: the generator has returned or the budget has passed, so no extra wait.
+  const relaxedPick = pickDish(relaxedDishes.filter(saysRequest), ask);
+  if (relaxedPick) {
+    libraryStop.abort();
+    return buildDish(relaxedPick, ask, "generated", judgedBy.get(relaxedPick));
   }
   // Only with `wants`: a fitting generated dish that does not say the request. Served last, and flagged to the model.
   const unmatched = wants !== undefined ? pickDish(recipes, ask) : null;
@@ -1212,8 +1326,11 @@ async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Pro
   // They asked to cook something particular: an unrelated library dish is never the answer
   // (the live library already ranks only matches; this holds for any library dep).
   const fromLibrary = pickDish(offered.filter(saysRequest), ask);
-  if (fromLibrary) return buildDish(fromLibrary, ask, "library");
-  return unmatched ? buildDish(unmatched, ask, "generated") : null;
+  if (fromLibrary) return buildDish(fromLibrary, ask, "library", judgedBy.get(fromLibrary));
+  if (unmatched) return buildDish(unmatched, ask, "generated", judgedBy.get(unmatched));
+  // Only with `wants`: a relaxed generated dish that does not say the request, the very last resort.
+  const relaxedUnmatched = wants !== undefined ? pickDish(relaxedDishes, ask) : null;
+  return relaxedUnmatched ? buildDish(relaxedUnmatched, ask, "generated", judgedBy.get(relaxedUnmatched)) : null;
 }
 
 /** After the budget, how long a slow library load may still be waited for. */

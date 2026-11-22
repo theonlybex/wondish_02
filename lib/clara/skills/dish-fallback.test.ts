@@ -389,3 +389,41 @@ test("wants: no generated dish says the request → a matching library recipe co
   assert.equal(without.data.dish.answersRequest, false);
   assert.match(without.data.request, /never present it as "pancakes"/);
 });
+
+// ─── the ladder (dish brain, "Always answers") ──────────────────────────────
+
+const verdict = (level: "pass" | "relaxed") => ({ level, reasons: level === "pass" ? [] : ["size:too-large"], builtOn: "salmon" });
+const relaxed = (recipe: FridgeRecipe) => ({ recipe, verdict: verdict("relaxed"), fromHome: null });
+const suggest = (over: Partial<DishDeps>, input: object = {}) => makeDishHandlers(deps(over)).suggest(CTX, { mealType: "dinner", ...input }) as Promise<any>;
+
+test("ladder step 2: no full pass → the relaxed dish is served as generated, before any stored recipe", async () => {
+  const res = await suggest({ generate: async (_c, _a, o) => { o?.judged?.(relaxed(dish("Big Salmon Bowl"))); return []; }, library: async () => [dish("Library Stew")] });
+  assert.deepEqual([dishOf(res).name, res.data.dish.source, res.data.dish.note], ["Big Salmon Bowl", "generated", undefined]);
+});
+test("ladder: a full pass beats a relaxed dish that arrived first; a relaxed dish the card refuses is not served", async () => {
+  const first = await suggest({ generate: async (_c, _a, o) => { o?.judged?.(relaxed(dish("Big Salmon Bowl"))); return [dish("Right-Sized Salmon")]; } });
+  assert.equal(dishOf(first).name, "Right-Sized Salmon");
+  const slow = dish("Slow Big Bowl", { prepMinutes: 30, cookMinutes: 90 });
+  const res = await suggest({ generate: async (_c, _a, o) => { o?.judged?.(relaxed(slow)); return []; }, library: async () => [dish("Library Stew")] }, { maxMinutes: 45 });
+  assert.deepEqual([dishOf(res).name, res.data.dish.source], ["Library Stew", "library"]);
+});
+test("ladder step 3 and the end of it: a stored recipe, else the honest message (Review Focus 5)", async () => {
+  assert.equal((await suggest({ generate: async () => [], library: async () => [dish("Library Stew")] })).data.dish.source, "library");
+  const none = await suggest({ generate: async () => [], library: async () => [] });
+  assert.deepEqual([none.ok, none.message], [false, COULDNT_FIT_NOTE]);
+});
+test("ladder with a request: full match → relaxed match → library match", async () => {
+  const library = async () => [dish("Library Egg Bake")];
+  const a = await suggest({ generate: async (_c, _a, o) => { o?.judged?.(relaxed(dish("Big Egg Scramble"))); return [dish("Lentil Stew")]; }, library }, { wants: "eggs" });
+  assert.equal(dishOf(a).name, "Big Egg Scramble");
+  const b = await suggest({ generate: async () => [dish("Lentil Stew")], library }, { wants: "eggs" });
+  assert.equal(dishOf(b).name, "Library Egg Bake");
+});
+test("fromHome rides on the dish part when the judge gives one, and is absent otherwise", async () => {
+  const fromHome = { text: "From your kitchen: Salmon fillets, Spinach.", foods: ["Salmon fillets", "Spinach"] };
+  const r = dish("Salmon and Spinach");
+  const j = { recipe: r, verdict: verdict("pass"), fromHome };
+  assert.deepEqual(dishOf(await suggest({ generate: async (_c, _a, o) => { o?.judged?.(j); return [r]; } })).fromHome, fromHome);
+  assert.deepEqual(dishOf(await suggest({ generate: async () => [], library: async (_c, _a, _s, judged) => { judged?.(j); return [r]; } })).fromHome, fromHome);
+  assert.ok(!("fromHome" in dishOf(await suggest({ generate: async () => [dish("Model Stew")] }))));
+});

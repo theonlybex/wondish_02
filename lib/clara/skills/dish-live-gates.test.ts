@@ -20,6 +20,8 @@ const CATALOG: { name: string; allergenGroups: string[] }[] = [
   { name: "salmon fillets", allergenGroups: [] },
   { name: "ground chicken", allergenGroups: [] },
   { name: "boneless chicken breasts", allergenGroups: [] },
+  { name: "ground beef", allergenGroups: [] },
+  { name: "cottage cheese", allergenGroups: [] },
 ];
 const ing = (name: string, quantity: number, unit: string) => ({
   quantity, unit, ingredient: { name, allergenGroups: CATALOG.find((c) => c.name === name)?.allergenGroups ?? [] },
@@ -344,14 +346,14 @@ test("kept: nothing at home → the ground-chicken candidate is served as before
   assert.deepEqual(got.map((r) => r.name), ["Ground Chicken and Lentil Skillet"]);
 });
 
-test("kept: a library of only chicken recipes and a generator that returns nothing still yields a dish (the rule gives way)", async () => {
+test("kept: a library of only chicken recipes and a generator that returns nothing yields the honest message, never the chicken dish", async () => {
   pantry = ["salmon fillets"];
   try {
     const deps = { ...dish.createLiveDishDeps({ client: fakeClient('{"dishes":[]}').client }), loadSummary: async () => NO_LOGS, loadStartingPicture: undefined };
     const res: any = await dish.makeDishHandlers(deps).suggest({ ...CTX }, { mealType: "lunch" });
-    assert.equal(res.ok, true, res.message);
-    assert.equal(res.data.dish.source, "library");
-    assert.equal(res.parts.find((p: any) => p.kind === "dish").name, "Chicken Breast with Spinach Rice");
+    assert.equal(res.ok, false);
+    assert.equal(res.message, dish.COULDNT_FIT_NOTE);
+    assert.ok(!/chicken/i.test(JSON.stringify(res)));
   } finally {
     pantry = [];
   }
@@ -427,4 +429,69 @@ test("brain: reads that never answer hold the dish for at most 1.5 s, in paralle
     console.warn = realWarn;
     pantryHangs = false;
   }
+});
+
+// ─── the judge and the ladder, through the real gates ───────────────────────
+
+const TARGET = (calories: number) => ({ calories, protein: 0, carbs: 0, fat: 0, profile: "balanced" as const, basis: "steady-state" as const });
+const live = (dishes: unknown[], rows: object = {}) => ({
+  ...dish.createLiveDishDeps({ client: fakeClient(JSON.stringify({ dishes })).client, brainRows: async () => ({ week: null, dayTarget: null, pills: null, todayDishes: [], liked: [], ...rows }) }),
+  loadSummary: async () => NO_LOGS, loadStartingPicture: undefined,
+});
+const served = (res: any) => res.parts?.find((p: any) => p.kind === "dish");
+const SALMON = "Pan-Seared Salmon with Lentils and Spinach";
+const beefItem = () => JSON.parse(JSON.stringify(chickenItem()).replaceAll("ground chicken", "ground beef").replace("Ground Chicken", "Ground Beef"));
+
+test("judge: a dinner inside its calorie band is a full pass; for a 1000 kcal day it is served only as the relaxed dish", async () => {
+  pantry = ["salmon fillets"];
+  try {
+    const trace: string[] = [];
+    const ok = await live([salmonItem()], { dayTarget: TARGET(2000) }).generate({ ...CTX }, ASK, { accept: () => true, trace: (e) => trace.push(e.stage) });
+    assert.deepEqual([ok.map((r) => r.name), trace], [[SALMON], ["accepted"]]);
+
+    const judged: any[] = [];
+    const trace2: string[] = [];
+    const small = await live([salmonItem()], { dayTarget: TARGET(1000) }).generate({ ...CTX }, ASK, { accept: () => true, judged: (j) => judged.push(j), trace: (e) => trace2.push(e.stage) });
+    assert.deepEqual([small, trace2], [[], ["relaxed"]]);
+    assert.deepEqual(judged.map((j) => [j.verdict.level, j.verdict.reasons, j.verdict.builtOn]), [["relaxed", ["size:too-large"], "salmon"]]);
+
+    const res: any = await dish.makeDishHandlers(live([salmonItem()], { dayTarget: TARGET(1000) })).suggest({ ...CTX }, { mealType: "dinner" });
+    assert.deepEqual([res.ok, res.data.dish.source, served(res).name], [true, "generated", SALMON]);
+    assert.deepEqual(served(res).fromHome, { text: "From your kitchen: Salmon fillets.", foods: ["Salmon fillets"] });
+  } finally { pantry = []; }
+});
+test("judge: the protein rule is never relaxed (Review Focus 5)", async () => {
+  pantry = ["salmon fillets"];
+  try {
+    const judged: any[] = [];
+    const got = await live([chickenItem()], { dayTarget: TARGET(1000) }).generate({ ...CTX }, ASK, { accept: () => true, judged: (j) => judged.push(j) });
+    assert.deepEqual([got, judged], [[], []]);
+    const res: any = await dish.makeDishHandlers(live([chickenItem()])).suggest({ ...CTX }, { mealType: "lunch" }); // the lunch library is chicken only
+    assert.deepEqual([res.ok, res.message], [false, dish.COULDNT_FIT_NOTE]);
+  } finally { pantry = []; }
+});
+test("judge: nothing marked → a dish built on any protein is served as before, with no fromHome key", async () => {
+  const res: any = await dish.makeDishHandlers(live([chickenItem()], { dayTarget: TARGET(2000) })).suggest({ ...CTX }, { mealType: "dinner" });
+  assert.equal(served(res).name, "Ground Chicken and Lentil Skillet");
+  assert.ok(!("fromHome" in served(res)));
+});
+test("judge: over today's sodium, a salty dish is out and a plain one is still served (Review Focus 4)", async () => {
+  const salty = item("Red Lentil Stew with Cottage Cheese", [{ name: "cottage cheese", quantity: 120, unit: "g" }], [...STEW_STEPS.slice(0, 3), "Top with the cottage cheese, season with the salt and serve."]);
+  const plain = item("Red Lentil and Spinach Stew");
+  const day = { localDate: "2026-11-12", meals: 3, calories: 1800, protein: 80, carbs: 200, fibre: 20, sodium: 2600, saturatedFat: 10, addedSugar: 10 };
+  const trace: string[] = [];
+  const got = await live([salty, plain], { week: { range: { fromDate: "2026-11-06", toDate: "2026-11-12" }, days: [day] } }).generate({ ...CTX }, ASK, { accept: () => true, trace: (e) => trace.push(e.stage) });
+  assert.deepEqual([got.map((r) => r.name), trace], [["Red Lentil and Spinach Stew"], ["judge", "accepted"]]);
+  // nothing logged today: the same salty dish is served
+  assert.deepEqual((await live([salty, plain]).generate({ ...CTX }, ASK, { accept: () => true })).map((r) => r.name), ["Red Lentil Stew with Cottage Cheese"]);
+});
+test("judge: today's protein is preferred, not required", async () => {
+  pantry = ["salmon fillets", "ground beef"];
+  try {
+    const beefToday = { todayDishes: ["Beef and Rice Skillet"] }; // same day, same protein → ground beef
+    const res: any = await dish.makeDishHandlers(live([salmonItem(), beefItem()], beefToday)).suggest({ ...CTX }, { mealType: "dinner" });
+    assert.equal(served(res).name, "Ground Beef and Lentil Skillet"); // the stream did not stop on the salmon dish
+    const only: any = await dish.makeDishHandlers(live([salmonItem()], beefToday)).suggest({ ...CTX }, { mealType: "dinner" });
+    assert.equal(served(only).name, SALMON);
+  } finally { pantry = []; }
 });

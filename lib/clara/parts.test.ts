@@ -217,3 +217,8 @@ test("service: a part-only reply is never saved blank", async () => {
   assert.ok(events.map((e) => (e.type === "text" ? e.text : "")).join("").includes("Lentil curry"));
   assert.ok(saved2.at(-1)!.content.includes("Lentil curry"));
 });
+
+test("partAsText: fromHome never reaches the text an old client reads", () => {
+  const withHome: ClaraPart = { ...(DISH as Extract<ClaraPart, { kind: "dish" }>), fromHome: { text: "From your kitchen: Salmon fillets.", foods: ["Salmon fillets"] } };
+  assert.equal(partAsText(withHome), partAsText(DISH));
+});
