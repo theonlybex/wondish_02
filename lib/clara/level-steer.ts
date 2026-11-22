@@ -202,10 +202,20 @@ export function steerLines(levels: readonly LevelSteer[], opts: SteerLineOptions
     if (text.length === 0) return "";
     return preferring ? `, preferring any they have at home (${text})` : ` (${text})`;
   };
+  const marked = (opts.atHome?.length ?? 0) > 0;
+  // A marked kitchen, and none of the examples is at home: say that one of them will do.
+  const oneIsEnough = (list: string) => {
+    if (!marked) return "";
+    const { text, preferring } = moreExamples(list, opts);
+    if (preferring || !text.includes(", ")) return "";
+    return /\b(rice|oats|barley|quinoa|pasta|bread|potatoes)\b/.test(text)
+      ? "; one is enough, and a grain among them takes the place of the dish's starch"
+      : "; one is enough";
+  };
   return levels.map((l) => {
     const answers = l.why === "answers";
     if (l.key === "fibre" && l.direction === "more" && l.why !== "today") {
-      return `- ${answers ? "From their answers they probably get little fibre" : "They have had little fibre this week"}: ${opts.fibreAdded ? "include a fibre-rich ingredient in every dish" : "build every dish around a fibre-rich ingredient"}${examples(FIBRE_RICH_EXAMPLES)}.`;
+      return `- ${answers ? "From their answers they probably get little fibre" : "They have had little fibre this week"}: ${opts.fibreAdded || marked ? "include a fibre-rich ingredient in every dish" : "build every dish around a fibre-rich ingredient"}${examples(FIBRE_RICH_EXAMPLES)}${oneIsEnough(FIBRE_RICH_EXAMPLES)}.`;
     }
     if (l.key === "sodium" && l.direction === "less") {
       if (l.why === "today") {
@@ -219,8 +229,10 @@ export function steerLines(levels: readonly LevelSteer[], opts: SteerLineOptions
       : answers ? `From their answers they probably get ${little ? "little" : "a lot of"} ${l.name}`
       : little ? `So far today they are well behind on ${l.name}`
       : `Today's meals have already used most of the day's ${l.name}`;
+    // A marked kitchen is cooked from: a level adds ONE food to the dish, it does not rebuild it
+    // (live run, 2026-11-22: "build the dish on ... barley, oats, quinoa" put a second starch in).
     return little
-      ? `- ${opening}: build the dish on foods rich in it${examples(RICH_FOODS[l.key])}.`
+      ? `- ${opening}: ${marked ? "include one food rich in it" : "build the dish on foods rich in it"}${examples(RICH_FOODS[l.key])}${oneIsEnough(RICH_FOODS[l.key])}.`
       : `- ${opening}: keep it low in this dish; go easy on ${RICH_FOODS[l.key]}.`;
   });
 }

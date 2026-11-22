@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { splitKeptFoods } from "./kept-foods";
 import { homeProteins } from "./dish-protein";
 import { DEFAULT_DISH_RULES, type DishRules } from "./dish-rules";
-import { judgeDish, nameOverlap, namedAfterOwnIngredient, type JudgeInput } from "./dish-judge";
+import { judgeDish, dishShape, sameDish, starchesIn, namedAfterOwnIngredient, type JudgeInput } from "./dish-judge";
 
 const g = (name: string, quantity: number, unit = "g") => ({ name, quantity, unit });
 const HOME = homeProteins(splitKeptFoods([
@@ -71,4 +71,25 @@ test("a dish that is one they just had, reworded, is only relaxed; a different o
   assert.equal(j({ name: "Baked Salmon with Roasted Potatoes and Spinach", notLike: [lunch] }).level, "pass");
   assert.equal(j({ name: lunch, notLike: [lunch], wants: "a salmon bowl" }).level, "pass");
   assert.equal(j({ notLike: [] }).level, "pass");
+});
+
+// Live run 4, 2026-11-22: with five foods at home shared words neither caught a lunch reworded at dinner nor spared a different dish.
+test("a repeat is the same protein, starch and way of cooking; one starch per dish; both only relax", () => {
+  assert.deepEqual(dishShape("Ground Beef and Spinach Jasmine Rice Stir-Fry with Egg"), { protein: "beef", starch: "rice", way: "pan" });
+  assert.deepEqual(dishShape("Salmon and Spinach Jasmine Rice Curry"), { protein: "salmon", starch: "rice", way: "wet" });
+  assert.deepEqual(dishShape("Ground Beef and Spinach Stuffed Russet Potatoes"), { protein: "beef", starch: "potato", way: "oven" });
+  // The run's own pairs.
+  assert.equal(sameDish("Ground Beef and Spinach Jasmine Rice Stir-Fry with Egg", "Ground Beef and Spinach Jasmine Rice Bowl"), true);
+  assert.equal(sameDish("Salmon and Spinach Jasmine Rice Bowl with Lemon", "Pan-Seared Salmon with Spinach and Jasmine Rice"), true);
+  assert.equal(sameDish("Ground Beef and Spinach Jasmine Rice Stuffed Peppers", "Ground Beef and Spinach Jasmine Rice Bowl"), false);
+  assert.equal(sameDish("Ground Beef and Spinach Potato Soup", "Ground Beef and Spinach Jasmine Rice Bowl"), false);
+  assert.equal(sameDish("Salmon and Spinach Jasmine Rice Curry", "Salmon and Spinach Jasmine Rice Bowl with Lemon"), false);
+  // Nothing to go by: mostly the same words.
+  assert.equal(sameDish("Spinach and Mushroom Omelette", "Mushroom and Spinach Omelette"), true);
+  assert.equal(sameDish("Spinach and Mushroom Omelette", "Tomato and Cucumber Salad"), false);
+  assert.deepEqual(j({ name: "Salmon Jasmine Rice Skillet with Spinach", notLike: ["Pan-Seared Salmon with Spinach and Jasmine Rice"] }).reasons, ["repeat"]);
+  // Two starches.
+  assert.deepEqual(starchesIn(["russet potatoes", "jasmine rice", "rice vinegar", "bread crumbs", "spinach"]), ["potato", "rice"]);
+  assert.deepEqual(j({ ingredients: [...BASE.ingredients, g("russet potatoes", 150)] }), { level: "relaxed", reasons: ["starches"], builtOn: "salmon" });
+  assert.equal(j({ ingredients: [...BASE.ingredients, g("russet potatoes", 150)], wants: "salmon with rice and potatoes" }).level, "pass");
 });

@@ -451,7 +451,7 @@ export function dishSystemPrompt(a: {
         : `- This ${meal} does not have to be built on a protein: they are getting enough this week, so a salad, a vegetable plate or a potato dish is fine too. If it has a protein at its centre, make it ${choiceName}, which they have at home.`;
     if (steer.choice.why === "today" && brain.usedToday.length > 0) {
       const used = brain.usedToday.slice(-MAX_USED_TODAY_IN_PROMPT).map(promptDishName);
-      proteinLine += ` It is already open today, so make a different dish from: ${used.join("; ")}.`;
+      proteinLine += ` It is already open today, so make a different dish from: ${used.join("; ")}. Different means another starch or another way of cooking (a soup, a bake or a salad instead of one more bowl or skillet); the same dish with its name reworded, or with one food added, does not count.`;
     }
     proteinLine += homeMeats.length > 0
       ? ` Any other meat, fish or seafood in it must be one of these, which they have at home: ${clean(homeMeats)}; use no other meat, fish or seafood: not in an ingredient, the dish name, the description or a step.`
@@ -505,7 +505,7 @@ export function dishSystemPrompt(a: {
   const plainMain = isMainMeal && ask.wants === undefined;
   const recent = [...new Set(brain.usedRecently.map(promptDishName).filter(Boolean))].slice(-MAX_RECENT_IN_PROMPT);
   const recentLine = plainMain && recent.length > 0
-    ? `- They had these in the last few days; make a clearly different dish, not one of these and not a small variation of one: ${recent.join("; ")}.`
+    ? `- They had these in the last few days; make a clearly different dish, not one of these and not a small variation of one (the same protein, starch and way of cooking under another name): ${recent.join("; ")}.`
     : ``;
   const whoIs = a.who ?? { patientId: "", today: "1970-01-01" };
   const styleLine = plainMain && !ask.dayPlan

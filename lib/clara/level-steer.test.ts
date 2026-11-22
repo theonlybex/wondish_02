@@ -99,12 +99,12 @@ test("steerLines options: at-home examples are preferred, a dropped example neve
   const noBeef = (f: string) => f !== "beef";
   // No example at home: the plain form, never "preferring any they have at home".
   assert.deepEqual(steerLines([lv("iron")], { atHome: ["Ground beef"], keepExample: noBeef }), [
-    "- They have had little iron this week: build the dish on foods rich in it (lentils, beans, chickpeas, spinach, tofu).",
+    "- They have had little iron this week: include one food rich in it (lentils, beans, chickpeas, spinach, tofu); one is enough.",
   ]);
   // No example survives: the line without a list.
   assert.deepEqual(steerLines([lv("iron")], { keepExample: () => false }), ["- They have had little iron this week: build the dish on foods rich in it."]);
   assert.deepEqual(steerLines([lv("iron")], { atHome: ["Black beans", "Spinach"] }), [
-    "- They have had little iron this week: build the dish on foods rich in it, preferring any they have at home (beans, spinach).",
+    "- They have had little iron this week: include one food rich in it, preferring any they have at home (beans, spinach).",
   ]);
   assert.equal(steerLines([lv("fibre", "answers")], { fibreAdded: true })[0], `- From their answers they probably get little fibre: include a fibre-rich ingredient in every dish (${FIBRE_RICH_EXAMPLES}).`);
   // "Less" lines are untouched by the options.

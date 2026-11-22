@@ -5,7 +5,7 @@
 import type { MealType } from "../local-date";
 import type { FullLevelKey } from "@/lib/level-catalogue";
 import { ingredientTokens } from "@/lib/basket-match";
-import { builtOn, type DishIngredient, type HomeProtein } from "./dish-protein";
+import { builtOn, proteinKind, type DishIngredient, type HomeProtein } from "./dish-protein";
 import type { DishRules } from "./dish-rules";
 import { proteinRuleBreak } from "./protein-rule";
 import { sizeProblem } from "./meal-target";
@@ -40,13 +40,57 @@ export function nameOverlap(a: string, b: string): number {
   return both / (x.size + y.size - both);
 }
 
+// What a dish IS, read from its name (names say what is in the dish and how it is cooked): the
+// protein, the starch and the way of cooking. Live run, 2026-11-22: with five foods at home every
+// name shares "beef, spinach, jasmine rice", so shared words neither catch a lunch reworded at
+// dinner (0.56) nor spare a different dish (stuffed peppers, 0.62).
+const STARCHES: readonly (readonly [string, RegExp])[] = [
+  ["rice", /\brice\b/],
+  ["potato", /\bpotato(es)?\b/],
+  ["pasta", /\b(pasta|spaghetti|penne|noodles?|macaroni|fusilli|orzo|lasagne?)\b/],
+  ["bread", /\b(bread|toast|tortillas?|wraps?|pitas?|buns?|bagels?|sandwich(es)?)\b/],
+  ["grain", /\b(quinoa|barley|oats?|oatmeal|couscous|bulgur|farro|polenta)\b/],
+];
+const NOT_A_STARCH = /\b(vinegar|flour|crumbs?|starch|milk|syrup|paper|wine)\b/;
+const starchOf = (text: string): string | null => {
+  const lower = text.toLowerCase();
+  if (NOT_A_STARCH.test(lower)) return null;
+  return STARCHES.find(([, re]) => re.test(lower))?.[0] ?? null;
+};
+const WAYS: readonly (readonly [string, RegExp])[] = [
+  ["wet", /\b(soups?|stews?|curry|curries|chili|chowder|braised?|ragu|ragù|dal|dhal)\b/],
+  ["oven", /\b(bakes?|baked|roast(ed)?|stuffed|casserole|gratin|tray|sheet[- ]pan)\b/],
+  ["cold", /\b(salads?|wraps?|sandwich(es)?|toast)\b/],
+];
+export interface DishShape { protein: string | null; starch: string | null; way: string }
+export function dishShape(name: string): DishShape {
+  const lower = name.toLowerCase();
+  const key = proteinKind(name)?.key ?? null;
+  return {
+    protein: key && key.startsWith("ground ") ? key.slice(7) : key,
+    starch: starchOf(lower),
+    way: WAYS.find(([, re]) => re.test(lower))?.[0] ?? "pan",
+  };
+}
+/** The same protein, the same starch and the same way of cooking; with neither a protein nor a starch to go by, mostly the same words. */
+export function sameDish(a: string, b: string): boolean {
+  const x = dishShape(a), y = dishShape(b);
+  if (x.protein === null && x.starch === null && y.protein === null && y.starch === null) return nameOverlap(a, b) >= REPEAT_OVERLAP;
+  return x.protein === y.protein && x.starch === y.starch && x.way === y.way;
+}
+
+/** The starch families among the ingredients (rice, potato, pasta, bread, grain). */
+export function starchesIn(ingredientNames: readonly string[]): string[] {
+  return [...new Set(ingredientNames.map(starchOf).filter((x): x is string => x !== null))];
+}
+
 /** At or above this, a dish is another one reworded ("Salmon and Jasmine Rice Bowl with Sautéed Spinach" / "Salmon Jasmine Rice Bowl with Lemon Garlic Spinach" is 0.63). */
 export const REPEAT_OVERLAP = 0.6;
 
 export interface DishVerdict {
   /** "pass": every check. "relaxed": only the size or the repeat check failed (ladder step 2). "fail": out. */
   level: "pass" | "relaxed" | "fail";
-  /** In check order; [] for a pass. "protein:<ProteinBreak>", "honest:named-after-ingredient", "size:too-small", "size:too-large", "repeat", "limit:<level key>". */
+  /** In check order; [] for a pass. "protein:<ProteinBreak>", "honest:named-after-ingredient", "size:too-small", "size:too-large", "repeat", "starches", "limit:<level key>". */
   reasons: string[];
   /** The key of the protein the dish is built on, or null. */
   builtOn: string | null;
@@ -86,7 +130,9 @@ export function judgeDish(input: JudgeInput): DishVerdict {
   // OFF 2026-11-22 (owner: "maybe this rule is a bit too much, maybe we remove it for now"): the 15% protein floor for a main. Restore: uncomment, and the line in targetLines.
   // if (input.rules.mainsOnProtein && proteinShareLow(input.mealType, input.calories, input.proteinG)) reasons.push("protein-share");
 
-  if (input.wants === undefined && (input.notLike ?? []).some((n) => nameOverlap(input.name, n) >= REPEAT_OVERLAP)) reasons.push("repeat");
+  if (input.wants === undefined && (input.notLike ?? []).some((n) => sameDish(input.name, n))) reasons.push("repeat");
+  // One starch per dish (rice with potatoes, potatoes with barley): served only when nothing else passes.
+  if (input.wants === undefined && starchesIn(input.ingredients.map((i) => i.name)).length > 1) reasons.push("starches");
 
   for (const [key, amount] of Object.entries(input.known) as [FullLevelKey, number | undefined][]) {
     const ceiling = input.ceilings[key];
