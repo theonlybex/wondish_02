@@ -51,6 +51,8 @@ export function lowLevels(week: readonly SteerRow[], picture: PictureLevels | nu
   return [...out.values()].sort((x, y) => ORDER.get(x.key)! - ORDER.get(y.key)!);
 }
 
+const MADE_FROM = /\b(paste|sauce|broth|stock|powder|juice|in adobo)\b/i;
+
 /** Protein foods are a catalog group, not a word list ("meat" names no row). */
 const isProteinRow = (r: CatalogRow) => {
   const k = proteinKind(r.name);
@@ -61,7 +63,8 @@ const isProteinRow = (r: CatalogRow) => {
 export function richRows(key: FullLevelKey, rows: readonly CatalogRow[]): CatalogRow[] {
   if (key === "protein") return rows.filter(isProteinRow);
   const examples = RICH_FOODS[key].split(", ").flatMap((e) => e.split(" or "));
-  return rows.filter((r) => examples.some((e) => foodMatches(e, r.name)));
+  // The food itself, not a paste, sauce or broth made from it.
+  return rows.filter((r) => !MADE_FROM.test(r.name) && examples.some((e) => foodMatches(e, r.name)));
 }
 
 // A mixed first offer for proteins (the catalog lists the poultry and red meats first): a bird, a fish, a red meat, a plant protein, a pulse.
@@ -117,7 +120,8 @@ export function groceryGroups(a: { rows: readonly CatalogRow[]; week: readonly S
     if (rich.some((r) => r.atHome)) continue; // Clara already has something to cook with for it.
     const items = take(low.key === "protein" ? mixedProteins(rich) : rich);
     if (items.length === 0) continue;
-    const lower = low.name.toLowerCase();
+    // "Fibre" → "fibre", "Vitamin C" → "vitamin C", "Omega-3" → "omega-3".
+    const lower = low.name.charAt(0).toLowerCase() + low.name.slice(1);
     groups.push({
       key: `level:${low.key}`,
       kind: "level",

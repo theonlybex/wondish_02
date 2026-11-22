@@ -46,6 +46,10 @@ test("a nutrient group appears only when they are low on it and nothing at home 
   const a = groceryGroups({ rows: catalog(KITCHEN.filter((n) => n !== "Salmon fillets"), ["Walnuts"]), week: [], picture: { little: ["omega3"], aLot: [] } });
   const omega = a.find((x) => x.key === "level:omega3")!;
   assert.equal(omega.reason, "From your answers you probably get little omega-3, and nothing at home is rich in it.");
+  // A vitamin keeps its letter, and a paste is not the food.
+  const c = groceryGroups({ rows: catalog(["Ground beef", "Jasmine rice"]), week: [], picture: { little: ["vitaminC"], aLot: [] } }).find((x) => x.key === "level:vitaminC")!;
+  assert.deepEqual([c.title, c.reason], ["For vitamin C", "From your answers you probably get little vitamin C, and nothing at home is rich in it."]);
+  assert.ok(!names(c).includes("Tomato paste") && names(c).includes("Bell peppers"), names(c).join(", "));
   assert.deepEqual(omega.items[0], { id: "id:Walnuts", name: "Walnuts", favorite: true });
   // The diet takes its share: banned foods never reach the list.
   const noFish = groceryGroups({ rows: catalog(["Ground beef", "Spinach"], [], ["Salmon fillets", "Tilapia fillets", "Catfish fillets", "Canned tuna", "Shrimp", "Walnuts"]), week: [], picture: { little: ["omega3"], aLot: [] } });
