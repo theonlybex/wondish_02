@@ -14,7 +14,7 @@ import { DEFAULT_DISH_RULES, keptUnderRules, type DishRules } from "./dish-rules
 import type { KeptFoods } from "./kept-foods";
 import { levelCeilings, steerLevels, type LevelSteer, type PictureLevels, type SteerRow, type TodayTotals } from "./level-steer";
 import { mealTarget, type MealTarget } from "./meal-target";
-import { chooseProtein, proteinRuleApplies, type ProteinChoice } from "./protein-rule";
+import { chooseProtein, proteinNeed, proteinRuleApplies, type ProteinChoice, type ProteinNeed } from "./protein-rule";
 
 export interface BrainRows {
   week: { range: { fromDate: string; toDate: string }; days: FullDay[] } | null;
@@ -156,6 +156,8 @@ export function brainFrom(a: {
 export interface AskSteer {
   ruleOn: boolean;
   choice: ProteinChoice | null;
+  /** How much this dish should lean on protein; "push" with mainsOnProtein on and nothing known. */
+  need: ProteinNeed;
   target: MealTarget;
   levels: LevelSteer[];
   ceilings: Partial<Record<FullLevelKey, number>>;
@@ -197,6 +199,14 @@ export function steerForAsk(
       })
     : [];
   // Limits have no switch.
-  const ceilings = levelCeilings({ mealType: ask.mealType, sodiumLimitMg: brain.sodiumLimitMg, today: brain.today });
-  return { ruleOn, choice, target, levels, ceilings };
+  const ceilings = levelCeilings({ mealType: ask.mealType, sodiumLimitMg: brain.sodiumLimitMg, week: brain.week });
+  const need: ProteinNeed = brain.rules.mainsOnProtein
+    ? proteinNeed({
+        conditionNames: brain.conditionNames,
+        motivationNames: brain.motivationNames,
+        weekWord: brain.week.find((r) => r.key === "protein")?.word ?? null,
+        behindToday: levels.some((l) => l.key === "protein" && l.direction === "more" && l.why === "today"),
+      })
+    : "free";
+  return { ruleOn, choice, need, target, levels, ceilings };
 }

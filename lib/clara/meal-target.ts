@@ -88,7 +88,8 @@ export function targetLines(t: MealTarget, mealType: MealType, mainsOnProtein: b
     lines.push(size);
   }
   if (t.split) lines.push(`- Macro split to aim for, by calories: ${macroSplitLine(t.split)}.`);
-  if (mainsOnProtein && isMain(mealType)) lines.push(MAIN_PROTEIN_LINE);
+  // OFF 2026-11-22, with the judge's 15% check: if (mainsOnProtein && isMain(mealType)) lines.push(MAIN_PROTEIN_LINE);
+  void mainsOnProtein;
   if (t.leanings.length > 0) lines.push(`- Their goal: lean towards ${t.leanings.join(", ")}.`);
   return lines;
 }

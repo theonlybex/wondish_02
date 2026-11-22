@@ -20,13 +20,10 @@ test("this week: little → more, a lot → less, on track → nothing; the furt
   const week = [wk("protein", "on track", 95, 100), wk("fibre", "little", 10, 28), wk("saturatedFat", "a lot", 26, 20), wk("addedSugar", "within limit", 30, 50)];
   assert.deepEqual(steer({ week }), ["fibre:more:week", "saturatedFat:less:week"]); // 1.64 before 1.30
 });
-test("so far today: a level nearly used up is kept low, and comes first", () => {
-  assert.deepEqual(steer({ today: { ...TODAY, sodium: 2000 } }), ["sodium:less:today"]);
-  assert.deepEqual(steer({ today: { ...TODAY, sodium: 1800 } }), []); // 78% of 2300
-  assert.deepEqual(steer({ today: { ...TODAY, sodium: 1300 }, sodiumLimitMg: 1500 }), ["sodium:less:today"]);
-  assert.deepEqual(steer({ today: { ...TODAY, saturatedFat: 17, addedSugar: 45 } }), ["addedSugar:less:today", "saturatedFat:less:today"]);
-  assert.deepEqual(steer({ today: { ...TODAY, sodium: null, saturatedFat: null, addedSugar: null } }), []); // unknown is not "used up"
-  assert.equal(steer({ today: { ...TODAY, sodium: 2000 }, week: [wk("fibre", "little", 10, 28)] })[0], "sodium:less:today");
+test("limits are paced by the week, not the day: today's totals never mark a limit as used up", () => {
+  assert.deepEqual(steer({ today: { ...TODAY, sodium: 2000 } }), []);
+  assert.deepEqual(steer({ today: { ...TODAY, saturatedFat: 17, addedSugar: 45 } }), []);
+  assert.deepEqual(steer({ today: { ...TODAY, sodium: 2000 }, week: [wk("sodium", "a lot", 2600, 2300)] }), ["sodium:less:week"]);
 });
 test("so far today: far behind for the meal asked for is favoured; never at breakfast, never with nothing logged", () => {
   const week = [wk("protein", "on track", 95, 100)];
@@ -40,15 +37,48 @@ test("answers steer the levels the logs cannot measure, after anything measured;
   const picture = { little: ["iron", "potassium", "fibre", "notALevel"], aLot: ["saturatedFat"] };
   assert.deepEqual(steer({ picture, week: [wk("fibre", "little", 10, 28)] }), ["fibre:more:week", "saturatedFat:less:answers", "potassium:more:answers", "iron:more:answers"]);
   const five = { little: ["iron", "potassium", "calcium", "zinc", "folate"], aLot: [] };
-  const s = steer({ picture: five, today: { ...TODAY, sodium: 2200 }, week: [wk("fibre", "little", 5, 28)] });
+  const s = steer({ picture: five, week: [wk("sodium", "a lot", 5000, 2300), wk("fibre", "little", 5, 28)] });
   assert.equal(s.length, 4);
-  assert.deepEqual(s.slice(0, 2), ["sodium:less:today", "fibre:more:week"]);
+  assert.deepEqual(s.slice(0, 2), ["sodium:less:week", "fibre:more:week"]);
 });
-test("levelCeilings: sodium is held to what is left, never below the meal's share; unknown is the day's limit (Review Focus 4)", () => {
-  const c = (mealType: MealType, sodium: number | null, sodiumLimitMg = 2300) => levelCeilings({ mealType, sodiumLimitMg, today: { ...TODAY, sodium } }).sodium;
-  assert.deepEqual([c("dinner", 1000), c("dinner", 2000), c("dinner", 2600), c("snack", 2600), c("dinner", 1600, 1500), c("dinner", null)], [1300, 690, 690, 345, 450, 2300]);
-  const all = levelCeilings({ mealType: "dinner", sodiumLimitMg: 2300, today: null });
-  assert.deepEqual([all.sodium, all.iron, all.calcium, all.vitaminA, all.folate, all.potassium, all.fibre], [2300, 45, 2500, 3000, 1000, undefined, undefined]);
+test("levelCeilings: every limit gets the meal's share, paced by how the week is going", () => {
+  const near = (x: number | undefined, y: number) => assert.ok(x !== undefined && Math.abs(x - y) < 1e-6, `${x} vs ${y}`);
+  const c = (mealType: MealType, weekSodium: number | null, sodiumLimitMg = 2300) =>
+    levelCeilings({ mealType, sodiumLimitMg, week: weekSodium === null ? [] : [wk("sodium", weekSodium > sodiumLimitMg ? "a lot" : "within limit", weekSodium, sodiumLimitMg)] }).sodium;
+  near(c("dinner", null), 1035);      // nothing logged: one and a half shares
+  near(c("dinner", 1500), 1380);      // well under this week: two shares
+  near(c("dinner", 2100), 1035);      // near the limit
+  near(c("dinner", 2600), 690);       // over this week: the plain share
+  near(c("snack", 2600), 350);        // never under the "low sodium" figure
+  near(c("dinner", 1600, 1500), 450);
+  // Not enough logs for a word: unknown, not "well under".
+  near(levelCeilings({ mealType: "dinner", sodiumLimitMg: 2300, week: [wk("sodium", null, 900, 2300)] }).sodium, 1035);
+  const all = levelCeilings({ mealType: "dinner", sodiumLimitMg: 2300, week: [wk("saturatedFat", "a lot", 26, 20)] });
+  near(all.saturatedFat, 6); near(all.addedSugar, 22.5); near(all.iron, 20.25); near(all.calcium, 1125); near(all.folate, 450);
+  assert.deepEqual([all.potassium, all.fibre, all.protein, all.phosphorus], [undefined, undefined, undefined, undefined]);
+  near(levelCeilings({ mealType: "lunch", sodiumLimitMg: 2300, week: [wk("phosphorus", "within limit", 1200, 1250)] }).phosphorus, 1250 * 0.35 * 1.5);
+});
+// Owner, 2026-11-22: every nutrient on the Numbers list reaches Clara, boosted or controlled.
+test("every level on the Numbers list is steered: 'enough' ones boosted when little, 'under' ones controlled when over", () => {
+  for (const l of LEVELS) {
+    if (l.direction !== "under") {
+      const s = steerLevels({ mealType: "dinner", claims: NONE, week: [wk(l.key, "little", l.target * 0.3, l.target)], picture: null, today: null, sodiumLimitMg: 2300 });
+      assert.deepEqual(s.map((x) => `${x.key}:${x.direction}`), [`${l.key}:more`], l.key);
+      assert.equal(steerLines(s).length, 1, l.key);
+      assert.match(steerLines(s)[0], /build (the|every) dish/, l.key);
+    }
+    if (l.direction !== "enough" || l.upperLimit !== null) {
+      const word = l.direction === "enough" ? "more than needed" : "a lot";
+      const s = steerLevels({ mealType: "dinner", claims: NONE, week: [wk(l.key, word, l.target * 1.6, l.target)], picture: null, today: null, sodiumLimitMg: 2300 });
+      assert.deepEqual(s.map((x) => `${x.key}:${x.direction}`), [`${l.key}:less`], l.key);
+      assert.match(steerLines(s)[0], /keep (it low|every serving)/, l.key);
+    }
+    // And from the first-run answers, when the logs cannot count it.
+    const fromAnswers = steerLevels({ mealType: "dinner", claims: NONE, week: [], picture: l.direction === "under" ? { little: [], aLot: [l.key] } : { little: [l.key], aLot: [] }, today: null, sodiumLimitMg: 2300 });
+    assert.equal(fromAnswers.length, 1, l.key);
+    assert.equal(fromAnswers[0].direction, l.direction === "under" ? "less" : "more", l.key);
+    assert.ok(RICH_FOODS[l.key].length > 0, l.key);
+  }
 });
 test("steerLines: today's two sentences unchanged, and no number for a level the database cannot count", () => {
   const line = (key: string, direction: "more" | "less", why: LevelSteer["why"]) => steerLines([{ key: key as FullLevelKey, name: key === "saturatedFat" ? "saturated fat" : key, direction, why, score: 1 }])[0];

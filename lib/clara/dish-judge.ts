@@ -8,7 +8,7 @@ import { ingredientTokens } from "@/lib/basket-match";
 import { builtOn, type DishIngredient, type HomeProtein } from "./dish-protein";
 import type { DishRules } from "./dish-rules";
 import { proteinRuleBreak } from "./protein-rule";
-import { proteinShareLow, sizeProblem } from "./meal-target";
+import { sizeProblem } from "./meal-target";
 
 export interface JudgeInput {
   mealType: MealType; wants?: string;
@@ -65,7 +65,8 @@ export function judgeDish(input: JudgeInput): DishVerdict {
     const size = sizeProblem(input.mealType, input.calories, input.targetCalories);
     if (size) reasons.push(`size:${size}`);
   }
-  if (input.rules.mainsOnProtein && proteinShareLow(input.mealType, input.calories, input.proteinG)) reasons.push("protein-share");
+  // OFF 2026-11-22 (owner: "maybe this rule is a bit too much, maybe we remove it for now"): the 15% protein floor for a main. Restore: uncomment, and the line in targetLines.
+  // if (input.rules.mainsOnProtein && proteinShareLow(input.mealType, input.calories, input.proteinG)) reasons.push("protein-share");
 
   for (const [key, amount] of Object.entries(input.known) as [FullLevelKey, number | undefined][]) {
     const ceiling = input.ceilings[key];

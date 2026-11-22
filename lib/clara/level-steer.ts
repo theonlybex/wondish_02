@@ -58,14 +58,8 @@ export function steerLevels(a: {
 
   if (a.today) {
     const t = a.today;
-    const limits: [string, number | null, number][] = [
-      ["sodium", t.sodium, a.sodiumLimitMg],
-      ["saturatedFat", t.saturatedFat, targetOf("saturatedFat")],
-      ["addedSugar", t.addedSugar, targetOf("addedSugar")],
-    ];
-    for (const [key, amount, limit] of limits) {
-      if (amount !== null && limit > 0 && amount >= 0.8 * limit) add(key, "less", "today", 2 + amount / limit);
-    }
+    // Limits are paced by the WEEK, not the day (owner, 2026-11-22): the week rows below say when
+    // a limit is being passed, and levelCeilings turns that into this dish's ceiling.
     const before = shareBefore(a.mealType);
     if (t.meals >= 1 && before > 0) {
       for (const [key, amount] of [["protein", t.protein], ["fibre", t.fibre]] as [string, number | null][]) {
@@ -98,14 +92,33 @@ export function steerLevels(a: {
     .slice(0, MAX_STEERED_LEVELS);
 }
 
-/** The most a serving may carry, per level. Sodium always; every other level that has an upper limit in LEVELS. */
-export function levelCeilings(a: { mealType: MealType; sodiumLimitMg: number; today: TodayTotals | null }): Partial<Record<FullLevelKey, number>> {
+/** How much of its meal share one serving may carry, by how the week is going against the limit. */
+export const WEEK_PACE = { roomy: 2, steady: 1.5, over: 1 } as const;
+
+/**
+ * The most a serving may carry, per level. Limits are weekly (owner, 2026-11-22): a serving gets the
+ * meal's share of the daily limit, doubled when the week's average is well under the limit (80% or
+ * less), one and a half times when it is near it or unknown, and the plain share when the week is
+ * over. Sodium never goes under the "low sodium" figure Clara's own line asks for. Levels with an
+ * upper intake limit are held to the same shares of it.
+ */
+export function levelCeilings(a: { mealType: MealType; sodiumLimitMg: number; week: readonly SteerRow[] }): Partial<Record<FullLevelKey, number>> {
   const out: Partial<Record<FullLevelKey, number>> = {};
   const share = computeMealCalories(1)[a.mealType] ?? 0;
-  out.sodium = a.today && a.today.sodium !== null
-    ? Math.max(a.sodiumLimitMg - a.today.sodium, a.sodiumLimitMg * share)
-    : a.sodiumLimitMg;
-  for (const l of LEVELS) if (l.upperLimit !== null) out[l.key] = l.upperLimit;
+  const row = new Map(a.week.map((r) => [r.key as string, r]));
+  const pace = (key: string, limit: number): number => {
+    const r = row.get(key);
+    if (!r || !r.word || r.amount === null || !(limit > 0)) return WEEK_PACE.steady;
+    const used = r.amount / limit;
+    return used > 1 ? WEEK_PACE.over : used <= 0.8 ? WEEK_PACE.roomy : WEEK_PACE.steady;
+  };
+  for (const l of LEVELS) {
+    const limit = l.key === "sodium" ? a.sodiumLimitMg : l.direction === "under" ? (row.get(l.key)?.target || l.target) : l.upperLimit;
+    if (limit === null || !(limit > 0)) continue;
+    if (l.kidneyOnly && !row.has(l.key)) continue;
+    const ceiling = limit * share * pace(l.key, limit);
+    out[l.key] = l.key === "sodium" ? Math.max(ceiling, SODIUM_REASON_MAX_MG) : ceiling;
+  }
   return out;
 }
 

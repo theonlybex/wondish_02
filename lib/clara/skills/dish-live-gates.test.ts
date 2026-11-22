@@ -376,9 +376,12 @@ test("kept: a rejecting pantry read still serves a dish; with nothing marked no 
   assert.ok(!queries.includes("catalog"), `no kept-foods catalog query: ${queries.join(", ")}`);
 });
 
-test("kept: the meal reminder still names a lunch when salmon is at home and the lunch library is chicken only", async () => {
+// Owner, 2026-11-22: the reminder names only a dish chat would serve; otherwise it goes out with no dish name.
+test("kept: the meal reminder names no lunch when salmon is at home and the lunch library is chicken only", async () => {
   pantry = ["salmon fillets"];
   try {
+    assert.deepEqual(await dish.mealSuggestionNames("p1", "2026-11-12", ["lunch"]), {});
+    pantry = [];
     assert.deepEqual(await dish.mealSuggestionNames("p1", "2026-11-12", ["lunch"]), { lunch: "Chicken Breast with Spinach Rice" });
   } finally {
     pantry = [];
@@ -475,15 +478,18 @@ test("judge: nothing marked → a dish built on any protein is served as before,
   assert.equal(served(res).name, "Ground Chicken and Lentil Skillet");
   assert.ok(!("fromHome" in served(res)));
 });
-test("judge: over today's sodium, a salty dish is out and a plain one is still served (Review Focus 4)", async () => {
+test("judge: over the week's sodium, a salty dish is out and a plain one is still served (Review Focus 4)", async () => {
   const salty = item("Red Lentil Stew with Cottage Cheese", [{ name: "cottage cheese", quantity: 120, unit: "g" }], [...STEW_STEPS.slice(0, 3), "Top with the cottage cheese, season with the salt and serve."]);
   const plain = item("Red Lentil and Spinach Stew");
-  const day = { localDate: "2026-11-12", meals: 3, calories: 1800, protein: 80, carbs: 200, fibre: 20, sodium: 2600, saturatedFat: 10, addedSugar: 10 };
+  const days = ["2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12"].map((localDate) => ({ localDate, meals: 3, calories: 1800, protein: 80, carbs: 200, fibre: 20, sodium: 2600, saturatedFat: 10, addedSugar: 10 }));
   const trace: string[] = [];
-  const got = await live([salty, plain], { week: { range: { fromDate: "2026-11-06", toDate: "2026-11-12" }, days: [day] } }).generate({ ...CTX }, ASK, { accept: () => true, trace: (e) => trace.push(e.stage) });
+  const got = await live([salty, plain], { week: { range: { fromDate: "2026-11-06", toDate: "2026-11-12" }, days } }).generate({ ...CTX }, ASK, { accept: () => true, trace: (e) => trace.push(e.stage) });
   assert.deepEqual([got.map((r) => r.name), trace], [["Red Lentil and Spinach Stew"], ["judge", "accepted"]]);
-  // nothing logged today: the same salty dish is served
-  assert.deepEqual((await live([salty, plain]).generate({ ...CTX }, ASK, { accept: () => true })).map((r) => r.name), ["Red Lentil Stew with Cottage Cheese"]);
+  // nothing logged this week: one and a half shares, still too salty
+  assert.deepEqual((await live([salty, plain]).generate({ ...CTX }, ASK, { accept: () => true })).map((r) => r.name), ["Red Lentil and Spinach Stew"]);
+  // a week well under the limit has room for it
+  const light = days.map((d) => ({ ...d, sodium: 1200 }));
+  assert.deepEqual((await live([salty, plain], { week: { range: { fromDate: "2026-11-06", toDate: "2026-11-12" }, days: light } }).generate({ ...CTX }, ASK, { accept: () => true })).map((r) => r.name), ["Red Lentil Stew with Cottage Cheese"]);
 });
 test("judge: today's protein is preferred, not required", async () => {
   pantry = ["salmon fillets", "ground beef"];

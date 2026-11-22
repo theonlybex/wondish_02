@@ -36,7 +36,6 @@ test("targetLines: exact wording", () => {
   assert.deepEqual(targetLines(t("dinner", { motivationNames: ["Eat healthier"] }), "dinner", true), [
     "- Size: this Dinner should be about 600 kcal per serving (their day is 2000 kcal); choose the portions to land there. It must be between 330 and 750 kcal.",
     "- Macro split to aim for, by calories: ~30% protein, ~45% carbs, ~25% fat.",
-    MAIN_PROTEIN_LINE,
     "- Their goal: lean towards fibre, less fat.",
   ]);
   assert.deepEqual(targetLines(t("breakfast"), "breakfast", true), [

@@ -420,7 +420,13 @@ export function dishSystemPrompt(a: {
   if (steer.ruleOn && steer.choice) {
     // Lunch and dinner with no request of their own: built on ONE at-home protein, chosen in code.
     const choiceName = cleanOne(steer.choice.name);
-    proteinLine = `- Build this ${meal} on ${choiceName}, which they have at home.`;
+    // Protein is a need of the day (see proteinNeed): asked for when they need it, optional when
+    // the week is on track, kept modest when a condition calls for that.
+    proteinLine = steer.need === "push"
+      ? `- Build this ${meal} on ${choiceName}, which they have at home.`
+      : steer.need === "hold"
+        ? `- Their condition calls for modest protein: keep the protein portion of this ${meal} small. If it has a protein food, make it ${choiceName}, which they have at home.`
+        : `- This ${meal} does not have to be built on a protein: they are getting enough this week, so a salad, a vegetable plate or a potato dish is fine too. If it has a protein at its centre, make it ${choiceName}, which they have at home.`;
     if (steer.choice.why === "today" && brain.usedToday.length > 0) {
       const used = brain.usedToday.slice(-MAX_USED_TODAY_IN_PROMPT).map((n) => cleanOne(n).replace(/;/g, "").slice(0, MAX_USED_TODAY_NAME));
       proteinLine += ` It is already open today, so make a different dish from: ${used.join("; ")}.`;
@@ -428,12 +434,14 @@ export function dishSystemPrompt(a: {
     proteinLine += homeMeats.length > 0
       ? ` Any other meat, fish or seafood in it must be one of these, which they have at home: ${clean(homeMeats)}; use no other meat, fish or seafood: not in an ingredient, the dish name, the description or a step.`
       : ` Use no meat, fish or seafood: not in an ingredient, the dish name, the description or a step.`;
-    proteinLine += ` This protein is the heart of the dish. Where a line above says to build the dish on or around another food, add a portion of that food to this dish instead; do not replace ${choiceName}.`;
+    if (steer.need === "push") {
+      proteinLine += ` This protein is the heart of the dish. Where a line above says to build the dish on or around another food, add a portion of that food to this dish instead; do not replace ${choiceName}.`;
+    }
   } else if (freeMain) {
     const eggs = clean(brain.home.filter((p) => p.cls === "egg").map((p) => p.name));
     const others = MEAT_FREE_PROTEINS.filter((f) => dietKeeps?.(f) ?? true);
     const orOthers = others.length > 0 ? `, or ${ask.wants === undefined ? "" : "another meat-free one: "}${orWords(others)}` : ``;
-    proteinLine = (ask.wants === undefined
+    proteinLine = (ask.wants === undefined && steer.need === "push"
       ? `- Build this ${meal} on a meat-free protein: ${eggs}, which they have at home${orOthers}.`
       : `- If this dish has a protein food, make it ${eggs}, which they have at home${orOthers}.`)
       + ` Use no meat, fish or seafood: not in an ingredient, the dish name, the description or a step.`;
@@ -555,6 +563,10 @@ export function dishSystemPrompt(a: {
     `- Name each dish by what is IN it and the method you actually use. description is one short sentence and may only mention food in ingredients. Every dish needs a distinct name.`,
     ...DISH_CRAFT_LINES,
     saltRuleLine(a.sodiumLimitMg),
+    // The judge drops a dish over this figure, so the model is told it.
+    steer.ceilings.sodium !== undefined && steer.ceilings.sodium < a.sodiumLimitMg
+      ? `- Sodium: each serving must stay at or under ${Math.floor(steer.ceilings.sodium / 10) * 10} mg in total, counting salt, stock, sauces, cheese and bread.`
+      : ``,
     `- Cooking fat: one teaspoon per serving is normal and one tablespoon is the maximum; write the same amount in the steps as in ingredients.`,
     ...targetLines(steer.target, ask.mealType, brain.rules.mainsOnProtein),
     proteinLine,
@@ -805,13 +817,14 @@ function safeSteerForAsk(brain: DishBrain, ask: DishAsk, who: { patientId: strin
     console.warn(`[clara-dish] the steer failed; serving without it: ${(err as Error)?.message ?? String(err)}`);
     let ceilings: AskSteer["ceilings"];
     try {
-      ceilings = levelCeilings({ mealType: ask.mealType, sodiumLimitMg: brain.sodiumLimitMg, today: null });
+      ceilings = levelCeilings({ mealType: ask.mealType, sodiumLimitMg: brain.sodiumLimitMg, week: [] });
     } catch {
       ceilings = { sodium: brain.sodiumLimitMg };
     }
     return {
       ruleOn: false,
       choice: null,
+      need: "free",
       target: { calories: null, dayCalories: null, band: null, split: null, leanings: [] },
       levels: [],
       ceilings,
@@ -1054,18 +1067,19 @@ export async function mealSuggestionNames(
   for (const mealType of meals) {
     const pool = await libraryPool(mealType);
     // proteinRule undefined = rankLibrary's default (the at-home protein rule on when it applies).
-    const nameFor = (proteinRule?: false) =>
+    const nameFor = () =>
       suggestionName(
         rankLibrary(
           pool,
           { mealType, little: [], aLot: [] },
-          { patient: person.patient, matchers: person.matchers, seed: `${patientId}|${today}|${mealType}`, kept: person.kept, proteinRule },
+          { patient: person.patient, matchers: person.matchers, seed: `${patientId}|${today}|${mealType}`, kept: person.kept },
           recent,
           stepStatesAmount,
         ),
       );
-    // The reminder's own fallback (the dish no longer does this): with nothing at-home-friendly, a name as before beats none.
-    const name = nameFor() ?? (proteinRuleOn(person.kept, undefined) ? nameFor(false) : null);
+    // Only a dish chat would serve too (owner, 2026-11-22): with nothing at-home-friendly the
+    // reminder goes out without a dish name, never naming a protein they do not have.
+    const name = nameFor();
     if (name) out[mealType] = name;
   }
   return out;

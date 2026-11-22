@@ -5,7 +5,7 @@ import { homeProteins, type DishIngredient, type HomeProtein } from "./dish-prot
 import { DEFAULT_DISH_RULES } from "./dish-rules";
 import type { MealType } from "../local-date";
 import {
-  requestedProtein, proteinRuleApplies, proteinRuleBreak, rotationWheel, chooseProtein, fromHomeLine,
+  requestedProtein, proteinRuleApplies, proteinRuleBreak, rotationWheel, chooseProtein, fromHomeLine, proteinNeed,
 } from "./protein-rule";
 
 const g = (name: string, quantity: number, unit = "g") => ({ name, quantity, unit });
@@ -30,8 +30,10 @@ test("proteinRuleBreak: what is out, and what is not", () => {
   assert.equal(brk("dinner", [g("salmon fillet", 150), RICE, g("eggs", 1, ""), g("chicken broth", 100, "ml")]), null);
   assert.equal(brk("dinner", [g("ground chicken", 120), RICE]), "meat-not-at-home");
   assert.equal(brk("dinner", [g("salmon fillet", 20), g("chickpeas", 90)]), "built-on-not-at-home");
-  assert.equal(brk("dinner", [g("spinach", 120), RICE]), "main-without-protein");
-  assert.equal(brk("lunch", [g("eggs", 3, ""), g("spinach", 60)]), "main-on-side-protein");
+  // Owner, 2026-11-22: a main needs no protein at its centre (a salad, cooked potatoes), and eggs they have may carry one.
+  assert.equal(brk("dinner", [g("spinach", 120), RICE]), null);
+  assert.equal(brk("dinner", [g("potatoes", 400)]), null);
+  assert.equal(brk("lunch", [g("eggs", 3, ""), g("spinach", 60)]), null);
   assert.equal(brk("breakfast", [g("rolled oats", 50), g("banana", 1, "whole")]), null);
   assert.equal(brk("breakfast", [g("eggs", 2, ""), g("spinach", 40)]), null);
   assert.equal(brk("breakfast", [g("plain greek yogurt", 150), g("rolled oats", 40)]), "built-on-not-at-home");
@@ -44,7 +46,7 @@ test("proteinRuleBreak: the switches, eggs when eggs are all there is, and nothi
   assert.equal(brk("dinner", [g("eggs", 3, ""), g("spinach", 60)], { home: homeOf(row("Large eggs", "dairy")) }), null);
   const anyProtein = { ...DEFAULT_DISH_RULES, onlyHomeProteins: false };
   assert.equal(brk("dinner", [g("ground chicken", 120), RICE], { rules: anyProtein }), null);
-  assert.equal(brk("dinner", [g("spinach", 120), RICE], { rules: anyProtein }), "main-without-protein");
+  assert.equal(brk("dinner", [g("spinach", 120), RICE], { rules: anyProtein }), null);
   assert.equal(brk("dinner", [g("spinach", 120), RICE], { rules: { ...DEFAULT_DISH_RULES, mainsOnProtein: false } }), null);
   assert.equal(brk("dinner", [g("ground chicken", 120)], { home: [] }), null);
 });
@@ -92,7 +94,7 @@ test("an eggs-only kitchen: a main may be built on any meat-free protein, never 
   assert.equal(brk("dinner", [g("extra-firm tofu", 150), RICE], { ...eggs, wants: "a stir-fry" }), null);
   assert.equal(brk("dinner", [g("ground chicken", 120), RICE], eggs), "meat-not-at-home");
   assert.equal(brk("dinner", [g("salmon fillet", 150), RICE], eggs), "meat-not-at-home");
-  assert.equal(brk("dinner", [g("spinach", 120), RICE], eggs), "main-without-protein");
+  assert.equal(brk("dinner", [g("spinach", 120), RICE], eggs), null);
   // Breakfast and a snack keep the at-home rule.
   assert.equal(brk("breakfast", [g("red lentils", 80), RICE], eggs), "built-on-not-at-home");
   // No protein is chosen in code, at any meal or day.
@@ -100,6 +102,16 @@ test("an eggs-only kitchen: a main may be built on any meat-free protein, never 
   // Another main protein at home: the strict rule, as before.
   const withTofu = { home: homeOf(row("Large eggs", "dairy"), row("Extra-firm tofu")) };
   assert.equal(brk("dinner", [g("red lentils", 80), RICE], withTofu), "built-on-not-at-home");
-  assert.equal(brk("dinner", [g("eggs", 3, ""), g("spinach", 60)], withTofu), "main-on-side-protein");
+  assert.equal(brk("dinner", [g("eggs", 3, ""), g("spinach", 60)], withTofu), null);
   assert.equal(pick("2026-11-03", withTofu.home)!.key, "tofu");
+});
+
+test("proteinNeed: pushed when behind, unknown or building muscle; free when the week is on track; held for a kidney condition", () => {
+  const need = (over: object = {}) => proteinNeed({ conditionNames: [], motivationNames: [], weekWord: null, behindToday: false, ...over });
+  assert.equal(need(), "push");
+  assert.equal(need({ weekWord: "little" }), "push");
+  assert.equal(need({ weekWord: "on track" }), "free");
+  assert.equal(need({ weekWord: "on track", behindToday: true }), "push");
+  assert.equal(need({ weekWord: "on track", motivationNames: ["Build muscle"] }), "push");
+  assert.equal(need({ weekWord: "little", conditionNames: ["Chronic kidney disease"] }), "hold");
 });

@@ -19,7 +19,8 @@ test("a person with no reads: no target, no levels, no basics, every switch on",
   assert.deepEqual([BARE.dayCalories, BARE.week, BARE.picture, BARE.today, BARE.basics, BARE.favourites, BARE.usedToday, BARE.home], [null, [], null, null, [], [], [], []]);
   assert.deepEqual([BARE.rules, BARE.sodiumLimitMg], [DEFAULT_DISH_RULES, 2300]);
   const s = steerForAsk(BARE, ASK, WHO);
-  assert.deepEqual([s.ruleOn, s.choice, s.target.calories, s.levels, s.ceilings.sodium], [false, null, null, [], 2300]);
+  assert.deepEqual([s.ruleOn, s.choice, s.target.calories, s.levels, s.ceilings.sodium], [false, null, null, [], 1035]);
+  assert.equal(s.need, "push");
   assert.deepEqual(s.target.split, { protein: 0.30, carbs: 0.45, fat: 0.25 });
 });
 test("the full brain", () => {
@@ -31,7 +32,8 @@ test("the full brain", () => {
   assert.ok(b.basics.includes("olive oil") && b.basics.includes("salt"));
   const s = steerForAsk(b, ASK, WHO);
   assert.deepEqual(s.choice, { key: "ground beef", name: "Ground beef", why: "today" });
-  assert.deepEqual([s.ruleOn, s.target.calories, s.target.leanings, s.levels[0].key, s.ceilings.sodium], [true, 600, ["fibre", "less fat"], "sodium", 690]);
+  // One salty day is not a week: no "used up today" line, and the ceiling is the unknown-week one.
+  assert.deepEqual([s.ruleOn, s.target.calories, s.target.leanings, s.levels.map((l) => l.key), s.ceilings.sodium], [true, 600, ["fibre", "less fat"], [], 1035]);
   // what this chat already showed counts as used today, after the log
   assert.equal(steerForAsk(b, { ...ASK, avoid: ["Lemon Salmon with Spinach"] }, WHO).choice?.key, "salmon");
   const named = steerForAsk(b, { ...ASK, wants: "a chicken dish" }, WHO);
@@ -50,7 +52,8 @@ test("switches", () => {
   assert.deepEqual(off("favourFavourites").favourites, []);
   assert.equal(steerForAsk(off("sizeToCalories"), ASK, WHO).target.calories, null);
   const noLevels = steerForAsk(off("steerByLevels"), { ...ASK, summary: { little: ["fibre"], aLot: [] } }, WHO);
-  assert.deepEqual([noLevels.levels, noLevels.ceilings.sodium], [[], 2300]);
+  assert.deepEqual([noLevels.levels, noLevels.ceilings.sodium], [[], 1035]);
+  assert.equal(steerForAsk(off("mainsOnProtein"), ASK, WHO).need, "free");
 });
 test("a failed pills read means no picture, not a wrong one", () => {
   const picture = (pills: [] | null) => brainFrom({ kept: NO_KEPT_FOODS, rows: { ...NO_BRAIN_ROWS, pills }, today: "2026-11-12", patient: { ...PATIENT, usualEating: { veg: 0, fruit: 0 } } }).picture;

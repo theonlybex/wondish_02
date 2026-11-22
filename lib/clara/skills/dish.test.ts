@@ -1034,7 +1034,7 @@ test("prompt: without kept foods (absent or NO_KEPT_FOODS) the prompt is today's
   ];
   // DISH_CRAFT_LINES includes the plain-ingredient-names line (dish names stay readable, 2026-11-21).
   assert.ok(DISH_CRAFT_LINES.includes(`- Ingredient names are plain food names, with no comma and no state or cut after it: "jasmine rice", "carrots" — never "jasmine rice, dry" or "carrots, peeled and sliced".`));
-  const NEW_FOR_EVERYONE = [...DISH_CRAFT_LINES, "- Macro split to aim for, by calories: ~30% protein, ~45% carbs, ~25% fat.", "- A lunch or dinner gets at least 15% of its calories from protein."];
+  const NEW_FOR_EVERYONE = [...DISH_CRAFT_LINES, "- Macro split to aim for, by calories: ~30% protein, ~45% carbs, ~25% fat.", "- Sodium: each serving must stay at or under 1030 mg in total, counting salt, stock, sauces, cheese and bread."];
   for (const [bannedNames, hash] of before) {
     for (const kept of [undefined, NO_KEPT_FOODS]) {
       const lines = dishSystemPrompt({ ...KEPT_BASE, bannedNames, ...(kept ? { kept } : {}) }).split("\n");
@@ -1112,9 +1112,10 @@ test("prompt: the size, the split, the protein floor and the goal", () => {
   for (const l of [
     "- Size: this Dinner should be about 600 kcal per serving (their day is 2000 kcal); choose the portions to land there. It must be between 330 and 750 kcal.",
     "- Macro split to aim for, by calories: ~30% protein, ~40% carbs, ~30% fat.",
-    "- A lunch or dinner gets at least 15% of its calories from protein.",
     "- Their goal: lean towards protein.",
   ]) assert.ok(p.split("\n").includes(l), l);
+  // Owner, 2026-11-22: the 15% protein floor is off.
+  assert.doesNotMatch(p, /15% of its calories/);
 });
 test("prompt: same day, same protein, in a different dish", () => {
   const p = withBrain({ kept: SALMON_AND_BEEF, rows: { ...NO_BRAIN_ROWS, todayDishes: ["Beef and Rice Skillet"] } });
@@ -1129,9 +1130,15 @@ test("prompt: levels from the answers (at most four), and today's sodium", () =>
   ]);
   // eleven levels out of line: four lines
   assert.equal(answersLines(withBrain(person({ veg: 0, fruit: 0, beans: 0, grains: 0, fish: 0, meat: 0, dairy: 0, packaged: 2, sweet: 2 }))).length, 4);
-  const day = { localDate: "2026-11-12", meals: 2, calories: 900, protein: 60, carbs: 100, fibre: 14, sodium: 2100, saturatedFat: 8, addedSugar: 10 };
-  const q = withBrain({ kept: NO_KEPT_FOODS, today: "2026-11-12", patient: NOBODY, rows: { ...NO_BRAIN_ROWS, week: { range: { fromDate: "2026-11-06", toDate: "2026-11-12" }, days: [day] } } });
-  assert.match(q, /- Today's meals have already used most of the day's sodium: keep this serving at or under 350 mg/);
+  // Limits are weekly (owner, 2026-11-22): one salty day says nothing; a salty week does, and sets the ceiling.
+  const day = (localDate: string) => ({ localDate, meals: 3, calories: 1800, protein: 80, carbs: 200, fibre: 28, sodium: 2900, saturatedFat: 8, addedSugar: 10 });
+  const weekOf = (dates: string[]) => withBrain({ kept: NO_KEPT_FOODS, today: "2026-11-12", patient: NOBODY, rows: { ...NO_BRAIN_ROWS, week: { range: { fromDate: "2026-11-06", toDate: "2026-11-12" }, days: dates.map(day) } } });
+  const one = weekOf(["2026-11-12"]);
+  assert.doesNotMatch(one, /Today's meals have already used|a lot of sodium this week/);
+  assert.ok(one.split("\n").includes("- Sodium: each serving must stay at or under 1030 mg in total, counting salt, stock, sauces, cheese and bread."));
+  const salty = weekOf(["2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12"]);
+  assert.match(salty, /- They have had a lot of sodium this week: keep every serving at or under 350 mg/);
+  assert.ok(salty.split("\n").includes("- Sodium: each serving must stay at or under 690 mg in total, counting salt, stock, sauces, cheese and bread."));
 });
 test("prompt: kitchen basics, and every liked food", () => {
   const matchers = buildDietMatchers(derivePatientBans({ foodAllergies: [], foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [] } as any));
@@ -1319,6 +1326,33 @@ test("prompt: a lunch or dinner request that names no protein leans on the prote
   assert.ok(proteinLineOf(breakfast).endsWith("not in an ingredient, the dish name, the description or a step."), proteinLineOf(breakfast));
   // Nothing marked: no protein line of this kind at all.
   assert.doesNotMatch(withBrain({ kept: NO_KEPT_FOODS }, stirFry), /protein at its centre/);
+});
+
+// Owner, 2026-11-22: protein is a need of the day, not a rule for every dish.
+test("prompt: protein is pushed when needed, optional when the week is on track, modest for a kidney condition", () => {
+  const day = (protein: number) => (localDate: string) => ({ localDate, meals: 3, calories: 1900, protein, carbs: 220, fibre: 28, sodium: 1500, saturatedFat: 8, addedSugar: 10 });
+  const dates = ["2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11"];
+  const person = (protein: number | null, patient: object = NOBODY) => withBrain({
+    kept: SALMON_AND_BEEF, today: "2026-11-12", patient: patient as never,
+    rows: { ...NO_BRAIN_ROWS, ...(protein === null ? {} : { week: { range: { fromDate: "2026-11-06", toDate: "2026-11-12" }, days: dates.map(day(protein)) } }) },
+  });
+  const HEART = /This protein is the heart of the dish/;
+  // Nothing logged, or little protein this week: built on it.
+  for (const p of [person(null), person(15)]) {
+    assert.match(p, /- Build this Dinner on (Salmon fillets|Ground beef), which they have at home\./);
+    assert.match(p, HEART);
+  }
+  // On track: a dish with no protein is fine; the at-home rule still names the only meats allowed.
+  const free = person(55);
+  assert.match(free, /- This Dinner does not have to be built on a protein: they are getting enough this week, so a salad, a vegetable plate or a potato dish is fine too\. If it has a protein at its centre, make it (Salmon fillets|Ground beef), which they have at home\. Any other meat, fish or seafood in it must be one of these, which they have at home: Salmon fillets, Ground beef; use no other meat, fish or seafood/);
+  assert.doesNotMatch(free, HEART);
+  assert.doesNotMatch(free, /- Build this Dinner on/);
+  // A muscle goal keeps the push even on track.
+  assert.match(person(55, { ...NOBODY, motivations: [{ motivation: { name: "Build muscle" } }] }), /- Build this Dinner on/);
+  // A kidney condition: modest.
+  const held = person(15, { ...NOBODY, healthConditions: [{ condition: { name: "Chronic kidney disease" } }] });
+  assert.match(held, /- Their condition calls for modest protein: keep the protein portion of this Dinner small\. If it has a protein food, make it (Salmon fillets|Ground beef), which they have at home\./);
+  assert.doesNotMatch(held, HEART);
 });
 
 // Owner, 2026-11-22: eggs as the only protein at home.

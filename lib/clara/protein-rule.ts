@@ -41,11 +41,35 @@ export function proteinRuleBreak(a: {
     }
     if (built && !homeKeys.has(built.key) && !freeMain) return "built-on-not-at-home";
   }
-  if (a.rules.mainsOnProtein && isMain && a.wants === undefined) {
-    if (!built) return "main-without-protein";
-    if (a.rules.onlyHomeProteins && !freeMain && !mainProteins(a.home).some((p) => p.key === built.key)) return "main-on-side-protein";
-  }
+  // OFF 2026-11-22 (owner: "lets remove the protein has to be in every dish for now"): a lunch or
+  // dinner with no protein at its centre (a salad, cooked potatoes) passes. Protein is a need of the
+  // day now (proteinNeed below), asked for in the instructions, never a reason to drop a dish.
+  // Restore: uncomment.
+  // if (a.rules.mainsOnProtein && isMain && a.wants === undefined) {
+  //   if (!built) return "main-without-protein";
+  //   if (a.rules.onlyHomeProteins && !freeMain && !mainProteins(a.home).some((p) => p.key === built.key)) return "main-on-side-protein";
+  // }
   return null;
+}
+
+/**
+ * How much this dish should lean on protein (owner, 2026-11-22):
+ *  - "hold": a condition calls for modest protein (a kidney condition);
+ *  - "free": this week's logs put protein on track and today is not behind: the dish may have none;
+ *  - "push": everything else (behind, a muscle goal, or nothing logged to go by).
+ */
+export type ProteinNeed = "push" | "free" | "hold";
+export function proteinNeed(a: {
+  conditionNames: readonly string[];
+  motivationNames: readonly string[];
+  /** The week's word for protein on the Numbers tab; null when there are not enough logs. */
+  weekWord: string | null;
+  /** Today's logs put protein well behind for this time of day. */
+  behindToday: boolean;
+}): ProteinNeed {
+  if (a.conditionNames.some((n) => n.toLowerCase().includes("kidney"))) return "hold";
+  if (a.motivationNames.some((m) => /muscle|gain/i.test(m))) return "push";
+  return a.weekWord === "on track" && !a.behindToday ? "free" : "push";
 }
 
 export interface ProteinChoice { key: string; name: string; why: "today" | "rotation" }

@@ -22,15 +22,17 @@ test("a sound dish passes, and says what it is built on", () => assert.deepEqual
 test("size and protein share only relax the dish", () => {
   assert.deepEqual(j({ calories: 900 }), { level: "relaxed", reasons: ["size:too-large"], builtOn: "salmon" });
   assert.deepEqual(j({ calories: 320 }).reasons, ["size:too-small"]);
-  assert.deepEqual(j({ proteinG: 20 }), { level: "relaxed", reasons: ["protein-share"], builtOn: "salmon" });
-  assert.deepEqual(j({ calories: 900, proteinG: 20 }).reasons, ["size:too-large", "protein-share"]);
+  // Owner, 2026-11-22: the 15% protein floor is off.
+  assert.deepEqual(j({ proteinG: 20 }), { level: "pass", reasons: [], builtOn: "salmon" });
+  assert.deepEqual(j({ calories: 900, proteinG: 20 }).reasons, ["size:too-large"]);
 });
 test("the protein rule, honesty and limits are never relaxed", () => {
   const chicken = [g("ground chicken", 150), g("jasmine rice", 60)];
   assert.deepEqual(j({ ingredients: chicken }), { level: "fail", reasons: ["protein:meat-not-at-home"], builtOn: "ground chicken" });
   assert.deepEqual(j({ ingredients: chicken, calories: 900 }).reasons, ["protein:meat-not-at-home", "size:too-large"]);
   assert.equal(j({ ingredients: chicken, calories: 900 }).level, "fail");
-  assert.deepEqual(j({ ingredients: [g("spinach", 120), g("jasmine rice", 60)], proteinG: 30 }), { level: "fail", reasons: ["protein:main-without-protein"], builtOn: null });
+  // A main with no protein at its centre passes (owner, 2026-11-22).
+  assert.deepEqual(j({ name: "Spinach Rice", ingredients: [g("spinach", 120), g("jasmine rice", 60)], proteinG: 6 }), { level: "pass", reasons: [], builtOn: null });
   assert.deepEqual(j({ name: "Salmon Fillet" }).reasons, ["honest:named-after-ingredient"]);
   assert.equal(j({ name: "Salmon Fillet" }).level, "fail");
   assert.deepEqual(j({ known: { sodium: 900 } }), { level: "fail", reasons: ["limit:sodium"], builtOn: "salmon" });
