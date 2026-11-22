@@ -297,6 +297,7 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
   const judgeMod = await import("@/lib/clara/dish-judge");
   const catalogMod = await import("@/lib/ingredient-catalog");
   const groceryMod = await import("@/lib/clara/grocery");
+  const levelNames = new Map<string, string>((await import("@/lib/level-catalogue")).LEVELS.map((l: any) => [l.key, l.name]));
   const { DishItemExtractor } = await import("@/lib/clara/dish-output");
   const { priceDish } = await import("@/lib/staple-density");
   const FISH = /\b(salmon|tuna|cod|haddock|tilapia|trout|mackerel|sardines?|anchov(y|ies)|halibut|bass|snapper|pollock|catfish|swordfish|fish)\b/i;
@@ -419,7 +420,7 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
       appendFileSync(OUT, JSON.stringify(row) + "\n");
       done.set(`${s.id}|1`, row);
       console.log(`\n── ${s.id}: ${s.title}\n   at home [${s.atHome.join(", ")}] · week [${row.week.join(", ")}] · answers little [${brain.picture?.little.join(", ") ?? "-"}]` +
-        before.map((g: any) => `\n   ${g.title} — ${g.reason}\n      ${g.items.map((i: any) => `${i.name}${i.favorite ? "♥" : ""}`).join(", ")}`).join("") +
+        before.map((g: any) => `\n   ${g.title} — ${g.reason}${g.also?.length ? ` Also covers ${g.also.map((x: any) => `${x.level} (${x.food})`).join(", ")}.` : ""}\n      ${g.items.map((i: any) => `${i.name}${i.favorite ? "♥" : ""}`).join(", ") || "(no foods)"}${g.note ? `\n      note: ${g.note}` : ""}`).join("") +
         `\n   after Got it on [${row.bought.join(", ")}]: ${after.map((g: any) => `${g.title} (${g.items.length})`).join("; ") || "nothing to buy"} · diet: ${row.oracle}`);
       continue;
     }
@@ -872,20 +873,27 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
     }
     return bad.length ? bad.join(", ") : null;
   });
-  whole("G4 grocery: every nutrient they are low on has a group, a real source at home or on the list, or a note", gRows, () => {
+  whole("G4 grocery: every nutrient they are low on is a group, named in one, or has a real source at home; no group is empty without a note", gRows, () => {
     const bad: string[] = [];
-    for (const r of gRows) for (const k of (r.picture?.little ?? []) as string[]) {
-      const src = groceryMod.SOURCES[k as keyof typeof groceryMod.SOURCES];
-      if (!src) continue;
-      const strong = src.foods.slice(0, src.strong);
-      const group = r.before.find((g: any) => g.key === `level:${k}`);
-      const covered = strong.some((n: string) => r.atHome.includes(n)) || r.before.some((g: any) => g.items.some((i: any) => strong.includes(i.name)));
-      if (!group && !covered && r.before.filter((g: any) => g.kind === "level" && g.items.length).length < groceryMod.MAX_LEVEL_GROUPS) bad.push(`${id(r)} ${k}`);
+    for (const r of gRows) {
+      const lows = new Set<string>([...((r.picture?.little ?? []) as string[]), ...(r.week as string[]).filter((w) => w.includes(":little")).map((w) => w.split(":")[0])]);
+      const lowerName = (k: string) => { const n = levelNames.get(k) ?? k; return n.charAt(0).toLowerCase() + n.slice(1); };
+      const levelGroups = r.before.filter((g: any) => g.kind === "level");
+      for (const k of lows) {
+        const src = groceryMod.SOURCES[k as keyof typeof groceryMod.SOURCES];
+        const strong = src ? src.foods.slice(0, src.strong) : [];
+        const atHome = k === "protein" ? r.atHome.some((n: string) => proteinKind(n) !== null) : strong.some((n: string) => r.atHome.includes(n));
+        const group = levelGroups.some((g: any) => g.key === `level:${k}`);
+        const named = levelGroups.some((g: any) => (g.also ?? []).some((x: any) => x.level === lowerName(k)));
+        const capped = levelGroups.filter((g: any) => g.items.length && !g.note).length >= groceryMod.MAX_LEVEL_GROUPS;
+        if (!group && !named && !atHome && !capped) bad.push(`${id(r)} ${k}`);
+      }
+      for (const g of r.before) if (g.items.length === 0 && !g.note) bad.push(`${id(r)} ${g.key} (empty, no note)`);
     }
     return bad.length ? bad.join(", ") : null;
   });
-  whole("G5 grocery: at most 26 foods, 4 to a nutrient group and 3 to a variety group", gRows, () => {
-    const bad = gRows.filter((r) => r.before.flatMap((g: any) => g.items).length > 26 || r.before.some((g: any) => g.items.length > (g.kind === "level" ? 4 : 3)));
+  whole("G5 grocery: at most 29 foods, 4 to a nutrient group and 3 to a variety group", gRows, () => {
+    const bad = gRows.filter((r) => r.before.flatMap((g: any) => g.items).length > 29 || r.before.some((g: any) => g.items.length > (g.kind === "level" ? 4 : 3)));
     return bad.length ? bad.map(id).join(", ") : null;
   });
   whole("G3 grocery: 'Got it' takes the food off the list", gRows, () => {

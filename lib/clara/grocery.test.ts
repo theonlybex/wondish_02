@@ -4,7 +4,7 @@ import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
 import { LEVELS, type FullLevelKey } from "@/lib/level-catalogue";
 import type { CatalogRow } from "./kept-foods";
 import type { SteerRow } from "./level-steer";
-import { groceryGroups, lowLevels, richRows, SOURCES, MAX_LEVEL_ITEMS, MAX_VARIETY_ITEMS, MAX_LEVEL_GROUPS, NO_FOOD_NOTE } from "./grocery";
+import { groceryGroups, lowLevels, richRows, SOURCES, MAX_LEVEL_ITEMS, MAX_VARIETY_ITEMS, MAX_LEVEL_GROUPS, NO_FOOD_NOTE, SMALL_SOURCES_NOTE } from "./grocery";
 
 /** The real catalog, with marks. */
 const catalog = (atHome: string[] = [], favorites: string[] = [], banned: (name: string) => boolean = () => false): CatalogRow[] =>
@@ -43,7 +43,7 @@ test("the sources table: every level that can be low has real sources, and every
 test("a nutrient group appears only when they are low on it and no real source is at home", () => {
   const g = groceryGroups({ rows: catalog(KITCHEN), week: [wk("fibre", "little")], picture: null });
   const fibre = g.find((x) => x.key === "level:fibre")!;
-  assert.deepEqual([fibre.kind, fibre.title, fibre.reason], ["level", "For fibre", "You've had little fibre this week, and nothing at home is a good source of it."]);
+  assert.deepEqual([fibre.kind, fibre.title, fibre.reason], ["level", "For fibre", "You've had little fibre this week, and you have no strong source of it at home."]);
   // One of each kind, the strongest first: one lentil, one bean.
   assert.deepEqual(names(fibre), ["Green lentils", "Black beans", "Rolled oats", "Chia seeds"]);
   assert.equal(fibre.items.length, MAX_LEVEL_ITEMS);
@@ -52,14 +52,20 @@ test("a nutrient group appears only when they are low on it and no real source i
   // A weak source at home does not close it: brown rice for fibre, eggs for vitamin D.
   assert.ok(groceryGroups({ rows: catalog([...KITCHEN, "Brown rice"]), week: [wk("fibre", "little")], picture: null }).some((x) => x.key === "level:fibre"));
   const d = groceryGroups({ rows: catalog(["Large eggs", "Ground beef", "Spinach", "Kale", "Jasmine rice", "Brown rice"]), week: [], picture: little("vitaminD") }).find((x) => x.key === "level:vitaminD")!;
-  assert.deepEqual(names(d), ["Salmon fillets", "Canned tuna"]);
+  // Salmon and fortified milk are the real sources; a can of tuna is not.
+  assert.deepEqual(names(d), ["Salmon fillets", "Whole milk"]);
+  assert.equal(groceryGroups({ rows: catalog(["Canned tuna", "Large eggs", "Ground beef", "Spinach", "Kale", "Jasmine rice", "Brown rice"]), week: [], picture: little("vitaminD") }).some((x) => x.key === "level:vitaminD"), true);
+  assert.equal(groceryGroups({ rows: catalog(["Whole milk", "Ground beef", "Chicken thighs", "Spinach", "Kale", "Jasmine rice", "Spaghetti"]), week: [], picture: little("vitaminD") }).some((x) => x.key === "level:vitaminD"), false);
   // On track: no group.
   assert.equal(groceryGroups({ rows: catalog(KITCHEN), week: [wk("fibre", "on track")], picture: null }).some((x) => x.kind === "level"), false);
   // From the answers, with its own wording; a favourite leads the group; a vitamin keeps its letter.
-  const a = groceryGroups({ rows: catalog(KITCHEN.filter((n) => n !== "Salmon fillets"), ["Walnuts"]), week: [], picture: little("omega3", "vitaminC") });
+  const a = groceryGroups({ rows: catalog(KITCHEN.filter((n) => n !== "Salmon fillets"), ["Canned tuna"]), week: [], picture: little("omega3", "vitaminC") });
   const omega = a.find((x) => x.key === "level:omega3")!;
-  assert.equal(omega.reason, "From your answers you probably get little omega-3, and nothing at home is a good source of it.");
-  assert.deepEqual(omega.items[0], { id: "id:Walnuts", name: "Walnuts", favorite: true });
+  assert.equal(omega.reason, "From your answers you probably get little omega-3, and you have no strong source of it at home.");
+  assert.deepEqual(omega.items[0], { id: "id:Canned tuna", name: "Canned tuna", favorite: true });
+  // The plant kind is not offered beside the fish: walnuts at home do not close it either.
+  assert.deepEqual(names(omega), ["Canned tuna", "Salmon fillets"]);
+  assert.ok(groceryGroups({ rows: catalog(["Walnuts", "Ground beef", "Chicken thighs", "Spinach", "Kale", "Jasmine rice", "Spaghetti"]), week: [], picture: little("omega3") }).some((x) => x.key === "level:omega3"));
   assert.equal(a.find((x) => x.key === "level:vitaminC"), undefined); // kale at home is a real source
   const c = groceryGroups({ rows: catalog(["Ground beef", "Jasmine rice"]), week: [], picture: little("vitaminC") }).find((x) => x.key === "level:vitaminC")!;
   assert.deepEqual([c.title, names(c)], ["For vitamin C", ["Bell peppers", "Broccoli", "Oranges", "Strawberries"]]);
@@ -96,17 +102,46 @@ test("a variety group opens for a family with fewer than two foods at home", () 
   // Owner: "if only one like only eggs or only beef then open group Protein Variety".
   const eggsOnly = groceryGroups({ rows: catalog(["Large eggs", "Spinach", "Kale", "Jasmine rice", "Russet potatoes"]), week: [], picture: null });
   const protein = eggsOnly.find((x) => x.key === "variety:proteins")!;
-  assert.deepEqual([protein.title, protein.reason], ["Protein variety", "You have only one protein at home: Large eggs. A second gives Clara different dishes to make."]);
+  assert.deepEqual([protein.title, protein.reason], ["Protein variety", "You have only one kind of protein at home: Large eggs. A second gives Clara different dishes to make."]);
   // A mix, one of each kind, and not another of what they have.
   assert.deepEqual(names(protein), ["Boneless chicken breasts", "Salmon fillets", "Ground beef"]);
   assert.deepEqual(eggsOnly.map((x) => x.key), ["variety:proteins", "variety:grains"]);
   assert.deepEqual(names(eggsOnly[1]), ["Rolled oats", "Spaghetti", "Sliced bread"]); // no second rice beside the rice
-  assert.match(eggsOnly[1].reason, /^You have only one grain or carb at home: Jasmine rice\./);
+  assert.match(eggsOnly[1].reason, /^You have only one kind of grain or carb at home: Jasmine rice\./);
   // Nothing marked at all: every family, each saying so.
   const empty = groceryGroups({ rows: catalog(), week: [], picture: null });
   assert.deepEqual(empty.map((x) => x.key), ["variety:proteins", "variety:produce", "variety:grains"]);
   assert.equal(empty[0].reason, "You have no protein marked at home. Clara needs at least one, and a second gives her different dishes to make.");
   assert.deepEqual(names(empty[1]), ["Broccoli", "Bell peppers", "Carrots"]);
   // A full kitchen: nothing to buy.
-  assert.deepEqual(groceryGroups({ rows: catalog([...KITCHEN, "Brown rice"]), week: [], picture: null }), []);
+  assert.deepEqual(groceryGroups({ rows: catalog([...KITCHEN, "Spaghetti"]), week: [], picture: null }), []);
+});
+
+test("no low nutrient goes unnamed: one the list already covers is named in the group that covers it", () => {
+  const g = groceryGroups({ rows: catalog(["Large eggs", "Spinach", "Jasmine rice"]), week: [], picture: little("fibre", "iron", "vitaminD", "vitaminB12") });
+  const fibre = g.find((x) => x.key === "level:fibre")!;
+  // Iron has no group of its own: the lentils in the fibre group are its source, and the group says so.
+  assert.equal(g.some((x) => x.key === "level:iron"), false);
+  assert.deepEqual(fibre.also, [{ level: "iron", food: "Green lentils" }]);
+  // B12 comes first on the Numbers list, so its group names vitamin D (the salmon covers both).
+  const b12 = g.find((x) => x.key === "level:vitaminB12")!;
+  assert.deepEqual(b12.also, [{ level: "vitamin D", food: "Salmon fillets" }]);
+  assert.equal(g.some((x) => x.key === "level:vitaminD"), false);
+  // Every low nutrient is either a group, named in one, or covered at home.
+  const said = new Set([...g.filter((x) => x.kind === "level").map((x) => x.title.replace("For ", "")), ...g.flatMap((x) => (x.also ?? []).map((y) => y.level))]);
+  for (const k of ["fibre", "iron", "vitamin D", "vitamin B12"]) assert.ok(said.has(k), k);
+});
+
+test("a vegan low on omega-3 gets the small plant sources with a note; a salty week is not sent for salty foods; variety counts kinds", () => {
+  const animal = (n: string) => /salmon|tuna|tilapia|catfish|shrimp|beef|steak|chicken|turkey|pork|bacon|eggs|whole milk|yogurt|cheddar|mozzarella|parmesan|feta|butter|cream/i.test(n);
+  const vegan = groceryGroups({ rows: catalog([], [], animal), week: [], picture: little("omega3") }).find((x) => x.key === "level:omega3")!;
+  assert.deepEqual([names(vegan), vegan.note], [["Walnuts", "Chia seeds", "Ground flaxseed"], SMALL_SOURCES_NOTE]);
+  // A lot of sodium this week: no cheddar, tuna or sliced bread among the suggestions.
+  const salty = groceryGroups({ rows: catalog(["Ground beef", "Spinach"]), week: [{ key: "sodium" as FullLevelKey, name: "sodium", direction: "under", target: 2300, amount: 3000, word: "a lot" }], picture: little("calcium", "vitaminB12") });
+  for (const x of salty) for (const i of x.items) assert.ok(!["Shredded cheddar", "Canned tuna", "Sliced bread", "Feta cheese"].includes(i.name), i.name);
+  // Two rices are one kind of grain; bacon is not a second protein.
+  const rices = groceryGroups({ rows: catalog(["Ground beef", "Salmon fillets", "Spinach", "Kale", "Jasmine rice", "Basmati rice"]), week: [], picture: null });
+  assert.deepEqual(rices.map((x) => x.key), ["variety:grains"]);
+  const bacon = groceryGroups({ rows: catalog(["Bacon", "Large eggs", "Spinach", "Kale", "Jasmine rice", "Spaghetti"]), week: [], picture: null });
+  assert.deepEqual(bacon.map((x) => x.key), ["variety:proteins"]);
 });

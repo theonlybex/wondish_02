@@ -21,8 +21,10 @@ export interface GroceryGroup {
   reason: string;
   /** May be empty for a level their diet leaves no food for; then `note` says what to do. */
   items: GroceryItem[];
-  /** Only with no items: nothing they eat is a source of it. */
+  /** Nothing they eat is a real source of it: what people usually do. With foods, those are the small sources. */
   note?: string;
+  /** Other nutrients they are low on that a food in this group also covers, so none goes unnamed. */
+  also?: { level: string; food: string }[];
 }
 
 /** The most foods in a nutrient group, and in a variety group (one purchase closes a variety group). */
@@ -61,7 +63,8 @@ export function lowLevels(week: readonly SteerRow[], picture: PictureLevels | nu
 /** Protein foods are a catalog group, not a list. */
 const isProteinRow = (r: CatalogRow) => {
   const k = proteinKind(r.name);
-  return k !== null && k.cls !== "dairy";
+  // Bacon seasons a dish; it is not what a meal is built on.
+  return k !== null && k.cls !== "dairy" && !/\bbacon\b/i.test(r.name);
 };
 
 // A mixed first offer for proteins (the catalog lists the poultry and red meats first): a bird, a fish, a red meat, a plant protein, a pulse.
@@ -84,23 +87,26 @@ const mixedProteins = ranked(PROTEIN_FIRST);
  */
 export const SOURCES: Readonly<Partial<Record<FullLevelKey, { foods: readonly string[]; strong: number }>>> = {
   carbs: { foods: ["Jasmine rice", "Russet potatoes", "Rolled oats", "Spaghetti", "Sliced bread", "Brown rice", "Sweet potatoes", "Quinoa"], strong: 8 },
-  fibre: { foods: ["Green lentils", "Black beans", "Rolled oats", "Chia seeds", "Garbanzo beans", "Red lentils", "White beans", "Ground flaxseed", "Green peas", "Barley", "Quinoa", "Avocados", "Broccoli", "Brown rice"], strong: 11 },
-  omega3: { foods: ["Salmon fillets", "Walnuts", "Chia seeds", "Ground flaxseed", "Canned tuna"], strong: 4 },
+  fibre: { foods: ["Green lentils", "Black beans", "Rolled oats", "Chia seeds", "Garbanzo beans", "Red lentils", "White beans", "Avocados", "Green peas", "Barley", "Quinoa", "Ground flaxseed", "Broccoli", "Brown rice"], strong: 11 },
+  // The target (250 mg) is the fish kind, EPA and DHA. Walnuts, chia and flax carry the plant kind, of which the body turns little into those.
+  omega3: { foods: ["Salmon fillets", "Canned tuna", "Walnuts", "Chia seeds", "Ground flaxseed"], strong: 2 },
   potassium: { foods: ["Russet potatoes", "White beans", "Spinach", "Bananas", "Avocados", "Sweet potatoes", "Black beans", "Green lentils", "Yukon Gold potatoes"], strong: 9 },
-  calcium: { foods: ["Plain Greek yogurt", "Whole milk", "Extra-firm tofu", "Shredded cheddar", "Almond milk", "Oat milk", "Shredded mozzarella", "Grated parmesan", "Kale", "Sesame seeds"], strong: 8 },
+  // Tofu counts when set with calcium and the plant milks when fortified, as most sold are. Parmesan is eaten by the spoonful.
+  calcium: { foods: ["Plain Greek yogurt", "Whole milk", "Extra-firm tofu", "Shredded cheddar", "Almond milk", "Oat milk", "Shredded mozzarella", "Kale", "White beans", "Almonds", "Grated parmesan", "Sesame seeds"], strong: 7 },
   iron: { foods: ["Green lentils", "Ground beef", "Garbanzo beans", "Extra-firm tofu", "Black beans", "Red lentils", "White beans", "Sirloin steak", "Spinach"], strong: 8 },
   magnesium: { foods: ["Almonds", "Black beans", "Spinach", "Rolled oats", "Quinoa", "Chia seeds", "Brown rice"], strong: 6 },
   zinc: { foods: ["Ground beef", "Garbanzo beans", "Green lentils", "Sirloin steak", "Sesame seeds", "Rolled oats"], strong: 4 },
-  iodine: { foods: ["Tilapia fillets", "Shrimp", "Whole milk", "Plain Greek yogurt", "Canned tuna", "Large eggs"], strong: 5 },
+  iodine: { foods: ["Whole milk", "Plain Greek yogurt", "Large eggs", "Shrimp", "Canned tuna", "Tilapia fillets"], strong: 3 },
   vitaminA: { foods: ["Sweet potatoes", "Carrots", "Spinach", "Kale", "Large eggs"], strong: 4 },
   vitaminB6: { foods: ["Garbanzo beans", "Salmon fillets", "Boneless chicken breasts", "Russet potatoes", "Bananas"], strong: 5 },
   // The plant milks are usually fortified with B12 and D; nothing else a vegan eats carries them.
-  vitaminB12: { foods: ["Salmon fillets", "Ground beef", "Canned tuna", "Whole milk", "Plain Greek yogurt", "Large eggs", "Oat milk", "Almond milk"], strong: 5 },
+  vitaminB12: { foods: ["Salmon fillets", "Ground beef", "Canned tuna", "Sirloin steak", "Whole milk", "Plain Greek yogurt", "Large eggs", "Oat milk", "Almond milk"], strong: 6 },
   vitaminC: { foods: ["Bell peppers", "Broccoli", "Oranges", "Strawberries", "Brussels sprouts", "Kale", "Roma tomatoes", "Lemons"], strong: 6 },
-  vitaminD: { foods: ["Salmon fillets", "Canned tuna", "Whole milk", "Oat milk", "Almond milk", "Large eggs"], strong: 2 },
+  // Salmon, and milk as sold (fortified). A can of tuna or an egg gives about a twentieth of the day.
+  vitaminD: { foods: ["Salmon fillets", "Whole milk", "Oat milk", "Almond milk", "Canned tuna", "Large eggs"], strong: 2 },
   vitaminE: { foods: ["Almonds", "Avocados", "Spinach"], strong: 2 },
   vitaminK: { foods: ["Kale", "Spinach", "Broccoli", "Green cabbage", "Brussels sprouts"], strong: 5 },
-  folate: { foods: ["Green lentils", "Garbanzo beans", "Spinach", "Asparagus", "Broccoli", "Avocados"], strong: 6 },
+  folate: { foods: ["Green lentils", "Garbanzo beans", "Black beans", "Spinach", "Asparagus", "Broccoli", "Avocados"], strong: 7 },
 };
 
 /** The catalog foods that are sources of a level, strongest first, with whether each is a real source. */
@@ -147,6 +153,8 @@ function pick(rows: readonly CatalogRow[], max: number): GroceryItem[] {
 /** "Fibre" → "fibre", "Vitamin C" → "vitamin C", "Omega-3" → "omega-3". */
 const lowerFirst = (name: string) => name.charAt(0).toLowerCase() + name.slice(1);
 
+export const SMALL_SOURCES_NOTE = "Nothing your diet allows is a strong source of it. These give a little; fortified foods or a supplement are the usual way, and a doctor or pharmacist can say what suits you.";
+const SALTY = new Set(["Shredded cheddar", "Canned tuna", "Sliced bread", "Feta cheese", "Grated parmesan", "Bacon", "Shredded mozzarella"]);
 export const NO_FOOD_NOTE = "Nothing your diet allows is a good source of it. Fortified foods or a supplement are the usual way; a doctor or pharmacist can say what suits you.";
 
 /**
@@ -161,10 +169,15 @@ export const NO_FOOD_NOTE = "Nothing your diet allows is a good source of it. Fo
  *  - A food is listed once, in the first group that names it.
  */
 export function groceryGroups(a: { rows: readonly CatalogRow[]; week: readonly SteerRow[]; picture: PictureLevels | null }): GroceryGroup[] {
+  // Someone who already gets a lot of sodium is not sent to buy the salty sources.
+  const tooMuchSodium = a.week.some((r) => r.key === "sodium" && (r.word === "a lot" || r.word === "more than needed")) || (a.picture?.aLot ?? []).includes("sodium");
+  const allowed = (r: CatalogRow) => !(tooMuchSodium && SALTY.has(r.name));
+  /** Which group lists each food, for "also covers". */
+  const groupOf = new Map<string, GroceryGroup>();
   const groups: GroceryGroup[] = [];
   const listed = new Map<string, CatalogRow>();
   const take = (rows: readonly CatalogRow[], max: number) => {
-    const fresh = rows.filter((r) => !r.atHome && !listed.has(r.id));
+    const fresh = rows.filter((r) => !r.atHome && !listed.has(r.id) && allowed(r));
     const items = pick(fresh, max);
     for (const i of items) listed.set(i.id, fresh.find((r) => r.id === i.id)!);
     return items;
@@ -178,23 +191,36 @@ export function groceryGroups(a: { rows: readonly CatalogRow[]; week: readonly S
     const opening = low.why === "week" ? `You've had little ${lower} this week` : `From your answers you probably get little ${lower}`;
     const strong = rich.filter((x) => x.strong).map((x) => x.row);
     if (strong.length === 0) {
-      groups.push({ key: `level:${low.key}`, kind: "level", title: `For ${lower}`, reason: `${opening}.`, items: [], note: NO_FOOD_NOTE });
+      // Nothing they eat is a real source: say so, and list the small sources they may eat, if any.
+      const small = take(rich.map((x) => x.row), MAX_VARIETY_ITEMS);
+      const g: GroceryGroup = { key: `level:${low.key}`, kind: "level", title: `For ${lower}`, reason: `${opening}.`, items: small, note: small.length > 0 ? SMALL_SOURCES_NOTE : NO_FOOD_NOTE };
+      for (const i of small) groupOf.set(i.id, g);
+      groups.push(g);
       continue;
     }
-    // A real source of it is already on the list, in a group above (the salmon under omega-3 is the B12 too).
-    if (strong.some((r) => listed.has(r.id))) continue;
+    // A real source of it is already on the list, in a group above (the salmon under vitamin D is the
+    // B12 too): no group of its own, but that group names it, so no low nutrient goes unsaid.
+    const covering = strong.find((r) => listed.has(r.id));
+    if (covering) {
+      const g = groupOf.get(covering.id);
+      if (g) g.also = [...(g.also ?? []), { level: lower, food: covering.name }];
+      continue;
+    }
     if (withFoods >= MAX_LEVEL_GROUPS) continue;
     const items = take(strong, MAX_LEVEL_ITEMS);
-    if (items.length === 0) continue; // Every source is already listed in a group above.
+    if (items.length === 0) continue; // Every real source they may buy is ruled out (too salty for them).
     withFoods++;
-    groups.push({ key: `level:${low.key}`, kind: "level", title: `For ${lower}`, reason: `${opening}, and nothing at home is a good source of it.`, items });
+    const g: GroceryGroup = { key: `level:${low.key}`, kind: "level", title: `For ${lower}`, reason: `${opening}, and you have no strong source of it at home.`, items };
+    for (const i of items) groupOf.set(i.id, g);
+    groups.push(g);
   }
 
   for (const f of FAMILIES) {
     const have = a.rows.filter((r) => r.atHome && f.has(r));
-    if (have.length >= MIN_FAMILY_AT_HOME) continue;
+    // Two kinds, not two foods: jasmine and basmati are one rice.
+    if (new Set(have.map(kindOf)).size >= MIN_FAMILY_AT_HOME) continue;
     // The groups above already offer two foods of this family: buying from them fixes it.
-    if ([...listed.values()].filter(f.has).length >= MIN_FAMILY_AT_HOME) continue;
+    if (new Set([...listed.values()].filter(f.has).map(kindOf)).size >= MIN_FAMILY_AT_HOME) continue;
     // Not another of what they already have (a second rice is no variety).
     const haveKinds = new Set(have.map(kindOf));
     const items = take(f.offer(a.rows).filter((r) => !haveKinds.has(kindOf(r))), MAX_VARIETY_ITEMS);
@@ -205,7 +231,7 @@ export function groceryGroups(a: { rows: readonly CatalogRow[]; week: readonly S
       title: f.title,
       reason: have.length === 0
         ? `You have no ${f.one} marked at home. Clara needs at least one, and a second gives her different dishes to make.`
-        : `You have only one ${f.one} at home: ${have[0].name}. A second gives Clara different dishes to make.`,
+        : `You have only one kind of ${f.one} at home: ${have[0].name}. A second gives Clara different dishes to make.`,
       items,
     });
   }
