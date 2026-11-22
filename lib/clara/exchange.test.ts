@@ -31,6 +31,9 @@ test("familyOf: the families of the design, and names that only sound like one",
   assert.equal(fam("Yellow onions"), "onions");
   assert.equal(fam("Garlic"), null); // nothing is like garlic
   assert.equal(fam("feta"), "soft cheese");
+  assert.equal(fam("fresh parsley"), "fresh herbs");
+  assert.equal(fam("dried oregano"), "dried herbs");
+  assert.equal(fam("thyme"), "dried herbs");
   assert.equal(fam("shredded cheddar cheese"), "hard cheese");
   // Not a family: proteins, spices, sauces.
   for (const n of ["salmon fillets", "eggs", "black beans", "black pepper", "garlic powder", "tomato paste", "soy sauce", "paprika", "salt", "water"]) assert.equal(fam(n), null, n);
@@ -40,7 +43,7 @@ test("familyOf: the families of the design, and names that only sound like one",
 test("swapOptions: at-home foods of the family first, then common ones; never a food already in the dish", () => {
   assert.deepEqual(opts("spinach"), { protein: false, options: [{ name: "Kale", atHome: true }, { name: "chard", atHome: false }, { name: "arugula", atHome: false }] });
   // Rice is in the dish; potatoes are another family.
-  assert.deepEqual(opts("jasmine rice").options.map((o) => o.name), ["quinoa", "couscous", "barley"]);
+  assert.deepEqual(opts("jasmine rice").options.map((o) => o.name), ["quinoa", "couscous", "bulgur"]);
   // A food the table does not know: nothing to offer ("Nothing similar" only).
   assert.deepEqual(opts("paprika"), { protein: false, options: [] });
   // The diet takes its share.
@@ -53,14 +56,16 @@ test("swapOptions: a protein is offered the other proteins at home, then a dish 
   assert.equal(r.protein, true);
   assert.deepEqual(r.options, [
     { name: "Ground beef", atHome: true }, { name: "Large eggs", atHome: true },
-    { name: "Cremini mushrooms", atHome: true }, { name: "Russet potatoes", atHome: true },
+    { name: "Cremini mushrooms", atHome: true }, { name: "beans", atHome: false },
   ]);
+  // Potatoes are no stand-in in a dish that already has rice; in one without a starch they are.
+  assert.ok(opts("salmon fillets", { inDish: ["salmon fillets", "spinach"] }).options.some((o) => o.name === "Russet potatoes"));
   // At-home options before the rest, whatever the table's order.
   const some = swapOptions({ ingredient: "salmon fillets", inDish: ["salmon fillets"], atHome: ["Russet potatoes"], home: [], allowed: () => true });
   assert.deepEqual(some.options.map((o) => [o.name, o.atHome]), [["Russet potatoes", true], ["mushrooms", false], ["beans", false], ["lentils", false]]);
   // Nothing else at home: the non-protein options by their plain names.
   const bare = swapOptions({ ingredient: "ground chicken", inDish: ["ground chicken", "rice"], atHome: [], home: [], allowed: () => true });
-  assert.deepEqual(bare.options.map((o) => [o.name, o.atHome]), [["mushrooms", false], ["potatoes", false], ["beans", false], ["lentils", false]]);
+  assert.deepEqual(bare.options.map((o) => [o.name, o.atHome]), [["mushrooms", false], ["beans", false], ["lentils", false]]);
 });
 
 test("plainSwap and swapInRecipe: a like-for-like exchange changes the line, the steps and the name, and nothing else", () => {
@@ -79,6 +84,21 @@ test("plainSwap and swapInRecipe: a like-for-like exchange changes the line, the
   assert.equal(out.steps[2], "Wilt the kale and serve.");
   assert.deepEqual([out.steps[0], out.steps[1], out.perServing], [recipe.steps[0], recipe.steps[1], recipe.perServing]);
   assert.equal(swapInRecipe(recipe, "broccoli", "Kale"), null);
+  // Singular and plural: the name says "Potato", the line says "potatoes" (live swap run, 2026-11-22).
+  const hash: ClaraRecipe = {
+    ...recipe, name: "Ground Beef and Russet Potato Skillet",
+    ingredients: [{ name: "ground beef", quantity: 120, unit: "g" }, { name: "russet potatoes", quantity: 200, unit: "g" }],
+    steps: ["Dice the russet potatoes.", "Brown the ground beef, then return the potatoes to the pan."],
+  };
+  const sweet = swapInRecipe(hash, "russet potatoes", "sweet potatoes")!;
+  assert.equal(sweet.name, "Ground Beef and Sweet Potatoes Skillet");
+  assert.deepEqual(sweet.steps, ["Dice the sweet potatoes.", "Brown the ground beef, then return the sweet potatoes to the pan."]);
+  // A mention the replacement cannot reach (another word for the food) refuses the exchange rather than leave it in.
+  const stray: ClaraRecipe = { ...recipe, steps: [...recipe.steps, "Scatter the greens over the bowl."] };
+  assert.ok(swapInRecipe(stray, "baby spinach", "Kale"));
+  const left: ClaraRecipe = { ...hash, name: "Beef and Spud Skillet", steps: ["Boil each potato whole.", "Mash with the ground beef."], ingredients: [{ name: "ground beef", quantity: 120, unit: "g" }, { name: "new potatoes", quantity: 200, unit: "g" }] };
+  assert.equal(swapInRecipe(left, "new potatoes", "sweet potatoes")?.steps[0], "Boil each sweet potatoes whole.");
+  assert.equal(swapInRecipe({ ...left, steps: ["Peel the potato-like tubers."] }, "new potatoes", "quinoa")?.steps[0] ?? null, "Peel the quinoa-like tubers.");
 });
 
 test("parseSwapBody: exactly the three actions, with a real recipe", () => {

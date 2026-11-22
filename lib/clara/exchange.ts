@@ -37,11 +37,13 @@ export const FAMILIES: readonly Family[] = [
   { key: "squash", match: /\b(zucchini|courgettes?|squash|pumpkin|eggplants?|aubergines?|cucumbers?)\b/i, members: ["zucchini", "butternut squash", "eggplant"] },
   { key: "beans and peas", match: /\b(green beans?|peas?|edamame|snap peas?|snow peas?)\b/i, members: ["green beans", "peas"] },
   { key: "mushrooms", match: /\bmushrooms?\b/i, members: ["mushrooms"] },
-  { key: "fresh herbs", match: /\b(parsley|cilantro|coriander leaves|basil|dill|mint|thyme|rosemary|oregano|sage|tarragon)\b/i, members: ["parsley", "cilantro", "basil", "dill"] },
-  { key: "citrus", match: /\b(lemons?|limes?|oranges?|grapefruit)\b/i, members: ["lemon", "lime", "orange"] },
+  { key: "fresh herbs", match: /\b(parsley|cilantro|coriander leaves|basil|dill|mint)\b/i, members: ["parsley", "cilantro", "basil", "dill"] },
+  // The woody herbs, usually dried in a home kitchen: one stands in for another, a soft fresh herb does not.
+  { key: "dried herbs", match: /\b(oregano|thyme|rosemary|sage|tarragon|marjoram|italian seasoning)\b/i, members: ["thyme", "oregano", "rosemary"] },
+  { key: "citrus", match: /\b(lemons?|limes?|oranges?|grapefruit)\b/i, members: ["lemon", "lime"] },
   { key: "pasta", match: /\b(pasta|spaghetti|penne|noodles?|macaroni|fusilli|orzo|linguine|fettuccine)\b/i, members: ["pasta", "noodles"] },
   { key: "bread", match: /\b(bread|toast|tortillas?|pitas?|buns?|bagels?|naan|rolls?)\b/i, members: ["bread", "tortillas", "pita"] },
-  { key: "grains", match: /\b(rice|quinoa|barley|couscous|bulgur|farro|oats?|polenta|millet)\b/i, members: ["rice", "quinoa", "couscous", "barley"] },
+  { key: "grains", match: /\b(rice|quinoa|barley|couscous|bulgur|farro|oats?|polenta|millet)\b/i, members: ["rice", "quinoa", "couscous", "bulgur"] },
   { key: "yogurt", match: /\b(yogh?urt|kefir|sour cream|cr[eè]me fra[iî]che)\b/i, members: ["plain yogurt", "Greek yogurt", "sour cream"] },
   { key: "milks", match: /\b(milk|cream|half[- ]and[- ]half)\b/i, members: ["milk", "oat milk", "soy milk"] },
   { key: "soft cheese", match: /\b(feta|goat cheese|ricotta|cottage cheese|cream cheese|mozzarella|halloumi|paneer)\b/i, members: ["feta", "mozzarella", "ricotta"] },
@@ -51,7 +53,7 @@ export const FAMILIES: readonly Family[] = [
 ];
 
 // Names that carry a family word without being of that family.
-const NOT_OF_FAMILY = /\b(powder|flakes?|dried|sauce|paste|extract|peppercorns?)\b|\b(black|white|ground|cayenne|red)\s+pepper\b/i;
+const NOT_OF_FAMILY = /\b(powder|flakes?|sauce|paste|extract|peppercorns?)\b|\b(black|white|ground|cayenne|red)\s+pepper\b/i;
 
 /** The family a food belongs to; null for a protein, a spice or anything the table does not know. */
 export function familyOf(name: string): Family | null {
@@ -59,6 +61,8 @@ export function familyOf(name: string): Family | null {
   if (NOT_OF_FAMILY.test(name)) return null;
   return FAMILIES.find((f) => f.match.test(name)) ?? null;
 }
+
+const STARCHY = /\b(rice|potato(es)?|pasta|spaghetti|noodles?|quinoa|couscous|bulgur|barley|bread|tortillas?)\b/i;
 
 export interface SwapOption { name: string; atHome: boolean }
 export const MAX_SWAP_OPTIONS = 4;
@@ -91,8 +95,9 @@ export function swapOptions(a: {
   const kind = proteinKind(a.ingredient);
   if (kind) {
     for (const p of a.home) if (p.key !== kind.key) add(p.name, true);
-    // The ones they have come first.
-    const plain = NON_PROTEIN_OPTIONS.map((n) => ({ n, mine: a.atHome.find((h) => foodMatches(n, h)) }));
+    // The ones they have come first. Potatoes are no stand-in in a dish that already has its starch.
+    const hasStarch = a.inDish.some((n) => STARCHY.test(n));
+    const plain = NON_PROTEIN_OPTIONS.filter((n) => !(hasStarch && n === "potatoes")).map((n) => ({ n, mine: a.atHome.find((h) => foodMatches(n, h)) }));
     for (const { mine } of plain) if (mine !== undefined) add(mine, true);
     for (const { n, mine } of plain) if (mine === undefined) add(n, false);
     return { options: out, protein: true };
@@ -112,12 +117,23 @@ export function plainSwap(from: string, to: string): boolean {
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const titleCase = (s: string) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
-/** The words a step or a title may use for the food: its whole name, then its last word ("baby spinach" → "spinach"). */
+const singular = (w: string) => (/ies$/.test(w) ? `${w.slice(0, -3)}y` : /(oes|ses|shes|ches|xes)$/.test(w) ? w.slice(0, -2) : /s$/.test(w) && !/ss$/.test(w) ? w.slice(0, -1) : w);
+const plural = (w: string) => (/[^aeiou]y$/.test(w) ? `${w.slice(0, -1)}ies` : /(o|s|sh|ch|x)$/.test(w) ? `${w}es` : `${w}s`);
+/** A phrase with its last word in both numbers: "russet potatoes" → "russet potatoes", "russet potato". */
+function bothNumbers(phrase: string): string[] {
+  const words = phrase.trim().toLowerCase().split(/\s+/);
+  const last = words.pop() ?? "";
+  const one = singular(last);
+  const head = words.length ? `${words.join(" ")} ` : "";
+  return [...new Set([`${head}${last}`, `${head}${one}`, `${head}${plural(one)}`])];
+}
+/** The words a step or a title may use for the food: its whole name, then its last word, each in both numbers, longest first. */
 function mentions(name: string): string[] {
   const whole = name.trim().toLowerCase();
   const last = whole.split(/\s+/).pop() ?? whole;
-  return whole === last ? [whole] : [whole, last];
+  return [...new Set([...bothNumbers(whole), ...bothNumbers(last)])].sort((x, y) => y.length - x.length);
 }
+const headOf = (name: string) => singular(name.trim().toLowerCase().split(/\s+/).pop() ?? "");
 
 /**
  * The dish with `from` exchanged for `to`, by plain replacement: the ingredient
@@ -128,21 +144,20 @@ export function swapInRecipe(recipe: ClaraRecipe, from: string, to: string): Cla
   const at = recipe.ingredients.findIndex((i) => i.name.trim().toLowerCase() === from.trim().toLowerCase());
   if (at < 0) return null;
   const toLower = to.trim().toLowerCase();
-  const swapText = (text: string, cased: (s: string) => string) => {
-    let out = text;
-    for (const m of mentions(from)) {
-      const re = new RegExp(`\\b${escapeRe(m)}\\b`, "gi");
-      if (re.test(out)) {
-        out = out.replace(re, cased(toLower));
-        break;
-      }
-    }
-    return out;
-  };
-  return {
+  // One pass over every way the food can be written, longest first, so "russet potatoes" goes before "potato".
+  const all = new RegExp(`\\b(${mentions(from).map(escapeRe).join("|")})\\b`, "gi");
+  const swapText = (text: string, cased: (s: string) => string) => text.replace(all, cased(toLower));
+  const out = {
     ...recipe,
     name: swapText(recipe.name, titleCase),
     ingredients: recipe.ingredients.map((i, k) => (k === at ? { ...i, name: toLower } : i)),
     steps: recipe.steps.map((s) => swapText(s, (x) => x)),
   };
+  // The food must be gone from the name and every step, unless the new food is one of the same
+  // kind by name ("brown rice" for "jasmine rice" keeps the word rice).
+  if (headOf(from) !== headOf(to)) {
+    const left = new RegExp(`\\b(${bothNumbers(headOf(from)).map(escapeRe).join("|")})\\b`, "i");
+    if (left.test(out.name) || out.steps.some((st) => left.test(st))) return null;
+  }
+  return out;
 }

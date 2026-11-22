@@ -23,7 +23,7 @@ import { LEVELS, type FullLevelKey } from "@/lib/level-catalogue";
 import { applyAllergenFilter, parseFridgeRecipes, type FridgeRecipe } from "@/lib/fridge";
 import { DISH_OUTPUT_SCHEMA, DISH_UNITS, DishItemExtractor, toFridgeItem } from "@/lib/clara/dish-output";
 import { libraryToFridge, matchesRequest, rankLibrary, suggestionName, type LibraryRecipe, type RecentDishes } from "@/lib/clara/dish-library";
-import { proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-foods";
+import { foodMatches, proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-foods";
 import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
 import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type AskSteer, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
 import { builtOn, eggsOnlyKitchen, proteinKind } from "@/lib/clara/dish-protein";
@@ -160,7 +160,7 @@ export interface DishAsk {
    * The ingredients check before cooking (piece B): they were about to cook `dish` and do not
    * have `from`. Set together with `wants` (what takes its place) and `without`.
    */
-  swap?: { dish: string; from: string };
+  swap?: { dish: string; from: string; ingredients: string[]; steps: string[] };
   /** Foods they said they do not have: told to the generator, and a dish that uses one is dropped by the judge. */
   without?: string[];
 }
@@ -668,7 +668,7 @@ export function dishSystemPrompt(a: {
       ? `- THE REQUEST: they asked to cook "${ask.wants.replace(/["\n\r]+/g, "").replace(/\s+/g, " ").trim()}". Every one of the ${CANDIDATES} dishes must be that: what they asked for is the dish's main idea and is named in the dish name. Make ${CANDIDATES} versions of it, the simplest first, not ${CANDIDATES} unrelated dishes. Where a line above says to build the dish around another ingredient, add that ingredient to this dish instead. Every other rule here still applies in full. If a rule forbids part of what they asked for, the rule wins: use a food that fits in its place and name the dish by what is really in it.`
       : ``,
     ask.swap
-      ? `- They were about to cook "${promptDishName(ask.swap.dish)}" but do not have ${cleanOne(ask.swap.from)}: write that same dish with what they asked for in its place, keeping the rest of it as it was wherever the exchange allows.`
+      ? `- They were about to cook "${promptDishName(ask.swap.dish)}" but do not have ${cleanOne(ask.swap.from)}: write that same dish with what they asked for in its place. Keep every other ingredient and its amount, and the way it is cooked; change only what the exchange needs (how long the new food cooks, the step that prepares it, the name). Make it the same size: if the new food has fewer calories, use more of it or of the dish's starch. The dish as it was — ingredients: ${ask.swap.ingredients.map((x) => cleanOne(x).replace(/;/g, "")).join("; ")}. Steps: ${ask.swap.steps.map((x, i) => `${i + 1}) ${cleanOne(x)}`).join(" ")}`
       : ``,
     ask.without && ask.without.length > 0
       ? `- They do not have these, so no dish may use them, not in an ingredient, the name or a step: ${ask.without.map(cleanOne).join(", ")}.`
@@ -720,6 +720,31 @@ interface Person {
   kept: KeptFoods;
   /** Everything the dish brain knows about them (lib/clara/dish-brain.ts), under the live switches. */
   brain: DishBrain;
+}
+
+/**
+ * The person as they are for THIS dish: a food they just said they do not have is not at home
+ * (live swap run, 2026-11-22: "Build this Dinner on Ground beef" was said to someone who had just
+ * tapped "I don't have this" on the beef, and the variety line asked for the rice they lacked).
+ * The marks themselves are not changed.
+ */
+function personWithout(person: Person, without: readonly string[] | undefined): Person {
+  if (!without || without.length === 0) return person;
+  const gone = (name: string) => without.some((w) => foodMatches(w, name));
+  const goneKeys = new Set(without.map((w) => proteinKind(w)?.key).filter((k): k is string => !!k));
+  const kept: KeptFoods = {
+    proteinKeys: person.kept.proteinKeys.filter((k) => !goneKeys.has(k)),
+    proteinNames: person.kept.proteinNames.filter((n) => !gone(n)),
+    atHome: person.kept.atHome.filter((n) => !gone(n)),
+    favorites: person.kept.favorites,
+  };
+  const brain: DishBrain = {
+    ...person.brain,
+    kept: { ...person.brain.kept, proteinKeys: person.brain.kept.proteinKeys.filter((k) => !goneKeys.has(k)), proteinNames: person.brain.kept.proteinNames.filter((n) => !gone(n)), atHome: person.brain.kept.atHome.filter((n) => !gone(n)) },
+    home: person.brain.home.filter((p) => !goneKeys.has(p.key) && !gone(p.name)),
+    basics: person.brain.basics.filter((n) => !gone(n)),
+  };
+  return { ...person, kept, brain };
 }
 
 /** The live switches. A mutable object only so the simulation (and piece D) can flip one; all on. */
@@ -1014,8 +1039,9 @@ async function generateGated(
   if (!process.env.ANTHROPIC_API_KEY) return [];
   const t0 = Date.now();
   const note = (name: string, stage: CandidateTrace["stage"], reasons?: string[]) => opts.trace?.({ ms: Date.now() - t0, name, stage, ...(reasons ? { reasons } : {}) });
-  const [person, catalogFoodTokens] = await Promise.all([personFor(ctx, loadRows), catalogTokens()]);
-  if (!person || opts.signal?.aborted) return [];
+  const [loaded, catalogFoodTokens] = await Promise.all([personFor(ctx, loadRows), catalogTokens()]);
+  if (!loaded || opts.signal?.aborted) return [];
+  const person = personWithout(loaded, ask.without);
   const meal = capitalize(ask.mealType);
   const steer = steerFor(ctx, ask, person);
   // With a protein chosen for today, the stream stops early only on a dish built on it.
@@ -1237,12 +1263,13 @@ async function libraryGated(
   judged?: (j: JudgedDish) => void,
   loadRows?: BrainRowsLoader,
 ): Promise<FridgeRecipe[]> {
-  const [person, pool, recent, catalogFoodTokens] = await Promise.all([
+  const [loadedPerson, pool, recent, catalogFoodTokens] = await Promise.all([
     personFor(ctx, loadRows),
     libraryPool(ask.mealType),
     recentFor(ctx),
     catalogTokens(),
   ]);
+  const person = loadedPerson ? personWithout(loadedPerson, ask.without) : loadedPerson;
   if (!person || signal?.aborted) return [];
   const meal = capitalize(ask.mealType);
   const steer = steerFor(ctx, ask, person);
@@ -1974,7 +2001,8 @@ export function makeSwapHandlers(deps: DishDeps = prismaDeps) {
     return swapOptions({
       ingredient,
       inDish: recipe.ingredients.map((i) => i.name),
-      atHome: [...person.kept.proteinNames, ...person.kept.atHome],
+      // Kitchen basics are in the house too (oil, butter, dried herbs).
+      atHome: [...person.kept.proteinNames, ...person.kept.atHome, ...person.brain.basics],
       home: person.brain.home,
       allowed: (food) => !banned || evaluateDishAgainstProfile([food], person.matchers, [exampleAllergenGroups(food)]).passed,
     });
@@ -2006,12 +2034,17 @@ export function makeSwapHandlers(deps: DishDeps = prismaDeps) {
       summary,
       ...(a.recipe.servings > 1 ? { servings: a.recipe.servings } : {}),
       wants: to.name,
-      swap: { dish: a.recipe.name, from: a.ingredient },
+      swap: {
+        dish: a.recipe.name, from: a.ingredient,
+        ingredients: a.recipe.ingredients.map((i) => `${i.quantity ?? ""} ${i.unit} ${i.name}`.replace(/\s+/g, " ").trim()),
+        steps: a.recipe.steps,
+      },
       without: [a.ingredient],
     };
     if (plainSwap(a.ingredient, to.name)) {
       const swapped = swapInRecipe(a.recipe, a.ingredient, to.name);
-      const person = swapped ? await personFor(call) : null;
+      const whole = swapped ? await personFor(call) : null;
+      const person = whole ? personWithout(whole, ask.without) : null;
       if (swapped && person) {
         const judged = await gateOne(itemFromRecipe(swapped), ask, person, await catalogTokens(), new Set(), () => {}, steerFor(call, ask, person));
         const built = judged ? buildDish(judged.recipe, ask, "generated", judged) : null;
