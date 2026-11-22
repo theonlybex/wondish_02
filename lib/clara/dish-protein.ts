@@ -16,7 +16,7 @@ export function proteinKind(name: string): ProteinKind | null {
   const lower = name.toLowerCase();
   const meat = proteinKey(name);
   if (meat) return { key: meat, cls: "meat" };
-  if (NOT_THE_FOOD.test(lower)) return null;
+  if (NOT_THE_FOOD.test(lower) || /\begg[- ]free\b/.test(lower)) return null;
   for (const w of ["tofu", "tempeh", "seitan"]) {
     if (new RegExp(`\\b${w}\\b`).test(lower)) return { key: w, cls: "plant" };
   }
@@ -35,21 +35,28 @@ export const BUILT_ON_MIN_PROTEIN_G = 8;
 
 export interface BuiltOn { key: string; cls: ProteinClass; name: string }
 
+/** An amount that cannot be priced (a can, say) outranks priced proteins giving less than this per serving. */
+export const UNPRICED_OUTRANKS_BELOW_G = 15;
+
 /** The protein ingredient giving the most protein; null when it gives under 8 g (one egg in pancakes is not an egg dish). */
 export function builtOn(ingredients: readonly DishIngredient[], steps?: readonly string[]): BuiltOn | null {
-  let best: { kind: ProteinKind; name: string; protein: number; grams: number } | null = null;
+  let best: { kind: ProteinKind; name: string; protein: number; grams: number; tier: number; unpriced: boolean } | null = null;
   for (const ing of ingredients) {
     const kind = proteinKind(ing.name);
     if (!kind) continue;
-    const protein = priceDish([ing], steps)?.protein ?? 0;
+    const priced = priceDish([ing], steps);
+    const protein = priced?.protein ?? 0;
     const grams = gramsOf(ing.name, ing.quantity, ing.unit) ?? 0;
+    const unpriced = ing.quantity != null && ing.quantity > 0 && (!priced || priced.coverage === 0);
+    // 2: priced and big; 1: quantity known but unpriceable; 0: the rest.
+    const tier = !unpriced && protein >= UNPRICED_OUTRANKS_BELOW_G ? 2 : unpriced ? 1 : 0;
     // Strictly greater: on a tie the earlier ingredient stays.
-    if (!best || protein > best.protein || (protein === best.protein && grams > best.grams)) {
-      best = { kind, name: ing.name, protein, grams };
+    if (!best || tier > best.tier || (tier === best.tier && (protein > best.protein || (protein === best.protein && grams > best.grams)))) {
+      best = { kind, name: ing.name, protein, grams, tier, unpriced };
     }
   }
   if (!best) return null;
-  if (best.protein > 0 && best.protein < BUILT_ON_MIN_PROTEIN_G) return null;
+  if (!best.unpriced && best.protein > 0 && best.protein < BUILT_ON_MIN_PROTEIN_G) return null;
   return { key: best.kind.key, cls: best.kind.cls, name: best.name };
 }
 

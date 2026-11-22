@@ -41,3 +41,11 @@ test("homeProteins and mainProteins", () => {
   assert.deepEqual(mainProteins(only("Plain Greek yogurt")), []);
   assert.deepEqual(homeProteins(NO_KEPT_FOODS), []);
 });
+test("builtOn: an amount that cannot be priced (a can) still counts, below 15 g of priced protein", () => {
+  assert.equal(builtOn([g("chickpeas", 1, "can"), g("salmon fillet", 50)])?.key, "chickpea");
+  assert.equal(builtOn([g("chickpeas", 1, "can"), g("salmon fillet", 150)])?.key, "salmon");
+  assert.equal(builtOn([g("tofu", 1, "whole"), g("eggs", 2, "")])?.key, "tofu");
+  assert.equal(builtOn([g("chickpeas", 1, "can"), g("tofu", 1, "block")])?.key, "chickpea");
+  assert.equal(proteinKind("Egg-free mayo"), null);
+  assert.equal(proteinKind("egg free mayonnaise"), null);
+});
