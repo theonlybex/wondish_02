@@ -184,12 +184,12 @@ test("proteinKey and requestNamesProtein: plant-based and imitation products are
   for (const w of ["meat-free lasagne", "something vegetarian", "a vegan burger", "plant-based chicken"])
     assert.equal(requestNamesProtein(w), false, w);
   assert.equal(requestNamesProtein("goat cheese salad"), false);
-  assert.equal(requestNamesProtein("a burger"), true);
+  assert.equal(requestNamesProtein("a hamburger"), true);
 });
 
 test("proteinKey: more meats and fish", () => {
   const more: [string, string][] = [
-    ["hamburger", "beef"], ["burger patty", "beef"], ["pastrami", "pastrami"], ["frankfurters", "frankfurter"],
+    ["hamburger", "beef"], ["pastrami", "pastrami"], ["frankfurters", "frankfurter"],
     ["gammon steak", "gammon"], ["lardons", "lardons"], ["hake fillet", "hake"], ["plaice", "plaice"],
     ["sea bream", "bream"], ["langoustines", "langoustine"], ["calf liver", "liver"], ["lox", "salmon"],
   ];
@@ -206,4 +206,15 @@ test("visibleRows drops a food whose stored allergen group is banned even when i
   assert.ok(tagged.some((r) => r.name === "Bacon"));
   const untagged = visibleRows({ ...args, groupsById: new Map([[beefId, ["BIG9-FISH"]]]) });
   assert.ok(untagged.some((r) => r.name === "Ground beef"));
+});
+
+test("a bare burger or patty is not a meat; an animal word or hamburger makes it one", () => {
+  for (const n of ["bean burger", "black bean burger", "lentil burgers", "chickpea patties", "vegetable patty", "patty pan squash", "halloumi burger", "mushroom burger", "burger patty", "burger rolls", "hamburger buns"])
+    assert.equal(proteinKey(n), null, n);
+  const keyed: [string, string][] = [["beef burger", "beef"], ["turkey burgers", "turkey"], ["chicken patty", "chicken"], ["salmon burger", "salmon"], ["hamburger", "beef"]];
+  for (const [n, k] of keyed) assert.equal(proteinKey(n), k, n);
+  assert.equal(requestNamesProtein("a black bean burger"), false);
+  assert.equal(requestNamesProtein("a beef burger"), true);
+  const kept = splitKeptFoods([{ name: "Salmon fillets", groupKey: "proteins", atHome: true, favorite: false }]);
+  assert.equal(breaksProteinRule(["black bean burger"], kept), false);
 });

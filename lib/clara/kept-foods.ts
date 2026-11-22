@@ -22,7 +22,7 @@ const ANIMALS: Record<string, string> = {
   rabbit: "rabbit", goose: "goose", quail: "quail", oxtail: "oxtail", rib: "ribs",
   hotdog: "hot dog", bratwurst: "bratwurst", kielbasa: "kielbasa", pancetta: "pancetta",
   meatball: "meat",
-  hamburger: "beef", burger: "beef", patty: "beef", pastrami: "pastrami", frankfurter: "frankfurter",
+  hamburger: "beef", pastrami: "pastrami", frankfurter: "frankfurter",
   gammon: "gammon", lardon: "lardons", hake: "hake", plaice: "plaice", bream: "bream",
   langoustine: "langoustine", liver: "liver", lox: "salmon",
 };
@@ -97,7 +97,7 @@ function withoutNonMeatAnimals(tokens: string[]): string[] {
     if (tokens[j] === "s") j += 1; // "lamb's lettuce"
     const next = tokens[j] === undefined ? undefined : singular(tokens[j]);
     if (next === undefined) return true;
-    if (BREAD_AFTER.has(next) && (base === "hamburger" || base === "burger")) return false;
+    if (BREAD_AFTER.has(next) && base === "hamburger") return false;
     return PROCESSED.has(base) || !DAIRY_OR_PLANT_AFTER.has(next);
   });
 }
