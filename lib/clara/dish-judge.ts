@@ -72,9 +72,26 @@ export function dishShape(name: string): DishShape {
     way: WAYS.find(([, re]) => re.test(lower))?.[0] ?? "pan",
   };
 }
+/**
+ * A name rebuilt from the ingredients ("Ground Beef with Russet Potatoes and Spinach") loses how the
+ * dish is cooked, which the next day's repeat check and the "last few days" list both read from the
+ * name (live run 5, 2026-11-22: a sheet-pan roast became a plain name, and a bake two days later
+ * was not seen as the same dish). The oven or pot word of the original is put back at the end.
+ */
+const WAY_WORDS: readonly (readonly [RegExp, string])[] = [
+  [/\b(soups?)\b/, "Soup"], [/\b(stews?)\b/, "Stew"], [/\b(curry|curries)\b/, "Curry"], [/\b(chili)\b/, "Chili"], [/\b(chowder)\b/, "Chowder"],
+  [/\b(roast(ed)?)\b/, "Roast"], [/\b(bakes?|baked|tray|sheet[- ]pan|casserole|gratin)\b/, "Bake"],
+];
+export function keepWayOfCooking(original: string, renamed: string): string {
+  if (original.trim() === renamed.trim() || dishShape(renamed).way !== "pan" || dishShape(original).way === "pan") return renamed;
+  const word = WAY_WORDS.find(([re]) => re.test(original.toLowerCase()))?.[1];
+  return word ? `${renamed.trim()} ${word}` : renamed;
+}
+
 /** The same protein, the same starch and the same way of cooking; with neither a protein nor a starch to go by, mostly the same words. */
-export function sameDish(a: string, b: string): boolean {
-  const x = dishShape(a), y = dishShape(b);
+export function sameDish(a: string | DishShape, b: string): boolean {
+  const x = typeof a === "string" ? dishShape(a) : a, y = dishShape(b);
+  if (typeof a !== "string") return x.protein === y.protein && x.starch === y.starch && x.way === y.way;
   if (x.protein === null && x.starch === null && y.protein === null && y.starch === null) return nameOverlap(a, b) >= REPEAT_OVERLAP;
   return x.protein === y.protein && x.starch === y.starch && x.way === y.way;
 }
@@ -130,9 +147,16 @@ export function judgeDish(input: JudgeInput): DishVerdict {
   // OFF 2026-11-22 (owner: "maybe this rule is a bit too much, maybe we remove it for now"): the 15% protein floor for a main. Restore: uncomment, and the line in targetLines.
   // if (input.rules.mainsOnProtein && proteinShareLow(input.mealType, input.calories, input.proteinG)) reasons.push("protein-share");
 
-  if (input.wants === undefined && (input.notLike ?? []).some((n) => sameDish(input.name, n))) reasons.push("repeat");
+  // What the candidate IS comes from the dish itself where it can: the protein it is built on and
+  // the starch in its ingredients (a rebuilt name may leave the potatoes out); the way from its name.
+  const starches = starchesIn(input.ingredients.map((i) => i.name));
+  const named = dishShape(input.name);
+  const builtKey = built ? (built.key.startsWith("ground ") ? built.key.slice(7) : built.key) : null;
+  const shape: DishShape = { protein: builtKey ?? named.protein, starch: starches[0] ?? named.starch, way: named.way };
+  const repeats = (n: string) => (shape.protein === null && shape.starch === null ? sameDish(input.name, n) : sameDish(shape, n));
+  if (input.wants === undefined && (input.notLike ?? []).some(repeats)) reasons.push("repeat");
   // One starch per dish (rice with potatoes, potatoes with barley): served only when nothing else passes.
-  if (input.wants === undefined && starchesIn(input.ingredients.map((i) => i.name)).length > 1) reasons.push("starches");
+  if (input.wants === undefined && starches.length > 1) reasons.push("starches");
 
   for (const [key, amount] of Object.entries(input.known) as [FullLevelKey, number | undefined][]) {
     const ceiling = input.ceilings[key];

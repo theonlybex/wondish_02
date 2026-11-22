@@ -1204,7 +1204,7 @@ test("prompt: level examples name only proteins the dish may use, and say 'at ho
   // Case (a): spinach, rice and eggs at home.
   const a = withBrain({ kept: { ...SALMON_AND_BEEF, atHome: ["Spinach", "Jasmine rice", "Large eggs"] }, rows: SALMON_TODAY }, ask);
   assert.equal(iron(a), "- They have had little iron this week: include one food rich in it, preferring any they have at home (spinach).");
-  assert.equal(fibre(a), "- They have had little fibre this week: include a fibre-rich ingredient in every dish (peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds); one is enough, and a grain among them takes the place of the dish's starch.");
+  assert.equal(fibre(a), "- They have had little fibre this week: include a fibre-rich ingredient in every dish (peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds); one is enough, and a grain, bread or pasta among them takes the place of the dish's starch.");
   assert.doesNotMatch(a, /build every dish around a fibre-rich ingredient/);
   // Lentils at home: kept, and preferred.
   const lentils = withBrain({ kept: { ...SALMON_AND_BEEF, atHome: ["Red lentils"] }, rows: SALMON_TODAY }, ask);
@@ -1215,7 +1215,7 @@ test("prompt: level examples name only proteins the dish may use, and say 'at ho
   assert.equal(iron(noRule), "- They have had little iron this week: include one food rich in it, preferring any they have at home (spinach).");
   assert.equal(fibre(noRule), "- They have had little fibre this week: include a fibre-rich ingredient in every dish, preferring any they have at home (oats).");
   // Marked, no rule, no example at home: every example, and one of them is enough.
-  assert.equal(fibre(withBrain({ kept: { ...NO_KEPT_FOODS, atHome: ["Jasmine rice"] } }, ask)), "- They have had little fibre this week: include a fibre-rich ingredient in every dish (lentils, chickpeas, beans, peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds); one is enough, and a grain among them takes the place of the dish's starch.");
+  assert.equal(fibre(withBrain({ kept: { ...NO_KEPT_FOODS, atHome: ["Jasmine rice"] } }, ask)), "- They have had little fibre this week: include a fibre-rich ingredient in every dish (lentils, chickpeas, beans, peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds); one is enough, and a grain, bread or pasta among them takes the place of the dish's starch.");
 });
 
 test("prompt: breakfast and snack name only what is at home when the rule is on, and the level lines add to that base", () => {
@@ -1229,14 +1229,14 @@ test("prompt: breakfast and snack name only what is at home when the rule is on,
   assert.equal(b, "- This is BREAKFAST: morning food, under 30 minutes in total, built on Large eggs or on cheese, nut butter or nuts. Not a braise, a roast or a rice bowl. Add what the lines below ask for to this; do not replace it.");
   assert.doesNotMatch(b, /yoghurt|beans|tofu/);
   assert.equal(levelText(pb), [
-    "- They have had little fibre this week: include a fibre-rich ingredient in every dish (peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds); one is enough, and a grain among them takes the place of the dish's starch.",
+    "- They have had little fibre this week: include a fibre-rich ingredient in every dish (peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds); one is enough, and a grain, bread or pasta among them takes the place of the dish's starch.",
     "- They have had little iron this week: include one food rich in it, preferring any they have at home (spinach).",
   ].join("\n"));
   // Case (d): only salmon and beef.
   const pd = withBrain({ kept: SALMON_AND_BEEF }, breakfast);
   assert.equal(lineOf(pd, "- This is BREAKFAST"), "- This is BREAKFAST: morning food, under 30 minutes in total, built on cheese, nut butter or nuts, or on Salmon fillets or Ground beef if one suits a breakfast. Not a braise, a roast or a rice bowl. Add what the lines below ask for to this; do not replace it.");
   assert.equal(levelText(pd), [
-    "- They have had little fibre this week: include a fibre-rich ingredient in every dish (peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds); one is enough, and a grain among them takes the place of the dish's starch.",
+    "- They have had little fibre this week: include a fibre-rich ingredient in every dish (peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds); one is enough, and a grain, bread or pasta among them takes the place of the dish's starch.",
     "- They have had little iron this week: include one food rich in it (spinach).",
   ].join("\n"));
   for (const p of [pb, pd]) assert.doesNotMatch(levelText(p), /beef|lentils|chickpeas|beans|tofu/);

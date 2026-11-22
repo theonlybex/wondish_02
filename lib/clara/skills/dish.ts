@@ -27,7 +27,7 @@ import { proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-f
 import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
 import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type AskSteer, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
 import { builtOn, eggsOnlyKitchen, proteinKind } from "@/lib/clara/dish-protein";
-import { judgeDish, type DishVerdict } from "@/lib/clara/dish-judge";
+import { judgeDish, keepWayOfCooking, type DishVerdict } from "@/lib/clara/dish-judge";
 import { chooseProtein, fnv1a, fromHomeLine, requestedProtein, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
 import { targetLines } from "@/lib/clara/meal-target";
 import { exampleAllergenGroups, steerLines, levelCeilings } from "@/lib/clara/level-steer";
@@ -279,7 +279,10 @@ export function gateGeneratedDishes(recipes: FridgeRecipe[], opts: GateOptions):
       ? { ...prosed0, steps: prosed0.steps.map((s) => withoutRawProteinRinse(s) ?? s) }
       : prosed0;
     const cooked = nameFromCookedForm(derinsed.name, derinsed.steps);
-    const prosed = cooked && !seen.has(cooked.trim().toLowerCase()) ? { ...derinsed, name: cooked } : derinsed;
+    const prosed1 = cooked && !seen.has(cooked.trim().toLowerCase()) ? { ...derinsed, name: cooked } : derinsed;
+    // A name rebuilt from the ingredients keeps how the dish is cooked (see keepWayOfCooking).
+    const withWay = keepWayOfCooking(raw.name, prosed1.name);
+    const prosed = withWay !== prosed1.name && !seen.has(withWay.trim().toLowerCase()) ? { ...prosed1, name: withWay } : prosed1;
 
     const salted = clampAddedSalt(prosed.amounts ?? [], prosed.perServing?.calories, opts.sodiumLimitMg);
     const fatted = clampCookingFat(salted.ingredients, prosed.steps, prosed.perServing?.calories);

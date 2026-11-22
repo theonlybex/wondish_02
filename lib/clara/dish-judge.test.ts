@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { splitKeptFoods } from "./kept-foods";
 import { homeProteins } from "./dish-protein";
 import { DEFAULT_DISH_RULES, type DishRules } from "./dish-rules";
-import { judgeDish, dishShape, sameDish, starchesIn, namedAfterOwnIngredient, type JudgeInput } from "./dish-judge";
+import { judgeDish, dishShape, sameDish, starchesIn, keepWayOfCooking, namedAfterOwnIngredient, type JudgeInput } from "./dish-judge";
 
 const g = (name: string, quantity: number, unit = "g") => ({ name, quantity, unit });
 const HOME = homeProteins(splitKeptFoods([
@@ -92,4 +92,21 @@ test("a repeat is the same protein, starch and way of cooking; one starch per di
   assert.deepEqual(starchesIn(["russet potatoes", "jasmine rice", "rice vinegar", "bread crumbs", "spinach"]), ["potato", "rice"]);
   assert.deepEqual(j({ ingredients: [...BASE.ingredients, g("russet potatoes", 150)] }), { level: "relaxed", reasons: ["starches"], builtOn: "salmon" });
   assert.equal(j({ ingredients: [...BASE.ingredients, g("russet potatoes", 150)], wants: "salmon with rice and potatoes" }).level, "pass");
+});
+
+// Live run 5, 2026-11-22: a name rebuilt from the ingredients lost the potatoes and the oven, and a repeat got through.
+test("the candidate is judged by what it is built on and the starch in it, and a rebuilt name keeps the way of cooking", () => {
+  const beefPotato = [g("ground beef", 150), g("russet potatoes", 200), g("spinach", 60), g("eggs", 1, "")];
+  const home = homeProteins(splitKeptFoods([{ name: "Ground beef", groupKey: "proteins", atHome: true, favorite: false }]));
+  // The rebuilt name says neither "potato" nor "bake"; the ingredients and the kept word do.
+  const v = j({ name: "Ground Beef with Eggs and Spinach Bake", ingredients: beefPotato, home, notLike: ["Baked Ground Beef and Spinach Stuffed Potato"] });
+  assert.deepEqual(v.reasons, ["repeat"]);
+  assert.equal(j({ name: "Ground Beef with Eggs and Spinach Bake", ingredients: beefPotato, home, notLike: ["Ground Beef and Spinach Skillet with Jasmine Rice"] }).level, "pass");
+  assert.equal(keepWayOfCooking("Ground Beef and Spinach Sheet-Pan Roast with Russet Potatoes", "Ground Beef with Russet Potatoes and Spinach"), "Ground Beef with Russet Potatoes and Spinach Roast");
+  assert.equal(keepWayOfCooking("Cumin Spiced Ground Beef and Spinach Quinoa Bake", "Ground Beef with Eggs and Spinach"), "Ground Beef with Eggs and Spinach Bake");
+  assert.equal(keepWayOfCooking("Salmon and Lentil Soup", "Salmon with Carrots and Spinach"), "Salmon with Carrots and Spinach Soup");
+  // Unchanged names, pan dishes and names that already say it are left alone.
+  assert.equal(keepWayOfCooking("Beef Rice Bowl", "Beef Rice Bowl"), "Beef Rice Bowl");
+  assert.equal(keepWayOfCooking("Beef and Pepper Stir-Fry", "Ground Beef with Jasmine Rice"), "Ground Beef with Jasmine Rice");
+  assert.equal(keepWayOfCooking("Beef and Pea Stew", "Beef and Potato Stew"), "Beef and Potato Stew");
 });
