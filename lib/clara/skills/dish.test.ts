@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { dishShape } from "@/lib/clara/dish-judge";
 import { saltRuleLine } from "@/lib/clara/recipe-generation";
 import assert from "node:assert/strict";
 import {
@@ -21,6 +22,7 @@ import {
   DAY_PLAN_DINNER_LINE,
   DAY_PLAN_QUICK_DINNER_LINE,
   styleOfTheDay,
+  shapeOfTheDay,
   promptDishName,
   parseStartingPicture,
   type StartingPicture,
@@ -1387,6 +1389,38 @@ test("prompt: the week stays varied: recent dishes are not repeated and each day
   assert.ok(p.split("\n").includes("- They had these in the last few days; make a clearly different dish, not one of these and not a small variation of one (the same protein, starch and way of cooking under another name): Salmon Rice Bowl; Beef Skillet."));
   assert.doesNotMatch(on("2026-11-12"), /in the last few days/);
 });
+// Live run 6, 2026-11-22: "make it a bowl" on a salmon day, after a salmon rice skillet, asked for the repeat the judge turned down.
+test("today's kind of dish and starch are chosen in code: never a repeat of what they had, never bread they lack", () => {
+  const starches = [{ family: "rice", name: "Jasmine rice" }, { family: "potato", name: "Russet potatoes" }];
+  const base = { patientId: "p1", mealType: "dinner" as const, protein: "salmon", homeStarches: starches };
+  const days = ["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14"];
+  // Nothing eaten yet: the day's rotation, with one of their starches named.
+  const fresh = days.map((today) => shapeOfTheDay({ ...base, today, used: [] }));
+  assert.equal(new Set(fresh.map((x) => x.style)).size, 6);
+  for (const x of fresh) assert.ok(x.starch === "Jasmine rice" || x.starch === "Russet potatoes");
+  // Whatever the day, the pick never recreates a dish they had: same protein, starch and way.
+  const had = ["Salmon and Spinach Jasmine Rice Skillet", "Salmon and Spinach Potato Hash", "Salmon and Jasmine Rice Soup"];
+  for (const today of days) {
+    const pick = shapeOfTheDay({ ...base, today, used: had });
+    const way = dishShape(pick.style).way;
+    const family = pick.starch === "Jasmine rice" ? "rice" : "potato";
+    assert.ok(!had.some((n) => { const u = dishShape(n); return u.protein === "salmon" && u.starch === family && u.way === way; }), `${today}: ${pick.style} with ${pick.starch}`);
+  }
+  // Another protein's dishes do not count against today's.
+  const beefOnly = shapeOfTheDay({ ...base, today: "2026-11-09", used: ["Ground Beef and Spinach Jasmine Rice Skillet"] });
+  assert.deepEqual(beefOnly, fresh[0]);
+  // No bread at home: never a wrap or a sandwich at lunch; with bread, a wrap's starch is the bread.
+  for (const today of days) assert.doesNotMatch(shapeOfTheDay({ ...base, mealType: "lunch", today, used: [] }).style, /wrap|sandwich/);
+  const withBread = days.map((today) => shapeOfTheDay({ ...base, mealType: "lunch", today, used: [], homeStarches: [...starches, { family: "bread", name: "Whole-wheat tortillas" }] }));
+  const wrap = withBread.find((x) => /wrap/.test(x.style));
+  assert.equal(wrap?.starch, "Whole-wheat tortillas");
+  // Nothing marked: a kind of dish only.
+  assert.equal(shapeOfTheDay({ ...base, today: "2026-11-09", homeStarches: [], used: [] }).starch, null);
+  // In the prompt.
+  const p = dishSystemPrompt({ ...KEPT_BASE, ask: DINNER, bannedNames: [], brain: brainFrom({ kept: { ...SALMON_AND_BEEF, atHome: ["Jasmine rice", "Russet potatoes"] } }), who: { patientId: "p1", today: "2026-11-09" } });
+  assert.match(p, /- To keep their week varied, make today's Dinner .+, with (Jasmine rice|Russet potatoes) as its starch, if that suits what they have; otherwise the nearest thing to it\./);
+});
+
 test("prompt: a time limit shorter than breakfast's own is the only one named", () => {
   const p = withBrain({ kept: SALMON_AND_BEEF }, { mealType: "breakfast", summary: NO_LOGS, maxMinutes: 20 });
   assert.match(p, /This is BREAKFAST: morning food, under 20 minutes in total/);

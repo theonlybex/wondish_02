@@ -27,7 +27,7 @@ import { proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-f
 import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
 import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type AskSteer, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
 import { builtOn, eggsOnlyKitchen, proteinKind } from "@/lib/clara/dish-protein";
-import { judgeDish, keepWayOfCooking, type DishVerdict } from "@/lib/clara/dish-judge";
+import { dishShape, judgeDish, keepWayOfCooking, starchFamily, type DishVerdict } from "@/lib/clara/dish-judge";
 import { chooseProtein, fnv1a, fromHomeLine, requestedProtein, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
 import { targetLines } from "@/lib/clara/meal-target";
 import { exampleAllergenGroups, steerLines, levelCeilings } from "@/lib/clara/level-steer";
@@ -281,7 +281,7 @@ export function gateGeneratedDishes(recipes: FridgeRecipe[], opts: GateOptions):
     const cooked = nameFromCookedForm(derinsed.name, derinsed.steps);
     const prosed1 = cooked && !seen.has(cooked.trim().toLowerCase()) ? { ...derinsed, name: cooked } : derinsed;
     // A name rebuilt from the ingredients keeps how the dish is cooked (see keepWayOfCooking).
-    const withWay = keepWayOfCooking(raw.name, prosed1.name);
+    const withWay = keepWayOfCooking(raw.name, prosed1.name, [...prosed1.usesIngredients, ...prosed1.missingIngredients]);
     const prosed = withWay !== prosed1.name && !seen.has(withWay.trim().toLowerCase()) ? { ...prosed1, name: withWay } : prosed1;
 
     const salted = clampAddedSalt(prosed.amounts ?? [], prosed.perServing?.calories, opts.sodiumLimitMg);
@@ -389,11 +389,55 @@ const DINNER_STYLES = ["a tray bake or a roast", "a pan dish with a sauce", "a s
 const SLOW_STYLE = /bake|roast|stew|stuffed/;
 /** The kind of dish today's lunch or dinner leans to: fixed for a person and day, different day to day. */
 export function styleOfTheDay(patientId: string, today: string, mealType: "lunch" | "dinner", maxMinutes?: number): string {
-  const all: readonly string[] = mealType === "lunch" ? LUNCH_STYLES : DINNER_STYLES;
-  const styles = maxMinutes !== undefined && maxMinutes <= 30 ? all.filter((x) => !SLOW_STYLE.test(x)) : all;
-  const [y, m, d] = today.split("-").map(Number);
+  return shapeOfTheDay({ patientId, today, mealType, maxMinutes, protein: null, homeStarches: [], used: [] }).style;
+}
+
+/**
+ * Today's dish, chosen in code: a kind of dish and, when they have a starch at home, which one.
+ * It starts where the day's rotation points and moves on past anything that would repeat a dish they
+ * had today or in the last days (the same protein, starch and way of cooking) or that needs bread
+ * they do not have. Live run 6, 2026-11-22: a fixed "make it a bowl" on a salmon day, after a salmon
+ * rice skillet, asked for the very repeat the judge then turned down.
+ */
+export function shapeOfTheDay(a: {
+  patientId: string; today: string; mealType: "lunch" | "dinner"; maxMinutes?: number;
+  /** Today's protein key, or null when none is chosen. */
+  protein: string | null;
+  /** The starches they have at home, one name per family. */
+  homeStarches: readonly { family: string; name: string }[];
+  /** Dish names they had today or in the last days, or were just shown. */
+  used: readonly string[];
+}): { style: string; starch: string | null } {
+  const all: readonly string[] = a.mealType === "lunch" ? LUNCH_STYLES : DINNER_STYLES;
+  const hasBread = a.homeStarches.some((x) => x.family === "bread");
+  const styles = all
+    .filter((x) => !(a.maxMinutes !== undefined && a.maxMinutes <= 30 && SLOW_STYLE.test(x)))
+    // A wrap needs the bread; with a marked kitchen that has none, it is not asked for.
+    .filter((x) => !(a.homeStarches.length > 0 && !hasBread && /wrap|sandwich/.test(x)));
+  const [y, m, d] = a.today.split("-").map(Number);
   const dayNumber = Math.floor(Date.UTC(y, m - 1, d) / 86_400_000);
-  return styles[(fnv1a(`${patientId}|${mealType}`) + dayNumber) % styles.length];
+  const start = fnv1a(`${a.patientId}|${a.mealType}`) + dayNumber;
+  // In a wrap the bread is the starch.
+  const starchesFor = (style: string) =>
+    /wrap|sandwich/.test(style) ? a.homeStarches.filter((x) => x.family === "bread") : a.homeStarches.filter((x) => x.family !== "bread" || a.homeStarches.length === 1);
+  const protein = a.protein && a.protein.startsWith("ground ") ? a.protein.slice(7) : a.protein;
+  const usedShapes = a.used.map(dishShape);
+  const repeats = (style: string, family: string | null) => {
+    const way = dishShape(style).way;
+    return usedShapes.some((u) => u.way === way && (protein === null || u.protein === protein) && (family === null || u.starch === family));
+  };
+  let fallback: { style: string; starch: string | null } | null = null;
+  for (let i = 0; i < styles.length; i++) {
+    const style = styles[(start + i) % styles.length];
+    const starches = starchesFor(style);
+    const options: (typeof starches[number] | null)[] = starches.length > 0 ? starches.map((_, k) => starches[(start + i + k) % starches.length]) : [null];
+    for (const opt of options) {
+      const pick = { style, starch: opt?.name ?? null };
+      fallback ??= pick;
+      if (!repeats(style, opt?.family ?? null)) return pick;
+    }
+  }
+  return fallback ?? { style: styles[0] ?? all[0], starch: null };
 }
 
 /** The day plan's lunch and dinner lines (see DishAsk.dayPlan). */
@@ -454,7 +498,7 @@ export function dishSystemPrompt(a: {
         : `- This ${meal} does not have to be built on a protein: they are getting enough this week, so a salad, a vegetable plate or a potato dish is fine too. If it has a protein at its centre, make it ${choiceName}, which they have at home.`;
     if (steer.choice.why === "today" && brain.usedToday.length > 0) {
       const used = brain.usedToday.slice(-MAX_USED_TODAY_IN_PROMPT).map(promptDishName);
-      proteinLine += ` It is already open today, so make a different dish from: ${used.join("; ")}. Different means another starch or another way of cooking (a soup, a bake or a salad instead of one more bowl or skillet); the same dish with its name reworded, or with one food added, does not count.`;
+      proteinLine += ` It is already open today, so make a different dish from: ${used.join("; ")}. Different means another starch or another way of cooking; the same dish with its name reworded, or with one food added, does not count.`;
     }
     proteinLine += homeMeats.length > 0
       ? ` Any other meat, fish or seafood in it must be one of these, which they have at home: ${clean(homeMeats)}; use no other meat, fish or seafood: not in an ingredient, the dish name, the description or a step.`
@@ -511,8 +555,20 @@ export function dishSystemPrompt(a: {
     ? `- They had these in the last few days; make a clearly different dish, not one of these and not a small variation of one (the same protein, starch and way of cooking under another name): ${recent.join("; ")}.`
     : ``;
   const whoIs = a.who ?? { patientId: "", today: "1970-01-01" };
-  const styleLine = plainMain && !ask.dayPlan
-    ? `- To keep their week varied, make today's ${meal} ${styleOfTheDay(whoIs.patientId, whoIs.today, ask.mealType as "lunch" | "dinner", ask.maxMinutes)} if that suits what they have; otherwise the nearest thing to it.`
+  const homeStarches: { family: string; name: string }[] = [];
+  for (const n of homeNames) {
+    const family = starchFamily(n);
+    if (family && !homeStarches.some((x) => x.family === family)) homeStarches.push({ family, name: cleanOne(n) });
+  }
+  const shape = plainMain && !ask.dayPlan
+    ? shapeOfTheDay({
+        patientId: whoIs.patientId, today: whoIs.today, mealType: ask.mealType as "lunch" | "dinner", maxMinutes: ask.maxMinutes,
+        protein: steer.choice?.key ?? null, homeStarches,
+        used: [...brain.usedToday, ...brain.usedRecently, ...(ask.avoid ?? [])],
+      })
+    : null;
+  const styleLine = shape
+    ? `- To keep their week varied, make today's ${meal} ${shape.style}${shape.starch ? `, with ${shape.starch} as its starch,` : ""} if that suits what they have; otherwise the nearest thing to it.`
     : ``;
   const atHome = kept.atHome.slice(0, MAX_AT_HOME_IN_PROMPT);
   const atHomeLine = atHome.length > 0
@@ -1588,7 +1644,10 @@ async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Pro
   }
   // Ladder step 2: a generated dish with only the size or protein share relaxed, before any stored recipe.
   // Read here, where the library is read: the generator has returned or the budget has passed, so no extra wait.
-  const relaxedPick = pickDish(relaxedDishes.filter(saysRequest), ask);
+  // Of the relaxed ones, a dish that is not a repeat of what they just had comes first.
+  const isRepeat = (r: FridgeRecipe) => (judgedBy.get(r)?.verdict.reasons ?? []).includes("repeat");
+  const relaxedInOrder = [...relaxedDishes.filter((r) => !isRepeat(r)), ...relaxedDishes.filter(isRepeat)];
+  const relaxedPick = pickDish(relaxedInOrder.filter(saysRequest), ask);
   if (relaxedPick) {
     libraryStop.abort();
     return buildDish(relaxedPick, ask, "generated", judgedBy.get(relaxedPick));

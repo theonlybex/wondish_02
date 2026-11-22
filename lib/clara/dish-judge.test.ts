@@ -110,3 +110,10 @@ test("the candidate is judged by what it is built on and the starch in it, and a
   assert.equal(keepWayOfCooking("Beef and Pepper Stir-Fry", "Ground Beef with Jasmine Rice"), "Ground Beef with Jasmine Rice");
   assert.equal(keepWayOfCooking("Beef and Pea Stew", "Beef and Potato Stew"), "Beef and Potato Stew");
 });
+
+test("a rebuilt name keeps 'Salad' always and 'Wrap' only with the bread in the dish; a congee is a pot dish", () => {
+  assert.equal(keepWayOfCooking("Salmon and Spinach Wrap with Lemon Yogurt Sauce", "Salmon with Spinach and Whole-wheat Tortilla", ["salmon fillets", "spinach", "whole-wheat tortilla"]), "Salmon with Spinach and Whole-wheat Tortilla Wrap");
+  assert.equal(keepWayOfCooking("Salmon and Spinach Wrap with Lemon Yogurt Sauce", "Salmon with Spinach and Jasmine Rice", ["salmon fillets", "spinach", "jasmine rice"]), "Salmon with Spinach and Jasmine Rice");
+  assert.equal(keepWayOfCooking("Warm Salmon and Pea Salad", "Salmon with Spinach and Jasmine Rice"), "Salmon with Spinach and Jasmine Rice Salad");
+  assert.equal(dishShape("Salmon and Spinach Jasmine Rice Congee").way, "wet");
+});

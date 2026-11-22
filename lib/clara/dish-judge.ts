@@ -52,13 +52,15 @@ const STARCHES: readonly (readonly [string, RegExp])[] = [
   ["grain", /\b(quinoa|barley|oats?|oatmeal|couscous|bulgur|farro|polenta)\b/],
 ];
 const NOT_A_STARCH = /\b(vinegar|flour|crumbs?|starch|milk|syrup|paper|wine)\b/;
+/** The starch family a food or a dish name says: rice, potato, pasta, bread or grain; null for none. */
+export const starchFamily = (text: string): string | null => starchOf(text);
 const starchOf = (text: string): string | null => {
   const lower = text.toLowerCase();
   if (NOT_A_STARCH.test(lower)) return null;
   return STARCHES.find(([, re]) => re.test(lower))?.[0] ?? null;
 };
 const WAYS: readonly (readonly [string, RegExp])[] = [
-  ["wet", /\b(soups?|stews?|curry|curries|chili|chowder|braised?|ragu|ragù|dal|dhal)\b/],
+  ["wet", /\b(soups?|stews?|curry|curries|chili|chowder|braised?|ragu|ragù|dal|dhal|congee|porridge)\b/],
   ["oven", /\b(bakes?|baked|roast(ed)?|stuffed|casserole|gratin|tray|sheet[- ]pan)\b/],
   ["cold", /\b(salads?|wraps?|sandwich(es)?|toast)\b/],
 ];
@@ -81,10 +83,15 @@ export function dishShape(name: string): DishShape {
 const WAY_WORDS: readonly (readonly [RegExp, string])[] = [
   [/\b(soups?)\b/, "Soup"], [/\b(stews?)\b/, "Stew"], [/\b(curry|curries)\b/, "Curry"], [/\b(chili)\b/, "Chili"], [/\b(chowder)\b/, "Chowder"],
   [/\b(roast(ed)?)\b/, "Roast"], [/\b(bakes?|baked|tray|sheet[- ]pan|casserole|gratin)\b/, "Bake"],
+  [/\b(salads?)\b/, "Salad"],
 ];
-export function keepWayOfCooking(original: string, renamed: string): string {
+// A wrap or a sandwich is only that with the bread in it.
+const BREAD_WAY_WORDS: readonly (readonly [RegExp, string])[] = [[/\b(wraps?)\b/, "Wrap"], [/\b(sandwich(es)?)\b/, "Sandwich"]];
+export function keepWayOfCooking(original: string, renamed: string, ingredientNames: readonly string[] = []): string {
   if (original.trim() === renamed.trim() || dishShape(renamed).way !== "pan" || dishShape(original).way === "pan") return renamed;
-  const word = WAY_WORDS.find(([re]) => re.test(original.toLowerCase()))?.[1];
+  const lower = original.toLowerCase();
+  const hasBread = starchesIn(ingredientNames).includes("bread");
+  const word = WAY_WORDS.find(([re]) => re.test(lower))?.[1] ?? (hasBread ? BREAD_WAY_WORDS.find(([re]) => re.test(lower))?.[1] : undefined);
   return word ? `${renamed.trim()} ${word}` : renamed;
 }
 
