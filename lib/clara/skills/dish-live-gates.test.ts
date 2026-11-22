@@ -16,6 +16,10 @@ const CATALOG: { name: string; allergenGroups: string[] }[] = [
   { name: "groundnut oil", allergenGroups: [PEANUT] }, // a peanut product whose NAME says nothing
   { name: "peanut butter", allergenGroups: [PEANUT] },
   { name: "brown rice", allergenGroups: [] },
+  // Catalog proteins (INGREDIENT_CATALOG names, lower case) for the at-home tests.
+  { name: "salmon fillets", allergenGroups: [] },
+  { name: "ground chicken", allergenGroups: [] },
+  { name: "boneless chicken breasts", allergenGroups: [] },
 ];
 const ing = (name: string, quantity: number, unit: string) => ({
   quantity, unit, ingredient: { name, allergenGroups: CATALOG.find((c) => c.name === name)?.allergenGroups ?? [] },
@@ -40,6 +44,22 @@ const LIBRARY = [
   libRecipe("clean", "Red Lentil and Spinach Stew", "olive oil", STEW_STEPS),
 ];
 
+// Lunch: a library of chicken recipes only (the at-home fallback test).
+const CHICKEN_STEPS = [
+  "Heat the olive oil in a pan and cook the boneless chicken breasts for 8 minutes on each side.",
+  "Simmer the brown rice in water for 25 minutes.",
+  "Stir the spinach into the rice and cook for 2 minutes.",
+  "Season with the salt and serve the chicken over the rice.",
+];
+const CHICKEN_LIBRARY = [{
+  id: "chicken", name: "Chicken Breast with Spinach Rice", steps: CHICKEN_STEPS,
+  calories: 480, protein: 42, carbs: 48, fat: 10, fiber: 4, sodium: null, prepTime: 10, cookTime: 30, servings: 1,
+  isPublic: true, mealTypeId: "mt-lunch",
+  ingredients: [ing("boneless chicken breasts", 140, "g"), ing("brown rice", 60, "g"), ing("spinach", 60, "g"), ing("olive oil", 1, "teaspoon"), ing("salt", 0.125, "teaspoon")],
+}];
+
+/** Ingredient ids (= catalog names) the patient marked as at home. Empty except in the at-home tests. */
+let pantry: string[] = [];
 let queries: string[] = [];
 const fakePrisma = {
   patient: {
@@ -52,13 +72,24 @@ const fakePrisma = {
   },
   ingredient: {
     findMany: async (args: any) => {
+      // The kept-foods catalog lookups (ids by name, then groups by id): not the dish's allergen-groups query.
+      if (args?.select?.id) {
+        queries.push("catalog");
+        const names: string[] | undefined = args.where?.name?.in;
+        const ids: string[] | undefined = args.where?.id?.in;
+        return CATALOG.filter((c) => (names ? names.some((w) => w.toLowerCase() === c.name) : ids ? ids.includes(c.name) : true))
+          .map((c) => ({ id: c.name, name: c.name, allergenGroups: c.allergenGroups }));
+      }
       queries.push("ingredient");
       const wanted: string[] | undefined = args?.where?.name?.in;
       return wanted ? CATALOG.filter((c) => wanted.some((w) => w.toLowerCase() === c.name)) : CATALOG.map((c) => ({ name: c.name }));
     },
+    createMany: async () => ({ count: 0 }), // the catalog's idempotent insert of names it lacks
   },
-  mealType: { findMany: async () => [{ id: "mt-dinner", name: "Dinner" }] },
-  recipe: { findMany: async () => { queries.push("recipe"); return LIBRARY; } },
+  patientPantryItem: { findMany: async () => pantry.map((ingredientId) => ({ ingredientId })) },
+  patientIngredientPreference: { findMany: async () => [] },
+  mealType: { findMany: async () => [{ id: "mt-dinner", name: "Dinner" }, { id: "mt-lunch", name: "Lunch" }] },
+  recipe: { findMany: async (args: any) => { queries.push("recipe"); return args?.where?.mealTypeId === "mt-lunch" ? CHICKEN_LIBRARY : LIBRARY; } },
   mealLog: { findMany: async () => { queries.push("mealLog"); return []; } },
 };
 
@@ -237,4 +268,69 @@ test("wants: a request that names their allergen is refused before any model cal
   // "peanut-free" names what they avoid, not what they want: no conflict.
   assert.deepEqual(await dish.createLiveDishDeps().requestConflicts!({ ...CTX }, "peanut-free lentil stew"), []);
   assert.deepEqual(await dish.createLiveDishDeps().requestConflicts!({ ...CTX }, "lentil stew"), []);
+});
+
+// ─── kept foods: what they keep at home, through the real gates ─────────────
+
+const salmonItem = () => ({
+  ...item("Pan-Seared Salmon with Lentils and Spinach", [{ name: "salmon fillet", quantity: 120, unit: "g" }], [
+    "Heat the olive oil in a pan and cook the yellow onion for 5 minutes.",
+    "Add the red lentils and water and simmer for 20 minutes.",
+    "Sear the salmon fillet in the pan for 4 minutes on each side.",
+    "Stir in the spinach, season with the salt and serve with the salmon fillet.",
+  ]),
+  perServing: { calories: 600, protein: 50, carbs: 60, fat: 16, fiber: 12 },
+});
+const chickenItem = () => ({
+  ...item("Ground Chicken and Lentil Skillet", [{ name: "ground chicken", quantity: 120, unit: "g" }], [
+    "Heat the olive oil in a pan and cook the yellow onion for 5 minutes.",
+    "Brown the ground chicken in the pan for 6 minutes.",
+    "Add the red lentils and water and simmer for 20 minutes.",
+    "Stir in the spinach, season with the salt and serve.",
+  ]),
+  perServing: { calories: 600, protein: 50, carbs: 60, fat: 16, fiber: 12 },
+});
+
+test("kept: salmon is the only protein at home → a ground-chicken candidate is not served (stage kept), the salmon one is", async () => {
+  pantry = ["salmon fillets"];
+  try {
+    const text = JSON.stringify({ dishes: [chickenItem(), salmonItem()] });
+    const { client, seen } = fakeClient(text);
+    const trace: { name: string; stage: string }[] = [];
+    const got = await dish.createLiveDishDeps({ client }).generate({ ...CTX }, ASK, { accept: () => true, trace: (e) => trace.push({ name: e.name, stage: e.stage }) });
+    assert.deepEqual(got.map((r) => r.name), ["Pan-Seared Salmon with Lentils and Spinach"]);
+    assert.deepEqual(trace.map((t) => t.stage), ["kept", "accepted"]);
+    assert.match(seen.params.system, /Salmon fillets/);
+    assert.match(seen.params.system, /no other meat, fish or seafood/);
+
+    // Through the handler: the chicken dish alone is never served from the model.
+    const only = JSON.stringify({ dishes: [chickenItem()] });
+    const res: any = await dish.makeDishHandlers({ ...dish.createLiveDishDeps({ client: fakeClient(only).client }), loadSummary: async () => NO_LOGS, loadStartingPicture: undefined }).suggest({ ...CTX }, { mealType: "dinner" });
+    assert.ok(!(res.ok && res.data.dish.source === "generated"), "the chicken candidate was not served");
+    assert.ok(!JSON.stringify(res.parts ?? []).match(/ground chicken/i));
+    const served: any = await dish.makeDishHandlers({ ...dish.createLiveDishDeps({ client: fakeClient(JSON.stringify({ dishes: [salmonItem()] })).client }), loadSummary: async () => NO_LOGS, loadStartingPicture: undefined }).suggest({ ...CTX }, { mealType: "dinner" });
+    assert.equal(served.ok, true);
+    assert.equal(served.data.dish.source, "generated");
+    assert.equal(served.parts.find((p: any) => p.kind === "dish").name, "Pan-Seared Salmon with Lentils and Spinach");
+  } finally {
+    pantry = [];
+  }
+});
+
+test("kept: nothing at home → the ground-chicken candidate is served as before", async () => {
+  const got = await dish.createLiveDishDeps({ client: fakeClient(JSON.stringify({ dishes: [chickenItem()] })).client }).generate({ ...CTX }, ASK, { accept: () => true });
+  assert.deepEqual(got.map((r) => r.name), ["Ground Chicken and Lentil Skillet"]);
+});
+
+test("kept: a library of only chicken recipes and a generator that returns nothing still yields a dish (the rule gives way)", async () => {
+  pantry = ["salmon fillets"];
+  try {
+    const deps = { ...dish.createLiveDishDeps({ client: fakeClient('{"dishes":[]}').client }), loadSummary: async () => NO_LOGS, loadStartingPicture: undefined };
+    const res: any = await dish.makeDishHandlers(deps).suggest({ ...CTX }, { mealType: "lunch" });
+    assert.equal(res.ok, true, res.message);
+    assert.equal(res.data.dish.source, "library");
+    assert.equal(res.parts.find((p: any) => p.kind === "dish").name, "Chicken Breast with Spinach Rice");
+  } finally {
+    pantry = [];
+  }
 });

@@ -23,6 +23,8 @@ import { LEVELS, type FullLevelKey } from "@/lib/level-catalogue";
 import { applyAllergenFilter, parseFridgeRecipes, type FridgeRecipe } from "@/lib/fridge";
 import { DISH_OUTPUT_SCHEMA, DISH_UNITS, DishItemExtractor, toFridgeItem } from "@/lib/clara/dish-output";
 import { libraryToFridge, matchesRequest, rankLibrary, suggestionName, type LibraryRecipe, type RecentDishes } from "@/lib/clara/dish-library";
+import { breaksProteinRule, proteinKey, proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-foods";
+import { loadKeptFoods } from "@/lib/clara/kept-foods-db";
 import crypto from "crypto";
 import { MAX_SERVINGS } from "@/lib/meal-log";
 import {
@@ -175,7 +177,8 @@ export type CandidateTrace = {
   /** ms since the generator started. */
   ms: number;
   name: string;
-  stage: "parse" | "safety" | "gates" | "card" | "accepted";
+  /** "kept": the dish uses a meat or fish they have not marked as at home (the at-home protein rule). */
+  stage: "parse" | "safety" | "gates" | "kept" | "card" | "accepted";
 };
 
 /** Effects, injected so every handler path is unit-tested without a DB or a model. */
@@ -282,6 +285,9 @@ const MAX_FIBRE_G = 40;
 /** Three lean dishes on Haiku 5.5's tokenizer, with room; the stream usually stops after the first. */
 const DISH_MAX_TOKENS = 4096;
 
+/** The most at-home (non-protein) foods named in the generator prompt. */
+const MAX_AT_HOME_IN_PROMPT = 40;
+
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
@@ -307,8 +313,17 @@ export function dishSystemPrompt(a: {
   bannedNames: string[];
   proteinOptions: string[];
   sodiumLimitMg: number;
+  /** What they keep at home and love. Absent or NO_KEPT_FOODS: the prompt is exactly as before. */
+  kept?: KeptFoods;
 }): string {
   const { ask } = a;
+  const kept = a.kept ?? NO_KEPT_FOODS;
+  // Catalog names, but cleaned like the avoid names all the same: no quotes, no line breaks.
+  const clean = (names: readonly string[]) => names.map((n) => n.replace(/["\n\r]+/g, "")).join(", ");
+  // The at-home protein rule replaces the protein line, banned names or not.
+  const keptProteins = proteinRuleOn(kept, ask.wants)
+    ? [...kept.proteinNames, ...a.proteinOptions.filter((o) => proteinKey(o) === null)]
+    : null;
   const meal = capitalize(ask.mealType);
   const servings = ask.servings ?? 1;
   const leanInto: string[] = [];
@@ -356,8 +371,16 @@ export function dishSystemPrompt(a: {
     `- Name each dish by what is IN it and the method you actually use. description is one short sentence and may only mention food in ingredients. Every dish needs a distinct name.`,
     saltRuleLine(a.sodiumLimitMg),
     `- Cooking fat: one teaspoon per serving is normal and one tablespoon is the maximum; write the same amount in the steps as in ingredients.`,
-    a.proteinOptions.length > 0 && a.bannedNames.length > 0
-      ? `- Protein sources that fit this person — build every main around one of them: ${a.proteinOptions.join(", ")}.`
+    keptProteins
+      ? `- Proteins they have at home, and others that fit them — build every main around one of them: ${clean(keptProteins)}. Use no other meat, fish or seafood in any dish: not in an ingredient, the dish name, the description or a step.`
+      : a.proteinOptions.length > 0 && a.bannedNames.length > 0
+        ? `- Protein sources that fit this person — build every main around one of them: ${a.proteinOptions.join(", ")}.`
+        : ``,
+    kept.atHome.length > 0
+      ? `- They usually have these at home; prefer them where they fit: ${clean(kept.atHome.slice(0, MAX_AT_HOME_IN_PROMPT))}.`
+      : ``,
+    kept.favorites.length > 0
+      ? `- These are their favourite foods; at least one of the dishes should feature one when it suits the meal: ${clean(kept.favorites)}.`
       : ``,
     a.bannedNames.length > 0
       ? `- FORBIDDEN WORDS (this person's allergies and rules): no ingredient name, dish name, description or step may contain any of these words — not even inside a longer name or a plant-based, "-free" or "no …" phrase. If "milk" is forbidden, "coconut milk", "almond milk" and "milk-free" are out too; if "butter" is, "peanut butter" is out. Choose ingredients whose names contain none of them: ${a.bannedNames.join(", ")}.`
@@ -374,6 +397,8 @@ interface Person {
   bans: DerivedBans;
   matchers: DietMatchers;
   sodiumLimitMg: number;
+  /** What they keep at home and love, through the same matchers (a banned or disliked food is never here). */
+  kept: KeptFoods;
 }
 
 function loadPatient(id: string) {
@@ -391,11 +416,18 @@ function personFor(ctx: ClaraContext): Promise<Person | null> {
       if (!patient) return null;
       // The person's own today decides which trigger trials are enforced.
       const bans = derivePatientBans(patient, new Date(`${ctx.today}T12:00:00`));
+      const matchers = buildDietMatchers(bans);
+      // Never fails the dish: without the marks, dishes are as they were before them.
+      const kept = await loadKeptFoods(patient.id, matchers).catch((err) => {
+        console.warn(`[clara-dish] kept foods failed to load: ${(err as Error)?.message ?? String(err)}`);
+        return NO_KEPT_FOODS;
+      });
       return {
         patient,
         bans,
-        matchers: buildDietMatchers(bans),
+        matchers,
         sodiumLimitMg: dailySodiumLimitMg(patient.healthConditions.map((h) => h.condition.name)),
+        kept,
       };
     })();
     personMemo.set(ctx, p);
@@ -477,6 +509,10 @@ async function gateOne(
     note(label, applyAllergenFilter([named], person.matchers, groupsOf).length === 0 ? "safety" : "gates");
     return null;
   }
+  if (proteinRuleOn(person.kept, ask.wants) && breaksProteinRule([...r.usesIngredients, ...r.missingIngredients], person.kept)) {
+    note(label, "kept");
+    return null;
+  }
   seen.add(r.name.trim().toLowerCase());
   return readableAmounts(r);
 }
@@ -524,6 +560,7 @@ async function generateGated(
           bannedNames: forbiddenWordsForPrompt(person.bans, person.matchers),
           proteinOptions: proteinOptionsFor(person.matchers),
           sodiumLimitMg: person.sodiumLimitMg,
+          kept: person.kept,
         }),
         // Structured outputs: the answer always parses (no more malformed or stringified lists).
         output_config: { format: { type: "json_schema", schema: DISH_OUTPUT_SCHEMA as unknown as Record<string, unknown> } },
@@ -649,7 +686,7 @@ export async function mealSuggestionNames(
     const ranked = rankLibrary(
       await libraryPool(mealType),
       { mealType, little: [], aLot: [] },
-      { patient: person.patient, matchers: person.matchers, seed: `${patientId}|${today}|${mealType}` },
+      { patient: person.patient, matchers: person.matchers, seed: `${patientId}|${today}|${mealType}`, kept: person.kept },
       recent,
       stepStatesAmount,
     );
@@ -670,6 +707,8 @@ const LIBRARY_KEEP = 3;
  * `signal` fires once a generated dish is served: from then on no further
  * query is made (the allergen groups for every ranked candidate are loaded in
  * ONE query, after the check).
+ * With the at-home protein rule on and nothing passing, it ranks and gates
+ * once more without that rule: a dish they could cook beats no dish.
  */
 async function libraryGated(ctx: ClaraContext, ask: DishAsk, signal?: AbortSignal): Promise<FridgeRecipe[]> {
   const [person, pool, recent, catalogFoodTokens] = await Promise.all([
@@ -680,38 +719,44 @@ async function libraryGated(ctx: ClaraContext, ask: DishAsk, signal?: AbortSigna
   ]);
   if (!person || signal?.aborted) return [];
   const meal = capitalize(ask.mealType);
-  const ranked = rankLibrary(
-    pool,
-    {
-      mealType: ask.mealType,
-      maxMinutes: ask.maxMinutes,
-      servings: ask.servings,
-      little: ask.picture ? ask.picture.little : ask.summary.little,
-      aLot: ask.picture ? ask.picture.aLot : ask.summary.aLot,
-      ...(ask.wants !== undefined ? { wants: ask.wants } : {}),
-    },
-    { patient: person.patient, matchers: person.matchers, seed: `${ctx.patientId}|${ctx.today}|${ask.mealType}` },
-    recent,
-    stepStatesAmount,
-  );
-  if (ranked.length === 0) return [];
-  const oil = oilAllowedBy(person.matchers);
-  const candidates = ranked.map((r) => specifyCookingOil(libraryToFridge(r, meal, ask.servings ?? 1, `frg_${crypto.randomUUID()}`), oil));
-  if (signal?.aborted) return [];
-  // The same catalog lookup a generated dish gets, for every candidate at once.
-  const groupsOf = await loadIngredientGroups(candidates.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
-  const out: FridgeRecipe[] = [];
-  for (let i = 0; i < candidates.length && out.length < LIBRARY_KEEP && !signal?.aborted; i += LIBRARY_CHUNK) {
-    const gated = gateGeneratedDishes(candidates.slice(i, i + LIBRARY_CHUNK), {
-      mealTypeName: meal,
-      matchers: person.matchers,
-      groupsOf,
-      catalogFoodTokens,
-      sodiumLimitMg: person.sodiumLimitMg,
-    });
-    for (const r of gated) if (fibreIsPlausible(r) && pickDish([r], ask)) out.push(readableAmounts(r));
-  }
-  return out.slice(0, LIBRARY_KEEP);
+  // proteinRule undefined = rankLibrary's default (the rule on when it applies to this ask).
+  const rankAndGate = async (proteinRule?: false): Promise<FridgeRecipe[]> => {
+    const ranked = rankLibrary(
+      pool,
+      {
+        mealType: ask.mealType,
+        maxMinutes: ask.maxMinutes,
+        servings: ask.servings,
+        little: ask.picture ? ask.picture.little : ask.summary.little,
+        aLot: ask.picture ? ask.picture.aLot : ask.summary.aLot,
+        ...(ask.wants !== undefined ? { wants: ask.wants } : {}),
+      },
+      { patient: person.patient, matchers: person.matchers, seed: `${ctx.patientId}|${ctx.today}|${ask.mealType}`, kept: person.kept, proteinRule },
+      recent,
+      stepStatesAmount,
+    );
+    if (ranked.length === 0) return [];
+    const oil = oilAllowedBy(person.matchers);
+    const candidates = ranked.map((r) => specifyCookingOil(libraryToFridge(r, meal, ask.servings ?? 1, `frg_${crypto.randomUUID()}`), oil));
+    if (signal?.aborted) return [];
+    // The same catalog lookup a generated dish gets, for every candidate at once.
+    const groupsOf = await loadIngredientGroups(candidates.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
+    const out: FridgeRecipe[] = [];
+    for (let i = 0; i < candidates.length && out.length < LIBRARY_KEEP && !signal?.aborted; i += LIBRARY_CHUNK) {
+      const gated = gateGeneratedDishes(candidates.slice(i, i + LIBRARY_CHUNK), {
+        mealTypeName: meal,
+        matchers: person.matchers,
+        groupsOf,
+        catalogFoodTokens,
+        sodiumLimitMg: person.sodiumLimitMg,
+      });
+      for (const r of gated) if (fibreIsPlausible(r) && pickDish([r], ask)) out.push(readableAmounts(r));
+    }
+    return out.slice(0, LIBRARY_KEEP);
+  };
+  const out = await rankAndGate();
+  if (out.length > 0 || !proteinRuleOn(person.kept, ask.wants) || signal?.aborted) return out;
+  return rankAndGate(false);
 }
 
 const BAN_SOURCE_WORDS: Record<string, string> = {
