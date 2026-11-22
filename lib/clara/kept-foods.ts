@@ -16,7 +16,14 @@ const ANIMALS: Record<string, string> = {
   shrimp: "shrimp", prawn: "shrimp", crab: "crab", lobster: "lobster", scallop: "scallop",
   clam: "clam", mussel: "mussel", oyster: "oyster", squid: "squid", calamari: "squid",
   octopus: "octopus",
+  codfish: "cod", grouper: "grouper", monkfish: "monkfish", crayfish: "crayfish", crawfish: "crayfish",
+  rabbit: "rabbit", goose: "goose", quail: "quail", oxtail: "oxtail", rib: "ribs",
+  hotdog: "hot dog", bratwurst: "bratwurst", kielbasa: "kielbasa", pancetta: "pancetta",
+  meatball: "meat",
 };
+
+// Generic words stand for a kind of their own: never a kept key unless marked that exact way.
+const GENERIC_KINDS: Record<string, string> = { meat: "meat", fish: "fish", seafood: "seafood", poultry: "poultry" };
 
 // Steak cuts are beef, but only when no animal is named (tuna steak is tuna).
 const BEEF_CUTS = new Set(["steak", "sirloin", "ribeye", "brisket", "flank", "chuck", "mignon"]);
@@ -26,7 +33,7 @@ const GROUND = new Set(["ground", "minced", "mince"]);
 const GENERIC_PROTEIN = new Set(["meat", "fish", "seafood", "poultry", "steak"]);
 
 function words(text: string): string[] {
-  return text.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  return text.toLowerCase().replace(/\bhot[ -]dogs?\b/g, "hotdog").split(/[^a-z]+/).filter(Boolean);
 }
 
 function singular(word: string): string {
@@ -49,7 +56,12 @@ function kindIn(tokens: string[]): string | null {
     const a = animalOf(t);
     if (a) return a;
   }
-  return tokens.some(cutOf) ? "beef" : null;
+  if (tokens.some(cutOf)) return "beef";
+  for (const t of tokens) {
+    const g = GENERIC_KINDS[t] ?? GENERIC_KINDS[singular(t)];
+    if (g) return g;
+  }
+  return null;
 }
 
 /** "salmon", "ground beef", "chicken"… or null when the name is not a meat, fish or seafood. */

@@ -88,3 +88,26 @@ test("foodMatches", () => {
   assert.equal(foodMatches("Ground beef", "beef broth"), false);
   assert.equal(foodMatches("Roma tomatoes", "cherry tomatoes"), false);
 });
+
+test("proteinKey: generic words and more named meats and fish", () => {
+  assert.equal(proteinKey("white fish fillets"), "fish");
+  assert.equal(proteinKey("ground meat"), "ground meat");
+  assert.equal(proteinKey("mixed seafood"), "seafood");
+  assert.equal(proteinKey("meatballs"), "meat");
+  assert.equal(proteinKey("fish sauce"), null);
+  assert.equal(proteinKey("hamburger buns"), null);
+  const named: [string, string][] = [
+    ["codfish", "cod"], ["hot dogs", "hot dog"], ["pancetta", "pancetta"],
+    ["bratwurst", "bratwurst"], ["kielbasa", "kielbasa"], ["pork ribs", "pork"], ["short ribs", "ribs"],
+    ["rabbit", "rabbit"], ["goose", "goose"], ["quail", "quail"], ["crayfish", "crayfish"],
+    ["grouper", "grouper"], ["monkfish", "monkfish"], ["oxtail", "oxtail"],
+  ];
+  for (const [n, k] of named) assert.equal(proteinKey(n), k, n);
+});
+
+test("generic meat or fish breaks the rule unless marked that exact way", () => {
+  const kept = splitKeptFoods([{ name: "Salmon fillets", groupKey: "proteins", atHome: true, favorite: false }]);
+  for (const n of ["white fish fillets", "ground meat", "mixed seafood", "meatballs", "pancetta", "hot dogs"])
+    assert.equal(breaksProteinRule([n], kept), true, n);
+  assert.equal(breaksProteinRule(["salmon"], kept), false);
+});
