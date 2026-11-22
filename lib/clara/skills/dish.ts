@@ -452,8 +452,9 @@ export function shapeOfTheDay(a: {
 }
 
 /** The day plan's lunch and dinner lines (see DishAsk.dayPlan). */
-export const DAY_PLAN_LUNCH_LINE = `- This is the day's lunch: make it the lighter, quicker of the day's two main dishes.`;
-export const DAY_PLAN_DINNER_LINE = `- This is the day's dinner: make it the fuller of the day's two main dishes, and a different kind of dish from the lunch.`;
+// No "lighter" or "fuller": the size lines say how big each is (the lunch is the bigger of the two).
+export const DAY_PLAN_LUNCH_LINE = `- This is the day's lunch: make it the quicker of the day's two main dishes.`;
+export const DAY_PLAN_DINNER_LINE = `- This is the day's dinner: make it the more cooked of the day's two main dishes, and a different kind of dish from the lunch.`;
 
 export function dishSystemPrompt(a: {
   ask: DishAsk;
@@ -1716,8 +1717,9 @@ async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Pro
   // Ladder step 2: a generated dish with only the size or protein share relaxed, before any stored recipe.
   // Read here, where the library is read: the generator has returned or the budget has passed, so no extra wait.
   // Of the relaxed ones, a dish that is not a repeat of what they just had comes first.
-  const isRepeat = (r: FridgeRecipe) => (judgedBy.get(r)?.verdict.reasons ?? []).includes("repeat");
-  const relaxedInOrder = [...relaxedDishes.filter((r) => !isRepeat(r)), ...relaxedDishes.filter(isRepeat)];
+  // Then a repeat; a dish with a second protein (an egg on the beef) last of all.
+  const rank = (r: FridgeRecipe) => { const why = judgedBy.get(r)?.verdict.reasons ?? []; return why.includes("proteins") ? 2 : why.includes("repeat") ? 1 : 0; };
+  const relaxedInOrder = [0, 1, 2].flatMap((n) => relaxedDishes.filter((r) => rank(r) === n));
   const relaxedPick = pickDish(relaxedInOrder.filter(saysRequest), ask);
   if (relaxedPick) {
     libraryStop.abort();

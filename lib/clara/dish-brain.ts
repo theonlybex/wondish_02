@@ -214,6 +214,11 @@ export function steerForAsk(
       })
     : "free";
   // Never for a request: they asked for the dish they want.
-  const need: ProteinNeed = brain.rules.mainsOnProtein && ask.wants === undefined && skipsProtein(base, ask.mealType, who.patientId, who.today) ? "skip" : base;
+  // And only in a kitchen that can make a filling lunch without them: a pulse, tofu, yogurt or cheese
+  // at home, or nothing marked at all (live run A3, 2026-11-22: with salmon, beef, eggs, rice and
+  // spinach the skipped lunches were 270-440 kcal of potatoes and spinach).
+  const marked = brain.kept.proteinNames.length + brain.kept.atHome.length > 0;
+  const canGoWithout = !marked || brain.home.some((p) => p.cls === "pulse" || p.cls === "plant" || p.cls === "dairy") || brain.kept.atHome.some((n) => /\b(cheese|feta|mozzarella|cheddar|parmesan|halloumi|paneer|yogh?urt)\b/i.test(n));
+  const need: ProteinNeed = brain.rules.mainsOnProtein && ask.wants === undefined && canGoWithout && skipsProtein(base, ask.mealType, who.patientId, who.today) ? "skip" : base;
   return { ruleOn, choice, need, target, levels, ceilings };
 }

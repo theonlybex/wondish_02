@@ -212,7 +212,14 @@ export function steerLines(levels: readonly LevelSteer[], opts: SteerLineOptions
       ? "; one is enough, but never a second starch: leave out the grains, bread and pasta among them when the dish already has its starch"
       : "; one is enough";
   };
-  return levels.map((l) => {
+  // In a marked kitchen a "more" line with no example at home is not said at all: Clara cooks from what
+  // they have, and the foods that would help wait on the Grocery list instead (owner, 2026-11-22;
+  // lib/clara/grocery.ts lists them). The line used to bring peas, barley and quinoa into dishes.
+  const said = levels.filter((l) => {
+    if (!marked || l.direction !== "more") return true;
+    return moreExamples(l.key === "fibre" ? FIBRE_RICH_EXAMPLES : RICH_FOODS[l.key], opts).preferring;
+  });
+  return said.map((l) => {
     const answers = l.why === "answers";
     if (l.key === "fibre" && l.direction === "more" && l.why !== "today") {
       return `- ${answers ? "From their answers they probably get little fibre" : "They have had little fibre this week"}: ${opts.fibreAdded || marked ? "include a fibre-rich ingredient in every dish" : "build every dish around a fibre-rich ingredient"}${examples(FIBRE_RICH_EXAMPLES)}${oneIsEnough(FIBRE_RICH_EXAMPLES)}.`;

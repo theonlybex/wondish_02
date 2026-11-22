@@ -97,10 +97,8 @@ test("steerLines options: at-home examples are preferred, a dropped example neve
   // Empty options: today's wording.
   assert.deepEqual(steerLines([lv("iron"), lv("fibre")], {}), steerLines([lv("iron"), lv("fibre")]));
   const noBeef = (f: string) => f !== "beef";
-  // No example at home: the plain form, never "preferring any they have at home".
-  assert.deepEqual(steerLines([lv("iron")], { atHome: ["Ground beef"], keepExample: noBeef }), [
-    "- They have had little iron this week: include one food rich in it (lentils, beans, chickpeas, spinach, tofu); one is enough.",
-  ]);
+  // A marked kitchen with no example at home: the line is not said (the foods wait on the Grocery list).
+  assert.deepEqual(steerLines([lv("iron")], { atHome: ["Ground beef"], keepExample: noBeef }), []);
   // No example survives: the line without a list.
   assert.deepEqual(steerLines([lv("iron")], { keepExample: () => false }), ["- They have had little iron this week: build the dish on foods rich in it."]);
   assert.deepEqual(steerLines([lv("iron")], { atHome: ["Black beans", "Spinach"] }), [

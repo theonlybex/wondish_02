@@ -249,7 +249,7 @@ SCENARIOS.push(
   { id: "Q", title: "MARKS + potatoes: five days of lunch and dinner, each dish cooked and logged", rules: [], atHome: [...MARKS, "Russet potatoes"], cooks: true,
     asks: Array.from({ length: 5 }, (_, d) => [{ meal: "lunch" as const, day: 3 + d }, { meal: "dinner" as const, day: 3 + d }]).flat() },
   // Round A3 (2026-11-22): with protein on track, one lunch in two goes without meat, fish or eggs.
-  { id: "T", title: "MARKS + potatoes; protein on track; four lunches", rules: [], atHome: [...MARKS, "Russet potatoes"], week: wk3("Logged", 45, 500),
+  { id: "T", title: "MARKS + potatoes, lentils, feta; protein on track; four lunches", rules: [], atHome: [...MARKS, "Russet potatoes", "Green lentils", "Feta cheese"], week: wk3("Logged", 45, 500),
     asks: [15, 18, 21, 24].map((day) => ({ meal: "lunch" as const, day })) },
   // Round B (2026-11-22): the ingredients check before cooking.
   { id: "R", title: "swaps: MARKS + kale, potatoes, mushrooms at home", rules: [], swaps: true,
