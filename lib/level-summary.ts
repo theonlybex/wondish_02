@@ -39,7 +39,7 @@ export async function loadClaraLevelSummary(patientId: string, toDate: string, d
   const targets = dayTarget
     ? { calories: dayTarget.calories, protein: dayTarget.protein, carbs: dayTarget.carbs, fat: dayTarget.fat }
     : null;
-  return claimsAsNumbersSays(summarizeLevels(dayInputs, targets, { fromDate, toDate }), dayInputs);
+  return claimsAsNumbersSays(summarizeLevels(dayInputs, targets, { fromDate, toDate }, { byLoggedShare: true }), dayInputs);
 }
 
 /**

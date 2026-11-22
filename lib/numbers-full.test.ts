@@ -250,3 +250,30 @@ test("fullDaysFromRows: a meal without fibre leaves its day's fibre null", () =>
   ]);
   assert.equal(days[0].fibre, null);
 });
+
+// Owner, 2026-11-22: "if user protein goal is satisfied with dishes from clara then it should say enough of protein in numbers".
+test("a whole-day need is judged against the part of the day that was logged", () => {
+  const targets = { calories: 2000, protein: 150, carbs: 225 };
+  // Lunch and dinner only: 1,300 of 2,000 kcal (65% of the day), 75 g protein (77% of 65% of 150 g).
+  const two = base({ macroTargets: targets, days: [1, 2, 3, 4].map((i) => day(i, { calories: 1300, protein: 75, carbs: 140, fibre: 14 })) });
+  const out = buildFullNumbers(two);
+  assert.deepEqual([lv(out, "protein").word, lv(out, "protein").target, lv(out, "protein").wordTarget], ["on track", 150, 97.5]);
+  assert.equal(lv(out, "carbs").word, "on track");
+  assert.equal(lv(out, "fibre").word, "on track"); // 14 g of 65% of 28 g
+  // The same protein with the whole day logged is little, with no prorated target.
+  const whole = buildFullNumbers(base({ macroTargets: targets, days: [1, 2, 3, 4].map((i) => day(i, { calories: 2000, protein: 75 })) }));
+  assert.deepEqual([lv(whole, "protein").word, lv(whole, "protein").wordTarget], ["little", undefined]);
+  // Still little when the logged part is thin in protein: 30 g in 1,300 kcal.
+  assert.equal(lv(buildFullNumbers(base({ macroTargets: targets, days: [1, 2, 3, 4].map((i) => day(i, { calories: 1300, protein: 30 })) })), "protein").word, "little");
+  // Never under half a day, and a limit is not prorated (a partial day cannot be over).
+  const thin = buildFullNumbers(base({ macroTargets: targets, days: [1, 2, 3, 4].map((i) => day(i, { calories: 400, protein: 30, sodium: 2500 })) }));
+  assert.equal(lv(thin, "protein").wordTarget, 75);
+  assert.deepEqual([lv(thin, "sodium").word, lv(thin, "sodium").wordTarget], ["a lot", undefined]);
+  // No calorie target: unchanged.
+  assert.equal(lv(buildFullNumbers(base({ days: [1, 2, 3, 4].map((i) => day(i, { calories: 900, protein: 20 })) })), "protein").wordTarget, undefined);
+  // Clara's six-level reading agrees on fibre; the plain one (the website's) is unchanged.
+  const days6 = [1, 2, 3, 4].map((i) => ({ localDate: `2026-11-0${i}`, meals: 2, calories: 1300, protein: 75, carbs: 140, fat: 40, fibre: 14, sodium: 1500 }));
+  const t6 = { calories: 2000, protein: 150, carbs: 225, fat: 60 };
+  assert.deepEqual(summarizeLevels(days6, t6, range, { byLoggedShare: true }).little, []);
+  assert.deepEqual(summarizeLevels(days6, t6, range).little, ["fibre"]);
+});

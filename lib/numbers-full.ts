@@ -4,8 +4,10 @@
 // untouched and still feeds GET /api/numbers without full=1.
 import {
   AREAS,
+  DAY_NEED_KEYS,
   LEVELS,
   defaultTracked,
+  loggedShare,
   targetFor,
   wordFor,
   type FullLevelKey,
@@ -53,6 +55,11 @@ export interface FullLevelRow {
   foodCounted: boolean;
   estimate: boolean;
   word: FullLevelWord | null;
+  /**
+   * What the word was judged against when the logs cover only part of the day
+   * (target × the logged share); absent when it is the whole target.
+   */
+  wordTarget?: number;
   tracked: boolean;
   goal: number | null;
 }
@@ -152,6 +159,9 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
   const goals = new Map(input.trackedRows.map((r) => [r.levelKey, r.goal]));
   const withPhosphorus = showsPhosphorus(input.conditionNames);
 
+  // How much of the day the logs cover (lunch and dinner only is about two thirds).
+  const share = loggedShare(mean(counted.map((d) => d.calories)), macroTargets?.calories);
+
   type Food = { values: (number | null)[] };
   // Protein and carbs count on every counted day (a missing figure is 0, as in
   // calories). Fibre, sodium, saturated fat and added sugar count only when
@@ -187,7 +197,10 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
 
     const total = (foodAvg ?? 0) + pillAmount;
     const amount = foodCounted ? total : pillAmount > 0 ? pillAmount : null;
-    const word = foodCounted && enoughLogs && amount !== null ? wordFor(def, amount, target) : null;
+    // A whole-day need is judged against the part of the day that was logged.
+    const prorated = foodCounted && share < 1 && DAY_NEED_KEYS.has(def.key);
+    const wordTarget = prorated ? target * share : target;
+    const word = foodCounted && enoughLogs && amount !== null ? wordFor(def, amount, wordTarget) : null;
 
     return {
       key: def.key,
@@ -202,6 +215,7 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
       foodCounted,
       estimate,
       word,
+      ...(prorated ? { wordTarget: roundAmount(wordTarget, def.unit) } : {}),
       tracked: tracked.has(def.key),
       goal: goals.get(def.key) ?? null,
     };

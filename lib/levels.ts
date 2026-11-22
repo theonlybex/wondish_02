@@ -1,6 +1,8 @@
 // Turns a week of logged meals into "levels" with words. Pure: callers load
 // the days and targets. Slice 1 has six levels; only fibre and sodium get words.
 
+import { loggedShare } from "@/lib/level-catalogue";
+
 export type LevelKey = "calories" | "protein" | "carbs" | "fat" | "fibre" | "sodium";
 export type LevelWord = "little" | "on track" | "within limit" | "a lot";
 export interface LevelRow {
@@ -49,6 +51,8 @@ export function summarizeLevels(
   days: LevelDayInput[],
   targets: { calories: number; protein: number; carbs: number; fat: number } | null,
   range: { fromDate: string; toDate: string },
+  /** Clara's reading: a whole-day need is judged against the part of the day that was logged, as the full Numbers screen does. Off by default so GET /api/numbers without full=1 is unchanged. */
+  opts: { byLoggedShare?: boolean } = {},
 ): LevelSummary {
   const counted = days.filter((d) => d.meals >= 1);
   const enoughLogs = days.filter((d) => d.meals >= ENOUGH_MEALS_PER_DAY).length >= ENOUGH_LOG_DAYS;
@@ -63,8 +67,10 @@ export function summarizeLevels(
     counted.map((d) => d.fibre).filter((v): v is number => v !== null),
   );
 
+  // Judged against the part of the day that was logged, as the Numbers screen does (loggedShare).
+  const share = opts.byLoggedShare ? loggedShare(avg((d) => d.calories), targets?.calories) : 1;
   const fibreWord: LevelWord | null =
-    fibreAvg === null ? null : fibreAvg < FIBRE_TARGET_G * LITTLE_BELOW ? "little" : "on track";
+    fibreAvg === null ? null : fibreAvg < FIBRE_TARGET_G * share * LITTLE_BELOW ? "little" : "on track";
   const sodiumWord: LevelWord | null =
     sodiumAvg === null ? null : sodiumAvg > SODIUM_LIMIT_MG ? "a lot" : "within limit";
 
