@@ -209,7 +209,7 @@ export function steerLines(levels: readonly LevelSteer[], opts: SteerLineOptions
     const { text, preferring } = moreExamples(list, opts);
     if (preferring || !text.includes(", ")) return "";
     return /\b(rice|oats|barley|quinoa|pasta|bread|potatoes)\b/.test(text)
-      ? "; one is enough, and a grain, bread or pasta among them takes the place of the dish's starch"
+      ? "; one is enough, but never a second starch: leave out the grains, bread and pasta among them when the dish already has its starch"
       : "; one is enough";
   };
   return levels.map((l) => {
