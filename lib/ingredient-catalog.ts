@@ -16,7 +16,7 @@ export const INGREDIENT_CATALOG: CatalogCategory[] = [
     key: "proteins",
     title: "Proteins & Plant-Based",
     taste: true,
-    items: ["Boneless chicken breasts", "Chicken thighs", "Turkey breast", "Ground turkey", "Ground beef", "Sirloin steak", "Ribeye steak", "Pork chops", "Bacon", "Salmon fillets", "Tilapia fillets", "Catfish fillets", "Canned tuna", "Shrimp", "Extra-firm tofu"],
+    items: ["Boneless chicken breasts", "Chicken thighs", "Turkey breast", "Ground turkey", "Ground chicken", "Ground beef", "Sirloin steak", "Ribeye steak", "Pork chops", "Bacon", "Salmon fillets", "Tilapia fillets", "Catfish fillets", "Canned tuna", "Shrimp", "Extra-firm tofu"],
   },
   {
     key: "produce",

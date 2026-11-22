@@ -8,7 +8,10 @@ import {
   proteinRuleOn,
   requestNamesProtein,
   splitKeptFoods,
+  visibleRows,
 } from "./kept-foods";
+import { INGREDIENT_CATALOG, catalogItemNames } from "../ingredient-catalog";
+import { buildDietMatchers, derivePatientBans } from "../diet-match";
 
 test("proteinKey: kinds, ground, and things that only sound like meat", () => {
   assert.equal(proteinKey("Salmon fillets"), "salmon");
@@ -110,4 +113,47 @@ test("generic meat or fish breaks the rule unless marked that exact way", () => 
   for (const n of ["white fish fillets", "ground meat", "mixed seafood", "meatballs", "pancetta", "hot dogs"])
     assert.equal(breaksProteinRule([n], kept), true, n);
   assert.equal(breaksProteinRule(["salmon"], kept), false);
+});
+
+// ── visibleRows: catalog x marks, minus what the profile bans ───────────────
+const emptyProfile = { foodAllergies: [], foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [] };
+const idsFor = () => new Map(catalogItemNames().map((n, i) => [n, `id-${i}`]));
+
+test("the catalog's Proteins group holds Ground chicken", () => {
+  assert.ok(INGREDIENT_CATALOG.find((c) => c.key === "proteins")!.items.includes("Ground chicken"));
+});
+
+test("visibleRows with no bans keeps catalog order and sets marks from the id sets", () => {
+  const idByName = idsFor();
+  const rows = visibleRows({
+    idByName,
+    groupsById: new Map(),
+    matchers: buildDietMatchers(derivePatientBans(emptyProfile)),
+    atHomeIds: new Set([idByName.get("Ground beef")!]),
+    likedIds: new Set([idByName.get("Bacon")!]),
+  });
+  assert.equal(rows[0].groupKey, "proteins");
+  assert.deepEqual(rows.map((r) => r.name), catalogItemNames());
+  assert.equal(rows.find((r) => r.name === "Ground beef")!.atHome, true);
+  assert.equal(rows.find((r) => r.name === "Ground beef")!.favorite, false);
+  assert.equal(rows.find((r) => r.name === "Bacon")!.favorite, true);
+});
+
+test("visibleRows drops a banned food, so an at-home salmon cannot set the protein rule", () => {
+  const idByName = idsFor();
+  const matchers = buildDietMatchers(derivePatientBans({
+    ...emptyProfile,
+    foodAllergies: [{ food: { name: "Fish", bannedIngredients: ["salmon", "tuna", "tilapia", "catfish", "shrimp"].map((name) => ({ name })) } }],
+  }));
+  const rows = visibleRows({
+    idByName,
+    groupsById: new Map(),
+    matchers,
+    atHomeIds: new Set([idByName.get("Salmon fillets")!, idByName.get("Ground beef")!]),
+    likedIds: new Set(),
+  });
+  assert.ok(!rows.some((r) => r.name === "Salmon fillets"));
+  const kept = splitKeptFoods(rows);
+  assert.ok(!kept.proteinKeys.includes("salmon"));
+  assert.ok(kept.proteinKeys.includes("ground beef"));
 });

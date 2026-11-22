@@ -1,6 +1,8 @@
 // What a person keeps at home and loves, and the one rule it drives: when they
 // have marked meat or fish as at home, dishes stick to those and nothing else.
 // Pure: no database, no model client.
+import { INGREDIENT_CATALOG } from "../ingredient-catalog";
+import { evaluateDishAgainstProfile, hasAnyBan, type DietMatchers } from "../diet-match";
 
 // Animal word (singular) -> the kind it counts as.
 const ANIMALS: Record<string, string> = {
@@ -148,4 +150,30 @@ export function foodMatches(catalogName: string, ingredientName: string): boolea
   const need = core.length > 0 ? core : catalog;
   const have = new Set(words(ingredient).map(singular));
   return need.every((t) => have.has(t));
+}
+
+export interface CatalogRow { id: string; name: string; groupKey: string; groupTitle: string; atHome: boolean; favorite: boolean }
+
+/** Pure: catalog x marks, minus foods the matchers ban (names and stored allergen groups). Catalog order kept. */
+export function visibleRows(args: {
+  idByName: Map<string, string>;
+  groupsById: Map<string, string[]>;
+  matchers: DietMatchers;
+  atHomeIds: ReadonlySet<string>;
+  likedIds: ReadonlySet<string>;
+}): CatalogRow[] {
+  const { idByName, groupsById, matchers, atHomeIds, likedIds } = args;
+  const hasBans = hasAnyBan(matchers);
+  const seen = new Set<string>();
+  const rows: CatalogRow[] = [];
+  for (const cat of INGREDIENT_CATALOG) {
+    for (const name of cat.items) {
+      const id = idByName.get(name);
+      if (!id || seen.has(name)) continue;
+      if (hasBans && !evaluateDishAgainstProfile([name], matchers, [groupsById.get(id) ?? []]).passed) continue;
+      seen.add(name);
+      rows.push({ id, name, groupKey: cat.key, groupTitle: cat.title, atHome: atHomeIds.has(id), favorite: likedIds.has(id) });
+    }
+  }
+  return rows;
 }
