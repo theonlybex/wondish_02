@@ -495,3 +495,40 @@ test("judge: today's protein is preferred, not required", async () => {
     assert.equal(served(only).name, SALMON);
   } finally { pantry = []; }
 });
+
+// Final review, 2026-11-21: a throw while building the brain rejected the generator and the library
+// alike, and the person got "couldn't make one" on every request.
+test("brain guard: brain rows that make the brain throw still get them a dish, and the gates still run", async () => {
+  const warned: string[] = [];
+  const warn = console.warn;
+  console.warn = (m: unknown) => { warned.push(String(m)); };
+  try {
+    // A malformed value: today's dishes that are not a list.
+    const broken = { todayDishes: 42 as unknown as string[] };
+    const res: any = await dish.makeDishHandlers(live([item("Red Lentil and Spinach Stew")], broken)).suggest({ ...CTX }, { mealType: "dinner" });
+    assert.deepEqual([res.ok, res.data.dish.source, served(res).name], [true, "generated", "Red Lentil and Spinach Stew"]);
+    assert.equal(warned.filter((w) => w.startsWith("[clara-dish] the dish brain failed to build")).length, 1, warned.join("\n"));
+    // The allergy gate still drops an unsafe candidate on the fallback brain.
+    const peanut = item("Peanut Lentil Stew", [{ name: "peanut butter", quantity: 1, unit: "tablespoon" }]);
+    const got = await live([peanut, item("Red Lentil and Spinach Stew")], broken).generate({ ...CTX }, ASK, { accept: () => true });
+    assert.deepEqual(got.map((r) => r.name), ["Red Lentil and Spinach Stew"]);
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test("steer guard: a steer that throws still gets them a dish, with the limits kept", async () => {
+  const warned: string[] = [];
+  const warn = console.warn;
+  console.warn = (m: unknown) => { warned.push(String(m)); };
+  try {
+    // A malformed summary: its "little" is not a list, so the level steer throws.
+    const bad = { ...ASK, summary: { ...NO_LOGS, little: 5 } as any };
+    const peanut = item("Peanut Lentil Stew", [{ name: "peanut butter", quantity: 1, unit: "tablespoon" }]);
+    const got = await live([peanut, item("Red Lentil and Spinach Stew")]).generate({ ...CTX }, bad, { accept: () => true });
+    assert.deepEqual(got.map((r) => r.name), ["Red Lentil and Spinach Stew"]);
+    assert.ok(warned.some((w) => w.startsWith("[clara-dish] the steer failed")), warned.join("\n"));
+  } finally {
+    console.warn = warn;
+  }
+});

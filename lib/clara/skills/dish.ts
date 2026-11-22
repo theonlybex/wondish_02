@@ -30,7 +30,7 @@ import { builtOn, proteinKind } from "@/lib/clara/dish-protein";
 import { judgeDish, type DishVerdict } from "@/lib/clara/dish-judge";
 import { chooseProtein, fromHomeLine, requestedProtein, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
 import { targetLines } from "@/lib/clara/meal-target";
-import { steerLines } from "@/lib/clara/level-steer";
+import { steerLines, levelCeilings } from "@/lib/clara/level-steer";
 import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
 import { loadBrainRows } from "@/lib/clara/dish-brain-db";
 import { DEFAULT_DISH_RULES, type DishRules } from "@/lib/clara/dish-rules";
@@ -377,7 +377,7 @@ export function dishSystemPrompt(a: {
 }): string {
   const { ask } = a;
   const brain = a.brain ?? brainFrom({ kept: a.kept ?? NO_KEPT_FOODS });
-  const steer = steerForAsk(brain, ask, a.who ?? { patientId: "", today: "1970-01-01" });
+  const steer = safeSteerForAsk(brain, ask, a.who ?? { patientId: "", today: "1970-01-01" });
   const kept = brain.kept;
   // Catalog names, but cleaned like the avoid names all the same: no quotes, no line breaks.
   const cleanOne = (n: string) => n.replace(/["\n\r]+/g, "");
@@ -624,7 +624,7 @@ function personFor(ctx: ClaraContext, loadRows: BrainRowsLoader = loadBrainRows)
         matchers,
         sodiumLimitMg,
         kept,
-        brain: brainFrom({ kept, rules: dishRulesNow.rules, rows: brainRows, today: ctx.today, patient, matchers, sodiumLimitMg }),
+        brain: safeBrainFrom({ kept, rules: dishRulesNow.rules, rows: brainRows, today: ctx.today, patient, matchers, sodiumLimitMg }),
       };
     })();
     personMemo.set(ctx, p);
@@ -751,7 +751,66 @@ function judgeGated(gated: FridgeRecipe, ask: DishAsk, person: Person, steer: As
 
 /** The steer for one ask: the protein to build on, the size and the level ceilings. Once per generator or library call. */
 function steerFor(ctx: ClaraContext, ask: DishAsk, person: Person): AskSteer {
-  return steerForAsk(person.brain, ask, { patientId: ctx.patientId, today: ctx.today });
+  return safeSteerForAsk(person.brain, ask, { patientId: ctx.patientId, today: ctx.today });
+}
+
+/**
+ * steerForAsk, and never a throw: a bug or a malformed value in it rejected the generator and the
+ * library alike, so every request for that person ended "couldn't make one" (final review,
+ * 2026-11-21). The fallback steers nothing (no protein rule, no choice, no size, no levels) but
+ * keeps every limit: the sodium ceiling is their daily sodium limit and the other upper limits stand.
+ */
+function safeSteerForAsk(brain: DishBrain, ask: DishAsk, who: { patientId: string; today: string }): AskSteer {
+  try {
+    return steerForAsk(brain, ask, who);
+  } catch (err) {
+    console.warn(`[clara-dish] the steer failed; serving without it: ${(err as Error)?.message ?? String(err)}`);
+    let ceilings: AskSteer["ceilings"];
+    try {
+      ceilings = levelCeilings({ mealType: ask.mealType, sodiumLimitMg: brain.sodiumLimitMg, today: null });
+    } catch {
+      ceilings = { sodium: brain.sodiumLimitMg };
+    }
+    return {
+      ruleOn: false,
+      choice: null,
+      target: { calories: null, dayCalories: null, band: null, split: null, leanings: [] },
+      levels: [],
+      ceilings,
+    };
+  }
+}
+
+/**
+ * brainFrom, and never a throw (see safeSteerForAsk): with the reads first, then without them,
+ * then the smallest brain that still carries their diet and their sodium limit.
+ */
+function safeBrainFrom(a: Parameters<typeof brainFrom>[0] & { matchers: DietMatchers; sodiumLimitMg: number }): DishBrain {
+  try {
+    return brainFrom(a);
+  } catch (err) {
+    console.warn(`[clara-dish] the dish brain failed to build; serving without its reads: ${(err as Error)?.message ?? String(err)}`);
+  }
+  try {
+    return brainFrom({ ...a, rows: NO_BRAIN_ROWS });
+  } catch {
+    return {
+      rules: a.rules ?? { ...DEFAULT_DISH_RULES },
+      kept: NO_KEPT_FOODS,
+      home: [],
+      favourites: [],
+      basics: [],
+      dayCalories: null,
+      conditionNames: [],
+      motivationNames: [],
+      sodiumLimitMg: a.sodiumLimitMg,
+      week: [],
+      picture: null,
+      today: null,
+      usedToday: [],
+      matchers: a.matchers,
+    };
+  }
 }
 
 /**
