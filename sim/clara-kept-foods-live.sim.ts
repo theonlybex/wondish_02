@@ -792,7 +792,7 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
   swapLine("B2 the food they do not have is gone from the ingredients, the steps and the name", ({ x }) => x.ok && (x.stillHasIt || x.headLeft));
   swapLine("B3 an exchange puts the replacement in the ingredients and in a step", ({ x }) => x.ok && (x.hasReplacement === false || x.replacementInSteps === false), ({ x }) => x.kind !== "without");
   swapLine("B7 a rewritten dish keeps at least two thirds of the other ingredients", ({ x }) => x.ok && x.keptShare < 2 / 3, ({ x }) => x.how === "rewritten");
-  swapLine("B8 an exchanged or rewritten dish stays within 0.7-1.25 x the original's calories", ({ x }) => x.ok && (x.vsOriginal < 0.7 || x.vsOriginal > 1.25), ({ x }) => x.kind !== "without");
+  swapLine("B8 an exchanged or rewritten dish stays within 0.8-1.25 x the original's calories", ({ x }) => x.ok && (x.vsOriginal < 0.8 || x.vsOriginal > 1.25), ({ x }) => x.kind !== "without");
   swapLine("B9 a 'nothing similar' dish is inside the meal's size band", ({ x }) => x.ok && x.sizeProblem !== null, ({ x }) => x.kind === "without");
   swapLine("B4 a like-for-like exchange is made in code: no model call", ({ x }) => x.ok && x.modelCalls !== 0, ({ x }) => x.kind === "plain");
   swapLine("B5 every changed dish passes the diet oracle", ({ x }) => x.ok && x.oracle !== "pass");

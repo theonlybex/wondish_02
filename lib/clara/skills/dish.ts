@@ -699,7 +699,8 @@ export function dishSystemPrompt(a: {
     `- Cooking fat: one teaspoon per serving is normal and one tablespoon is the maximum; write the same amount in the steps as in ingredients.`,
     // A macro split asks for ~30% protein: not said to someone who needs no push (or a modest portion).
     ...(ask.swap
-      ? [`- Size: keep each serving at about ${Math.round(ask.swap.calories)} kcal, as the dish was. It must be between ${Math.ceil(ask.swap.calories * SWAP_REWRITE_BAND.min)} and ${Math.floor(ask.swap.calories * SWAP_REWRITE_BAND.max)} kcal: if the new food has fewer calories, use more of it and more of the dish's starch.`]
+      // The floor said to the model is higher than the one the judge holds it to: told "between 372 and 663", it wrote 372 (live swap run 3).
+      ? [`- Size: keep each serving at about ${Math.round(ask.swap.calories)} kcal, as the dish was, and no less than ${Math.ceil(ask.swap.calories * 0.9)} kcal. If the new food has fewer calories, use more of it, more of the dish's starch (up to a full portion) and up to a tablespoon of the cooking fat. Do not put "extra" or the amounts in the name.`]
       : targetLines(steer.need === "push" ? steer.target : { ...steer.target, split: null }, ask.mealType, brain.rules.mainsOnProtein)),
     proteinLine,
     dayPlanLine,
@@ -1975,7 +1976,7 @@ export const SWAP_NOT_OFFERED = "That is not one of the exchanges for this ingre
 /** A code-made exchange is served only when the dish's calories stay within this share of what they were. */
 export const SWAP_CALORIE_BAND = 0.15;
 /** A rewritten exchange stays between these shares of the original's calories (a non-protein option is lighter, so the floor is lower than the ceiling is high). */
-export const SWAP_REWRITE_BAND = { min: 0.7, max: 1.25 } as const;
+export const SWAP_REWRITE_BAND = { min: 0.8, max: 1.25 } as const;
 export const SWAP_COULDNT = "I couldn't make that change fit you. Try another one, or a different dish.";
 
 /** The dish as the generator would have written it, so it goes through the very same gates. */

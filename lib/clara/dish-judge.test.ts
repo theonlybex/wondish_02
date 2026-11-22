@@ -122,7 +122,7 @@ test("a rebuilt name keeps 'Salad' always and 'Wrap' only with the bread in the 
 test("an exchange must still be the dish: two thirds of its other foods, and its size", () => {
   // As the product calls it for an exchange: sized against the original, not the meal.
   const j = (over: Partial<JudgeInput> = {}) => judgeDish({ ...BASE, targetCalories: null, ...over });
-  const mustKeep = { names: ["jasmine rice", "spinach", "olive oil"], calories: 600, band: { min: 0.7, max: 1.25 } };
+  const mustKeep = { names: ["jasmine rice", "spinach", "olive oil"], calories: 600, band: { min: 0.8, max: 1.25 } };
   assert.equal(j({ mustKeep, wants: "salmon fillets" }).level, "pass");
   // One of three dropped is still two thirds.
   assert.equal(j({ mustKeep, wants: "salmon fillets", ingredients: BASE.ingredients.filter((i) => i.name !== "spinach") }).level, "pass");
@@ -130,5 +130,5 @@ test("an exchange must still be the dish: two thirds of its other foods, and its
   assert.deepEqual([other.level, other.reasons], ["fail", ["exchange:another-dish"]]);
   assert.deepEqual(j({ mustKeep, wants: "salmon fillets", calories: 400 }).reasons, ["exchange:size"]);
   assert.deepEqual(j({ mustKeep, wants: "salmon fillets", calories: 760 }).reasons, ["exchange:size"]);
-  assert.equal(j({ mustKeep, wants: "salmon fillets", calories: 430 }).level, "pass");
+  assert.equal(j({ mustKeep, wants: "salmon fillets", calories: 490 }).level, "pass");
 });
