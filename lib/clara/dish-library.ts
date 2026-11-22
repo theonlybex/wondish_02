@@ -17,6 +17,7 @@ import { dislikedRecipeIds, evaluateDishAgainstProfile, hasAnyBan, ingredientGro
 import { fibreRichIngredient, SODIUM_REASON_MAX_MG } from "@/lib/dish-reasons";
 import { BREAKFAST_MAX_MINUTES, SNACK_MAX_MINUTES } from "@/lib/dish-plausibility";
 import type { FridgeRecipe } from "@/lib/fridge";
+import { breaksProteinRule, foodMatches, NO_KEPT_FOODS, proteinRuleOn, type KeptFoods } from "./kept-foods";
 
 /** A public library recipe as the pool query selects it. */
 export interface LibraryRecipe {
@@ -133,11 +134,16 @@ function hash(s: string): number {
  * With `ask.wants` (they asked to cook something particular) only recipes
  * that match it are kept, on top of every filter above; without it nothing
  * here changes.
+ * With `person.kept` (what they keep at home and love): when the protein rule
+ * is on (`person.proteinRule`, default proteinRuleOn(kept, ask.wants)) a recipe
+ * with a meat or fish they do not keep at home is dropped, with the other hard
+ * filters. Scores: +1 per distinct at-home food the recipe uses (at most +2),
+ * +3 when it uses a favourite. Without `kept` nothing here changes.
  */
 export function rankLibrary(
   pool: readonly LibraryRecipe[],
   ask: LibraryAsk,
-  person: { patient: Pick<PatientDietGraph, "dishPreferences" | "journalEntries">; matchers: DietMatchers; seed: string },
+  person: { patient: Pick<PatientDietGraph, "dishPreferences" | "journalEntries">; matchers: DietMatchers; seed: string; kept?: KeptFoods; proteinRule?: boolean },
   recent: RecentDishes,
   stepStatesAmount: (step: string) => boolean,
 ): LibraryRecipe[] {
@@ -145,6 +151,9 @@ export function rankLibrary(
   const banned = hasAnyBan(person.matchers);
   const multi = (ask.servings ?? 1) > 1;
   const limit = ask.maxMinutes ?? (ask.mealType === "breakfast" ? BREAKFAST_MAX_MINUTES : ask.mealType === "snack" ? SNACK_MAX_MINUTES : undefined);
+  const kept = person.kept ?? NO_KEPT_FOODS;
+  const ruleOn = person.proteinRule ?? proteinRuleOn(kept, ask.wants);
+  const uses = (food: string, names: readonly string[]) => names.some((n) => foodMatches(food, n));
   const scored: { r: LibraryRecipe; score: number; tie: number }[] = [];
   for (const r of pool) {
     if (disliked.has(r.id) || recent.recipeIds.has(r.id) || recent.names.has(r.name.trim().toLowerCase())) continue;
@@ -158,6 +167,7 @@ export function rankLibrary(
     if (banned && !evaluateDishAgainstProfile(names, person.matchers, ingredientGroupsOf(r.ingredients)).passed) continue;
     // They asked to cook something particular: a recipe that is not that is never the answer.
     if (ask.wants !== undefined && !matchesRequest(ask.wants, r.name, names)) continue;
+    if (ruleOn && breaksProteinRule(names, kept)) continue;
 
     const per = r.servings && r.servings > 0 ? r.servings : 1;
     // The card (and the cook-mode recipe sent back from it) lists ONE serving and the app scales it.
@@ -176,6 +186,8 @@ export function rankLibrary(
     const minutes = (r.prepTime ?? 0) + (r.cookTime ?? 0);
     if (limit !== undefined && minutes > 0 && minutes <= limit) score += 2;
     if (multi) score += 3;
+    score += Math.min(2, new Set(kept.atHome.filter((f) => uses(f, names))).size);
+    if (kept.favorites.some((f) => uses(f, names))) score += 3;
     // A recipe NAMED for what they asked comes before one that only contains it (eggs in a muffin).
     if (ask.wants !== undefined && requestNamedIn(ask.wants, r.name)) score += 10;
     scored.push({ r, score, tie: hash(`${person.seed}|${r.id}`) });
