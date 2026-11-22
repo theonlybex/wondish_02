@@ -28,7 +28,7 @@ import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
 import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type AskSteer, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
 import { builtOn, proteinKind } from "@/lib/clara/dish-protein";
 import { judgeDish, type DishVerdict } from "@/lib/clara/dish-judge";
-import { fromHomeLine, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
+import { chooseProtein, fromHomeLine, requestedProtein, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
 import { targetLines } from "@/lib/clara/meal-target";
 import { steerLines } from "@/lib/clara/level-steer";
 import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
@@ -405,6 +405,23 @@ export function dishSystemPrompt(a: {
   } else if (steer.ruleOn) {
     // Breakfast, a snack and a request: any protein food must be at home, none is required.
     proteinLine = `- If this dish has a protein food (meat, fish, seafood, eggs, tofu, tempeh, seitan, or beans, lentils, chickpeas, Greek yogurt or cottage cheese as its main protein), it must be one they have at home: ${clean(brain.home.map((p) => p.name))}. No other meat, fish or seafood may appear in any dish: not in an ingredient, the dish name, the description or a step.`;
+    // A lunch or dinner request that names no protein ("a stir-fry") still leans on the protein a
+    // plain main would be built on today, so eggs do not stand in for the salmon they have.
+    // Same inputs as steerForAsk's choice, without the request; no read.
+    const isMain = ask.mealType === "lunch" || ask.mealType === "dinner";
+    const wants = ask.wants?.trim();
+    const lean = isMain && wants && requestedProtein(wants) === null
+      ? chooseProtein({
+          mealType: ask.mealType,
+          home: brain.home,
+          usedToday: [...brain.usedToday, ...(ask.avoid ?? [])],
+          ...(a.who ?? { patientId: "", today: "1970-01-01" }),
+          rules: brain.rules,
+        })
+      : null;
+    if (lean) {
+      proteinLine += ` If this dish has a protein at its centre, make it ${cleanOne(lean.name)}, which they have at home; a dish that needs no protein (pancakes, a salad, a soup) stays as asked.`;
+    }
   } else if (a.proteinOptions.length > 0 && a.bannedNames.length > 0) {
     proteinLine = `- Protein sources that fit this person — build every main around one of them: ${a.proteinOptions.join(", ")}.`;
   }

@@ -1237,3 +1237,28 @@ test("prompt: today's dish names are capped at the latest 6, 60 characters each,
   const used = /make a different dish from: (.*?)\. Any other meat/.exec(p)![1].split("; ");
   assert.deepEqual(used, ["Two", "Three", "Four", "FiveSix", "Seven", `Salmon ${"x".repeat(53)}`]);
 });
+
+test("prompt: a lunch or dinner request that names no protein leans on the protein a plain main would be built on today", () => {
+  const home = { ...SALMON_AND_BEEF, atHome: ["Large eggs"] };
+  const stirFry = { ...DINNER, wants: "a stir-fry" };
+  const lean = (name: string) => ` If this dish has a protein at its centre, make it ${name}, which they have at home; a dish that needs no protein (pancakes, a salad, a soup) stays as asked.`;
+  const proteinLineOf = (p: string) => lineOf(p, "- If this dish has a protein food");
+  // The plain dinner for this person and day.
+  const plain = /- Build this Dinner on (.+?), which they have at home\./.exec(withBrain({ kept: home }))![1];
+  const p = withBrain({ kept: home }, stirFry);
+  assert.ok(proteinLineOf(p).endsWith(`a step.${lean(plain)}`), proteinLineOf(p));
+  assert.doesNotMatch(p, /Build this/);
+  // Beef already open today: Ground beef.
+  const beef = withBrain({ kept: home, rows: { ...NO_BRAIN_ROWS, todayDishes: ["Beef and Rice Skillet"] } }, stirFry);
+  assert.ok(proteinLineOf(beef).endsWith(`a step.${lean("Ground beef")}`), proteinLineOf(beef));
+  // A request naming a protein not at home: rule off, no such sentence.
+  const chicken = withBrain({ kept: home }, { ...DINNER, wants: "a chicken dish" });
+  assert.doesNotMatch(chicken, /protein at its centre|no other meat/i);
+  // A request naming an at-home protein: no lean sentence.
+  assert.doesNotMatch(withBrain({ kept: home }, { ...DINNER, wants: "a salmon stir-fry" }), /protein at its centre/);
+  // A breakfast request: unchanged.
+  const breakfast = withBrain({ kept: home }, { mealType: "breakfast", summary: NO_LOGS, wants: "a stir-fry" });
+  assert.ok(proteinLineOf(breakfast).endsWith("not in an ingredient, the dish name, the description or a step."), proteinLineOf(breakfast));
+  // Nothing marked: no protein line of this kind at all.
+  assert.doesNotMatch(withBrain({ kept: NO_KEPT_FOODS }, stirFry), /protein at its centre/);
+});
