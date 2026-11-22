@@ -423,10 +423,13 @@ function loadPatient(id: string) {
 const KEPT_FOODS_BUDGET_MS = 1_500;
 
 /** `work`, or `fallback` once `ms` pass. The timer is always cleared and never keeps the process alive. */
-async function withinMs<T>(ms: number, work: Promise<T>, fallback: T): Promise<T> {
+async function withinMs<T>(ms: number, work: Promise<T>, fallback: T, onTimeout?: () => void): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<T>((resolve) => {
-    timer = setTimeout(() => resolve(fallback), ms);
+    timer = setTimeout(() => {
+      onTimeout?.();
+      resolve(fallback);
+    }, ms);
     timer.unref?.();
   });
   try {
@@ -456,6 +459,7 @@ function personFor(ctx: ClaraContext): Promise<Person | null> {
         KEPT_FOODS_BUDGET_MS,
         marks.then((m) => keptFoodsFrom(m, matchers)),
         NO_KEPT_FOODS,
+        () => console.warn(`[clara-dish] kept foods took longer than ${KEPT_FOODS_BUDGET_MS} ms; serving without them`),
       ).catch((err) => {
         console.warn(`[clara-dish] kept foods failed to load: ${(err as Error)?.message ?? String(err)}`);
         return NO_KEPT_FOODS;

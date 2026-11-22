@@ -22,7 +22,24 @@ const ANIMALS: Record<string, string> = {
   rabbit: "rabbit", goose: "goose", quail: "quail", oxtail: "oxtail", rib: "ribs",
   hotdog: "hot dog", bratwurst: "bratwurst", kielbasa: "kielbasa", pancetta: "pancetta",
   meatball: "meat",
+  hamburger: "beef", burger: "beef", patty: "beef", pastrami: "pastrami", frankfurter: "frankfurter",
+  gammon: "gammon", lardon: "lardons", hake: "hake", plaice: "plaice", bream: "bream",
+  langoustine: "langoustine", liver: "liver", lox: "salmon",
 };
+
+// An animal word directly followed by one of these (an optional "'s" between) names dairy, eggs, a
+// plant or bread, not the animal: "goat cheese", "quail eggs", "oyster mushrooms", "crab apples",
+// "lamb's lettuce", "hamburger buns". Only the following word counts, so "bacon and eggs" and
+// "chicken and egg fried rice" keep their meat. Cured and processed meats are never excused, so
+// "bacon egg sandwich" is still bacon.
+const DAIRY_OR_PLANT_AFTER = new Set([
+  "cheese", "milk", "egg", "mushroom", "apple", "lettuce", "yogurt", "yoghurt", "butter", "cream", "ghee", "kefir",
+]);
+const BREAD_AFTER = new Set(["bun", "roll"]);
+const PROCESSED = new Set([
+  "bacon", "ham", "sausage", "pepperoni", "salami", "prosciutto", "chorizo", "pancetta",
+  "bratwurst", "kielbasa", "hotdog", "pastrami", "frankfurter", "gammon", "lardon",
+]);
 
 // Generic words stand for a kind of their own: never a kept key unless marked that exact way.
 const GENERIC_KINDS: Record<string, string> = { meat: "meat", fish: "fish", seafood: "seafood", poultry: "poultry" };
@@ -30,7 +47,11 @@ const GENERIC_KINDS: Record<string, string> = { meat: "meat", fish: "fish", seaf
 // Steak cuts are beef, but only when no animal is named (tuna steak is tuna).
 const BEEF_CUTS = new Set(["steak", "sirloin", "ribeye", "brisket", "flank", "chuck", "mignon"]);
 
-const NOT_MEAT = /\b(broths?|stocks?|bouillons?|sauces?|seasonings?|flavou?r(s|ed)?|meatless|plant[- ]based)\b/;
+// Plant-based and imitation products are not the animal they copy.
+const PLANT_BASED = /\b(meatless|meat[- ]free|plant[- ]based|vegan|vegetarian|veggie|imitation|substitutes?|mock|faux)\b/;
+const NOT_MEAT = new RegExp(
+  `\\b(broths?|stocks?|bouillons?|sauces?|seasonings?|flavou?r(s|ed)?)\\b|${PLANT_BASED.source}`,
+);
 const GROUND = new Set(["ground", "minced", "mince"]);
 const GENERIC_PROTEIN = new Set(["meat", "fish", "seafood", "poultry", "steak"]);
 
@@ -66,12 +87,27 @@ function kindIn(tokens: string[]): string | null {
   return null;
 }
 
+/** Drops animal words that are really dairy, eggs, a plant or bread ("goat cheese", "celery ribs"). */
+function withoutNonMeatAnimals(tokens: string[]): string[] {
+  return tokens.filter((t, i) => {
+    if (animalOf(t) === null) return true;
+    const base = singular(t);
+    if (base === "rib" && i > 0 && singular(tokens[i - 1]) === "celery") return false;
+    let j = i + 1;
+    if (tokens[j] === "s") j += 1; // "lamb's lettuce"
+    const next = tokens[j] === undefined ? undefined : singular(tokens[j]);
+    if (next === undefined) return true;
+    if (BREAD_AFTER.has(next) && (base === "hamburger" || base === "burger")) return false;
+    return PROCESSED.has(base) || !DAIRY_OR_PLANT_AFTER.has(next);
+  });
+}
+
 /** "salmon", "ground beef", "chicken"… or null when the name is not a meat, fish or seafood. */
 export function proteinKey(name: string): string | null {
   const lower = name.toLowerCase();
   if (NOT_MEAT.test(lower)) return null;
   const tokens = words(lower);
-  const kind = kindIn(tokens);
+  const kind = kindIn(withoutNonMeatAnimals(tokens));
   if (!kind) return null;
   return tokens.some((t) => GROUND.has(t)) ? `ground ${kind}` : kind;
 }
@@ -122,8 +158,8 @@ export function breaksProteinRule(ingredientNames: readonly string[], kept: Kept
 /** True when the request text names a meat, fish or seafood. */
 export function requestNamesProtein(wants: string): boolean {
   const lower = wants.toLowerCase();
-  if (/\b(meatless|plant[- ]based)\b/.test(lower)) return false;
-  const tokens = words(lower);
+  if (PLANT_BASED.test(lower)) return false;
+  const tokens = withoutNonMeatAnimals(words(lower));
   return tokens.some((t) => GENERIC_PROTEIN.has(t) || animalOf(t) !== null) || tokens.some(cutOf);
 }
 

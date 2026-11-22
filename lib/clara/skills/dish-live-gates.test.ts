@@ -374,13 +374,18 @@ test("kept: the meal reminder still names a lunch when salmon is at home and the
 
 test("kept: a pantry read that never answers holds the dish up for at most the kept-foods budget (1.5 s), then serves without marks", async () => {
   pantryHangs = true;
+  const warns: string[] = [];
+  const realWarn = console.warn;
+  console.warn = (...a: unknown[]) => { warns.push(a.join(" ")); };
   try {
     const t0 = Date.now();
     const got = await dish.createLiveDishDeps({ client: fakeClient(JSON.stringify({ dishes: [item("Red Lentil and Spinach Stew")] })).client }).generate({ ...CTX }, ASK, { accept: () => true });
     const ms = Date.now() - t0;
     assert.deepEqual(got.map((r) => r.name), ["Red Lentil and Spinach Stew"]);
     assert.ok(ms >= 1_400 && ms < 3_000, `took ${ms} ms`);
+    assert.equal(warns.filter((w) => w.includes("kept foods took longer")).length, 1, warns.join("\n"));
   } finally {
+    console.warn = realWarn;
     pantryHangs = false;
   }
 });

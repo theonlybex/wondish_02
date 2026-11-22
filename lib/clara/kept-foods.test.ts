@@ -157,3 +157,53 @@ test("visibleRows drops a banned food, so an at-home salmon cannot set the prote
   assert.ok(!kept.proteinKeys.includes("salmon"));
   assert.ok(kept.proteinKeys.includes("ground beef"));
 });
+
+test("proteinKey: dairy, eggs, plants and bread named after an animal are not meat", () => {
+  for (const n of [
+    "goat cheese", "goat milk", "duck eggs", "quail eggs", "chicken eggs", "celery ribs", "celery rib",
+    "oyster mushrooms", "crab apples", "lamb's lettuce", "hamburger buns", "burger buns",
+  ]) assert.equal(proteinKey(n), null, n);
+  const kept = splitKeptFoods([{ name: "Salmon fillets", groupKey: "proteins", atHome: true, favorite: false }]);
+  for (const n of ["goat cheese", "duck eggs", "celery ribs", "oyster mushrooms", "lamb's lettuce"])
+    assert.equal(breaksProteinRule([n], kept), false, n);
+});
+
+test("proteinKey: the context word must directly follow the animal, so combined names keep the meat", () => {
+  assert.equal(proteinKey("bacon and eggs"), "bacon");
+  assert.equal(proteinKey("bacon egg sandwich"), "bacon");
+  assert.equal(proteinKey("chicken and egg fried rice"), "chicken");
+  assert.equal(proteinKey("cream of chicken soup"), "chicken");
+  assert.equal(proteinKey("butter chicken"), "chicken");
+  assert.equal(proteinKey("goat cheese and salmon"), "salmon");
+  assert.equal(proteinKey("pork ribs"), "pork");
+});
+
+test("proteinKey and requestNamesProtein: plant-based and imitation products are not the animal", () => {
+  for (const n of ["meat-free burger", "meat free sausage", "meat substitute", "vegetarian meatballs", "vegan sausage", "imitation crab", "veggie burger", "mock duck", "faux bacon"])
+    assert.equal(proteinKey(n), null, n);
+  for (const w of ["meat-free lasagne", "something vegetarian", "a vegan burger", "plant-based chicken"])
+    assert.equal(requestNamesProtein(w), false, w);
+  assert.equal(requestNamesProtein("goat cheese salad"), false);
+  assert.equal(requestNamesProtein("a burger"), true);
+});
+
+test("proteinKey: more meats and fish", () => {
+  const more: [string, string][] = [
+    ["hamburger", "beef"], ["burger patty", "beef"], ["pastrami", "pastrami"], ["frankfurters", "frankfurter"],
+    ["gammon steak", "gammon"], ["lardons", "lardons"], ["hake fillet", "hake"], ["plaice", "plaice"],
+    ["sea bream", "bream"], ["langoustines", "langoustine"], ["calf liver", "liver"], ["lox", "salmon"],
+  ];
+  for (const [n, k] of more) assert.equal(proteinKey(n), k, n);
+});
+
+test("visibleRows drops a food whose stored allergen group is banned even when its name passes", () => {
+  const idByName = idsFor();
+  const matchers = buildDietMatchers(derivePatientBans({ ...emptyProfile, foodAllergies: [{ food: { name: "Peanuts", bannedIngredients: [] } }] }));
+  const beefId = idByName.get("Ground beef")!;
+  const args = { idByName, matchers, atHomeIds: new Set<string>(), likedIds: new Set<string>() };
+  const tagged = visibleRows({ ...args, groupsById: new Map([[beefId, ["BIG9-PEANUT"]]]) });
+  assert.ok(!tagged.some((r) => r.name === "Ground beef"));
+  assert.ok(tagged.some((r) => r.name === "Bacon"));
+  const untagged = visibleRows({ ...args, groupsById: new Map([[beefId, ["BIG9-FISH"]]]) });
+  assert.ok(untagged.some((r) => r.name === "Ground beef"));
+});
