@@ -149,9 +149,15 @@ export interface DishAsk {
    * told not to repeat them, and a dish with one of these names is never served.
    */
   avoid?: string[];
+  /**
+   * Set by dish_plan_today only. Lunch and dinner are made at the same time on the
+   * same chosen protein, so each is told its part of the day: a lighter lunch, a
+   * fuller dinner. Prompt only; no gate reads it.
+   */
+  dayPlan?: boolean;
 }
 
-/** The onboarding "starting picture": levels they probably get little of / a lot of. */
+/** The onboarding "starting picture"": levels they probably get little of / a lot of. */
 export interface StartingPicture {
   little: FullLevelKey[];
   aLot: FullLevelKey[];
@@ -361,6 +367,10 @@ function groupedAtHome(names: readonly string[]): { title: string; names: string
   return order.filter((t) => byTitle.has(t)).map((t) => ({ title: t, names: byTitle.get(t)! }));
 }
 
+/** The day plan's lunch and dinner lines (see DishAsk.dayPlan). */
+export const DAY_PLAN_LUNCH_LINE = `- This is the day's lunch: make it the lighter, quicker dish (a bowl, a salad, a wrap or a quick skillet).`;
+export const DAY_PLAN_DINNER_LINE = `- This is the day's dinner: make it the fuller cooked dish (a bake, a roast, a braise, stuffed vegetables or a pan dish with a sauce), not a bowl.`;
+
 export function dishSystemPrompt(a: {
   ask: DishAsk;
   foodMapText: string;
@@ -425,6 +435,15 @@ export function dishSystemPrompt(a: {
   } else if (a.proteinOptions.length > 0 && a.bannedNames.length > 0) {
     proteinLine = `- Protein sources that fit this person — build every main around one of them: ${a.proteinOptions.join(", ")}.`;
   }
+  // A day plan makes lunch and dinner at once on the same chosen protein, with nothing else keeping
+  // them apart (final review, 2026-11-21): the same protein in different dishes.
+  const dayPlanLine = ask.dayPlan && steer.choice
+    ? ask.mealType === "lunch"
+      ? DAY_PLAN_LUNCH_LINE
+      : ask.mealType === "dinner"
+        ? DAY_PLAN_DINNER_LINE
+        : ``
+    : ``;
   const atHome = kept.atHome.slice(0, MAX_AT_HOME_IN_PROMPT);
   const atHomeLine = atHome.length > 0
     ? `- Build every dish mainly from what they have at home and their kitchen basics; where a classic ingredient is missing, use the closest at-home food. You may add a few common fresh ingredients (an onion, garlic, a lemon, a herb) when the dish needs them. At home: ${groupedAtHome(atHome).map((g) => `${g.title}: ${clean(g.names)}`).join("; ")}.`
@@ -521,6 +540,7 @@ export function dishSystemPrompt(a: {
     `- Cooking fat: one teaspoon per serving is normal and one tablespoon is the maximum; write the same amount in the steps as in ingredients.`,
     ...targetLines(steer.target, ask.mealType, brain.rules.mainsOnProtein),
     proteinLine,
+    dayPlanLine,
     atHomeLine,
     basicsLine,
     favorites.length > 0
@@ -1711,11 +1731,16 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
       ...(picture ? { picture } : {}),
       ...(occasion === "little_time" ? { maxMinutes: LITTLE_TIME_MINUTES } : {}),
       ...(occasion === "guests" && mealType === "dinner" ? { servings: GUEST_SERVINGS } : {}),
+      dayPlan: true,
     }));
     // One ctx object for the whole call: the person loads once for all its dishes.
     const call = { ...ctx };
     const built = await Promise.all(asks.map((ask) => generateOne(deps, call, ask)));
     const made = asks.map((ask, i) => ({ ask, b: built[i] })).filter((x): x is { ask: DishAsk; b: BuiltDish } => x.b !== null);
+    // Both kept as they are (no second call), but a lunch and a dinner that came out as one dish is seen.
+    const nameOf = (m: DishMealType) => made.find((x) => x.ask.mealType === m)?.b.dish.name.trim().replace(/\s+/g, " ").toLowerCase();
+    const lunchName = nameOf("lunch");
+    if (lunchName && lunchName === nameOf("dinner")) console.warn(`[clara-dish] day plan: lunch and dinner are the same dish`);
     if (made.length === 0) return couldntFit();
 
     return {

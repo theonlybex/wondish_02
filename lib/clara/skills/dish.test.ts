@@ -16,6 +16,8 @@ import {
   stepStatesAmount,
   dishSystemPrompt,
   DISH_CRAFT_LINES,
+  DAY_PLAN_LUNCH_LINE,
+  DAY_PLAN_DINNER_LINE,
   parseStartingPicture,
   type StartingPicture,
   type DishAsk,
@@ -1301,4 +1303,23 @@ test("prompt: a lunch or dinner request that names no protein leans on the prote
   assert.ok(proteinLineOf(breakfast).endsWith("not in an ingredient, the dish name, the description or a step."), proteinLineOf(breakfast));
   // Nothing marked: no protein line of this kind at all.
   assert.doesNotMatch(withBrain({ kept: NO_KEPT_FOODS }, stirFry), /protein at its centre/);
+});
+
+// Final review, 2026-11-21: a day plan made lunch and dinner at once on the same protein with nothing
+// keeping them apart. Each now carries its part of the day.
+test("prompt: a day plan's lunch and dinner carry their own line; a plain dish and a breakfast do not", () => {
+  const plan = (mealType: "breakfast" | "lunch" | "dinner", dayPlan?: boolean) =>
+    withBrain({ kept: SALMON_AND_BEEF }, { mealType, summary: NO_LOGS, ...(dayPlan ? { dayPlan } : {}) }).split("\n");
+  assert.equal(DAY_PLAN_LUNCH_LINE, "- This is the day's lunch: make it the lighter, quicker dish (a bowl, a salad, a wrap or a quick skillet).");
+  assert.equal(DAY_PLAN_DINNER_LINE, "- This is the day's dinner: make it the fuller cooked dish (a bake, a roast, a braise, stuffed vegetables or a pan dish with a sauce), not a bowl.");
+  const lunch = plan("lunch", true);
+  const dinner = plan("dinner", true);
+  assert.ok(lunch.includes(DAY_PLAN_LUNCH_LINE) && !lunch.includes(DAY_PLAN_DINNER_LINE));
+  assert.ok(dinner.includes(DAY_PLAN_DINNER_LINE) && !dinner.includes(DAY_PLAN_LUNCH_LINE));
+  // Right after the protein line.
+  assert.match(dinner[dinner.indexOf(DAY_PLAN_DINNER_LINE) - 1], /^- Build this Dinner on /);
+  // A plain dish_suggest, a breakfast in a plan, and a plan with no protein chosen: no line.
+  for (const p of [plan("lunch"), plan("dinner"), plan("breakfast", true), withBrain({ kept: NO_KEPT_FOODS }, { ...DINNER, dayPlan: true }).split("\n")]) {
+    assert.ok(!p.includes(DAY_PLAN_LUNCH_LINE) && !p.includes(DAY_PLAN_DINNER_LINE));
+  }
 });

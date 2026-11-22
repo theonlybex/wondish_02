@@ -606,3 +606,35 @@ test("relaxed early stop: without a request a relaxed dish does not end the stre
   stop2.abort();
   assert.deepEqual([await running2, judged], [[], []]);
 });
+
+test("dish_plan_today: lunch and dinner prompts carry their own line, a plain suggest does not, and one dish for both is logged", async () => {
+  pantry = ["salmon fillets"];
+  const warned: string[] = [];
+  const warn = console.warn;
+  console.warn = (m: unknown) => { warned.push(String(m)); };
+  try {
+    const systems: string[] = [];
+    const text = JSON.stringify({ dishes: [salmonItem()] });
+    const recording = () => {
+      const inner = fakeClient(text).client();
+      return { messages: { create: (params: any, o?: any) => { systems.push(params.system); return inner.messages.create(params, o); } } };
+    };
+    const deps = { ...dish.createLiveDishDeps({ client: recording as any, brainRows: async () => ({ week: null, dayTarget: TARGET(2000), pills: null, todayDishes: [], liked: [] }) }), loadSummary: async () => NO_LOGS, loadStartingPicture: undefined, loggedMealTypes: async () => ["breakfast"] };
+    const res: any = await dish.makeDishHandlers(deps).planToday({ ...CTX }, {});
+    assert.equal(res.ok, true);
+    const lunch = systems.find((s) => /Every dish is a Lunch\./.test(s))!;
+    const dinner = systems.find((s) => /Every dish is a Dinner\./.test(s))!;
+    assert.ok(lunch.split("\n").includes(dish.DAY_PLAN_LUNCH_LINE), "lunch line");
+    assert.ok(dinner.split("\n").includes(dish.DAY_PLAN_DINNER_LINE), "dinner line");
+    // The fake model wrote the same dish for both: both are kept, and it is logged once.
+    assert.deepEqual(res.parts.map((p: any) => p.name), [SALMON, SALMON]);
+    assert.equal(warned.filter((w) => w === "[clara-dish] day plan: lunch and dinner are the same dish").length, 1, warned.join("\n"));
+
+    systems.length = 0;
+    await dish.makeDishHandlers(deps).suggest({ ...CTX }, { mealType: "dinner" });
+    assert.ok(systems.length > 0 && systems.every((s) => !s.includes("This is the day's")), "a plain suggest has no day-plan line");
+  } finally {
+    console.warn = warn;
+    pantry = [];
+  }
+});
