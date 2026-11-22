@@ -1101,6 +1101,26 @@ function titleCase(s: string): string {
 }
 
 /**
+ * The part of an ingredient name a title uses. Without a comma, the name.
+ * With commas, the first part that carries a food (a catalog food token, or a
+ * protein/dairy word a reader names a dish after); when none does by that
+ * test, the first part that is more than descriptor words ("boneless",
+ * "lean", "fresh"); and when every part is a pure descriptor, the whole name
+ * with its commas removed.
+ */
+function titleHeadOf(name: string, catalogFoodTokens: Set<string>): string {
+  const parts = name.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length <= 1) return parts[0] ?? "";
+  const carriesFood = (p: string) =>
+    HEADLINE_ANCHOR.test(p) || HEADLINE_DAIRY.test(p) || [...ingredientTokens(p)].some((t) => catalogFoodTokens.has(t));
+  const food = parts.find(carriesFood);
+  if (food) return food;
+  const substantive = parts.find((p) => ingredientTokens(p).size > 0);
+  if (substantive) return substantive;
+  return parts.join(" ").replace(/\s+/g, " ");
+}
+
+/**
  * A name built from the dish's own ingredients, in the library's convention:
  * "Chicken Breast with Brown Rice and Broccoli".
  *
@@ -1133,10 +1153,28 @@ export function truthfulDishName(
    */
   formWord?: string | null
 ): string | null {
-  // A name says its food before any comma: "chicken thigh, boneless skinless" is
-  // "chicken thigh" in a title (live, 2026-11-21). The title only; the check
-  // below still judges against the full ingredient names.
-  const heads = ingredientNames.map((n) => n.split(",")[0].trim()).filter((n) => n && !notAHeadline(n));
+  // A name says its food in one of its comma parts: "chicken thigh, boneless
+  // skinless" is "chicken thigh" in a title (live, 2026-11-21). Usually the
+  // first part, but not when the descriptor leads: "boneless, skinless chicken
+  // breast" lost the chicken and "lean, ground beef" the beef (final review,
+  // 2026-11-21), so the part that carries a food is used. The title only; the
+  // check below still judges against the full ingredient names.
+  const found = ingredientNames.map((n) => titleHeadOf(n, catalogFoodTokens)).filter((n) => n && !notAHeadline(n));
+  // One head per food: "beans, black" and "beans, kidney" both read "beans",
+  // and "Beans with Beans and Rice" is not a name. Two heads that differ only by
+  // a descriptor are one food; the fuller wording is kept, in the first's place.
+  const heads: string[] = [];
+  const slotOf = new Map<string, number>();
+  for (const h of found) {
+    const key = [...ingredientTokens(h)].sort().join(" ");
+    const at = slotOf.get(key);
+    if (at === undefined) {
+      slotOf.set(key, heads.length);
+      heads.push(h);
+    } else if (h.length > heads[at].length) {
+      heads[at] = h;
+    }
+  }
   if (heads.length === 0) return null;
   // The dish's namesake leads. Taking the list in its stored order renamed
   // "Greek Yogurt Veggie Omelette" to "Spinach with Feta Cheese and Plain Greek

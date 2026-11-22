@@ -457,6 +457,28 @@ test("truthfulDishName names an ingredient by its part before a comma", () => {
   assert.equal(truthfulDishName(["Chicken thighs", "Jasmine rice"], CATALOG), "Chicken Thighs with Jasmine Rice");
 });
 
+// Final review, 2026-11-21: when the descriptor comes before the comma, the
+// part before it is not the food, and the main food vanished from the title.
+test("truthfulDishName keeps the food when the descriptor comes before the comma", () => {
+  const boneless = truthfulDishName(["boneless, skinless chicken breast", "jasmine rice", "broccoli"], CATALOG);
+  assert.ok(boneless && /Chicken Breast/.test(boneless), `the chicken is in the title: ${boneless}`);
+  assert.ok(boneless!.startsWith("Skinless Chicken Breast with"), `the chicken leads: ${boneless}`);
+  assert.ok(!/Boneless/.test(boneless!), `no lone descriptor: ${boneless}`);
+
+  const beef = truthfulDishName(["lean, ground beef", "brown rice", "bell peppers"], CATALOG);
+  assert.equal(beef, "Ground Beef with Brown Rice and Bell Peppers");
+});
+
+test("truthfulDishName never names the same food twice", () => {
+  const beans = truthfulDishName(["beans, black", "beans, kidney", "rice"], CATALOG);
+  assert.equal(beans, "Beans with Rice");
+  // Two wordings of one food: the fuller one is kept, once.
+  assert.equal(
+    truthfulDishName(["Chicken breast", "Boneless chicken breast", "Broccoli"], CATALOG),
+    "Boneless Chicken Breast with Broccoli"
+  );
+});
+
 // clampAddedSalt — a per-dish ceiling cannot see a day. Every dish in a
 // measured week was under MAX_SALT_TSP and the week was over the 2,300 mg
 // guideline on 6 days of 7, so the amount is clamped rather than the dish
