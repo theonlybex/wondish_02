@@ -23,12 +23,30 @@ export interface JudgeInput {
   rules: DishRules;
   targetCalories: number | null;
   ceilings: Partial<Record<FullLevelKey, number>>;
+  /** Dish names they had today or in the last days, or were just shown. A dish that is one of them reworded is only served when nothing else passes. */
+  notLike?: readonly string[];
 }
 
+const NAME_FILLER = new Set(["and", "with", "the", "of", "on", "in", "a", "an", "over", "style", "quick", "easy", "simple"]);
+const nameWords = (name: string): Set<string> =>
+  new Set(name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z]+/).filter((w) => w.length > 1 && !NAME_FILLER.has(w)));
+
+/** How much two dish names share: words in both over words in either (0 to 1). */
+export function nameOverlap(a: string, b: string): number {
+  const x = nameWords(a), y = nameWords(b);
+  if (x.size === 0 || y.size === 0) return 0;
+  let both = 0;
+  for (const w of x) if (y.has(w)) both++;
+  return both / (x.size + y.size - both);
+}
+
+/** At or above this, a dish is another one reworded ("Salmon and Jasmine Rice Bowl with Sautéed Spinach" / "Salmon Jasmine Rice Bowl with Lemon Garlic Spinach" is 0.63). */
+export const REPEAT_OVERLAP = 0.6;
+
 export interface DishVerdict {
-  /** "pass": every check. "relaxed": only the size or protein-share check failed (ladder step 2). "fail": out. */
+  /** "pass": every check. "relaxed": only the size or the repeat check failed (ladder step 2). "fail": out. */
   level: "pass" | "relaxed" | "fail";
-  /** In check order; [] for a pass. "protein:<ProteinBreak>", "honest:named-after-ingredient", "size:too-small", "size:too-large", "protein-share", "limit:<level key>". */
+  /** In check order; [] for a pass. "protein:<ProteinBreak>", "honest:named-after-ingredient", "size:too-small", "size:too-large", "repeat", "limit:<level key>". */
   reasons: string[];
   /** The key of the protein the dish is built on, or null. */
   builtOn: string | null;
@@ -67,6 +85,8 @@ export function judgeDish(input: JudgeInput): DishVerdict {
   }
   // OFF 2026-11-22 (owner: "maybe this rule is a bit too much, maybe we remove it for now"): the 15% protein floor for a main. Restore: uncomment, and the line in targetLines.
   // if (input.rules.mainsOnProtein && proteinShareLow(input.mealType, input.calories, input.proteinG)) reasons.push("protein-share");
+
+  if (input.wants === undefined && (input.notLike ?? []).some((n) => nameOverlap(input.name, n) >= REPEAT_OVERLAP)) reasons.push("repeat");
 
   for (const [key, amount] of Object.entries(input.known) as [FullLevelKey, number | undefined][]) {
     const ceiling = input.ceilings[key];

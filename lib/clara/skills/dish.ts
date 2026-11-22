@@ -325,6 +325,13 @@ const MAX_AT_HOME_IN_PROMPT = 40;
 /** Today's dish names in the "already open today" sentence: the latest 6, each at most 60 characters. */
 const MAX_USED_TODAY_IN_PROMPT = 6;
 const MAX_USED_TODAY_NAME = 60;
+/** A dish name for the prompt: no quotes, breaks or semicolons, cut at a word, never ending on "and" or "with". */
+export function promptDishName(name: string): string {
+  const clean = name.replace(/["\n\r;]+/g, "").replace(/\s+/g, " ").trim();
+  if (clean.length <= MAX_USED_TODAY_NAME) return clean;
+  const cut = clean.slice(0, MAX_USED_TODAY_NAME + 1);
+  return cut.slice(0, cut.lastIndexOf(" ")).replace(/(\s+(and|with|on|over|in|of|the|a))+$/i, "").trim();
+}
 /** At-home proteins a breakfast can be built on. */
 const BREAKFAST_PROTEIN_KEYS: ReadonlySet<string> = new Set(["egg", "greek yogurt", "cottage cheese", "tofu", "bean"]);
 
@@ -443,7 +450,7 @@ export function dishSystemPrompt(a: {
         ? `- Their condition calls for modest protein: keep the protein portion of this ${meal} small. If it has a protein food, make it ${choiceName}, which they have at home.`
         : `- This ${meal} does not have to be built on a protein: they are getting enough this week, so a salad, a vegetable plate or a potato dish is fine too. If it has a protein at its centre, make it ${choiceName}, which they have at home.`;
     if (steer.choice.why === "today" && brain.usedToday.length > 0) {
-      const used = brain.usedToday.slice(-MAX_USED_TODAY_IN_PROMPT).map((n) => cleanOne(n).replace(/;/g, "").slice(0, MAX_USED_TODAY_NAME));
+      const used = brain.usedToday.slice(-MAX_USED_TODAY_IN_PROMPT).map(promptDishName);
       proteinLine += ` It is already open today, so make a different dish from: ${used.join("; ")}.`;
     }
     proteinLine += homeMeats.length > 0
@@ -496,7 +503,7 @@ export function dishSystemPrompt(a: {
   // what their log says they had in the last days is not repeated, and each day leans to a
   // different kind of dish, by person and day like the protein rotation. Neither is checked by the judge.
   const plainMain = isMainMeal && ask.wants === undefined;
-  const recent = [...new Set(brain.usedRecently.map((n) => cleanOne(n).replace(/;/g, "").trim().slice(0, MAX_USED_TODAY_NAME)).filter(Boolean))].slice(-MAX_RECENT_IN_PROMPT);
+  const recent = [...new Set(brain.usedRecently.map(promptDishName).filter(Boolean))].slice(-MAX_RECENT_IN_PROMPT);
   const recentLine = plainMain && recent.length > 0
     ? `- They had these in the last few days; make a clearly different dish, not one of these and not a small variation of one: ${recent.join("; ")}.`
     : ``;
@@ -506,7 +513,7 @@ export function dishSystemPrompt(a: {
     : ``;
   const atHome = kept.atHome.slice(0, MAX_AT_HOME_IN_PROMPT);
   const atHomeLine = atHome.length > 0
-    ? `- Build every dish mainly from what they have at home and their kitchen basics; where a classic ingredient is missing, use the closest at-home food. You may add a few common fresh ingredients (an onion, garlic, a lemon, a herb) when the dish needs them. At home: ${groupedAtHome(atHome).map((g) => `${g.title}: ${clean(g.names)}`).join("; ")}.`
+    ? `- Build every dish mainly from what they have at home and their kitchen basics; where a classic ingredient is missing, use the closest at-home food. You may add a few common fresh ingredients (an onion, garlic, a lemon, a herb) when the dish needs them. Use the at-home foods that make a good dish, not all of them at once: one starch (rice, potatoes, pasta or bread) per dish. At home: ${groupedAtHome(atHome).map((g) => `${g.title}: ${clean(g.names)}`).join("; ")}.`
     : ``;
   const basicsLine = brain.basics.length > 0
     ? `- Kitchen basics they always have: ${clean(brain.basics)}. Common fresh seasonings (lemon, garlic, fresh herbs, pepper) may be used too; list each one you use in ingredients with its amount. Cook with one of these fats${atHome.length > 0 ? " or with an oil from the at-home list" : ""}.`
@@ -555,7 +562,12 @@ export function dishSystemPrompt(a: {
   const sodiumMax = steer.ceilings.sodium !== undefined && steer.ceilings.sodium < a.sodiumLimitMg
     ? Math.floor(steer.ceilings.sodium / 10) * 10
     : null;
-  const levelLines = steerLines(steer.levels, {
+  // The protein line already builds the dish on the chosen protein; a second "behind on protein:
+  // build on eggs" line beside it put eggs on top of every beef and salmon dish (live run, 2026-11-22).
+  const steered = steer.ruleOn && steer.choice && steer.need === "push"
+    ? steer.levels.filter((l) => !(l.key === "protein" && l.direction === "more"))
+    : steer.levels;
+  const levelLines = steerLines(steered, {
     ...(sodiumMax !== null ? { sodiumMaxMg: sodiumMax } : {}),
     ...(marked ? { atHome: homeNames } : {}),
     ...(keepExample ? { keepExample } : {}),
@@ -834,6 +846,7 @@ function judgeGated(gated: FridgeRecipe, ask: DishAsk, person: Person, steer: As
     rules: person.brain.rules,
     targetCalories: steer.target.calories,
     ceilings: steer.ceilings,
+    notLike: [...person.brain.usedToday, ...person.brain.usedRecently, ...(ask.avoid ?? [])],
   });
   const fromHome = fromHomeLine(ingredients.map((i) => i.name), person.brain.kept, builtOn(ingredients, r.steps));
   return { recipe: r, verdict, fromHome };
@@ -932,7 +945,9 @@ async function generateGated(
   const meal = capitalize(ask.mealType);
   const steer = steerFor(ctx, ask, person);
   // With a protein chosen for today, the stream stops early only on a dish built on it.
-  const onChoice = (j: JudgedDish) => !steer.choice || (j.verdict.builtOn !== null && sameProteinKind(j.verdict.builtOn, steer.choice.key));
+  // Only while the protein is pushed: with need "free" or "hold" any passing dish may end it
+  // (live run, 2026-11-22: an egg dish was never "on choice", so every such request read the whole answer).
+  const onChoice = (j: JudgedDish) => !steer.choice || steer.need !== "push" || (j.verdict.builtOn !== null && sameProteinKind(j.verdict.builtOn, steer.choice.key));
   // What they asked to cook, if anything: a relaxed dish that says it may end the stream (below).
   const wantsNow = ask.wants;
 

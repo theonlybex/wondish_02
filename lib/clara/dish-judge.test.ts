@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { splitKeptFoods } from "./kept-foods";
 import { homeProteins } from "./dish-protein";
 import { DEFAULT_DISH_RULES, type DishRules } from "./dish-rules";
-import { judgeDish, namedAfterOwnIngredient, type JudgeInput } from "./dish-judge";
+import { judgeDish, nameOverlap, namedAfterOwnIngredient, type JudgeInput } from "./dish-judge";
 
 const g = (name: string, quantity: number, unit = "g") => ({ name, quantity, unit });
 const HOME = homeProteins(splitKeptFoods([
@@ -62,4 +62,13 @@ test("namedAfterOwnIngredient", () => {
   assert.equal(namedAfterOwnIngredient("Greek Yogurt", ["plain greek yogurt", "honey"]), true);
   assert.equal(namedAfterOwnIngredient("Scrambled Eggs", ["eggs", "butter"]), false);
   assert.equal(namedAfterOwnIngredient("Ground Beef with Bell Peppers and Brown Rice", ["ground beef", "bell peppers", "brown rice"]), false);
+});
+
+// Live run, 2026-11-22: a lunch came back at dinner with its name reworded.
+test("a dish that is one they just had, reworded, is only relaxed; a different one passes; a request is never judged on it", () => {
+  const lunch = "Salmon and Jasmine Rice Bowl with Sautéed Spinach";
+  assert.deepEqual(j({ name: "Salmon Jasmine Rice Bowl with Lemon Garlic Spinach", notLike: [lunch] }), { level: "relaxed", reasons: ["repeat"], builtOn: "salmon" });
+  assert.equal(j({ name: "Baked Salmon with Roasted Potatoes and Spinach", notLike: [lunch] }).level, "pass");
+  assert.equal(j({ name: lunch, notLike: [lunch], wants: "a salmon bowl" }).level, "pass");
+  assert.equal(j({ notLike: [] }).level, "pass");
 });
