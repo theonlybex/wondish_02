@@ -24,7 +24,7 @@ import { applyAllergenFilter, parseFridgeRecipes, type FridgeRecipe } from "@/li
 import { DISH_OUTPUT_SCHEMA, DISH_UNITS, DishItemExtractor, toFridgeItem } from "@/lib/clara/dish-output";
 import { libraryToFridge, matchesRequest, rankLibrary, suggestionName, type LibraryRecipe, type RecentDishes } from "@/lib/clara/dish-library";
 import { breaksProteinRule, proteinKey, proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-foods";
-import { loadKeptFoods } from "@/lib/clara/kept-foods-db";
+import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
 import crypto from "crypto";
 import { MAX_SERVINGS } from "@/lib/meal-log";
 import {
@@ -321,9 +321,23 @@ export function dishSystemPrompt(a: {
   // Catalog names, but cleaned like the avoid names all the same: no quotes, no line breaks.
   const clean = (names: readonly string[]) => names.map((n) => n.replace(/["\n\r]+/g, "")).join(", ");
   // The at-home protein rule replaces the protein line, banned names or not.
-  const keptProteins = proteinRuleOn(kept, ask.wants)
-    ? [...kept.proteinNames, ...a.proteinOptions.filter((o) => proteinKey(o) === null)]
-    : null;
+  const ruleOn = proteinRuleOn(kept, ask.wants);
+  // Every at-home meat, fish or seafood, whichever catalog group it sits in.
+  const keptMeats = [...kept.proteinNames, ...kept.atHome].filter((n) => proteinKey(n) !== null);
+  // Mains are built on them only at lunch and dinner with no request of their own;
+  // breakfast, a snack and a request get the exclusion alone.
+  const buildOnKept = ruleOn && ask.wants === undefined && (ask.mealType === "lunch" || ask.mealType === "dinner");
+  const keptProteinLine = !ruleOn
+    ? null
+    : buildOnKept
+      ? `- Proteins they have at home, and others that fit them — build every main around one of them: ${clean([
+          ...kept.proteinNames,
+          ...kept.atHome.filter((n) => proteinKey(n) !== null),
+          ...a.proteinOptions.filter((o) => proteinKey(o) === null),
+        ])}. Use no other meat, fish or seafood in any dish: not in an ingredient, the dish name, the description or a step.`
+      : `- If a dish uses meat, fish or seafood, use only these, which they have at home: ${clean(keptMeats)}. No other meat, fish or seafood may appear in any dish: not in an ingredient, the dish name, the description or a step.`;
+  // A favourite meat they do not have at home would contradict the rule.
+  const favorites = ruleOn ? kept.favorites.filter((f) => !breaksProteinRule([f], kept)) : kept.favorites;
   const meal = capitalize(ask.mealType);
   const servings = ask.servings ?? 1;
   const leanInto: string[] = [];
@@ -371,16 +385,16 @@ export function dishSystemPrompt(a: {
     `- Name each dish by what is IN it and the method you actually use. description is one short sentence and may only mention food in ingredients. Every dish needs a distinct name.`,
     saltRuleLine(a.sodiumLimitMg),
     `- Cooking fat: one teaspoon per serving is normal and one tablespoon is the maximum; write the same amount in the steps as in ingredients.`,
-    keptProteins
-      ? `- Proteins they have at home, and others that fit them — build every main around one of them: ${clean(keptProteins)}. Use no other meat, fish or seafood in any dish: not in an ingredient, the dish name, the description or a step.`
+    keptProteinLine
+      ? keptProteinLine
       : a.proteinOptions.length > 0 && a.bannedNames.length > 0
         ? `- Protein sources that fit this person — build every main around one of them: ${a.proteinOptions.join(", ")}.`
         : ``,
     kept.atHome.length > 0
       ? `- They usually have these at home; prefer them where they fit: ${clean(kept.atHome.slice(0, MAX_AT_HOME_IN_PROMPT))}.`
       : ``,
-    kept.favorites.length > 0
-      ? `- These are their favourite foods; at least one of the dishes should feature one when it suits the meal: ${clean(kept.favorites)}.`
+    favorites.length > 0
+      ? `- These are their favourite foods; at least one of the dishes should feature one when it suits the meal: ${clean(favorites)}.`
       : ``,
     a.bannedNames.length > 0
       ? `- FORBIDDEN WORDS (this person's allergies and rules): no ingredient name, dish name, description or step may contain any of these words — not even inside a longer name or a plant-based, "-free" or "no …" phrase. If "milk" is forbidden, "coconut milk", "almond milk" and "milk-free" are out too; if "butter" is, "peanut butter" is out. Choose ingredients whose names contain none of them: ${a.bannedNames.join(", ")}.`
@@ -405,6 +419,23 @@ function loadPatient(id: string) {
   return prisma.patient.findFirst({ where: { id }, include: PATIENT_FOOD_MAP_INCLUDE });
 }
 
+/** The longest the at-home and favourite marks may hold up a dish, ms. */
+const KEPT_FOODS_BUDGET_MS = 1_500;
+
+/** `work`, or `fallback` once `ms` pass. The timer is always cleared and never keeps the process alive. */
+async function withinMs<T>(ms: number, work: Promise<T>, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), ms);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // One load per tool call: dish_plan_today asks for up to three dishes with the
 // same ctx, and the generator and the library both need the person.
 const personMemo = new WeakMap<ClaraContext, Promise<Person | null>>();
@@ -412,13 +443,20 @@ function personFor(ctx: ClaraContext): Promise<Person | null> {
   let p = personMemo.get(ctx);
   if (!p) {
     p = (async () => {
+      // The marks need only the id: read them alongside the patient, not after.
+      const marks = loadKeptMarks(ctx.patientId);
+      marks.catch(() => {}); // handled below; never an unhandled rejection if the patient is missing
       const patient = await loadPatient(ctx.patientId);
       if (!patient) return null;
       // The person's own today decides which trigger trials are enforced.
       const bans = derivePatientBans(patient, new Date(`${ctx.today}T12:00:00`));
       const matchers = buildDietMatchers(bans);
-      // Never fails the dish: without the marks, dishes are as they were before them.
-      const kept = await loadKeptFoods(patient.id, matchers).catch((err) => {
+      // Never fails or stalls the dish: without the marks, dishes are as they were before them.
+      const kept = await withinMs(
+        KEPT_FOODS_BUDGET_MS,
+        marks.then((m) => keptFoodsFrom(m, matchers)),
+        NO_KEPT_FOODS,
+      ).catch((err) => {
         console.warn(`[clara-dish] kept foods failed to load: ${(err as Error)?.message ?? String(err)}`);
         return NO_KEPT_FOODS;
       });
@@ -683,14 +721,20 @@ export async function mealSuggestionNames(
   if (!person) return {};
   const out: Partial<Record<DishMealType, string>> = {};
   for (const mealType of meals) {
-    const ranked = rankLibrary(
-      await libraryPool(mealType),
-      { mealType, little: [], aLot: [] },
-      { patient: person.patient, matchers: person.matchers, seed: `${patientId}|${today}|${mealType}`, kept: person.kept },
-      recent,
-      stepStatesAmount,
-    );
-    const name = suggestionName(ranked);
+    const pool = await libraryPool(mealType);
+    // proteinRule undefined = rankLibrary's default (the at-home protein rule on when it applies).
+    const nameFor = (proteinRule?: false) =>
+      suggestionName(
+        rankLibrary(
+          pool,
+          { mealType, little: [], aLot: [] },
+          { patient: person.patient, matchers: person.matchers, seed: `${patientId}|${today}|${mealType}`, kept: person.kept, proteinRule },
+          recent,
+          stepStatesAmount,
+        ),
+      );
+    // As the dish fallback: with nothing at-home-friendly, a name as before beats none.
+    const name = nameFor() ?? (proteinRuleOn(person.kept, undefined) ? nameFor(false) : null);
     if (name) out[mealType] = name;
   }
   return out;

@@ -1076,3 +1076,34 @@ test("prompt: the at-home and favourites lines appear only when their lists are 
   const today = dishSystemPrompt({ ...KEPT_BASE, bannedNames: [] }).split("\n");
   assert.deepEqual(lines.filter((l) => !today.includes(l)), [home, fav]);
 });
+
+test("prompt: breakfast and snack get the at-home rule as an exclusion only — never 'build every main around' a meat", () => {
+  for (const mealType of ["breakfast", "snack"] as const) {
+    const p = dishSystemPrompt({ ...KEPT_BASE, ask: { mealType, summary: NO_LOGS }, bannedNames: [], kept: SALMON_AND_BEEF });
+    assert.doesNotMatch(p, /build every main around/, mealType);
+    assert.match(p, /If a dish uses meat, fish or seafood, use only these, which they have at home: Salmon fillets, Ground beef\./, mealType);
+    assert.match(p, /No other meat, fish or seafood may appear in any dish/, mealType);
+    assert.doesNotMatch(p, /chicken breast/, mealType);
+  }
+  // Lunch and dinner still build mains on them.
+  assert.match(dishSystemPrompt({ ...KEPT_BASE, ask: { mealType: "lunch", summary: NO_LOGS }, bannedNames: [], kept: SALMON_AND_BEEF }), /build every main around one of them: Salmon fillets, Ground beef, eggs, lentils/);
+});
+
+test("prompt: a request that names no meat ('pancakes') with the rule on gets the exclusion wording, not a main built on salmon", () => {
+  const p = dishSystemPrompt({ ...KEPT_BASE, ask: { mealType: "dinner", summary: NO_LOGS, wants: "pancakes" }, bannedNames: [], kept: SALMON_AND_BEEF });
+  assert.match(p, /THE REQUEST: they asked to cook "pancakes"/);
+  assert.doesNotMatch(p, /build every main around/);
+  assert.match(p, /If a dish uses meat, fish or seafood, use only these, which they have at home: Salmon fillets, Ground beef\./);
+});
+
+test("prompt: with the rule on, a favourite that is a meat they do not have at home never reaches the prompt", () => {
+  const p = dishSystemPrompt({
+    ...KEPT_BASE, ask: { mealType: "dinner", summary: NO_LOGS }, bannedNames: [],
+    kept: { proteinKeys: ["salmon"], proteinNames: ["Salmon fillets"], atHome: [], favorites: ["Boneless chicken breasts", "Spinach"] },
+  });
+  assert.doesNotMatch(p, /chicken/i);
+  assert.match(p, /favourite foods; at least one of the dishes should feature one when it suits the meal: Spinach\./);
+  // Rule off (nothing meat at home): the favourite is offered as before.
+  const off = dishSystemPrompt({ ...KEPT_BASE, ask: { mealType: "dinner", summary: NO_LOGS }, bannedNames: [], kept: { ...NO_KEPT_FOODS, favorites: ["Boneless chicken breasts"] } });
+  assert.match(off, /Boneless chicken breasts/);
+});

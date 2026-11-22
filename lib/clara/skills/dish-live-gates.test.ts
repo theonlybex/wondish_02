@@ -60,6 +60,10 @@ const CHICKEN_LIBRARY = [{
 
 /** Ingredient ids (= catalog names) the patient marked as at home. Empty except in the at-home tests. */
 let pantry: string[] = [];
+/** When set, the pantry read rejects (a database hiccup). */
+let pantryFails = false;
+/** When set, the pantry read never answers (a stalled database). */
+let pantryHangs = false;
 let queries: string[] = [];
 const fakePrisma = {
   patient: {
@@ -86,7 +90,14 @@ const fakePrisma = {
     },
     createMany: async () => ({ count: 0 }), // the catalog's idempotent insert of names it lacks
   },
-  patientPantryItem: { findMany: async () => pantry.map((ingredientId) => ({ ingredientId })) },
+  patientPantryItem: {
+    findMany: async () => {
+      queries.push("pantry");
+      if (pantryFails) throw new Error("pantry read failed");
+      if (pantryHangs) return new Promise<never>(() => {});
+      return pantry.map((ingredientId) => ({ ingredientId }));
+    },
+  },
   patientIngredientPreference: { findMany: async () => [] },
   mealType: { findMany: async () => [{ id: "mt-dinner", name: "Dinner" }, { id: "mt-lunch", name: "Lunch" }] },
   recipe: { findMany: async (args: any) => { queries.push("recipe"); return args?.where?.mealTypeId === "mt-lunch" ? CHICKEN_LIBRARY : LIBRARY; } },
@@ -332,5 +343,44 @@ test("kept: a library of only chicken recipes and a generator that returns nothi
     assert.equal(res.parts.find((p: any) => p.kind === "dish").name, "Chicken Breast with Spinach Rice");
   } finally {
     pantry = [];
+  }
+});
+
+test("kept: a rejecting pantry read still serves a dish; with nothing marked no catalog or allergen-group query is made for the kept foods", async () => {
+  pantryFails = true;
+  try {
+    const deps = { ...dish.createLiveDishDeps({ client: fakeClient(JSON.stringify({ dishes: [item("Red Lentil and Spinach Stew")] })).client }), loadSummary: async () => NO_LOGS, loadStartingPicture: undefined };
+    const res: any = await dish.makeDishHandlers(deps).suggest({ ...CTX }, { mealType: "dinner" });
+    assert.equal(res.ok, true, res.message);
+    assert.equal(res.parts.find((p: any) => p.kind === "dish").name, "Red Lentil and Spinach Stew");
+  } finally {
+    pantryFails = false;
+  }
+  // Nothing marked (this patient has a peanut ban, so a groups query would show up as "catalog").
+  queries = [];
+  await dish.createLiveDishDeps({ client: fakeClient(JSON.stringify({ dishes: [item("Red Lentil and Spinach Stew")] })).client }).generate({ ...CTX }, ASK, { accept: () => true });
+  assert.ok(queries.includes("pantry"), `the marks were read: ${queries.join(", ")}`);
+  assert.ok(!queries.includes("catalog"), `no kept-foods catalog query: ${queries.join(", ")}`);
+});
+
+test("kept: the meal reminder still names a lunch when salmon is at home and the lunch library is chicken only", async () => {
+  pantry = ["salmon fillets"];
+  try {
+    assert.deepEqual(await dish.mealSuggestionNames("p1", "2026-11-12", ["lunch"]), { lunch: "Chicken Breast with Spinach Rice" });
+  } finally {
+    pantry = [];
+  }
+});
+
+test("kept: a pantry read that never answers holds the dish up for at most the kept-foods budget (1.5 s), then serves without marks", async () => {
+  pantryHangs = true;
+  try {
+    const t0 = Date.now();
+    const got = await dish.createLiveDishDeps({ client: fakeClient(JSON.stringify({ dishes: [item("Red Lentil and Spinach Stew")] })).client }).generate({ ...CTX }, ASK, { accept: () => true });
+    const ms = Date.now() - t0;
+    assert.deepEqual(got.map((r) => r.name), ["Red Lentil and Spinach Stew"]);
+    assert.ok(ms >= 1_400 && ms < 3_000, `took ${ms} ms`);
+  } finally {
+    pantryHangs = false;
   }
 });
