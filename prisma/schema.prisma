@@ -184,6 +184,8 @@ model Patient {
 
   // Clara first run + full numbers (additive)
   usualEating     Json? // { veg, fruit, ... } each 0|1|2|null
+  // "How Clara cooks" (lib/clara/dish-rules.ts): { switches: { key: boolean }, mine: [{ id, text, on }] }. Null = every switch on, no rules of their own.
+  claraRules      Json?
   startingPicture Json? // computed at onboarding save: { little: [...], aLot: [...] }
   weightGoal      String? // "lose" | "keep" | "gain" | "none"
   noCondition     Boolean @default(false)

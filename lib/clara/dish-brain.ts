@@ -10,7 +10,7 @@ import { buildFullNumbers, ageOn, type FullDay } from "@/lib/numbers-full";
 import { currentStartingPicture } from "@/lib/onboarding";
 import { freeStaplesFor } from "./recipe-generation";
 import { homeProteins, type HomeProtein } from "./dish-protein";
-import { DEFAULT_DISH_RULES, keptUnderRules, type DishRules } from "./dish-rules";
+import { DEFAULT_DISH_RULES, keptUnderRules, ruleFood, type DishRules } from "./dish-rules";
 import type { KeptFoods } from "./kept-foods";
 import { levelCeilings, steerLevels, type LevelSteer, type PictureLevels, type SteerRow, type TodayTotals } from "./level-steer";
 import { mealTarget, type MealTarget } from "./meal-target";
@@ -48,6 +48,10 @@ export interface BrainPatient {
 
 export interface DishBrain {
   rules: DishRules;
+  /** The rules they added in their own words that are switched on (piece D), as written. */
+  userRules: string[];
+  /** The foods a "no such food" rule of theirs names: a dish that uses one is dropped by the judge. */
+  ruleFoods: string[];
   /** keptUnderRules(kept, rules). */
   kept: KeptFoods;
   home: HomeProtein[];
@@ -93,6 +97,8 @@ function favouritesFrom(kept: KeptFoods, liked: BrainRows["liked"], matchers: Di
 export function brainFrom(a: {
   kept: KeptFoods;
   rules?: DishRules;
+  /** Their own rules that are on, already cleaned (lib/clara/dish-rules.ts). */
+  userRules?: readonly string[];
   rows?: BrainRows;
   today?: string;
   patient?: BrainPatient;
@@ -139,8 +145,11 @@ export function brainFrom(a: {
       }
     : null;
 
+  const userRules = [...(a.userRules ?? [])];
   return {
     rules,
+    userRules,
+    ruleFoods: userRules.map(ruleFood).filter((f): f is string => f !== null),
     kept,
     home: homeProteins(kept),
     favourites: rules.favourFavourites ? favouritesFrom(kept, rows.liked, a.matchers) : [],
@@ -153,7 +162,8 @@ export function brainFrom(a: {
     picture,
     today,
     usedToday: [...rows.todayDishes],
-    usedRecently: [...(rows.recentDishes ?? [])],
+    // keepWeekVaried off: nothing is "recent", so nothing is asked to differ and no dish is held back as a repeat.
+    usedRecently: rules.keepWeekVaried ? [...(rows.recentDishes ?? [])] : [],
     ...(a.matchers ? { matchers: a.matchers } : {}),
   };
 }
@@ -219,6 +229,6 @@ export function steerForAsk(
   // spinach the skipped lunches were 270-440 kcal of potatoes and spinach).
   const marked = brain.kept.proteinNames.length + brain.kept.atHome.length > 0;
   const canGoWithout = !marked || brain.home.some((p) => p.cls === "pulse" || p.cls === "plant" || p.cls === "dairy") || brain.kept.atHome.some((n) => /\b(cheese|feta|mozzarella|cheddar|parmesan|halloumi|paneer|yogh?urt)\b/i.test(n));
-  const need: ProteinNeed = brain.rules.mainsOnProtein && ask.wants === undefined && canGoWithout && skipsProtein(base, ask.mealType, who.patientId, who.today) ? "skip" : base;
+  const need: ProteinNeed = brain.rules.mainsOnProtein && brain.rules.proteinFreeLunches && ask.wants === undefined && canGoWithout && skipsProtein(base, ask.mealType, who.patientId, who.today) ? "skip" : base;
   return { ruleOn, choice, need, target, levels, ceilings };
 }

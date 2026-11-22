@@ -146,3 +146,10 @@ test("one protein to a main: meat with eggs, or two meats, is only served when n
   assert.deepEqual(j({ mealType: "lunch", skipProtein: true, targetCalories: null }).reasons, ["proteins"]);
   assert.equal(j({ mealType: "lunch", skipProtein: true, targetCalories: null, name: "Spinach Rice", ingredients: [g("spinach", 120), g("jasmine rice", 60)] }).level, "pass");
 });
+
+// Piece D: a "no such food" rule of the person's is held like "I don't have this".
+test("a dish that uses a food their own rule rules out is dropped", () => {
+  assert.deepEqual(j({ without: ["spinach"] }).reasons, ["without:spinach"]);
+  assert.equal(j({ without: ["spinach"] }).level, "fail");
+  assert.equal(j({ without: ["mushrooms"] }).level, "pass");
+});

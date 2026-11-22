@@ -30,12 +30,13 @@ import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type AskSteer, type BrainRows, t
 import { builtOn, eggsOnlyKitchen, proteinKind } from "@/lib/clara/dish-protein";
 import { dishShape, judgeDish, keepWayOfCooking, starchFamily, type DishShape, type DishVerdict } from "@/lib/clara/dish-judge";
 import { plainSwap, swapInRecipe, swapOptions } from "@/lib/clara/exchange";
+import { RULES_PROMPT, ruleTools } from "@/lib/clara/skills/rules";
 import { chooseProtein, fnv1a, fromHomeLine, requestedProtein, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
 import { targetLines } from "@/lib/clara/meal-target";
 import { exampleAllergenGroups, steerLines, levelCeilings } from "@/lib/clara/level-steer";
 import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
 import { loadBrainRows } from "@/lib/clara/dish-brain-db";
-import { DEFAULT_DISH_RULES, type DishRules } from "@/lib/clara/dish-rules";
+import { DEFAULT_DISH_RULES, DISH_RULE_KEYS, storedRulesFrom, type DishRules } from "@/lib/clara/dish-rules";
 import crypto from "crypto";
 import { MAX_SERVINGS } from "@/lib/meal-log";
 import {
@@ -592,7 +593,7 @@ export function dishSystemPrompt(a: {
   const shape = plainMain
     ? shapeFor(ask.mealType as "lunch" | "dinner", ask.dayPlan && ask.mealType === "dinner" ? lunchTaken() : [])
     : null;
-  const styleLine = shape
+  const styleLine = shape && brain.rules.keepWeekVaried
     ? `- To keep their week varied, make today's ${meal} ${shape.style}${shape.starch ? `, with ${shape.starch} as its starch,` : ""} if that suits what they have; otherwise the nearest thing to it.`
     : ``;
   const atHome = kept.atHome.slice(0, MAX_AT_HOME_IN_PROMPT);
@@ -728,6 +729,10 @@ export function dishSystemPrompt(a: {
     favorites.length > 0
       ? `- These are their favourite foods; at least one of the dishes should feature one when it suits the meal: ${clean(favorites)}.`
       : ``,
+    // Their own rules, in their words. Below every rule of the app and above the diet's words, which they never override.
+    brain.userRules.length > 0
+      ? `- Their own rules for their dishes; follow each one, except where a rule about their diet, allergies or safety here says otherwise: ${brain.userRules.map((r) => cleanOne(r).replace(/;/g, ",")).join("; ")}.`
+      : ``,
     a.bannedNames.length > 0
       ? `- FORBIDDEN WORDS (this person's allergies and rules): no ingredient name, dish name, description or step may contain any of these words — not even inside a longer name or a plant-based, "-free" or "no …" phrase. If "milk" is forbidden, "coconut milk", "almond milk" and "milk-free" are out too; if "butter" is, "peanut butter" is out. Choose ingredients whose names contain none of them: ${a.bannedNames.join(", ")}.`
       : ``,
@@ -776,6 +781,18 @@ function personWithout(person: Person, without: readonly string[] | undefined): 
 
 /** The live switches. A mutable object only so the simulation (and piece D) can flip one; all on. */
 export const dishRulesNow: { rules: DishRules } = { rules: { ...DEFAULT_DISH_RULES } };
+
+/**
+ * This person's rules: their switches from "How Clara cooks" (a switch is on only when both theirs
+ * and the live one are; the live ones are all on outside the simulation) and their own rules that
+ * are switched on. A missing or malformed stored value is every switch on and no rules.
+ */
+function rulesFor(patient: { claraRules?: unknown }): { rules: DishRules; userRules: string[] } {
+  const stored = storedRulesFrom(patient.claraRules ?? null);
+  const rules = { ...stored.switches };
+  for (const k of DISH_RULE_KEYS) rules[k] = stored.switches[k] && dishRulesNow.rules[k];
+  return { rules, userRules: stored.mine.filter((r) => r.on).map((r) => r.text) };
+}
 
 /** The brain reads, injectable so tests can stand in for the database (createLiveDishDeps). */
 type BrainRowsLoader = (patientId: string, today: string) => Promise<BrainRows>;
@@ -851,7 +868,7 @@ function personFor(ctx: ClaraContext, loadRows: BrainRowsLoader = loadBrainRows)
         matchers,
         sodiumLimitMg,
         kept,
-        brain: safeBrainFrom({ kept, rules: dishRulesNow.rules, rows: brainRows, today: ctx.today, patient, matchers, sodiumLimitMg }),
+        brain: safeBrainFrom({ kept, ...rulesFor(patient), rows: brainRows, today: ctx.today, patient, matchers, sodiumLimitMg }),
       };
     })();
     personMemo.set(ctx, p);
@@ -975,7 +992,8 @@ function judgeGated(gated: FridgeRecipe, ask: DishAsk, person: Person, steer: As
     ceilings: steer.ceilings,
     notLike: [...person.brain.usedToday, ...person.brain.usedRecently, ...(ask.avoid ?? [])],
     ...(steer.need === "skip" ? { skipProtein: true } : {}),
-    ...(ask.without && ask.without.length > 0 ? { without: ask.without } : {}),
+    // What they said they do not have for this dish, and the foods their own rules rule out.
+    ...((ask.without?.length ?? 0) + person.brain.ruleFoods.length > 0 ? { without: [...(ask.without ?? []), ...person.brain.ruleFoods] } : {}),
   });
   const fromHome = fromHomeLine(ingredients.map((i) => i.name), person.brain.kept, builtOn(ingredients, r.steps));
   return { recipe: r, verdict, fromHome };
@@ -1029,6 +1047,8 @@ function safeBrainFrom(a: Parameters<typeof brainFrom>[0] & { matchers: DietMatc
   } catch {
     return {
       rules: a.rules ?? { ...DEFAULT_DISH_RULES },
+      userRules: [],
+      ruleFoods: [],
       kept: NO_KEPT_FOODS,
       usedRecently: [],
       home: [],
@@ -2144,6 +2164,7 @@ export const dishSkill: Skill = {
     "When they ask to cook or make something particular (\"help me cook eggs\", \"how do I make pancakes\", \"cook salmon with me\"), call dish_suggest with wants set to what they asked for, in their words, and the mealType that dish is usually eaten as unless they say which meal. Do NOT write the recipe or the steps in your reply: only the dish card opens step-by-step cooking with timers. Follow the result's request note: when the dish answers their request, say it is a way to cook that which fits them; when the note says the dish is not what they asked for, say so. If the result says what they asked for does not fit them, tell them why in plain words and offer a dish that does fit; if it says it couldn't put that together right now, say exactly that and offer to try again. A plain technique question with no dish to cook (\"how long do I boil an egg?\") needs no tool: answer it in text.",
     "Talk about what they have EATEN, never their body: \"you've had little fibre this week\", never \"your fibre is low\". When the result's levels say source answers (not enough logs yet), say \"from your answers, you probably get little fibre\". The only level words are little, on track, within limit and a lot.",
     "If the result has a note that nothing (or not enough) is logged yet, say so in a few plain words, make no little or a lot claim, and still offer the dish. If a dish comes back as couldn't make one that fits, say exactly that and offer to try again — never describe a dish you were not given.",
+    RULES_PROMPT,
     `Before dish_plan_today, ask "Anything happening today?" once with ask_choices, options exactly "${OCCASION_OPTIONS[0]}", "${OCCASION_OPTIONS[1]}", "${OCCASION_OPTIONS[2]}", "${OCCASION_OPTIONS[3]}" — then pass occasion normal, eating_out, guests or little_time. It is optional: if they already said what today is like, skip the question. When they are eating out, ask them to send the menu.`,
   ].join(" "),
   tools: [
@@ -2194,5 +2215,7 @@ export const dishSkill: Skill = {
       },
       handler: handlers.planToday,
     },
+    // "How Clara cooks": the person's own rules, added and removed by telling Clara (lib/clara/skills/rules.ts).
+    ...ruleTools(),
   ],
 };

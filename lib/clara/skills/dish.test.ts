@@ -442,9 +442,11 @@ test("dish_plan_today: a bad occasion is INVALID_INPUT", async () => {
 
 // ─── the skill ──────────────────────────────────────────────────────────────
 
-test("both dish tools are reads: neither is flagged isWrite", () => {
+test("the dish tools: two reads, and the three rule tools; none is flagged isWrite", () => {
   const names = dishSkill.tools.map((t) => t.def.name);
-  assert.deepEqual(names, ["dish_suggest", "dish_plan_today"]);
+  // The rule tools save the person's own words at their request, like memory_save, which is not
+  // flagged either: a first message "never put mushrooms in my dishes" must be able to save it.
+  assert.deepEqual(names, ["dish_suggest", "dish_plan_today", "dish_rule_add", "dish_rule_remove", "dish_rule_list"]);
   for (const t of dishSkill.tools) assert.ok(!t.def.isWrite, t.def.name);
 });
 
@@ -1461,6 +1463,27 @@ test("prompt: with protein on track, one lunch in two is asked for with no meat,
   for (const d of days) assert.doesNotMatch(lunch(d, {}, { ...SALMON_AND_BEEF, atHome: ["Large eggs", "Spinach", "Jasmine rice"] }), /without meat, fish or eggs/);
   // Not on track (nothing logged): never.
   for (const d of days) assert.doesNotMatch(dishSystemPrompt({ ...KEPT_BASE, ask: { mealType: "lunch", summary: NO_LOGS }, bannedNames: [], brain: brainFrom({ kept: SALMON_AND_BEEF }), who: { patientId: "p1", today: d } }), /without meat, fish or eggs/);
+});
+
+// Piece D (2026-11-22): "How Clara cooks".
+test("prompt: their own rules are said in their words, below the app's rules; a switched-off rule is not", () => {
+  const p = dishSystemPrompt({ ...KEPT_BASE, ask: DINNER, bannedNames: ["peanut"], brain: brainFrom({ kept: SALMON_AND_BEEF, userRules: ["No mushrooms", "No cooking over 30 minutes on weekdays; ever"] }), who: { patientId: "p1", today: "2026-11-12" } });
+  const line = lineOf(p, "- Their own rules for their dishes");
+  assert.equal(line, "- Their own rules for their dishes; follow each one, except where a rule about their diet, allergies or safety here says otherwise: No mushrooms; No cooking over 30 minutes on weekdays, ever.");
+  // Above the diet's words, which always have the last say.
+  const lines = p.split("\n");
+  assert.ok(lines.indexOf(line) < lines.findIndex((l) => l.startsWith("- FORBIDDEN WORDS")));
+  assert.doesNotMatch(withBrain({ kept: SALMON_AND_BEEF }), /Their own rules/);
+  // The food a "no such food" rule names is held in code.
+  assert.deepEqual(brainFrom({ kept: SALMON_AND_BEEF, userRules: ["No mushrooms", "Keep dinners light"] }).ruleFoods, ["mushrooms"]);
+});
+test("prompt: 'Keep my week varied' off: no kind of dish for the day and nothing from the last days", () => {
+  const rows = { ...NO_BRAIN_ROWS, recentDishes: ["Salmon Rice Bowl"] };
+  const on = withBrain({ kept: SALMON_AND_BEEF, rows });
+  assert.match(on, /To keep their week varied/);
+  assert.match(on, /They had these in the last few days/);
+  const off = withBrain({ kept: SALMON_AND_BEEF, rows, rules: { ...DEFAULT_DISH_RULES, keepWeekVaried: false } });
+  assert.doesNotMatch(off, /To keep their week varied|in the last few days/);
 });
 
 // Owner, 2026-11-22: eggs as the only protein at home.
