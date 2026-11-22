@@ -57,7 +57,22 @@ test("ruleFood: a rule that is just 'no such food' names it; anything else is an
 test("ruleFoodMatches: the ingredient is that food, not a food made from it or one that shares a word", () => {
   const hit: [string, string][] = [["mushrooms", "cremini mushrooms"], ["rice", "jasmine rice"], ["spinach", "Baby spinach"], ["sweet potatoes", "sweet potato"], ["eggs", "large eggs"], ["olive oil", "extra virgin olive oil"], ["bell peppers", "red bell pepper"]];
   for (const [food, ing] of hit) assert.equal(ruleFoodMatches(food, ing), true, `${food} / ${ing}`);
-  const miss: [string, string][] = [["rice", "rice vinegar"], ["rice", "rice noodles"], ["eggs", "egg noodles"], ["sweet potatoes", "russet potatoes"], ["tomatoes", "tomato paste"], ["mushrooms", "mushroom broth"], ["spinach", "kale"], ["bell peppers", "black pepper"], ["olives", "olive oil"], ["olives", "extra virgin olive oil"]];
+  const miss: [string, string][] = [["rice", "rice vinegar"], ["rice", "rice noodles"], ["eggs", "egg noodles"], ["sweet potatoes", "russet potatoes"], ["spinach", "kale"],
+    ["butter", "peanut butter"], ["milk", "coconut milk"], ["milk", "oat milk"], ["potatoes", "sweet potatoes"], ["beans", "green beans"], ["cream", "ice cream"], ["steak", "tuna steak"], ["ground beef", "beef strips"], ["bell peppers", "black pepper"], ["olives", "olive oil"], ["olives", "extra virgin olive oil"]];
   assert.equal(ruleFoodMatches("olives", "kalamata olives"), true);
+  // The food in any cut or form, as the catalog and Clara name it; text after a comma is how it is prepared.
+  const made: [string, string][] = [
+    ["salmon", "Salmon fillets"], ["salmon", "salmon fillet"], ["chicken", "Boneless chicken breasts"], ["chicken", "chicken thigh, boneless skinless"], ["pork", "Pork chops"],
+    ["turkey", "Turkey breast"], ["tilapia", "Tilapia fillets"], ["rice", "jasmine rice, dry"], ["rice", "basmati rice (rinsed)"], ["garlic", "garlic cloves"], ["garlic", "garlic, minced"],
+    ["broccoli", "broccoli florets"], ["eggs", "egg whites"], ["tomatoes", "tomato paste"], ["mushrooms", "portobello mushroom caps"], ["sesame", "toasted sesame oil"], ["curry", "curry powder"],
+    ["cheese", "grated parmesan"], ["cheese", "shredded cheddar"], ["cheese", "feta"], ["pork", "bacon"], ["beef", "sirloin steak"], ["yoghurt", "Plain Greek yogurt"], ["chickpeas", "Garbanzo beans"], ["jalapeños", "jalapeno"],
+    ["peanut butter", "peanut butter"], ["oat milk", "Oat milk"], ["green beans", "Green beans"],
+  ];
+  for (const [food, ing] of made) assert.equal(ruleFoodMatches(food, ing), true, `${food} / ${ing}`);
+  // A word that only describes a food is not one, however it is asked.
+  for (const text of ["no baking", "no smoked", "no dried", "no toasted", "no virgin", "no gold", "no in", "no all purpose", "no fillets", "no vegetable"]) assert.equal(ruleFood(text), null, text);
+  for (const [text, food] of [["Please no mushrooms", "mushrooms"], ["No mushrooms for me", "mushrooms"], ["I don't like mushrooms", "mushrooms"], ["hold the onions", "onions"], ["no more salmon", "salmon"], ["no mushrooms ever again", "mushrooms"], ["no yoghurt", "yoghurt"], ["no chickpeas", "chickpeas"], ["I hate coriander", "coriander"], ["no sesame", "sesame"]] as const) {
+    assert.equal(ruleFood(text), food, text);
+  }
   for (const [food, ing] of miss) assert.equal(ruleFoodMatches(food, ing), false, `${food} / ${ing}`);
 });

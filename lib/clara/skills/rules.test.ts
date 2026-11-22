@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_DISH_RULES, storedRulesFrom, type StoredRules } from "../dish-rules";
 import type { ClaraContext } from "../types";
-import { applyRulesBody, makeRuleHandlers, rulesMatching, rulesView, ruleTools, type RulesDeps } from "./rules";
+import { applyRulesBody, makeRuleHandlers, notARule, rulesMatching, rulesView, ruleTools, type RulesDeps } from "./rules";
 
 const CTX = { patientId: "p1", accountId: "a1", firstName: "Sam", isPremium: false, today: "2026-11-22", surface: "ios", disabledSkills: [] } as unknown as ClaraContext;
 const store = (start: StoredRules | null = storedRulesFrom(null)) => {
@@ -57,8 +57,11 @@ test("rule_remove: the exact rule, or every rule about the food named; never a g
   assert.deepEqual(list.data.switchedOff, ["Keep my week varied"]);
   // Loose words remove nothing.
   for (const text of ["no", "e", "dinners", "you can use rice vinegar", "meat", "potatoes are fine"]) {
-    assert.deepEqual(rulesMatching(mine, text).map((r) => r.id), text === "you can use rice vinegar" ? ["r4"] : [], text);
+    assert.deepEqual(rulesMatching(mine, text).map((r) => r.id), [], text);
   }
+  const olives = [{ id: "o1", text: "I can't stand olives", on: true }, { id: "o2", text: "No rice", on: true }];
+  for (const text of ["olive oil is fine", "rice noodles are ok", "you can use rice vinegar"]) assert.deepEqual(rulesMatching(olives, text).map((r) => r.id), [], text);
+  assert.deepEqual(rulesMatching(olives, "olives are fine now").map((r) => r.id), ["o1"]);
   // By food: both mushroom rules go, in either number.
   for (const text of ["you can use mushrooms again", "forget the mushroom rule"]) assert.deepEqual(rulesMatching(mine, text).map((r) => r.id), ["r1", "r2"], text);
   assert.deepEqual(rulesMatching(mine, "keep dinners under 25 minutes").map((r) => r.id), ["r3"]);
@@ -93,4 +96,22 @@ test("the app's save: switches by name, their own rules as the whole list; anyth
   // A rule that names one known food is checked by the app; anything else is an instruction.
   assert.deepEqual(view.mine.map((r) => [r.text, r.checked]), [["Keep dinners light", false], ["No olives", true], ["No pork", true]]);
   assert.deepEqual(ruleTools().map((t) => t.def.name), ["dish_rule_add", "dish_rule_remove", "dish_rule_list"]);
+});
+
+test("an allergy or a diet is never a rule, in chat or from the app; the same food twice is one rule", async () => {
+  for (const t of ["I'm allergic to peanuts", "peanuts make me sick", "no shellfish, they make my throat swell", "I'm lactose intolerant", "Coeliac"]) assert.equal(notARule(t), "allergy", t);
+  for (const t of ["I'm vegan", "I am a vegetarian", "we're gluten-free"]) assert.equal(notARule(t), "diet", t);
+  for (const t of ["No mushrooms", "Keep dinners under 25 minutes", "Vegetarian on Fridays"]) assert.equal(notARule(t), null, t);
+  const s = store({ switches: { ...DEFAULT_DISH_RULES }, mine: [{ id: "r1", text: "Never put mushrooms in my dishes", on: true }] });
+  const h = makeRuleHandlers(s.deps);
+  for (const text of ["peanuts make me sick", "I'm vegan"]) assert.equal(((await h.add(CTX, { text })) as any).ok, false, text);
+  const again: any = await h.add(CTX, { text: "no mushroom" });
+  assert.equal(again.data.alreadyThere, true);
+  const current = { switches: { ...DEFAULT_DISH_RULES }, mine: [{ id: "r1", text: "No rice", on: true }] };
+  assert.equal(applyRulesBody(current, { mine: [{ text: "I'm allergic to peanuts" }] }), null);
+  // Sixteen entries of which one is said twice are fifteen rules; two entries with one id are two rules.
+  const many = Array.from({ length: 15 }, (_, i) => ({ text: `Rule number ${i}` }));
+  assert.equal(applyRulesBody(current, { mine: [...many, { text: "rule number 3" }] })?.mine.length, 15);
+  const two = applyRulesBody(current, { mine: [{ id: "r1", text: "No rice" }, { id: "r1", text: "No kale" }] })!;
+  assert.equal(new Set(two.mine.map((r) => r.id)).size, 2);
 });

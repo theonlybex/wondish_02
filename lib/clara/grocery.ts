@@ -153,9 +153,9 @@ function pick(rows: readonly CatalogRow[], max: number): GroceryItem[] {
 /** "Fibre" → "fibre", "Vitamin C" → "vitamin C", "Omega-3" → "omega-3". */
 const lowerFirst = (name: string) => name.charAt(0).toLowerCase() + name.slice(1);
 
-export const SMALL_SOURCES_NOTE = "Nothing your diet allows is a strong source of it. These give a little; fortified foods or a supplement are the usual way, and a doctor or pharmacist can say what suits you.";
+export const SMALL_SOURCES_NOTE = "No food we can suggest for your diet is a strong source of it. These give a little; fortified foods or a supplement are the usual way, and a doctor or pharmacist can say what suits you.";
 const SALTY = new Set(["Shredded cheddar", "Canned tuna", "Sliced bread", "Feta cheese", "Grated parmesan", "Bacon", "Shredded mozzarella"]);
-export const NO_FOOD_NOTE = "Nothing your diet allows is a good source of it. Fortified foods or a supplement are the usual way; a doctor or pharmacist can say what suits you.";
+export const NO_FOOD_NOTE = "No food we can suggest for your diet is a good source of it. Fortified foods (check the label suits you) or a supplement are the usual way; a doctor or pharmacist can say what suits you.";
 
 /**
  * The list. `rows` is the whole catalog the diet allows, with the person's marks.
@@ -193,12 +193,13 @@ export function groceryGroups(a: { rows: readonly CatalogRow[]; week: readonly S
       // Nothing they eat is a real source. A small source already on the list is named there; else
       // say so, and list the small sources they may eat, if any.
       const already = rich.map((x) => x.row).find((r) => listed.has(r.id));
-      if (already) {
+      const small = take(rich.map((x) => x.row), MAX_VARIETY_ITEMS);
+      if (already && small.length === 0) {
+        // Named once: where its small source already is, and no group of its own.
         const g = groupOf.get(already.id);
         if (g) g.also = [...(g.also ?? []), { level: `a little ${lower}`, food: already.name }];
+        continue;
       }
-      const small = take(rich.map((x) => x.row), MAX_VARIETY_ITEMS);
-      if (already && small.length === 0) continue;
       const g: GroceryGroup = { key: `level:${low.key}`, kind: "level", title: `For ${lower}`, reason: `${opening}.`, items: small, note: small.length > 0 ? SMALL_SOURCES_NOTE : NO_FOOD_NOTE };
       for (const i of small) groupOf.set(i.id, g);
       groups.push(g);
@@ -206,6 +207,10 @@ export function groceryGroups(a: { rows: readonly CatalogRow[]; week: readonly S
     }
     // A real source of it is already on the list, in a group above (the salmon under vitamin D is the
     // B12 too): no group of its own, but that group names it, so no low nutrient goes unsaid.
+    // A purchase that closes the group above takes its foods off the list, and this level then gets
+    // a group of its own: the need is still there, so the list says so. Showing every level's own
+    // foods from the start would stop that, at the price of a list a third longer with two plant
+    // milks and four more iron foods on it (tried and dropped, review 2026-11-22).
     const covering = strong.find((r) => listed.has(r.id));
     if (covering) {
       const g = groupOf.get(covering.id);

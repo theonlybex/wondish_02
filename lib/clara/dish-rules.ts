@@ -89,28 +89,64 @@ export function storedRulesFrom(raw: unknown): StoredRules {
 }
 
 const singularWord = (w: string) => (/ies$/.test(w) ? `${w.slice(0, -3)}y` : /(oes|ses|shes|ches|xes)$/.test(w) ? w.slice(0, -2) : /s$/.test(w) && !/ss$/.test(w) ? w.slice(0, -1) : w);
-const wordsOf = (name: string) => name.toLowerCase().replace(/[^a-z\s-]/g, " ").split(/[\s-]+/).filter(Boolean).map(singularWord);
+// Two spellings or two names of one food.
+const SAME_WORD: Readonly<Record<string, string>> = { yoghurt: "yogurt", coriander: "cilantro", chilli: "chili", chille: "chili", chickpea: "garbanzo", prawn: "shrimp", aubergine: "eggplant", courgette: "zucchini", tomatoe: "tomato", potatoe: "potato" };
+const wordsOf = (name: string) =>
+  name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z\s-]/g, " ").split(/[\s-]+/).filter(Boolean)
+    .map(singularWord).map((w) => SAME_WORD[w] ?? w);
 // Every word a catalog food is named with: what "a food" means here. A rule is held in code only when it names one of these.
 const FOOD_WORDS: ReadonlySet<string> = new Set(INGREDIENT_CATALOG.flatMap((g) => g.items.flatMap(wordsOf)));
-// Words that describe a food but are not one, and the kitchen's essentials: "no oil" or "no salt" as
-// a food ban would drop nearly every dish, so those stay an instruction to Clara.
-const NOT_A_FOOD = new Set(["red", "green", "white", "yellow", "black", "brown", "wild", "sweet", "fresh", "ground", "whole", "large", "plain", "extra", "firm", "sliced", "shredded", "grated", "canned", "diced", "crushed", "heavy", "unsalted", "boneless", "oil", "salt", "water", "pepper", "sugar", "flour", "sauce", "paste", "powder", "seasoning", "broth", "stock"]);
+// Catalog words that describe, cut or prepare a food but are not one ("baking", "smoked", "fillets",
+// "gold"), kinds of food ("vegetable"), and the kitchen's essentials: "no oil" or "no salt" as a
+// food ban would drop nearly every dish, so those stay an instruction to Clara.
+const NOT_A_FOOD = new Set([
+  "red", "green", "white", "yellow", "black", "brown", "wild", "sweet", "sour", "fresh", "ground", "whole", "large", "plain", "extra", "firm",
+  "sliced", "shredded", "grated", "canned", "diced", "crushed", "heavy", "unsalted", "boneless", "smoked", "dried", "toasted", "rolled", "granulated",
+  "baking", "soda", "virgin", "gold", "yukon", "russet", "roma", "napa", "cherry", "greek", "thai", "dijon", "kosher", "roja", "verde", "adobo",
+  "all", "purpose", "in", "o", "bay", "leave", "leaf", "seed", "flake", "fillet", "breast", "thigh", "chop", "extract", "syrup", "vegetable",
+  "oil", "salt", "water", "pepper", "sugar", "flour", "sauce", "paste", "powder", "seasoning", "broth", "stock",
+]);
+// A food word that, beside one of these, names a different food: "olives" is not olive oil, "rice"
+// is not rice vinegar, "butter" is not peanut butter, "potatoes" are not sweet potatoes.
+const OTHER_FOOD_BESIDE: Readonly<Record<string, readonly string[]>> = {
+  olive: ["oil"],
+  rice: ["vinegar", "noodle", "wine", "paper", "flour", "milk", "syrup"],
+  egg: ["noodle"],
+  butter: ["peanut", "almond", "cashew", "nut", "sunflower", "bean", "lettuce", "cocoa", "apple"],
+  milk: ["coconut", "almond", "oat", "soy", "rice", "cashew"],
+  potato: ["sweet"],
+  bean: ["green", "sprout", "vanilla", "coffee"],
+  cream: ["ice", "cheese", "coconut"],
+  steak: ["tuna", "salmon", "cauliflower"],
+  corn: ["starch", "syrup", "oil"],
+  wine: ["vinegar"],
+  apple: ["cider", "vinegar"],
+  cocoa: ["butter"],
+};
+// Foods that are the rule's food under another name: parmesan is cheese, bacon is pork.
+const KINDS_OF: Readonly<Record<string, readonly string[]>> = {
+  cheese: ["cheddar", "parmesan", "parmigiano", "mozzarella", "feta", "ricotta", "gouda", "brie", "halloumi", "paneer", "gruyere", "provolone", "pecorino"],
+  pork: ["bacon", "ham", "prosciutto", "pancetta", "chorizo"],
+  beef: ["sirloin", "ribeye", "brisket"],
+  onion: ["scallion"],
+};
 
 /**
  * The food a "no such food" rule names, when the rule is that simple and the food is one the app
- * knows: "no mushrooms", "never put cilantro in my dishes, please", "without pork". Such a rule is
- * held in code (a dish that uses the food is dropped); any other rule is an instruction to Clara
- * only, and is said to be. null for a list ("onions or garlic"), a kind of food ("red meat",
- * "dairy", "nuts"), an essential ("oil", "salt"), a rule with a time or an amount in it, anything
- * about an allergy (that belongs in the profile), and any word that is not a catalog food.
+ * knows: "no mushrooms", "never put cilantro in my dishes, please", "without pork", "I don't like
+ * olives". Such a rule is held in code (a dish that uses the food is dropped); any other rule is an
+ * instruction to Clara only, and is said to be. null for a list ("onions or garlic"), a kind of
+ * food ("red meat", "dairy", "nuts"), an essential ("oil", "salt"), a word that only describes a
+ * food ("smoked", "baking"), a rule with a time or an amount in it, anything about an allergy
+ * (that belongs in the profile), and any word that is not a catalog food.
  */
 export function ruleFood(text: string): string | null {
-  const m = /^(?:no|never(?: use| put| add| cook with| give me)?|don'?t(?: use| put| add| give me)|do not(?: use| put| add| give me)|without|avoid|skip(?: the)?|i (?:don'?t|do not|never) eat|i hate|i can'?t stand)\s+(?:any\s+|the\s+)?(.+?)(?:\s+(?:in|on|with)\s+(?:my|any|the)\s+(?:dish|dishes|food|meal|meals))?$/i.exec(
-    text.trim().replace(/[.!,]+$/g, "").replace(/[,]?\s+(?:please|ever|at all|anymore|any more)$/i, "").trim(),
+  const m = /^(?:please[,]?\s+)?(?:no(?: more)?|never(?: use| put| add| cook with| give me)?|don'?t(?: use| put| add| give me)|do not(?: use| put| add| give me)|without|avoid|skip(?: the)?|hold the|i (?:don'?t|do not|never) (?:eat|like)|i dislike|i hate|i can'?t stand)\s+(?:any\s+|the\s+)?(.+?)(?:\s+(?:in|on|with)\s+(?:my|any|the)\s+(?:dish|dishes|food|meal|meals))?$/i.exec(
+    text.trim().replace(/[.!,]+$/g, "").replace(/[,]?\s+(?:please|ever again|ever|again|at all|anymore|any more|for me)$/i, "").replace(/[.!,]+$/g, "").trim(),
   );
   if (!m) return null;
   const food = m[1].trim().toLowerCase();
-  if (/[^a-z\s-]/.test(food) || /\b(and|or|allerg\w*|intoleran\w*|this|next|today|tonight|week|month)\b/.test(food)) return null;
+  if (/[^a-zà-ÿ\s-]/.test(food) || /\b(and|or|allerg\w*|intoleran\w*|this|next|today|tonight|week|month)\b/.test(food)) return null;
   const words = wordsOf(food);
   if (words.length === 0 || words.length > 3) return null;
   // Every word a catalog food's word, and at least one of them a food itself (not "red" or "ground").
@@ -119,16 +155,21 @@ export function ruleFood(text: string): string | null {
 }
 
 /**
- * A rule food against one ingredient: the ingredient IS that food. Its last word is the food's
- * last word and it has every other word of the food: "mushrooms" is "cremini mushrooms", "rice" is
- * "jasmine rice" but not "rice vinegar" or "rice noodles", "eggs" is not "egg noodles", and "olives"
- * is never "olive oil" (grocery and rule review, 2026-11-22).
+ * A rule food against one ingredient: the ingredient is, or is made of, that food. Every word of
+ * the food is in the ingredient's name (before any comma: "jasmine rice, dry"), in either number:
+ * "salmon" is "salmon fillets", "chicken" is "boneless chicken breasts", "garlic" is "garlic
+ * cloves", "mushrooms" is "cremini mushrooms". Not when the word beside it makes it another food
+ * ("olives" is never "olive oil", "rice" is not "rice vinegar", "butter" is not "peanut butter"),
+ * and a kind counts ("cheese" is "grated parmesan", "pork" is "bacon"). The first version asked
+ * for the same last word and let "salmon fillets" through a "no salmon" rule (review, 2026-11-22).
  */
 export function ruleFoodMatches(food: string, ingredientName: string): boolean {
   const want = wordsOf(food);
-  const have = wordsOf(ingredientName);
+  const have = wordsOf(ingredientName.split(/[,(]/)[0]);
   if (want.length === 0 || have.length === 0) return false;
-  return have[have.length - 1] === want[want.length - 1] && want.every((w) => have.includes(w));
+  if (want.length === 1 && (KINDS_OF[want[0]] ?? []).some((k) => have.includes(k))) return true;
+  if (!want.every((w) => have.includes(w))) return false;
+  return !want.some((w) => (OTHER_FOOD_BESIDE[w] ?? []).some((o) => have.includes(o) && !want.includes(o)));
 }
 
 /** Piece D's stored JSON. Not an object, an unknown key, or a non-boolean value: the default for that key. */

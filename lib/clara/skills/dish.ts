@@ -488,9 +488,13 @@ export function dishSystemPrompt(a: {
   // allergy, "beef" for a vegetarian), through the same check as liked foods. A line whose every
   // example is banned is stated without examples.
   const dietMatchers = brain.matchers && hasAnyBan(brain.matchers) ? brain.matchers : null;
+  // Nor a food their own rule rules out ("spinach" as the iron example beside "Never put spinach").
+  const notRuled = (food: string) => !brain.ruleFoods.some((f) => ruleFoodMatches(f, food));
   const dietKeeps = dietMatchers
-    ? (food: string) => evaluateDishAgainstProfile([food], dietMatchers, [exampleAllergenGroups(food)]).passed
-    : undefined;
+    ? (food: string) => notRuled(food) && evaluateDishAgainstProfile([food], dietMatchers, [exampleAllergenGroups(food)]).passed
+    : brain.ruleFoods.length > 0 ? notRuled : undefined;
+  /** The foods this prompt names in passing ("an onion, garlic, a lemon"), without the ones their rules rule out. */
+  const named = (foods: readonly string[]) => foods.filter(notRuled);
   // Lunch and dinner in an eggs-only kitchen: any meat-free protein will do (see eggsOnlyKitchen).
   const isMainMeal = ask.mealType === "lunch" || ask.mealType === "dinner";
   const freeMain = steer.ruleOn && isMainMeal && eggsOnlyKitchen(brain.home);
@@ -601,10 +605,10 @@ export function dishSystemPrompt(a: {
     : ``;
   const atHome = kept.atHome.slice(0, MAX_AT_HOME_IN_PROMPT);
   const atHomeLine = atHome.length > 0
-    ? `- Build every dish mainly from what they have at home and their kitchen basics; where a classic ingredient is missing, use the closest at-home food. You may add a few common fresh ingredients (an onion, garlic, a lemon, a herb) when the dish needs them. Use the at-home foods that make a good dish, not all of them at once: one starch (rice, potatoes, pasta or bread) per dish. At home: ${groupedAtHome(atHome).map((g) => `${g.title}: ${clean(g.names)}`).join("; ")}.`
+    ? `- Build every dish mainly from what they have at home and their kitchen basics; where a classic ingredient is missing, use the closest at-home food. You may add a few common fresh ingredients (${named(["an onion", "garlic", "a lemon", "a herb"]).join(", ")}) when the dish needs them. Use the at-home foods that make a good dish, not all of them at once: one starch (rice, potatoes, pasta or bread) per dish. At home: ${groupedAtHome(atHome).map((g) => `${g.title}: ${clean(g.names)}`).join("; ")}.`
     : ``;
   const basicsLine = brain.basics.length > 0
-    ? `- Kitchen basics they always have: ${clean(brain.basics)}. Common fresh seasonings (lemon, garlic, fresh herbs, pepper) may be used too; list each one you use in ingredients with its amount. Cook with one of these fats${atHome.length > 0 ? " or with an oil from the at-home list" : ""}.`
+    ? `- Kitchen basics they always have: ${clean(brain.basics)}. Common fresh seasonings (${named(["lemon", "garlic", "fresh herbs", "pepper"]).join(", ")}) may be used too; list each one you use in ingredients with its amount. Cook with one of these fats${atHome.length > 0 ? " or with an oil from the at-home list" : ""}.`
     : ``;
   // A favourite protein they do not have at home would contradict the rule.
   const favorites = steer.ruleOn
@@ -621,15 +625,15 @@ export function dishSystemPrompt(a: {
   // A time limit shorter than the meal's own wins, so one prompt never gives two.
   const breakfastMinutes = Math.min(BREAKFAST_MAX_MINUTES, ask.maxMinutes ?? BREAKFAST_MAX_MINUTES);
   const snackMinutes = Math.min(SNACK_MAX_MINUTES, ask.maxMinutes ?? SNACK_MAX_MINUTES);
-  let breakfastLine = `- This is BREAKFAST: morning food, under ${breakfastMinutes} minutes in total, built on a breakfast protein (eggs, yoghurt, cottage cheese, cheese, nut butter, nuts, beans, tofu). Not a braise, a roast or a rice bowl.`;
-  let snackLine = `- This is a SNACK: small and quick, under ${snackMinutes} minutes in total, with no added salt. Fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip.`;
+  let breakfastLine = `- This is BREAKFAST: morning food, under ${breakfastMinutes} minutes in total, built on a breakfast protein (${named(["eggs", "yoghurt", "cottage cheese", "cheese", "nut butter", "nuts", "beans", "tofu"]).join(", ")}). Not a braise, a roast or a rice bowl.`;
+  let snackLine = `- This is a SNACK: small and quick, under ${snackMinutes} minutes in total, with no added salt. ${named(["Fruit", "yoghurt", "nuts", "toast", "a boiled egg"]).join(", ")}, raw vegetables and a dip.`;
   if (steer.ruleOn) {
     breakfastLine = (morning.length > 0
-      ? `- This is BREAKFAST: morning food, under ${breakfastMinutes} minutes in total, built on ${orList(morning)}${morning.length > 1 ? "," : ""} or on cheese, nut butter or nuts. Not a braise, a roast or a rice bowl.`
-      : `- This is BREAKFAST: morning food, under ${breakfastMinutes} minutes in total, built on cheese, nut butter or nuts, or on ${orList(brain.home.map((p) => p.name))} if one suits a breakfast. Not a braise, a roast or a rice bowl.`) + ADD_DONT_REPLACE;
+      ? `- This is BREAKFAST: morning food, under ${breakfastMinutes} minutes in total, built on ${orList(morning)}${morning.length > 1 ? "," : ""} or on ${orWords(named(["cheese", "nut butter", "nuts"]))}. Not a braise, a roast or a rice bowl.`
+      : `- This is BREAKFAST: morning food, under ${breakfastMinutes} minutes in total, built on ${orWords(named(["cheese", "nut butter", "nuts"]))}, or on ${orList(brain.home.map((p) => p.name))} if one suits a breakfast. Not a braise, a roast or a rice bowl.`) + ADD_DONT_REPLACE;
     const eggs = brain.home.some((p) => p.key === "egg");
     const yoghurt = homeNames.some((n) => /\byogh?urt\b/i.test(n));
-    snackLine = `- This is a SNACK: small and quick, under ${snackMinutes} minutes in total, with no added salt. ${["Fruit", ...(yoghurt ? ["yoghurt"] : []), "nuts", "toast", ...(eggs ? ["a boiled egg"] : [])].join(", ")}, raw vegetables and a dip.${ADD_DONT_REPLACE}`;
+    snackLine = `- This is a SNACK: small and quick, under ${snackMinutes} minutes in total, with no added salt. ${named(["Fruit", ...(yoghurt ? ["yoghurt"] : []), "nuts", "toast", ...(eggs ? ["a boiled egg"] : [])]).join(", ")}, raw vegetables and a dip.${ADD_DONT_REPLACE}`;
   }
   // Level examples, with the rule on: only proteins the dish may use. A main keeps the chosen meat
   // and any other protein at home; a breakfast or snack keeps no meat or fish; a request keeps what is at home.
@@ -2167,7 +2171,9 @@ export function makeSwapHandlers(deps: DishDeps = prismaDeps) {
 export async function groceryListFor(patientId: string, today: string): Promise<{ groups: GroceryGroup[]; visibleIds: Set<string> } | null> {
   const person = await personFor({ patientId, today } as ClaraContext);
   if (!person) return null;
-  const rows = await loadCatalogRows(patientId, person.matchers);
+  const all = await loadCatalogRows(patientId, person.matchers);
+  // Never a food their own rule rules out: "no salmon" and "For omega-3: Salmon fillets" (review, 2026-11-22).
+  const rows = all.filter((r) => !person.brain.ruleFoods.some((f) => ruleFoodMatches(f, r.name)));
   return {
     groups: groceryGroups({ rows, week: person.brain.week, picture: person.brain.picture }),
     visibleIds: new Set(rows.map((r) => r.id)),

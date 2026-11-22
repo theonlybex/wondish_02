@@ -9,7 +9,7 @@ import { prisma } from "@/lib/db";
 import type { ClaraContext, SkillTool, ToolResult } from "../types";
 import {
   DISH_RULE_COPY, DISH_RULE_KEYS, MAX_USER_RULES, MAX_USER_RULE_CHARS,
-  cleanRuleText, ruleFood, storedRulesFrom, type DishRules, type StoredRules, type UserRule,
+  cleanRuleText, ruleFood, ruleFoodMatches, storedRulesFrom, type DishRules, type StoredRules, type UserRule,
 } from "../dish-rules";
 
 /** Effects, injected so every path is unit-tested without a database. */
@@ -58,9 +58,10 @@ export function applyRulesBody(current: StoredRules, raw: unknown): StoredRules 
   }
   let mine = current.mine;
   if (o.mine !== undefined) {
-    if (!Array.isArray(o.mine) || o.mine.length > MAX_USER_RULES) return null;
+    if (!Array.isArray(o.mine)) return null;
     const next: UserRule[] = [];
     const seenText = new Set<string>();
+    const seenId = new Set<string>();
     for (const item of o.mine) {
       if (!item || typeof item !== "object") return null;
       const r = item as Record<string, unknown>;
@@ -69,10 +70,15 @@ export function applyRulesBody(current: StoredRules, raw: unknown): StoredRules 
       if (seenText.has(text.toLowerCase())) continue;
       seenText.add(text.toLowerCase());
       // An id is kept only when it is one of theirs; anything else is a new rule.
-      const known = typeof r.id === "string" ? current.mine.find((x) => x.id === r.id) : undefined;
+      const known = typeof r.id === "string" && !seenId.has(r.id) ? current.mine.find((x) => x.id === r.id) : undefined;
       if (r.on !== undefined && typeof r.on !== "boolean") return null;
-      next.push({ id: known?.id ?? newRuleId(), text, on: r.on !== false });
+      // A new rule that is an allergy or a diet is not taken: the profile is where those are enforced.
+      if (!current.mine.some((x) => x.text.toLowerCase() === text.toLowerCase()) && notARule(text) !== null) return null;
+      const id = known?.id ?? newRuleId();
+      seenId.add(id);
+      next.push({ id, text, on: r.on !== false });
     }
+    if (next.length > MAX_USER_RULES) return null;
     mine = next;
   }
   return { switches, mine };
@@ -90,6 +96,17 @@ const singular = (w: string) => (/ies$/.test(w) ? `${w.slice(0, -3)}y` : /(oes|s
  *  - a rule whose whole text the request contains, or that contains the whole request when the
  *    request is at least three words.
  */
+/**
+ * What a text is when it is not a cooking rule: an allergy or an intolerance ("I'm allergic to
+ * peanuts", "peanuts make me sick", "my throat swells"), or a whole way of eating ("I'm vegan").
+ * Both belong in the profile, where every dish is checked against them; a rule is only an instruction.
+ */
+export function notARule(text: string): "allergy" | "diet" | null {
+  if (/\b(allerg\w*|anaphyla\w*|intoleran\w*|c[oe]?eliac|epipen|hives|reaction)\b|\b(?:makes?|made|gets?|got) me (?:sick|ill)\b|\bthroat\b.*\b(?:swell\w*|clos\w*|itch\w*)\b|\b(?:swell\w*|clos\w*|itch\w*)\b.*\bthroat\b/i.test(text)) return "allergy";
+  if (/\b(?:i'?m|i am|we'?re|we are)\s+(?:a\s+)?(?:vegan|vegetarian|pescatarian|pescetarian|keto|paleo|halal|kosher|gluten[- ]free|dairy[- ]free)\b/i.test(text)) return "diet";
+  return null;
+}
+
 export function rulesMatching(mine: readonly UserRule[], text: string): UserRule[] {
   const asked = fold(text);
   if (asked.length === 0) return [];
@@ -98,7 +115,9 @@ export function rulesMatching(mine: readonly UserRule[], text: string): UserRule
   const askedWords = new Set(asked.split(" ").map(singular));
   const byFood = mine.filter((r) => {
     const food = ruleFood(r.text);
-    return food !== null && fold(food).split(" ").map(singular).every((w) => askedWords.has(w));
+    // The request names that food itself, not another one made with its word ("you can use rice
+    // vinegar" does not lift "No rice", "olive oil is fine" does not lift a rule about olives).
+    return food !== null && fold(food).split(" ").map(singular).every((w) => askedWords.has(w)) && ruleFoodMatches(food, asked);
   });
   if (byFood.length > 0) return byFood;
   const long = asked.split(" ").length >= 3;
@@ -113,13 +132,19 @@ export function makeRuleHandlers(deps: RulesDeps = prismaRulesDeps) {
     const text = cleanRuleText(input.text);
     if (!text) return invalid(`text is required: one short rule, at most ${MAX_USER_RULE_CHARS} characters`);
     // An allergy or an intolerance is never a rule: a rule is an instruction, the profile is enforced.
-    if (/\b(allerg\w*|anaphyla\w*|intoleran\w*|c[oe]?eliac)\b/i.test(text)) {
+    if (notARule(text) === "allergy") {
       return { ok: false, reason: "INVALID_INPUT", message: "That is an allergy or an intolerance, not a cooking rule. Do not save it as a rule: tell them to add it under Conditions and eating in their profile, where it is checked on every dish." };
+    }
+    if (notARule(text) === "diet") {
+      return { ok: false, reason: "INVALID_INPUT", message: "That is a way of eating, not a cooking rule. Do not save it as a rule: tell them to set it under Conditions and eating in their profile, where it is checked on every dish." };
     }
     try {
       const rules = await deps.load(ctx.patientId);
       if (!rules) return { ok: false, reason: "NOT_FOUND", message: "No profile to save the rule on." };
-      const same = rules.mine.find((r) => r.text.toLowerCase() === text.toLowerCase());
+      const newFood = ruleFood(text);
+      // The same words, or the same food in other words ("No mushrooms" after "Never put mushrooms in my dishes").
+      const same = rules.mine.find((r) => r.text.toLowerCase() === text.toLowerCase())
+        ?? (newFood ? rules.mine.find((r) => { const f = ruleFood(r.text); return f !== null && ruleFoodMatches(f, newFood) && ruleFoodMatches(newFood, f); }) : undefined);
       if (same) {
         // Said again: make sure it is on.
         if (!same.on) await deps.save(ctx.patientId, { ...rules, mine: rules.mine.map((r) => (r.id === same.id ? { ...r, on: true } : r)) });

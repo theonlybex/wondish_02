@@ -10,7 +10,7 @@ import { buildFullNumbers, ageOn, type FullDay } from "@/lib/numbers-full";
 import { currentStartingPicture } from "@/lib/onboarding";
 import { freeStaplesFor } from "./recipe-generation";
 import { homeProteins, type HomeProtein } from "./dish-protein";
-import { DEFAULT_DISH_RULES, keptUnderRules, ruleFood, type DishRules } from "./dish-rules";
+import { DEFAULT_DISH_RULES, keptUnderRules, ruleFood, ruleFoodMatches, type DishRules } from "./dish-rules";
 import type { KeptFoods } from "./kept-foods";
 import { levelCeilings, steerLevels, type LevelSteer, type PictureLevels, type SteerRow, type TodayTotals } from "./level-steer";
 import { mealTarget, type MealTarget } from "./meal-target";
@@ -146,14 +146,17 @@ export function brainFrom(a: {
     : null;
 
   const userRules = [...(a.userRules ?? [])];
+  const ruleFoods = userRules.map(ruleFood).filter((f): f is string => f !== null);
+  // A food their own rule rules out is not named to Clara as a favourite or a kitchen basic.
+  const notRuled = (name: string) => !ruleFoods.some((f) => ruleFoodMatches(f, name));
   return {
     rules,
     userRules,
-    ruleFoods: userRules.map(ruleFood).filter((f): f is string => f !== null),
+    ruleFoods,
     kept,
     home: homeProteins(kept),
-    favourites: rules.favourFavourites ? favouritesFrom(kept, rows.liked, a.matchers) : [],
-    basics,
+    favourites: rules.favourFavourites ? favouritesFrom(kept, rows.liked, a.matchers).filter(notRuled) : [],
+    basics: basics.filter(notRuled),
     dayCalories: rows.dayTarget?.calories ?? null,
     conditionNames,
     motivationNames,
