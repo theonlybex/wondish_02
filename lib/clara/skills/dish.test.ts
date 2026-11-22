@@ -1029,6 +1029,8 @@ test("prompt: without kept foods (absent or NO_KEPT_FOODS) the prompt is today's
     [[], "53f3878bb521e2f1dfe6d7eb6cf1b8248bd490b4c4b4d178f8b71f7e941b0979"],
     [["peanut", "milk"], "863c7597d7af29401cca2a245b50dd3ce06f7a8456661466436929f2871125e9"],
   ];
+  // DISH_CRAFT_LINES includes the plain-ingredient-names line (dish names stay readable, 2026-11-21).
+  assert.ok(DISH_CRAFT_LINES.includes(`- Ingredient names are plain food names, with no comma and no state or cut after it: "jasmine rice", "carrots" — never "jasmine rice, dry" or "carrots, peeled and sliced".`));
   const NEW_FOR_EVERYONE = [...DISH_CRAFT_LINES, "- Macro split to aim for, by calories: ~30% protein, ~45% carbs, ~25% fat.", "- A lunch or dinner gets at least 15% of its calories from protein."];
   for (const [bannedNames, hash] of before) {
     for (const kept of [undefined, NO_KEPT_FOODS]) {
@@ -1133,8 +1135,8 @@ test("prompt: kitchen basics, and every liked food", () => {
   const p = withBrain({ kept: NO_KEPT_FOODS, matchers, patient: { ...NOBODY, missingStaples: ["butter"] }, rows: { ...NO_BRAIN_ROWS, liked: [{ name: "Halloumi", allergenGroups: [] }] } });
   const basics = p.split("\n").find((l) => l.startsWith("- Kitchen basics they always have: "))!;
   assert.ok(basics.includes("olive oil") && basics.includes("salt") && !basics.includes("butter"), basics);
-  // Nothing at home: no "oil from the at-home list".
-  assert.ok(basics.endsWith(". Cook with one of these fats."), basics);
+  // Nothing at home: no "oil from the at-home list". Fresh seasonings are allowed, not only the basics.
+  assert.ok(basics.endsWith(". Common fresh seasonings (lemon, garlic, fresh herbs, pepper) may be used too; list each one you use in ingredients with its amount. Cook with one of these fats."), basics);
   const withHome = withBrain({ kept: { ...NO_KEPT_FOODS, atHome: ["Spinach"] }, matchers });
   assert.match(withHome, /Cook with one of these fats or with an oil from the at-home list\./);
   assert.match(p, /favourite foods; at least one of the dishes should feature one when it suits the meal: Halloumi\./);

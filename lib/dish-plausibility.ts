@@ -1133,7 +1133,10 @@ export function truthfulDishName(
    */
   formWord?: string | null
 ): string | null {
-  const heads = ingredientNames.map((n) => n.trim()).filter((n) => n && !notAHeadline(n));
+  // A name says its food before any comma: "chicken thigh, boneless skinless" is
+  // "chicken thigh" in a title (live, 2026-11-21). The title only; the check
+  // below still judges against the full ingredient names.
+  const heads = ingredientNames.map((n) => n.split(",")[0].trim()).filter((n) => n && !notAHeadline(n));
   if (heads.length === 0) return null;
   // The dish's namesake leads. Taking the list in its stored order renamed
   // "Greek Yogurt Veggie Omelette" to "Spinach with Feta Cheese and Plain Greek

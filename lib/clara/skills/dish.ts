@@ -343,6 +343,7 @@ export const DISH_CRAFT_LINES: readonly string[] = [
   `- One person's portion of dry rice is 45–80 g.`,
   `- Never name a dish "X-free" or "no X": name it by what is in it.`,
   `- A dish named after a preparation must contain what that preparation needs: a bolognese has tomato, a curry has spices, a scramble has egg, a pesto has basil.`,
+  `- Ingredient names are plain food names, with no comma and no state or cut after it: "jasmine rice", "carrots" — never "jasmine rice, dry" or "carrots, peeled and sliced".`,
 ] as const;
 
 // Catalog name (lowercased) → its group title, for grouping the at-home list.
@@ -412,7 +413,7 @@ export function dishSystemPrompt(a: {
     ? `- Build every dish mainly from what they have at home and their kitchen basics; where a classic ingredient is missing, use the closest at-home food. You may add a few common fresh ingredients (an onion, garlic, a lemon, a herb) when the dish needs them. At home: ${groupedAtHome(atHome).map((g) => `${g.title}: ${clean(g.names)}`).join("; ")}.`
     : ``;
   const basicsLine = brain.basics.length > 0
-    ? `- Kitchen basics they always have: ${clean(brain.basics)}. Cook with one of these fats${atHome.length > 0 ? " or with an oil from the at-home list" : ""}.`
+    ? `- Kitchen basics they always have: ${clean(brain.basics)}. Common fresh seasonings (lemon, garlic, fresh herbs, pepper) may be used too; list each one you use in ingredients with its amount. Cook with one of these fats${atHome.length > 0 ? " or with an oil from the at-home list" : ""}.`
     : ``;
   // A favourite protein they do not have at home would contradict the rule.
   const favorites = steer.ruleOn

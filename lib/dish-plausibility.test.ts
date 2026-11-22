@@ -443,6 +443,20 @@ test("truthfulDishName refuses rather than inventing when nothing is nameable", 
   assert.equal(truthfulDishName(["Sea salt", "Water", "Coconut oil"], CATALOG), null);
 });
 
+// Live, 2026-11-21: the model wrote "chicken thigh, boneless skinless" and
+// "jasmine rice, dry", and the rebuilt card title carried the descriptors.
+test("truthfulDishName names an ingredient by its part before a comma", () => {
+  // A comma name and a name without one.
+  assert.equal(truthfulDishName(["chicken thigh, boneless skinless", "green beans"], CATALOG), "Chicken Thigh with Green Beans");
+  // Two comma names.
+  assert.equal(
+    truthfulDishName(["chicken thigh, boneless skinless", "jasmine rice, dry", "spinach"], CATALOG),
+    "Chicken Thigh with Jasmine Rice and Spinach"
+  );
+  // No comma: as before.
+  assert.equal(truthfulDishName(["Chicken thighs", "Jasmine rice"], CATALOG), "Chicken Thighs with Jasmine Rice");
+});
+
 // clampAddedSalt — a per-dish ceiling cannot see a day. Every dish in a
 // measured week was under MAX_SALT_TSP and the week was over the 2,300 mg
 // guideline on 6 days of 7, so the amount is clamped rather than the dish
