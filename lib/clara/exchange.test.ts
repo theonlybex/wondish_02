@@ -26,6 +26,10 @@ test("familyOf: the families of the design, and names that only sound like one",
   assert.equal(fam("peanut butter"), "nuts");
   assert.equal(fam("lemon"), "citrus");
   assert.equal(fam("red bell pepper"), "peppers");
+  assert.equal(fam("Bell peppers"), "peppers");
+  assert.equal(fam("pepper"), null); // the seasoning
+  assert.equal(fam("Yellow onions"), "onions");
+  assert.equal(fam("Garlic"), null); // nothing is like garlic
   assert.equal(fam("feta"), "soft cheese");
   assert.equal(fam("shredded cheddar cheese"), "hard cheese");
   // Not a family: proteins, spices, sauces.
@@ -51,6 +55,9 @@ test("swapOptions: a protein is offered the other proteins at home, then a dish 
     { name: "Ground beef", atHome: true }, { name: "Large eggs", atHome: true },
     { name: "Cremini mushrooms", atHome: true }, { name: "Russet potatoes", atHome: true },
   ]);
+  // At-home options before the rest, whatever the table's order.
+  const some = swapOptions({ ingredient: "salmon fillets", inDish: ["salmon fillets"], atHome: ["Russet potatoes"], home: [], allowed: () => true });
+  assert.deepEqual(some.options.map((o) => [o.name, o.atHome]), [["Russet potatoes", true], ["mushrooms", false], ["beans", false], ["lentils", false]]);
   // Nothing else at home: the non-protein options by their plain names.
   const bare = swapOptions({ ingredient: "ground chicken", inDish: ["ground chicken", "rice"], atHome: [], home: [], allowed: () => true });
   assert.deepEqual(bare.options.map((o) => [o.name, o.atHome]), [["mushrooms", false], ["potatoes", false], ["beans", false], ["lentils", false]]);

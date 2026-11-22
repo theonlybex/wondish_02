@@ -1933,6 +1933,8 @@ export type SwapResult =
 
 export const SWAP_NOT_IN_DISH = "That ingredient is not in this dish.";
 export const SWAP_NOT_OFFERED = "That is not one of the exchanges for this ingredient.";
+/** A code-made exchange is served only when the dish's calories stay within this share of what they were. */
+export const SWAP_CALORIE_BAND = 0.15;
 export const SWAP_COULDNT = "I couldn't make that change fit you. Try another one, or a different dish.";
 
 /** The dish as the generator would have written it, so it goes through the very same gates. */
@@ -2012,7 +2014,11 @@ export function makeSwapHandlers(deps: DishDeps = prismaDeps) {
       const person = swapped ? await personFor(call) : null;
       if (swapped && person) {
         const judged = await gateOne(itemFromRecipe(swapped), ask, person, await catalogTokens(), new Set(), () => {}, steerFor(call, ask, person));
-        if (judged) return serve("exchanged", buildDish(judged.recipe, ask, "generated", judged));
+        const built = judged ? buildDish(judged.recipe, ask, "generated", judged) : null;
+        // Like for like keeps the dish the size it was: within 15% of its calories. Past that the
+        // amounts no longer fit the new food (a cup of cooked rice read as dry), so the generator rewrites it.
+        const was = a.recipe.perServing.calories;
+        if (built && was > 0 && Math.abs(built.dish.calories - was) <= SWAP_CALORIE_BAND * was) return serve("exchanged", built);
       }
     }
     return serve("rewritten", await generateOne(deps, call, ask));

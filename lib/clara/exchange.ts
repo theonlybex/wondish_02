@@ -29,9 +29,11 @@ export const FAMILIES: readonly Family[] = [
   { key: "cabbage family", match: /\b(cabbage|broccoli|cauliflower|brussels sprouts?|broccolini)\b/i, members: ["broccoli", "cauliflower", "cabbage"] },
   { key: "potatoes", match: /\b(potato(es)?|yams?)\b/i, members: ["potatoes", "sweet potatoes"] },
   { key: "root vegetables", match: /\b(carrots?|parsnips?|beets?|beetroot|turnips?|radish(es)?|celeriac)\b/i, members: ["carrots", "parsnips", "beets"] },
-  { key: "onions and garlic", match: /\b(onions?|shallots?|scallions?|leeks?|garlic|chives)\b/i, members: ["onion", "shallot", "scallions", "leek"] },
+  // Garlic is not here on purpose: an onion is no garlic, and garlic has nothing like it (it goes to "Nothing similar").
+  { key: "onions", match: /\b(onions?|shallots?|scallions?|leeks?|chives)\b/i, members: ["onion", "shallot", "scallions", "leek"] },
   { key: "tomatoes", match: /\btomato(es)?\b/i, members: ["tomatoes", "canned tomatoes", "cherry tomatoes"] },
-  { key: "peppers", match: /\b(bell peppers?|peppers?|jalapeños?|jalapenos?|chil(l)?ies|poblanos?)\b/i, members: ["bell pepper", "poblano pepper"] },
+  // "pepper" alone is the seasoning.
+  { key: "peppers", match: /\b(bell peppers?|(red|green|yellow|orange|sweet|poblano|chil(l)?i) peppers?|peppers|jalapeños?|jalapenos?|chil(l)?ies|poblanos?)\b/i, members: ["bell pepper", "poblano pepper"] },
   { key: "squash", match: /\b(zucchini|courgettes?|squash|pumpkin|eggplants?|aubergines?|cucumbers?)\b/i, members: ["zucchini", "butternut squash", "eggplant"] },
   { key: "beans and peas", match: /\b(green beans?|peas?|edamame|snap peas?|snow peas?)\b/i, members: ["green beans", "peas"] },
   { key: "mushrooms", match: /\bmushrooms?\b/i, members: ["mushrooms"] },
@@ -89,10 +91,10 @@ export function swapOptions(a: {
   const kind = proteinKind(a.ingredient);
   if (kind) {
     for (const p of a.home) if (p.key !== kind.key) add(p.name, true);
-    for (const n of NON_PROTEIN_OPTIONS) {
-      const mine = a.atHome.find((h) => foodMatches(n, h));
-      add(mine ?? n, mine !== undefined);
-    }
+    // The ones they have come first.
+    const plain = NON_PROTEIN_OPTIONS.map((n) => ({ n, mine: a.atHome.find((h) => foodMatches(n, h)) }));
+    for (const { mine } of plain) if (mine !== undefined) add(mine, true);
+    for (const { n, mine } of plain) if (mine === undefined) add(n, false);
     return { options: out, protein: true };
   }
   const family = familyOf(a.ingredient);

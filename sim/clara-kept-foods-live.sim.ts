@@ -188,6 +188,8 @@ type Scenario = {
   eating?: Record<string, number>;
   /** Logged on each ask's day before the asks. */
   logged?: LoggedMeal[];
+  /** After each served dish, run the ingredients check on it: the offers for every ingredient, one like-for-like exchange, one protein exchange and one "nothing similar" (piece B). */
+  swaps?: true;
   /** Every served dish is logged on its day, as when the person cooks it (the product's own memory of the week). */
   cooks?: true;
   /** Logged on each of the four days before every ask's day (a week of logs). */
@@ -246,8 +248,13 @@ SCENARIOS.push(
     asks: rep(2, { meal: "dinner" }, (k) => 20 + 6 * k) },
   { id: "Q", title: "MARKS + potatoes: five days of lunch and dinner, each dish cooked and logged", rules: [], atHome: [...MARKS, "Russet potatoes"], cooks: true,
     asks: Array.from({ length: 5 }, (_, d) => [{ meal: "lunch" as const, day: 3 + d }, { meal: "dinner" as const, day: 3 + d }]).flat() },
+  // Round B (2026-11-22): the ingredients check before cooking.
+  { id: "R", title: "swaps: MARKS + kale, potatoes, mushrooms at home", rules: [], swaps: true,
+    atHome: [...MARKS, "Russet potatoes", "Kale", "Cremini mushrooms"], asks: [{ meal: "dinner", day: 9 }, { meal: "lunch", day: 10 }] },
+  { id: "S", title: "swaps: fish + dairy allergy; ground beef, spinach, rice at home", rules: ["allergy:Fish", "allergy:Dairy"], swaps: true,
+    atHome: ["Ground beef", "Spinach", "Jasmine rice"], asks: [{ meal: "dinner", day: 9 }] },
 );
-const PLANNED_CALLS = SCENARIOS.reduce((n, s) => n + s.asks.reduce((m, a) => m + (a.plan ? 4 : 1), 0), 0);
+const PLANNED_CALLS = SCENARIOS.reduce((n, s) => n + s.asks.reduce((m, a) => m + (a.plan ? 4 : s.swaps ? 4 : 1), 0), 0);
 const dayStr = (d: number) => `2026-11-${String(d).padStart(2, "0")}`;
 
 const done = new Map<string, any>(existsSync(OUT) ? readFileSync(OUT, "utf8").split("\n").filter(Boolean).map((l) => { const r = JSON.parse(l); return [`${r.scenario}|${r.n}`, r] as const; }) : []);
@@ -545,6 +552,52 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
           calls: mine.map((c) => ({ model: c.model, ms: c.ms, inTokens: c.inTokens, outTokens: c.outTokens, stop: c.stop, aborted: c.aborted, productStopped: c.productStopped, error: c.error ?? null })),
           warnings: warns.filter((w) => w.includes("[clara-dish]")),
         };
+        if (s.swaps && d && recipe) {
+          // The ingredients check on the dish just served, through the product's own handlers.
+          const swapH = dishMod.makeSwapHandlers(live);
+          const offers: Record<string, any> = {};
+          for (const i of ings) {
+            const o = await swapH.options({ ...ctx }, { recipe, ingredient: i.name });
+            offers[i.name] = o.ok ? { protein: o.protein, options: o.options } : { error: o.message };
+          }
+          const { plainSwap } = await import("@/lib/clara/exchange");
+          const firstWith = (pred: (name: string, o: any) => boolean) => ings.map((i) => i.name).find((nm) => offers[nm]?.options?.length > 0 && pred(nm, offers[nm]));
+          const plainOf = firstWith((nm, o) => !o.protein && plainSwap(nm, o.options[0].name));
+          const proteinOf = firstWith((_nm, o) => o.protein);
+          const starchOf = ings.map((i) => i.name).find((nm) => /rice|potato|pasta|quinoa/i.test(nm)) ?? ings[ings.length - 1]?.name;
+          const tries: { kind: string; ingredient: string; replacement?: string; run: () => Promise<any> }[] = [];
+          if (plainOf) tries.push({ kind: "plain", ingredient: plainOf, replacement: offers[plainOf].options[0].name, run: () => swapH.apply({ ...ctx }, { mealType: ask.meal, recipe, ingredient: plainOf, replacement: offers[plainOf].options[0].name }) });
+          if (proteinOf) tries.push({ kind: "protein", ingredient: proteinOf, replacement: offers[proteinOf].options[0].name, run: () => swapH.apply({ ...ctx }, { mealType: ask.meal, recipe, ingredient: proteinOf, replacement: offers[proteinOf].options[0].name }) });
+          if (starchOf) tries.push({ kind: "without", ingredient: starchOf, run: () => swapH.without({ ...ctx }, { mealType: ask.meal, recipe, ingredient: starchOf }) });
+          const results: any[] = [];
+          for (const t of tries) {
+            const b4 = calls.length;
+            const t1 = Date.now();
+            let r: any; let err: string | null = null;
+            const q = { warn: console.warn, info: console.info };
+            try { console.info = () => {}; console.warn = () => {}; r = await t.run(); } catch (e) { err = (e as Error).message; } finally { Object.assign(console, q); }
+            const cs = calls.slice(b4);
+            await Promise.race([Promise.all(cs.map((c) => c.fullRead ?? Promise.resolve())), new Promise((x) => setTimeout(x, 65_000).unref?.())]);
+            const rIngs: DishIngredient[] = r?.ok ? r.dish.recipe.ingredients.map((x: any) => ({ name: String(x.name), quantity: x.quantity ?? null, unit: x.unit ?? "" })) : [];
+            const items2 = rIngs.map((i) => ({ name: i.name, allergenGroups: ingByName.get(i.name.toLowerCase())?.allergenGroups ?? [] }));
+            const bad2 = oracle.judgeMany(items2).map((v, j) => ({ v, n: items2[j].name })).filter(({ v }) => v.engine.length || v.groups.length);
+            results.push({
+              kind: t.kind, ingredient: t.ingredient, replacement: t.replacement ?? null, ok: !!r?.ok, how: r?.how ?? null, error: err ?? (r?.ok ? null : r?.message ?? null),
+              name: r?.ok ? r.dish.name : null, ingredients: rIngs.map((i) => i.name), steps: r?.ok ? r.dish.recipe.steps : [],
+              calories: r?.ok ? r.dish.calories : null, perServing: r?.ok ? r.dish.recipe.perServing : null, minutes: r?.ok ? r.dish.minutes : null,
+              // The exact food: its own name among the ingredients, or written out in a step ("brown rice" for "jasmine rice" shares only the word rice).
+              stillHasIt: rIngs.some((i) => i.name.trim().toLowerCase() === t.ingredient.trim().toLowerCase()) || (r?.ok ? r.dish.recipe.steps.some((st: string) => st.toLowerCase().includes(t.ingredient.trim().toLowerCase())) : false),
+              hasReplacement: t.replacement ? rIngs.some((i) => foodMatches(t.replacement!, i.name)) : null,
+              oracle: bad2.length ? `VIOLATION: ${bad2.map((b) => b.n).join(", ")}` : "pass",
+              modelCalls: cs.length, latencyMs: Date.now() - t1, prompts: cs.map((c) => c.system),
+            });
+          }
+          const srow = { scenario: s.id, n: n + 0.5, title: s.title, meal: "swap", today, dry: DRY, ok: true, of: d.name, original: { name: d.name, ingredients: names, steps, calories }, offers, results, ladder: "swap", steer: [], oracle: results.every((x) => !x.ok || x.oracle === "pass") ? "pass" : results.map((x) => x.oracle).join("; ") };
+          appendFileSync(OUT, JSON.stringify(srow) + "\n");
+          done.set(`${s.id}|${n + 0.5}`, srow);
+          console.log(`${s.id}#${n}+swaps on "${d.name}": offers ${Object.entries(offers).map(([k, v]: any) => `${k} → ${v.options ? v.options.map((o: any) => `${o.name}${o.atHome ? "*" : ""}`).join("/") || "none" : v.error}`).join("; ")}` +
+            results.map((x) => `\n     ${x.kind} ${x.ingredient}${x.replacement ? ` → ${x.replacement}` : ""}: ${x.ok ? `[${x.how}] "${x.name}" · ${x.calories} kcal · ${x.modelCalls} call(s) · ${x.latencyMs} ms · ${x.oracle}${x.stillHasIt ? " · STILL HAS IT" : ""}${x.hasReplacement === false ? " · REPLACEMENT MISSING" : ""}` : `FAILED (${x.error})`}`).join(""));
+        }
         if (s.cooks && d && recipe?.perServing) {
           const ps = recipe.perServing;
           await store.client.mealLog.create({ data: { patientId: pid, localDate: today, mealType: ask.meal, source: "MANUAL", name: d.name,
@@ -709,8 +762,31 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
     const bad = late.filter((r) => !(r.prompts ?? []).some((p: string) => /in the last few days/.test(p)));
     return bad.length ? bad.map(id).join(", ") : late.length ? null : "no rows";
   }, true);
-  each("all every lunch and dinner is inside the size band or was served as 'relaxed'", rows.filter((r) => r.meal !== "plan"), (r) => r.sizeProblem === null || r.ladder === "relaxed" || r.ladder === "stored recipe");
-  each("all each single dish's sodium is unknown or at most its ceiling", rows.filter((r) => r.meal !== "plan"), (r) => r.sodium === null || r.sodiumCeiling == null || r.sodium <= r.sodiumCeiling);
+  each("all every lunch and dinner is inside the size band or was served as 'relaxed'", rows.filter((r) => r.meal !== "plan" && r.meal !== "swap"), (r) => r.sizeProblem === null || r.ladder === "relaxed" || r.ladder === "stored recipe");
+  each("all each single dish's sodium is unknown or at most its ceiling", rows.filter((r) => r.meal !== "plan" && r.meal !== "swap"), (r) => r.sodium === null || r.sodiumCeiling == null || r.sodium <= r.sodiumCeiling);
+  const swapRows = rows.filter((r) => r.meal === "swap");
+  const swapResults = swapRows.flatMap((r) => r.results.map((x: any) => ({ r, x })));
+  const swapLine = (line: string, bad: (a: { r: any; x: any }) => boolean, pick: (a: { r: any; x: any }) => boolean = () => true) => whole(line, swapRows, () => {
+    const rs = swapResults.filter(pick);
+    if (!rs.length) return "no such exchange was tried";
+    const b = rs.filter(bad);
+    return b.length ? b.map(({ r, x }) => `${id(r)} ${x.kind} ${x.ingredient}`).join(", ") : null;
+  }, true);
+  swapLine("B1 every exchange and every 'nothing similar' returns a dish", ({ x }) => !x.ok);
+  swapLine("B2 the food they do not have is gone from the ingredients and the steps", ({ x }) => x.ok && x.stillHasIt);
+  swapLine("B3 an exchange puts the replacement in the dish", ({ x }) => x.ok && x.hasReplacement === false, ({ x }) => x.kind !== "without");
+  swapLine("B4 a like-for-like exchange is made in code: no model call", ({ x }) => x.ok && x.modelCalls !== 0, ({ x }) => x.kind === "plain");
+  swapLine("B5 every changed dish passes the diet oracle", ({ x }) => x.ok && x.oracle !== "pass");
+  whole("B6 no offer names a food already in the dish; at-home foods are offered first", swapRows, () => {
+    const bad: string[] = [];
+    for (const r of swapRows) for (const [ingName, o] of Object.entries(r.offers) as [string, any][]) {
+      const os: any[] = o.options ?? [];
+      if (os.some((x) => r.original.ingredients.some((n: string) => n.toLowerCase() === x.name.toLowerCase()))) bad.push(`${id(r)} ${ingName} (in the dish)`);
+      const firstNotHome = os.findIndex((x) => !x.atHome);
+      if (firstNotHome >= 0 && os.slice(firstNotHome).some((x) => x.atHome)) bad.push(`${id(r)} ${ingName} (order)`);
+    }
+    return bad.length ? bad.join(", ") : null;
+  });
   const noDish = rows.filter((r) => !r.ok);
   lines.push({ line: "all every request returned a dish", verdict: noDish.length ? `FAIL ${noDish.map(id).join(", ")}` : "PASS" });
   const dietBreaks = rows.filter((r) => r.ok && r.oracle !== "pass");
