@@ -1213,7 +1213,7 @@ test("prompt: level examples name only proteins the dish may use, and say 'at ho
   // Marked foods without a rule: every example kept, at-home preference, fibre wording unchanged.
   const noRule = withBrain({ kept: { ...NO_KEPT_FOODS, atHome: ["Spinach", "Rolled oats"] } }, ask);
   assert.equal(iron(noRule), "- They have had little iron this week: include one food rich in it, preferring any they have at home (spinach).");
-  assert.equal(fibre(noRule), "- They have had little fibre this week: build every dish around a fibre-rich ingredient, preferring any they have at home (oats).");
+  assert.equal(fibre(noRule), "- They have had little fibre this week: include a fibre-rich ingredient in every dish, preferring any they have at home (oats).");
   // Marked, no rule, no example at home: the plain form with every example.
   assert.equal(fibre(withBrain({ kept: { ...NO_KEPT_FOODS, atHome: ["Jasmine rice"] } }, ask)), "- They have had little fibre this week: build every dish around a fibre-rich ingredient (lentils, chickpeas, beans, peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds).");
 });
