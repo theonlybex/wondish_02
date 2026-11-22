@@ -532,3 +532,77 @@ test("steer guard: a steer that throws still gets them a dish, with the limits k
     console.warn = warn;
   }
 });
+
+// Final review, 2026-11-21: a relaxed first candidate did not stop reading, so a requested dish
+// (still sized and protein-checked) waited for the whole stream or the 8 s budget.
+/** fakeClient, but after the last chunk the stream never ends until it is aborted (a slow model). */
+function hangingClient(text: string) {
+  const seen = { yielded: 0, total: Math.ceil(text.length / 40), signal: undefined as AbortSignal | undefined };
+  const client = () => ({
+    messages: {
+      create: async (_params: any, opts?: { signal?: AbortSignal }) => {
+        seen.signal = opts?.signal;
+        return (async function* () {
+          for (let i = 0; i < text.length; i += 40) {
+            if (opts?.signal?.aborted) throw Object.assign(new Error("aborted"), { name: "APIUserAbortError" });
+            seen.yielded++;
+            yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: text.slice(i, i + 40) } };
+          }
+          await new Promise<void>((_, reject) => {
+            const fail = () => reject(Object.assign(new Error("aborted"), { name: "APIUserAbortError" }));
+            if (opts?.signal?.aborted) fail();
+            opts?.signal?.addEventListener("abort", fail, { once: true });
+          });
+        })();
+      },
+    },
+  });
+  return { client: client as any, seen };
+}
+const hangingLive = (dishes: unknown[], rows: object) => {
+  const h = hangingClient(JSON.stringify({ dishes }));
+  return {
+    seen: h.seen,
+    deps: {
+      ...dish.createLiveDishDeps({ client: h.client, brainRows: async () => ({ week: null, dayTarget: null, pills: null, todayDishes: [], liked: [], ...rows }) }),
+      loadSummary: async () => NO_LOGS, loadStartingPicture: undefined,
+    },
+  };
+};
+// 400 kcal against a 400 kcal day: too large for a dinner, so the judge relaxes it (size only).
+const TINY_DAY = { dayTarget: TARGET(400) };
+
+test("relaxed early stop: a requested dish whose first candidate is relaxed is served at once, without waiting for the model", async () => {
+  const { deps, seen } = hangingLive([item("Red Lentil and Spinach Stew"), item("Lentil Spinach Pot")], TINY_DAY);
+  const t0 = Date.now();
+  const res: any = await dish.makeDishHandlers(deps).suggest({ ...CTX }, { mealType: "dinner", wants: "lentil stew" });
+  const ms = Date.now() - t0;
+  assert.deepEqual([res.ok, res.data.dish.source, served(res).name], [true, "generated", "Red Lentil and Spinach Stew"]);
+  assert.ok(ms < 2_000, `served in ${ms} ms, well under the 8 s budget`);
+  assert.equal(seen.signal?.aborted, true, "the stream was ended");
+  assert.ok(seen.yielded < seen.total, `read ${seen.yielded} of ${seen.total} chunks`);
+});
+
+test("relaxed early stop: without a request a relaxed dish does not end the stream, and a hard fail never does", async () => {
+  // No request: the generator keeps reading for a full pass until the deadline.
+  const { deps, seen } = hangingLive([item("Red Lentil and Spinach Stew")], TINY_DAY);
+  const stop = new AbortController();
+  const stages: string[] = [];
+  const running = deps.generate({ ...CTX }, ASK, { signal: stop.signal, accept: () => true, trace: (e) => stages.push(e.stage) });
+  const early = await Promise.race([running.then(() => "returned"), new Promise((r) => setTimeout(() => r("still reading"), 300))]);
+  assert.equal(early, "still reading");
+  assert.deepEqual(stages, ["relaxed"]);
+  stop.abort();
+  assert.deepEqual(await running, []);
+  assert.equal(seen.yielded, seen.total);
+
+  // A request whose only candidate breaks the allergy: nothing ends the stream early, nothing is served from it.
+  const peanut = item("Peanut Lentil Stew", [{ name: "peanut butter", quantity: 1, unit: "tablespoon" }]);
+  const unsafe = hangingLive([peanut], TINY_DAY);
+  const stop2 = new AbortController();
+  const judged: any[] = [];
+  const running2 = unsafe.deps.generate({ ...CTX }, { ...ASK, wants: "lentil stew" }, { signal: stop2.signal, accept: () => true, judged: (j) => judged.push(j) });
+  assert.equal(await Promise.race([running2.then(() => "returned"), new Promise((r) => setTimeout(() => r("still reading"), 300))]), "still reading");
+  stop2.abort();
+  assert.deepEqual([await running2, judged], [[], []]);
+});

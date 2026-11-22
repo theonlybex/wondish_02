@@ -816,7 +816,9 @@ function safeBrainFrom(a: Parameters<typeof brainFrom>[0] & { matchers: DietMatc
 /**
  * ONE streamed model call with a schema-constrained answer, each dish gated
  * the moment it is complete. Stops reading as soon as one gated dish passes
- * `accept` (or the signal fires) and returns the gated dishes so far. [] on
+ * `accept` (or the signal fires) and returns the gated dishes so far; with a
+ * request, also at a relaxed dish that says it and fits the card (served by
+ * generateOne as ladder step 2, never returned here). [] on
  * any failure. Never retries: the library is the fallback, not a second call.
  */
 /** The one SDK call the generator makes; a fake in tests (createLiveDishDeps). */
@@ -839,6 +841,8 @@ async function generateGated(
   const steer = steerFor(ctx, ask, person);
   // With a protein chosen for today, the stream stops early only on a dish built on it.
   const onChoice = (j: JudgedDish) => !steer.choice || (j.verdict.builtOn !== null && sameProteinKind(j.verdict.builtOn, steer.choice.key));
+  // What they asked to cook, if anything: a relaxed dish that says it may end the stream (below).
+  const wantsNow = ask.wants;
 
   // Our own controller: aborted by the deadline, or by us once a dish is accepted.
   const stop = new AbortController();
@@ -883,6 +887,19 @@ async function generateGated(
         opts.judged?.(j);
         if (j.verdict.level === "relaxed") {
           note(r.name, "relaxed");
+          // A requested dish ("pancakes", "a soup") is still sized and protein-checked, so its first
+          // candidate is often relaxed, and reading on cost the whole stream (final review, 2026-11-21).
+          // One that says the request and fits the card ends the stream: generateOne serves it at
+          // once as ladder step 2, from `judged`. Never returned here, never a "fail" (gateOne drops those).
+          if (
+            wantsNow !== undefined &&
+            matchesRequest(wantsNow, r.name, r.usesIngredients) &&
+            pickDish([r], ask) !== null &&
+            (!opts.accept || opts.accept(r)) &&
+            onChoice(j)
+          ) {
+            break read;
+          }
           continue;
         }
         accepted.push(j);
