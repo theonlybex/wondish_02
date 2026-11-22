@@ -311,6 +311,50 @@ Both use the iPhone share sheet, which lists Instagram, TikTok, WhatsApp, Facebo
 - [ ] **Phone.** A long avoid list ends with "and N more".
 - [ ] **Simulator.** Start with `-UITestFixture claraEmpty -openScreen diet -dietShare.format story` and scroll down: "The picture" shows the story shape for "Fixture".
 
+## 6h. Ingredients tab: what I keep at home and my favourites (added 2026-11-21)
+
+**Server (not deployed yet):** the phone checks need `GET` and `PUT /api/clara/ingredients` and the new dish rules live. **None of the phone, website or database checks below have been run yet.** Already checked: the backend tests (protein rule, save plan, library ranking, prompt lines, the gate on generated dishes, the meal-reminder fallback, the 1.5 second cap on loading the marks), the app's 10 Ingredients tests and its full suite (1172 passing), and, by eye in the iOS simulator with sample data: four tabs in the order Clara, Numbers, Ingredients, Log; Proteins first; tapping a row ticks it; tapping the heart fills it without ticking; searching "salm"; light and dark mode; the largest text sizes.
+
+### The screen
+- [ ] **Phone.** The tab bar shows Clara, Numbers, Ingredients, Log, in that order. Ingredients opens a list with Proteins first and nine more groups below.
+- [ ] **Phone.** Tap a food's row: it ticks. Tap it again: the tick goes. The heart does not change.
+- [ ] **Phone.** Tap a heart: it fills and the row is not ticked. A food can be a favourite without being at home.
+- [ ] **Phone.** Search "salm": only salmon foods show, across all groups. Clear the search: the full list returns.
+- [ ] **Phone.** Search for something that does not exist: a short "nothing found" message, not a blank screen.
+- [ ] **Phone.** "Ground chicken" is in the Proteins list.
+- [ ] **Phone.** Mark a few foods, wait a few seconds, force-close the app and reopen it: the marks are still there.
+- [ ] **Phone.** Mark one food and send the app to the background straight away (swipe home): reopen it and the mark is still there.
+- [ ] **Phone.** Turn on Airplane Mode, tick a food and wait: "Couldn't save. Your last change was undone." shows and the tick goes back.
+- [ ] **Phone.** With Airplane Mode on, open the tab fresh (force-close the app first): a "couldn't load" message with a way to try again, nothing half drawn.
+- [ ] **Phone.** Turn on VoiceOver: a row reads "Salmon fillets, at home, favourite" (or "not at home", and no "favourite" when it is not one). The heart reads "Favourite, Salmon fillets".
+
+### Foods that are left out or kept
+- [ ] **Phone.** With an allergy or a diet that bans a food (for example a shellfish allergy), that food is not on the screen at all.
+- [ ] **Phone.** A food you swiped "not for me" on the website still shows on the screen, and you can make it a favourite.
+- [ ] **Website.** The food from the line above now shows as a favourite, and no longer as "not for me".
+
+### Clara's dishes follow what you keep at home
+Mark **Salmon fillets** and **Ground beef** at home, and make Salmon a favourite. Leave everything else unmarked.
+- [ ] **Phone.** Ask Clara for lunch and for dinner several times: no chicken, pork, lamb, other fish or other meat appears. Salmon and beef dishes do.
+- [ ] **Phone.** Egg, bean and lentil dishes still appear for lunch and dinner.
+- [ ] **Phone.** Ask for breakfast and a snack: you get normal breakfasts and snacks (oatmeal, yoghurt, fruit), not forced into salmon or beef.
+- [ ] **Phone.** Ask for "a chicken dish": you get chicken. Ask for "a stir-fry": it uses salmon, beef, egg or beans, but no other meat or fish.
+- [ ] **Phone.** Ask for dinner ten times: salmon shows up more often than any other single food, but not every time.
+- [ ] **Phone.** Make Ground chicken a favourite but not at home: chicken is not suggested while the salmon and beef rule is on.
+- [ ] **Phone.** Mark Spinach and Lentils at home too: dishes that use them come up more, but dishes without them still appear.
+- [ ] **Phone.** "Plan my day" follows the same rules for lunch and dinner.
+- [ ] **Phone.** None of the dishes above breaks your diet or allergies, whatever you mark.
+- [ ] **Phone.** Unmark everything and ask for dinner several times: dishes are as varied as before, with chicken and others back.
+- [ ] **Phone.** Mark only one protein that few dishes use (for example a tofu food) and ask for dinner several times: Clara answers with a dish every time and never says she has nothing.
+- [ ] **Phone.** In the same state, the next meal reminder still names a dish.
+
+### The app does not delete what the website keeps
+- [ ] **Database.** For a test account, note its pantry rows and "liked" rows, including: a pantry row for a food that is not in the catalog (added from the website's search), a banned food the household owns, and a food swiped "not for me" (`liked = false`).
+- [ ] **Phone.** Change a few marks in the app and wait for the save.
+- [ ] **Database.** The three rows above are all still there, unchanged. The foods you changed in the app changed as expected.
+- [ ] **Website.** The marks you set in the app show on the website's lists.
+- [ ] **Website.** Change a mark there, then close and reopen the Ingredients tab in the app: the change shows.
+
 ## 7. Numbers
 
 - [ ] New account: shows "Your starting picture" from your answers, marked "An estimate".
