@@ -23,9 +23,13 @@ import { LEVELS, type FullLevelKey } from "@/lib/level-catalogue";
 import { applyAllergenFilter, parseFridgeRecipes, type FridgeRecipe } from "@/lib/fridge";
 import { DISH_OUTPUT_SCHEMA, DISH_UNITS, DishItemExtractor, toFridgeItem } from "@/lib/clara/dish-output";
 import { libraryToFridge, matchesRequest, rankLibrary, suggestionName, type LibraryRecipe, type RecentDishes } from "@/lib/clara/dish-library";
-import { breaksProteinRule, proteinKey, proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-foods";
+import { breaksProteinRule, proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-foods";
 import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
-import { brainFrom, NO_BRAIN_ROWS, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
+import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
+import { proteinKind } from "@/lib/clara/dish-protein";
+import { targetLines } from "@/lib/clara/meal-target";
+import { steerLines } from "@/lib/clara/level-steer";
+import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
 import { loadBrainRows } from "@/lib/clara/dish-brain-db";
 import { DEFAULT_DISH_RULES, type DishRules } from "@/lib/clara/dish-rules";
 import crypto from "crypto";
@@ -60,7 +64,7 @@ import {
 } from "@/lib/dish-plausibility";
 import { priceDish, gramsOf } from "@/lib/staple-density";
 import type { LevelKey, LevelSummary } from "@/lib/levels";
-import { dishReasons, FIBRE_RICH_EXAMPLES, SODIUM_REASON_MAX_MG } from "@/lib/dish-reasons";
+import { dishReasons } from "@/lib/dish-reasons";
 import type { ClaraPart, ClaraRecipe } from "../parts";
 import type { ClaraContext, Skill, ToolResult } from "../types";
 
@@ -309,6 +313,28 @@ export function forbiddenWordsForPrompt(bans: DerivedBans, matchers: DietMatcher
   });
 }
 
+/** Craft lines every dish prompt carries, placed after the naming line. */
+export const DISH_CRAFT_LINES: readonly string[] = [
+  `- One person's portion of dry rice is 45–80 g.`,
+  `- Never name a dish "X-free" or "no X": name it by what is in it.`,
+  `- A dish named after a preparation must contain what that preparation needs: a bolognese has tomato, a curry has spices, a scramble has egg, a pesto has basil.`,
+] as const;
+
+// Catalog name (lowercased) → its group title, for grouping the at-home list.
+const CATALOG_GROUP_OF = new Map<string, string>();
+for (const g of INGREDIENT_CATALOG) for (const item of g.items) if (!CATALOG_GROUP_OF.has(item.toLowerCase())) CATALOG_GROUP_OF.set(item.toLowerCase(), g.title);
+
+/** "Group: a, b; Other: c" — groups in catalog order, names in the given order, names outside the catalog last under Other. Names are not yet cleaned. */
+function groupedAtHome(names: readonly string[]): { title: string; names: string[] }[] {
+  const byTitle = new Map<string, string[]>();
+  for (const n of names) {
+    const title = CATALOG_GROUP_OF.get(n.trim().toLowerCase()) ?? "Other";
+    byTitle.set(title, [...(byTitle.get(title) ?? []), n]);
+  }
+  const order = [...INGREDIENT_CATALOG.map((g) => g.title), "Other"];
+  return order.filter((t) => byTitle.has(t)).map((t) => ({ title: t, names: byTitle.get(t)! }));
+}
+
 export function dishSystemPrompt(a: {
   ask: DishAsk;
   foodMapText: string;
@@ -316,47 +342,55 @@ export function dishSystemPrompt(a: {
   bannedNames: string[];
   proteinOptions: string[];
   sodiumLimitMg: number;
-  /** What they keep at home and love. Absent or NO_KEPT_FOODS: the prompt is exactly as before. */
+  /** What they keep at home and love; used only when `brain` is absent (the brain carries its own). */
   kept?: KeptFoods;
+  /** Everything the dish brain knows about them. Absent: a brain built from `kept` alone (no reads). */
+  brain?: DishBrain;
+  /** Who and which day, for today's protein and the rotation. */
+  who?: { patientId: string; today: string };
 }): string {
   const { ask } = a;
-  const kept = a.kept ?? NO_KEPT_FOODS;
+  const brain = a.brain ?? brainFrom({ kept: a.kept ?? NO_KEPT_FOODS });
+  const steer = steerForAsk(brain, ask, a.who ?? { patientId: "", today: "1970-01-01" });
+  const kept = brain.kept;
   // Catalog names, but cleaned like the avoid names all the same: no quotes, no line breaks.
-  const clean = (names: readonly string[]) => names.map((n) => n.replace(/["\n\r]+/g, "")).join(", ");
-  // The at-home protein rule replaces the protein line, banned names or not.
-  const ruleOn = proteinRuleOn(kept, ask.wants);
-  // Every at-home meat, fish or seafood, whichever catalog group it sits in.
-  const keptMeats = [...kept.proteinNames, ...kept.atHome].filter((n) => proteinKey(n) !== null);
-  // Mains are built on them only at lunch and dinner with no request of their own;
-  // breakfast, a snack and a request get the exclusion alone.
-  const buildOnKept = ruleOn && ask.wants === undefined && (ask.mealType === "lunch" || ask.mealType === "dinner");
-  const keptProteinLine = !ruleOn
-    ? null
-    : buildOnKept
-      ? `- Proteins they have at home, and others that fit them — build every main around one of them: ${clean([
-          ...kept.proteinNames,
-          ...kept.atHome.filter((n) => proteinKey(n) !== null),
-          ...a.proteinOptions.filter((o) => proteinKey(o) === null),
-        ])}. Use no other meat, fish or seafood in any dish: not in an ingredient, the dish name, the description or a step.`
-      : `- If a dish uses meat, fish or seafood, use only these, which they have at home: ${clean(keptMeats)}. No other meat, fish or seafood may appear in any dish: not in an ingredient, the dish name, the description or a step.`;
-  // A favourite meat they do not have at home would contradict the rule.
-  const favorites = ruleOn ? kept.favorites.filter((f) => !breaksProteinRule([f], kept)) : kept.favorites;
+  const cleanOne = (n: string) => n.replace(/["\n\r]+/g, "");
+  const clean = (names: readonly string[]) => names.map(cleanOne).join(", ");
   const meal = capitalize(ask.mealType);
+  const homeKeys = new Set(brain.home.map((p) => p.key));
+  const homeMeats = brain.home.filter((p) => p.cls === "meat").map((p) => p.name);
+  // The at-home protein rule replaces today's protein line, banned names or not.
+  let proteinLine = "";
+  if (steer.ruleOn && steer.choice) {
+    // Lunch and dinner with no request of their own: built on ONE at-home protein, chosen in code.
+    proteinLine = `- Build this ${meal} on ${cleanOne(steer.choice.name)}, which they have at home.`;
+    if (steer.choice.why === "today" && brain.usedToday.length > 0) {
+      proteinLine += ` It is already open today, so make a different dish from: ${brain.usedToday.map(cleanOne).join("; ")}.`;
+    }
+    proteinLine += homeMeats.length > 0
+      ? ` Any other meat, fish or seafood in it must be one of these, which they have at home: ${clean(homeMeats)}; use no other meat, fish or seafood: not in an ingredient, the dish name, the description or a step.`
+      : ` Use no meat, fish or seafood: not in an ingredient, the dish name, the description or a step.`;
+  } else if (steer.ruleOn) {
+    // Breakfast, a snack and a request: any protein food must be at home, none is required.
+    proteinLine = `- If this dish has a protein food (meat, fish, seafood, eggs, tofu, tempeh, seitan, or beans, lentils, chickpeas, Greek yogurt or cottage cheese as its main protein), it must be one they have at home: ${clean(brain.home.map((p) => p.name))}. No other meat, fish or seafood may appear in any dish: not in an ingredient, the dish name, the description or a step.`;
+  } else if (a.proteinOptions.length > 0 && a.bannedNames.length > 0) {
+    proteinLine = `- Protein sources that fit this person — build every main around one of them: ${a.proteinOptions.join(", ")}.`;
+  }
+  const atHome = kept.atHome.slice(0, MAX_AT_HOME_IN_PROMPT);
+  const atHomeLine = atHome.length > 0
+    ? `- Build the dish from what they have at home and their kitchen basics; where a classic ingredient is missing, use the closest at-home food. At home: ${groupedAtHome(atHome).map((g) => `${g.title}: ${clean(g.names)}`).join("; ")}.`
+    : ``;
+  const basicsLine = brain.basics.length > 0
+    ? `- Kitchen basics they always have: ${clean(brain.basics)}. Cook with one of these fats or with an oil from the at-home list.`
+    : ``;
+  // A favourite protein they do not have at home would contradict the rule.
+  const favorites = steer.ruleOn
+    ? brain.favourites.filter((f) => {
+        const k = proteinKind(f);
+        return !k || homeKeys.has(k.key);
+      })
+    : brain.favourites;
   const servings = ask.servings ?? 1;
-  const leanInto: string[] = [];
-  const fromAnswers = ask.picture !== undefined;
-  const littleKeys: readonly string[] = ask.picture ? ask.picture.little : ask.summary.little;
-  const aLotKeys: readonly string[] = ask.picture ? ask.picture.aLot : ask.summary.aLot;
-  if (littleKeys.includes("fibre")) {
-    leanInto.push(
-      `- ${fromAnswers ? "From their answers they probably get little fibre" : "They have had little fibre this week"}: build every dish around a fibre-rich ingredient (${FIBRE_RICH_EXAMPLES}).`,
-    );
-  }
-  if (aLotKeys.includes("sodium")) {
-    leanInto.push(
-      `- ${fromAnswers ? "From their answers they probably get a lot of sodium" : "They have had a lot of sodium this week"}: keep every serving at or under ${SODIUM_REASON_MAX_MG} mg of sodium — no soy sauce, stock cubes, bouillon, cured meats, salted cheese or pickles, and little or no added salt.`,
-    );
-  }
   const units = DISH_UNITS.filter((u) => u !== "").join(", ");
   return [
     `You are Clara, Wondish's nutrition assistant. Suggest ${CANDIDATES} different, realistic, home-cookable ${meal} dishes for this person to cook today. The app shows the first one that passes its checks, so put the simplest, surest fit first.`,
@@ -373,7 +407,7 @@ export function dishSystemPrompt(a: {
       : ask.mealType === "snack"
         ? `- This is a SNACK: small and quick, under ${SNACK_MAX_MINUTES} minutes in total, with no added salt. Fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip.`
         : `- Each dish is a complete meal (protein + carb + vegetables where sensible).`,
-    ...leanInto,
+    ...steerLines(steer.levels),
     ask.wants !== undefined
       ? `- THE REQUEST: they asked to cook "${ask.wants.replace(/["\n\r]+/g, "").replace(/\s+/g, " ").trim()}". Every one of the ${CANDIDATES} dishes must be that: what they asked for is the dish's main idea and is named in the dish name. Make ${CANDIDATES} versions of it, the simplest first, not ${CANDIDATES} unrelated dishes. Where a line above says to build the dish around another ingredient, add that ingredient to this dish instead. Every other rule here still applies in full. If a rule forbids part of what they asked for, the rule wins: use a food that fits in its place and name the dish by what is really in it.`
       : ``,
@@ -386,16 +420,13 @@ export function dishSystemPrompt(a: {
     `- steps: 4–6 short, clear instructions a home cook can follow. EVERY meat, poultry and fish must be cooked by a step that names it.`,
     `- perServing macros must be realistic: protein*4 + carbs*4 + fat*9 within 5% of the calories. Include fiber.`,
     `- Name each dish by what is IN it and the method you actually use. description is one short sentence and may only mention food in ingredients. Every dish needs a distinct name.`,
+    ...DISH_CRAFT_LINES,
     saltRuleLine(a.sodiumLimitMg),
     `- Cooking fat: one teaspoon per serving is normal and one tablespoon is the maximum; write the same amount in the steps as in ingredients.`,
-    keptProteinLine
-      ? keptProteinLine
-      : a.proteinOptions.length > 0 && a.bannedNames.length > 0
-        ? `- Protein sources that fit this person — build every main around one of them: ${a.proteinOptions.join(", ")}.`
-        : ``,
-    kept.atHome.length > 0
-      ? `- They usually have these at home; prefer them where they fit: ${clean(kept.atHome.slice(0, MAX_AT_HOME_IN_PROMPT))}.`
-      : ``,
+    ...targetLines(steer.target, ask.mealType, brain.rules.mainsOnProtein),
+    proteinLine,
+    atHomeLine,
+    basicsLine,
     favorites.length > 0
       ? `- These are their favourite foods; at least one of the dishes should feature one when it suits the meal: ${clean(favorites)}.`
       : ``,
@@ -632,6 +663,8 @@ async function generateGated(
           proteinOptions: proteinOptionsFor(person.matchers),
           sodiumLimitMg: person.sodiumLimitMg,
           kept: person.kept,
+          brain: person.brain,
+          who: { patientId: ctx.patientId, today: ctx.today },
         }),
         // Structured outputs: the answer always parses (no more malformed or stringified lists).
         output_config: { format: { type: "json_schema", schema: DISH_OUTPUT_SCHEMA as unknown as Record<string, unknown> } },
