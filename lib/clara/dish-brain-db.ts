@@ -21,7 +21,9 @@ function soft<T>(what: string, work: () => Promise<T>, fallback: T): Promise<T> 
 
 /** Five reads in one Promise.all. Each that fails resolves to its NO_BRAIN_ROWS value and logs one `[clara-dish] <what> failed to load: <message>` warning. Never rejects. */
 export async function loadBrainRows(patientId: string, today: string): Promise<BrainRows> {
-  const [week, dayTarget, pills, todayDishes, liked] = await Promise.all([
+  const from = new Date(`${today}T12:00:00Z`);
+  from.setUTCDate(from.getUTCDate() - 6);
+  const [week, dayTarget, pills, dishes, liked] = await Promise.all([
     soft("week levels", () => loadFullLevelData(patientId, today, 7), NO_BRAIN_ROWS.week),
     soft("day target", () => getDayTarget(patientId, today, false), NO_BRAIN_ROWS.dayTarget),
     soft(
@@ -31,15 +33,20 @@ export async function loadBrainRows(patientId: string, today: string): Promise<B
     ),
     soft(
       "today's dishes",
-      async () =>
-        (
-          await prisma.mealLog.findMany({
-            where: { patientId, localDate: today, deletedAt: null },
-            select: { name: true },
-            orderBy: { createdAt: "asc" },
-          })
-        ).map((r) => r.name),
-      [] as string[],
+      // One read for today and the six days before it: today's names keep the protein open, the
+      // earlier ones keep the week varied.
+      async () => {
+        const rows = await prisma.mealLog.findMany({
+          where: { patientId, localDate: { gte: from.toISOString().slice(0, 10), lte: today }, deletedAt: null },
+          select: { name: true, localDate: true },
+          orderBy: { createdAt: "asc" },
+        });
+        return {
+          today: rows.filter((r) => r.localDate === today).map((r) => r.name),
+          recent: rows.filter((r) => r.localDate !== today).map((r) => r.name),
+        };
+      },
+      { today: [] as string[], recent: [] as string[] },
     ),
     soft(
       "liked foods",
@@ -53,5 +60,5 @@ export async function loadBrainRows(patientId: string, today: string): Promise<B
       [] as BrainRows["liked"],
     ),
   ]);
-  return { week, dayTarget, pills, todayDishes, liked };
+  return { week, dayTarget, pills, todayDishes: dishes.today, recentDishes: dishes.recent, liked };
 }

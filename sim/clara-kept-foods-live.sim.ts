@@ -48,7 +48,7 @@ if (!key && !DRY) { console.log("No ANTHROPIC_API_KEY in .env.local — skipped.
 process.env.ANTHROPIC_API_KEY = key ?? "sim-dry-never-sent";
 
 const OUT = process.env.SIM_OUT ?? join(__dirname, ".snapshot", DRY ? "dish-brain-dry.jsonl" : "dish-brain-live.jsonl");
-const CAP = Number(process.env.SIM_CALL_CAP ?? 60);
+const CAP = Number(process.env.SIM_CALL_CAP ?? 150);
 const READ_ALL = process.env.SIM_READ_ALL !== "0";
 const LEDGER = join(__dirname, ".snapshot", "dish-brain-live-ledger.json");
 const ledger: { calls: number; models: Record<string, number> } = existsSync(LEDGER) ? JSON.parse(readFileSync(LEDGER, "utf8")) : { calls: 0, models: {} };
@@ -63,6 +63,8 @@ const spend = (model: string) => {
 // ── the spy between the product and the API (same shape as clara-fast-live) ──
 type CallRec = {
   model: string; ms: number; inTokens: number; outTokens: number | null; stop: string | null; aborted: boolean; error?: string;
+  /** The instructions the product sent (the system prompt), for the checks that read them. */
+  system: string;
   /** The model's whole answer text (all of it with READ_ALL, else what the product read). */
   text: string;
   /** The product stopped reading before the answer ended (a dish accepted, or the deadline). */
@@ -84,7 +86,8 @@ mock.module(pathToFileURL(join(__dirname, "..", "lib", "anthropic.ts")).href, {
     createAnthropic: (o: { timeout?: number; maxRetries?: number } = {}) => ({
       messages: {
         create: async (params: any, opts?: { signal?: AbortSignal }) => {
-          const rec: CallRec = { model: params.model, ms: 0, inTokens: 0, outTokens: null, stop: null, aborted: false, text: "", productStopped: false };
+          const rec: CallRec = { model: params.model, ms: 0, inTokens: 0, outTokens: null, stop: null, aborted: false, text: "", productStopped: false,
+            system: typeof params.system === "string" ? params.system : Array.isArray(params.system) ? params.system.map((b: any) => b?.text ?? "").join("\n") : "" };
           calls.push(rec);
           const t0 = Date.now();
           if (DRY) {
@@ -174,6 +177,8 @@ const store = createClaraStore(snap);
 // ── scenarios ────────────────────────────────────────────────────────────────
 type Meal = "breakfast" | "lunch" | "dinner" | "snack";
 type Ask = { meal: Meal; wants?: string; label?: string; day: number;
+  /** A day plan (dish_plan_today) instead of one dish; `meal` is ignored. */
+  plan?: "normal" | "little_time";
   /** Dinner after the lunch of the same day: avoid = [that lunch's name]. */
   afterLunch?: number };
 type LoggedMeal = { meal: Meal; name: string; calories: number; protein: number; carbs: number; fat: number; fiber: number; sodium: number };
@@ -183,6 +188,10 @@ type Scenario = {
   eating?: Record<string, number>;
   /** Logged on each ask's day before the asks. */
   logged?: LoggedMeal[];
+  /** Every served dish is logged on its day, as when the person cooks it (the product's own memory of the week). */
+  cooks?: true;
+  /** Logged on each of the four days before every ask's day (a week of logs). */
+  week?: LoggedMeal[];
   /** The rule switches for this scenario only (dishRulesNow), restored after. */
   rules2?: Partial<typeof DEFAULT_DISH_RULES>;
   /** Pick the day so the rotation alone would choose this protein (scenario I). */
@@ -218,7 +227,27 @@ const SCENARIOS: Scenario[] = [
     logged: [{ meal: "lunch", name: "Beef and Rice Skillet", calories: 620, protein: 38, carbs: 60, fat: 22, fiber: 3, sodium: 700 }],
     rotationPicks: "salmon", asks: rep(2, { meal: "dinner" }, () => 0) },
 ];
-const PLANNED_CALLS = SCENARIOS.reduce((n, s) => n + s.asks.length, 0);
+// Round 2 (2026-11-22): protein as a need of the day, weekly limits, day plans, a group-only allergy.
+const wk3 = (name: string, protein: number, sodium: number): LoggedMeal[] => (["breakfast", "lunch", "dinner"] as const).map((meal) =>
+  ({ meal, name: `${name} ${meal}`, calories: 600, protein, carbs: 70, fat: 18, fiber: 9, sodium }));
+SCENARIOS.push(
+  { id: "J", title: "MARKS: a day plan, three days", rules: [], atHome: MARKS,
+    asks: [9, 10, 11].map((day) => ({ meal: "dinner" as const, plan: "normal" as const, day })) },
+  { id: "K", title: "MARKS: a day plan with little time", rules: [], atHome: MARKS,
+    asks: [{ meal: "dinner", plan: "little_time", day: 12 }] },
+  { id: "L", title: "fish + tree nut allergy; answers say little omega-3", rules: ["allergy:Fish", "allergy:Tree nuts"], atHome: [],
+    eating: { veg: 2, fruit: 2, beans: 2, grains: 2, fish: 0, meat: 1, dairy: 2, packaged: 0, sweet: 0 },
+    asks: rep(2, { meal: "dinner" }, (k) => 13 + k) },
+  { id: "M", title: "MARKS; a week of logs with protein on track", rules: [], atHome: MARKS, week: wk3("Logged", 45, 500),
+    asks: [{ meal: "lunch", day: 15 }, { meal: "dinner", day: 15 }, { meal: "dinner", day: 21 }] },
+  { id: "N", title: "eggs the only protein at home", rules: [], atHome: ["Large eggs", "Spinach", "Jasmine rice", "Russet potatoes"],
+    asks: rep(3, { meal: "dinner" }, (k) => 17 + k) },
+  { id: "O", title: "nothing marked; a salty week (3,000 mg a day)", rules: [], atHome: [], week: wk3("Salty", 30, 1000),
+    asks: rep(2, { meal: "dinner" }, (k) => 20 + 6 * k) },
+  { id: "Q", title: "MARKS + potatoes: five days of lunch and dinner, each dish cooked and logged", rules: [], atHome: [...MARKS, "Russet potatoes"], cooks: true,
+    asks: Array.from({ length: 5 }, (_, d) => [{ meal: "lunch" as const, day: 3 + d }, { meal: "dinner" as const, day: 3 + d }]).flat() },
+);
+const PLANNED_CALLS = SCENARIOS.reduce((n, s) => n + s.asks.reduce((m, a) => m + (a.plan ? 4 : 1), 0), 0);
 const dayStr = (d: number) => `2026-11-${String(d).padStart(2, "0")}`;
 
 const done = new Map<string, any>(existsSync(OUT) ? readFileSync(OUT, "utf8").split("\n").filter(Boolean).map((l) => { const r = JSON.parse(l); return [`${r.scenario}|${r.n}`, r] as const; }) : []);
@@ -259,7 +288,7 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
 
 
   // What the product hands its generator and what the judge said, per request (diagnostics only).
-  let traces: { ms: number; name: string; stage: string }[] = [];
+  let traces: { ms: number; name: string; stage: string; reasons?: string[] }[] = [];
   let verdicts: { id: string; name: string; source: "generated" | "library"; level: string; reasons: string[]; builtOn: string | null; onTodaysProtein: boolean }[] = [];
   let seenAsk: any = null;
   const keepVerdict = (source: "generated" | "library") => (j: any) =>
@@ -332,6 +361,15 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
           calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, fiber: m.fiber, sodium: m.sodium } });
       }
     }
+    for (const day of [...new Set(s.asks.map((a) => a.day))]) {
+      for (let back = 1; back <= 4 && s.week; back++) {
+        if (store.tables.mealLog?.some((r: any) => r.patientId === pid && r.localDate === dayStr(day - back))) continue;
+        for (const m of s.week) {
+          await store.client.mealLog.create({ data: { patientId: pid, localDate: dayStr(day - back), mealType: m.meal, source: "MANUAL", name: m.name,
+            calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, fiber: m.fiber, sodium: m.sodium } });
+        }
+      }
+    }
     const saved = { ...dishMod.dishRulesNow.rules };
     if (s.rules2) dishMod.dishRulesNow.rules = { ...DEFAULT_DISH_RULES, ...s.rules2 };
     try {
@@ -361,6 +399,51 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
         if (s.eating && !brain.picture) notes.push("fixture gap: onboarding answers not seen (no picture)");
 
         const ctx = { patientId: pid, accountId, firstName: "Sim", isPremium: false, today, surface: "ios", disabledSkills: [] };
+        if (ask.plan) {
+          const before = calls.length;
+          const warns: string[] = [];
+          const quiet = { warn: console.warn, info: console.info };
+          const t0 = Date.now();
+          let res: any; let thrown: string | null = null;
+          try {
+            console.info = () => {};
+            console.warn = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+            res = await handlers.planToday(ctx, { occasion: ask.plan });
+          } catch (e) { thrown = (e as Error).message; }
+          finally { Object.assign(console, quiet); }
+          const latencyMs = Date.now() - t0;
+          const mine = calls.slice(before);
+          await Promise.race([Promise.all(mine.map((c) => c.fullRead ?? Promise.resolve())), new Promise((r) => setTimeout(r, 65_000).unref?.())]);
+          const homeKeys: string[] = brain.home.map((h: HomeProtein) => h.key);
+          const dishes = (res?.ok ? res.data.dishes : []).map((dm: any) => {
+            const part = (res.parts ?? []).find((x: any) => x.kind === "dish" && x.dishId === dm.dishId);
+            const ings: DishIngredient[] = part?.recipe?.ingredients?.map((x: any) => ({ name: String(x.name), quantity: x.quantity ?? null, unit: x.unit ?? "" })) ?? [];
+            const steps: string[] = part?.recipe?.steps ?? [];
+            const st = steerForAsk(brain, { mealType: dm.mealType, summary: { little: [], aLot: [] } }, { patientId: pid, today });
+            const items = ings.map((i) => ({ name: i.name, allergenGroups: ingByName.get(i.name.toLowerCase())?.allergenGroups ?? [] }));
+            const bad = oracle.judgeMany(items).map((v, j) => ({ v, n: items[j].name })).filter(({ v }) => v.engine.length || v.groups.length);
+            return {
+              meal: dm.mealType, name: part?.name ?? dm.name, source: dm.source, minutes: part?.minutes ?? null, calories: part?.calories ?? null,
+              targetCalories: st.target.calories, sizeProblem: part ? sizeProblem(dm.mealType, part.calories, st.target.calories) : null,
+              builtOn: builtOn(ings, steps)?.key ?? null, proteinsNotAtHome: proteinsNotAtHome(ings, steps, homeKeys),
+              sodium: part?.recipe?.perServing?.sodium ?? null, sodiumCeiling: st.ceilings.sodium ?? null,
+              oracle: bad.length ? `VIOLATION: ${bad.map((b) => b.n).join(", ")}` : "pass", ingredients: ings.map((i) => i.name),
+            };
+          });
+          const row = {
+            scenario: s.id, n, title: s.title, meal: "plan", plan: ask.plan, today, dry: DRY,
+            ok: dishes.length > 0, failure: dishes.length ? null : (thrown ?? res?.message ?? "no dish"),
+            dishName: dishes.map((x: any) => x.name).join(" / ") || null, dishes,
+            couldNotFill: res?.data?.couldNotFill ?? [], ladder: "plan", steer: [], oracle: dishes.every((x: any) => x.oracle === "pass") ? "pass" : dishes.map((x: any) => x.oracle).join("; "),
+            prompts: mine.map((c) => c.system), latencyMs, modelCalls: mine.length, notes,
+            warnings: warns.filter((w) => w.includes("[clara-dish]")),
+          };
+          appendFileSync(OUT, JSON.stringify(row) + "\n");
+          done.set(`${s.id}|${n}`, row);
+          console.log(`${s.id}#${n} ${today} PLAN (${ask.plan}): ` + (dishes.length ? dishes.map((x: any) => `${x.meal}: "${x.name}" on ${x.builtOn ?? "nothing"} · ${x.calories} kcal/${x.targetCalories ?? "-"} · ${x.minutes} min · sodium ${x.sodium ?? "?"}/${Math.round(x.sodiumCeiling ?? 0)} · ${x.source}`).join("\n     ") : `NO DISH (${row.failure})`) +
+            `\n     could not fill [${row.couldNotFill.join(", ")}] · ${latencyMs} ms · ${mine.length} call(s)` + (row.warnings.length ? `\n     warnings: ${row.warnings.join(" | ")}` : ""));
+          continue;
+        }
         const input: Record<string, unknown> = { mealType: ask.meal, ...(ask.wants ? { wants: ask.wants } : {}), ...(avoid.length ? { avoid } : {}) };
         const before = calls.length;
         traces = []; verdicts = []; seenAsk = null;
@@ -422,7 +505,7 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
             product: t ? t.stage : productStopped ? "not read (the product stopped reading: a dish was accepted or the deadline passed)" : "not reached",
             productName: t?.name ?? null,
             served: !!(d && t && t.name === d.name && d.source !== "library"),
-            judge: v ? { level: v.level, reasons: v.reasons, builtOn: v.builtOn, onTodaysProtein: v.onTodaysProtein } : null,
+            judge: v ? { level: v.level, reasons: v.reasons, builtOn: v.builtOn, onTodaysProtein: v.onTodaysProtein } : t?.reasons ? { level: "fail", reasons: t.reasons, builtOn: null, onTodaysProtein: false } : null,
             // The sim's own estimate from the raw candidate (the judge's reasons for a failed candidate are not observable).
             est: {
               builtOn: builtOn(cIngs, cSteps)?.key ?? null,
@@ -456,11 +539,17 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
           fish: names.filter((x) => FISH.test(x)),
           richIron: richIn("iron", names), richPotassium: richIn("potassium", names),
           oracle: oracleVerdict, ingredients: names,
+          prompts: mine.map((c) => c.system), need: steer.need,
           candidates, notes,
           latencyMs, modelCalls: mine.length,
           calls: mine.map((c) => ({ model: c.model, ms: c.ms, inTokens: c.inTokens, outTokens: c.outTokens, stop: c.stop, aborted: c.aborted, productStopped: c.productStopped, error: c.error ?? null })),
           warnings: warns.filter((w) => w.includes("[clara-dish]")),
         };
+        if (s.cooks && d && recipe?.perServing) {
+          const ps = recipe.perServing;
+          await store.client.mealLog.create({ data: { patientId: pid, localDate: today, mealType: ask.meal, source: "MANUAL", name: d.name,
+            calories: ps.calories, protein: ps.protein, carbs: ps.carbs, fat: ps.fat, fiber: ps.fibre ?? null, sodium: ps.sodium ?? null } });
+        }
         appendFileSync(OUT, JSON.stringify(row) + "\n");
         done.set(`${s.id}|${n}`, row);
         console.log(`${s.id}#${n} ${today} ${ask.meal}${ask.wants ? ` "${ask.wants}"` : ""}${avoid.length ? ` avoid=[${avoid.join(", ")}]` : ""}: ` +
@@ -523,7 +612,7 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
     }
     return bad.length ? bad.join(", ") : null;
   }, true);
-  each("A4 every lunch and dinner within 0.55-1.25 x target and >= 15% protein", a, (r) => r.targetCalories != null && r.sizeProblem === null && r.proteinShareLow === false);
+  each("A4 every lunch and dinner within 0.55-1.25 x target", a, (r) => r.targetCalories != null && r.sizeProblem === null);
   each("B  no dish has a protein that is not at home", of("B"), (r) => r.proteinsNotAtHome.length === 0);
   each("C1 chicken: built on chicken and fromHome.proteinNotAtHome is set", of("C", (r) => r.label === "chicken"), (r) => r.builtOn === "chicken" && !!r.fromHome?.proteinNotAtHome);
   each("C2 stir-fry and plain dinner: no protein that is not at home", of("C", (r) => r.label !== "chicken"), (r) => r.proteinsNotAtHome.length === 0);
@@ -539,8 +628,8 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
   });
   each("E2 each dish has a food rich in iron or potassium", eR, (r) => r.richIron.length + r.richPotassium.length > 0, true);
   const fR = of("F");
-  whole("F1 the product's steer has sodium:less:today", fR, () => {
-    const bad = fR.filter((r) => !r.steer.includes("sodium:less:today"));
+  whole("F1 one salty day is not a week: no sodium line from today's log", fR, () => {
+    const bad = fR.filter((r) => r.steer.some((k: string) => k.startsWith("sodium:less")));
     return bad.length ? bad.map((r) => `${id(r)} [${r.steer.join(", ")}]`).join(", ") : null;
   });
   each("F2 each dish's sodium is unknown or at most the product's ceiling", fR, (r) => r.sodium === null || (r.sodiumCeiling != null && r.sodium <= r.sodiumCeiling));
@@ -551,6 +640,77 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
   }, true);
   each("H  fish allergy: no fish; diet oracle passes; built on ground beef", of("H"), (r) => r.fish.length === 0 && r.oracle === "pass" && r.builtOn === "ground beef");
   each("I  beef logged today, rotation says salmon: built on ground beef", of("I"), (r) => r.builtOn === "ground beef");
+  // Round 2.
+  const plans = [...of("J"), ...of("K")];
+  const planDishes = (r: any, meal?: string) => (r.dishes ?? []).filter((x: any) => !meal || x.meal === meal);
+  whole("J1 every day plan fills breakfast, lunch and dinner", plans, () => {
+    const bad = plans.filter((r) => !["breakfast", "lunch", "dinner"].every((m) => planDishes(r, m).length === 1));
+    return bad.length ? bad.map((r) => `${id(r)} (missing ${["breakfast", "lunch", "dinner"].filter((m) => !planDishes(r, m).length).join(", ")})`).join(", ") : null;
+  }, true);
+  whole("J2 a plan's lunch and dinner: same protein, different dishes", plans, () => {
+    const bad = plans.filter((r) => { const l = planDishes(r, "lunch")[0], d = planDishes(r, "dinner")[0];
+      return l && d && (!l.builtOn || !d.builtOn || !sameProteinKind(l.builtOn, d.builtOn) || l.name.trim().toLowerCase() === d.name.trim().toLowerCase()); });
+    return bad.length ? bad.map((r) => `${id(r)} (${planDishes(r, "lunch")[0].builtOn} vs ${planDishes(r, "dinner")[0].builtOn})`).join(", ") : null;
+  }, true);
+  whole("J3 no plan dish has a protein that is not at home; diet oracle passes", plans, () => {
+    const bad = plans.flatMap((r) => planDishes(r).filter((x: any) => x.proteinsNotAtHome.length || x.oracle !== "pass").map((x: any) => `${id(r)} ${x.meal}`));
+    return bad.length ? bad.join(", ") : null;
+  });
+  whole("J4 every plan lunch and dinner within 0.55-1.25 x target", plans, () => {
+    const bad = plans.flatMap((r) => planDishes(r).filter((x: any) => x.sizeProblem).map((x: any) => `${id(r)} ${x.meal} ${x.sizeProblem}`));
+    return bad.length ? bad.join(", ") : null;
+  }, true);
+  whole("K1 little time: every dish takes at most 20 minutes; the dinner line asks for nothing slow", of("K"), () => {
+    const bad = of("K").flatMap((r) => [
+      ...planDishes(r).filter((x: any) => x.minutes == null || x.minutes > 20).map((x: any) => `${id(r)} ${x.meal} ${x.minutes} min`),
+      ...(r.prompts ?? []).filter((p: string) => /a bake, a roast, a braise/.test(p)).map(() => `${id(r)} slow dinner line`),
+    ]);
+    return bad.length ? bad.join(", ") : null;
+  }, true);
+  const promptsOf = (rs: any[]) => rs.flatMap((r) => (r.prompts ?? []).map((p: string) => ({ r, p })));
+  const levelLines = (p: string) => p.split("\n").filter((l) => /^- (They have had|From their answers|So far today)/.test(l)).join("\n");
+  whole("L1 group-only allergy: the instructions' level lines name no fish and no tree nut", of("L"), () => {
+    const ps = promptsOf(of("L"));
+    if (!ps.length) return "no prompt recorded";
+    const bad = ps.filter(({ p }) => /salmon|sardine|mackerel|white fish|walnut|almond|cashew/i.test(levelLines(p)));
+    const omega = ps.some(({ p }) => /omega-3/.test(levelLines(p)));
+    return bad.length ? bad.map(({ r }) => id(r)).join(", ") : omega ? null : "the omega-3 line never appeared, so nothing was tested";
+  }, true);
+  each("L2 group-only allergy: no fish or nut in the dish; diet oracle passes", of("L"), (r) => r.fish.length === 0 && r.oracle === "pass" && !r.ingredients.some((n: string) => /walnut|almond|cashew|pecan|pistachio|hazelnut/i.test(n)));
+  whole("M1 protein on track: the instructions say a dish needs no protein", of("M"), () => {
+    const bad = of("M").filter((r) => r.need !== "free" || !(r.prompts ?? []).some((p: string) => /does not have to be built on a protein/.test(p)));
+    return bad.length ? bad.map((r) => `${id(r)} (need ${r.need})`).join(", ") : null;
+  }, true);
+  each("M2 protein on track: a dish each time, with no protein that is not at home", of("M"), (r) => r.proteinsNotAtHome.length === 0);
+  each("N  eggs-only kitchen: no meat or fish; diet oracle passes", of("N"), (r) => r.oracle === "pass" && !r.proteinKinds.some((k: string) => proteinKind(k)?.cls === "meat"));
+  whole("N2 eggs-only kitchen: the three dinners are not one dish three times", of("N"), () => {
+    const names = new Set(of("N").filter((r) => r.ok).map((r) => r.dishName.trim().toLowerCase()));
+    return names.size >= 2 ? null : `(${names.size} different name(s): ${[...names].join("; ")})`;
+  }, true);
+  whole("O1 salty week: the steer has sodium:less:week and the ceiling is the plain share", of("O"), () => {
+    const bad = of("O").filter((r) => !r.steer.includes("sodium:less:week") || !(r.sodiumCeiling > 600 && r.sodiumCeiling < 700));
+    return bad.length ? bad.map((r) => `${id(r)} [${r.steer.join(", ")}] ceiling ${r.sodiumCeiling}`).join(", ") : null;
+  });
+  each("O2 salty week: each dish's sodium is unknown or at most the ceiling", of("O"), (r) => r.sodium === null || r.sodium <= r.sodiumCeiling);
+  whole("O3 salty week: the instructions give one sodium figure (no 350 mg, no quarter teaspoon)", of("O"), () => {
+    const bad = promptsOf(of("O")).filter(({ p }) => /350 mg|quarter teaspoon|four of these dishes/.test(p));
+    return bad.length ? bad.map(({ r }) => id(r)).join(", ") : promptsOf(of("O")).length ? null : "no prompt recorded";
+  }, true);
+  const q = of("Q");
+  each("Q1 cooked week: no protein that is not at home; diet oracle passes", q, (r) => r.proteinsNotAtHome.length === 0 && r.oracle === "pass");
+  whole("Q2 cooked week: no dish name is served twice in the five days", q, () => {
+    const seen = new Map<string, string[]>();
+    for (const r of q.filter((x) => x.ok)) { const k = r.dishName.trim().toLowerCase(); seen.set(k, [...(seen.get(k) ?? []), id(r)]); }
+    const dup = [...seen.entries()].filter(([, v]) => v.length > 1);
+    return dup.length ? dup.map(([k, v]) => `"${k}" ${v.join(", ")}`).join("; ") : null;
+  }, true);
+  whole("Q3 cooked week: later prompts carry the earlier days' dishes", q, () => {
+    const late = q.filter((r) => r.today >= "2026-11-04");
+    const bad = late.filter((r) => !(r.prompts ?? []).some((p: string) => /in the last few days/.test(p)));
+    return bad.length ? bad.map(id).join(", ") : late.length ? null : "no rows";
+  }, true);
+  each("all every lunch and dinner is inside the size band or was served as 'relaxed'", rows.filter((r) => r.meal !== "plan"), (r) => r.sizeProblem === null || r.ladder === "relaxed" || r.ladder === "stored recipe");
+  each("all each single dish's sodium is unknown or at most its ceiling", rows.filter((r) => r.meal !== "plan"), (r) => r.sodium === null || r.sodiumCeiling == null || r.sodium <= r.sodiumCeiling);
   const noDish = rows.filter((r) => !r.ok);
   lines.push({ line: "all every request returned a dish", verdict: noDish.length ? `FAIL ${noDish.map(id).join(", ")}` : "PASS" });
   const dietBreaks = rows.filter((r) => r.ok && r.oracle !== "pass");

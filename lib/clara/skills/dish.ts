@@ -28,7 +28,7 @@ import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
 import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type AskSteer, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
 import { builtOn, eggsOnlyKitchen, proteinKind } from "@/lib/clara/dish-protein";
 import { judgeDish, type DishVerdict } from "@/lib/clara/dish-judge";
-import { chooseProtein, fromHomeLine, requestedProtein, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
+import { chooseProtein, fnv1a, fromHomeLine, requestedProtein, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
 import { targetLines } from "@/lib/clara/meal-target";
 import { exampleAllergenGroups, steerLines, levelCeilings } from "@/lib/clara/level-steer";
 import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
@@ -211,6 +211,8 @@ export type CandidateTrace = {
    * protein share failed; kept aside for ladder step 2.
    */
   stage: "parse" | "safety" | "gates" | "kept" | "judge" | "relaxed" | "card" | "accepted";
+  /** The judge's reasons, when the judge dropped it. */
+  reasons?: string[];
 };
 
 /** Effects, injected so every handler path is unit-tested without a DB or a model. */
@@ -371,6 +373,19 @@ function groupedAtHome(names: readonly string[]): { title: string; names: string
 const MEAT_FREE_PROTEINS = ["beans", "lentils", "chickpeas", "tofu", "Greek yogurt", "cottage cheese"] as const;
 const orWords = (w: readonly string[]) => (w.length > 1 ? `${w.slice(0, -1).join(", ")} or ${w[w.length - 1]}` : w.join(""));
 
+const MAX_RECENT_IN_PROMPT = 8;
+const LUNCH_STYLES = ["a bowl", "a warm salad", "a wrap or a sandwich", "a quick skillet", "a soup"] as const;
+const DINNER_STYLES = ["a tray bake or a roast", "a pan dish with a sauce", "a stir-fry", "a stew or a curry", "stuffed or baked vegetables", "a skillet with a cooked side"] as const;
+const SLOW_STYLE = /bake|roast|stew|stuffed/;
+/** The kind of dish today's lunch or dinner leans to: fixed for a person and day, different day to day. */
+export function styleOfTheDay(patientId: string, today: string, mealType: "lunch" | "dinner", maxMinutes?: number): string {
+  const all: readonly string[] = mealType === "lunch" ? LUNCH_STYLES : DINNER_STYLES;
+  const styles = maxMinutes !== undefined && maxMinutes <= 30 ? all.filter((x) => !SLOW_STYLE.test(x)) : all;
+  const [y, m, d] = today.split("-").map(Number);
+  const dayNumber = Math.floor(Date.UTC(y, m - 1, d) / 86_400_000);
+  return styles[(fnv1a(`${patientId}|${mealType}`) + dayNumber) % styles.length];
+}
+
 /** The day plan's lunch and dinner lines (see DishAsk.dayPlan). */
 export const DAY_PLAN_LUNCH_LINE = `- This is the day's lunch: make it the lighter, quicker dish (a bowl, a salad, a wrap or a quick skillet).`;
 export const DAY_PLAN_DINNER_LINE = `- This is the day's dinner: make it the fuller cooked dish (a bake, a roast, a braise, stuffed vegetables or a pan dish with a sauce), not a bowl.`;
@@ -477,6 +492,18 @@ export function dishSystemPrompt(a: {
         ? ask.maxMinutes !== undefined ? DAY_PLAN_QUICK_DINNER_LINE : DAY_PLAN_DINNER_LINE
         : ``
     : ``;
+  // The week stays varied two ways (live run, 2026-11-22: one rice bowl four times in a week):
+  // what their log says they had in the last days is not repeated, and each day leans to a
+  // different kind of dish, by person and day like the protein rotation. Neither is checked by the judge.
+  const plainMain = isMainMeal && ask.wants === undefined;
+  const recent = [...new Set(brain.usedRecently.map((n) => cleanOne(n).replace(/;/g, "").trim().slice(0, MAX_USED_TODAY_NAME)).filter(Boolean))].slice(-MAX_RECENT_IN_PROMPT);
+  const recentLine = plainMain && recent.length > 0
+    ? `- They had these in the last few days; make a clearly different dish, not one of these and not a small variation of one: ${recent.join("; ")}.`
+    : ``;
+  const whoIs = a.who ?? { patientId: "", today: "1970-01-01" };
+  const styleLine = plainMain && !ask.dayPlan
+    ? `- To keep their week varied, make today's ${meal} ${styleOfTheDay(whoIs.patientId, whoIs.today, ask.mealType as "lunch" | "dinner", ask.maxMinutes)} if that suits what they have; otherwise the nearest thing to it.`
+    : ``;
   const atHome = kept.atHome.slice(0, MAX_AT_HOME_IN_PROMPT);
   const atHomeLine = atHome.length > 0
     ? `- Build every dish mainly from what they have at home and their kitchen basics; where a classic ingredient is missing, use the closest at-home food. You may add a few common fresh ingredients (an onion, garlic, a lemon, a herb) when the dish needs them. At home: ${groupedAtHome(atHome).map((g) => `${g.title}: ${clean(g.names)}`).join("; ")}.`
@@ -496,15 +523,18 @@ export function dishSystemPrompt(a: {
   const morning = brain.home.filter((p) => BREAKFAST_PROTEIN_KEYS.has(p.key)).map((p) => p.name);
   // The line that breaks the tie with the level lines, which sit below the breakfast and snack lines.
   const ADD_DONT_REPLACE = ` Add what the lines below ask for to this; do not replace it.`;
-  let breakfastLine = `- This is BREAKFAST: morning food, under ${BREAKFAST_MAX_MINUTES} minutes in total, built on a breakfast protein (eggs, yoghurt, cottage cheese, cheese, nut butter, nuts, beans, tofu). Not a braise, a roast or a rice bowl.`;
-  let snackLine = `- This is a SNACK: small and quick, under ${SNACK_MAX_MINUTES} minutes in total, with no added salt. Fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip.`;
+  // A time limit shorter than the meal's own wins, so one prompt never gives two.
+  const breakfastMinutes = Math.min(BREAKFAST_MAX_MINUTES, ask.maxMinutes ?? BREAKFAST_MAX_MINUTES);
+  const snackMinutes = Math.min(SNACK_MAX_MINUTES, ask.maxMinutes ?? SNACK_MAX_MINUTES);
+  let breakfastLine = `- This is BREAKFAST: morning food, under ${breakfastMinutes} minutes in total, built on a breakfast protein (eggs, yoghurt, cottage cheese, cheese, nut butter, nuts, beans, tofu). Not a braise, a roast or a rice bowl.`;
+  let snackLine = `- This is a SNACK: small and quick, under ${snackMinutes} minutes in total, with no added salt. Fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip.`;
   if (steer.ruleOn) {
     breakfastLine = (morning.length > 0
-      ? `- This is BREAKFAST: morning food, under ${BREAKFAST_MAX_MINUTES} minutes in total, built on ${orList(morning)}${morning.length > 1 ? "," : ""} or on cheese, nut butter or nuts. Not a braise, a roast or a rice bowl.`
-      : `- This is BREAKFAST: morning food, under ${BREAKFAST_MAX_MINUTES} minutes in total, built on cheese, nut butter or nuts, or on ${orList(brain.home.map((p) => p.name))} if one suits a breakfast. Not a braise, a roast or a rice bowl.`) + ADD_DONT_REPLACE;
+      ? `- This is BREAKFAST: morning food, under ${breakfastMinutes} minutes in total, built on ${orList(morning)}${morning.length > 1 ? "," : ""} or on cheese, nut butter or nuts. Not a braise, a roast or a rice bowl.`
+      : `- This is BREAKFAST: morning food, under ${breakfastMinutes} minutes in total, built on cheese, nut butter or nuts, or on ${orList(brain.home.map((p) => p.name))} if one suits a breakfast. Not a braise, a roast or a rice bowl.`) + ADD_DONT_REPLACE;
     const eggs = brain.home.some((p) => p.key === "egg");
     const yoghurt = homeNames.some((n) => /\byogh?urt\b/i.test(n));
-    snackLine = `- This is a SNACK: small and quick, under ${SNACK_MAX_MINUTES} minutes in total, with no added salt. ${["Fruit", ...(yoghurt ? ["yoghurt"] : []), "nuts", "toast", ...(eggs ? ["a boiled egg"] : [])].join(", ")}, raw vegetables and a dip.${ADD_DONT_REPLACE}`;
+    snackLine = `- This is a SNACK: small and quick, under ${snackMinutes} minutes in total, with no added salt. ${["Fruit", ...(yoghurt ? ["yoghurt"] : []), "nuts", "toast", ...(eggs ? ["a boiled egg"] : [])].join(", ")}, raw vegetables and a dip.${ADD_DONT_REPLACE}`;
   }
   // Level examples, with the rule on: only proteins the dish may use. A main keeps the chosen meat
   // and any other protein at home; a breakfast or snack keeps no meat or fish; a request keeps what is at home.
@@ -522,7 +552,11 @@ export function dishSystemPrompt(a: {
   const keepExample = ruleKeeps && dietKeeps
     ? (food: string) => ruleKeeps(food) && dietKeeps(food)
     : ruleKeeps ?? dietKeeps;
+  const sodiumMax = steer.ceilings.sodium !== undefined && steer.ceilings.sodium < a.sodiumLimitMg
+    ? Math.floor(steer.ceilings.sodium / 10) * 10
+    : null;
   const levelLines = steerLines(steer.levels, {
+    ...(sodiumMax !== null ? { sodiumMaxMg: sodiumMax } : {}),
     ...(marked ? { atHome: homeNames } : {}),
     ...(keepExample ? { keepExample } : {}),
     // The protein (a main's chosen one, or the breakfast or snack base) is the dish; fibre is added to it.
@@ -547,7 +581,9 @@ export function dishSystemPrompt(a: {
       ? breakfastLine
       : ask.mealType === "snack"
         ? snackLine
-        : `- Each dish is a complete meal (protein + carb + vegetables where sensible).`,
+        : steer.need === "push"
+          ? `- Each dish is a complete meal (protein + carb + vegetables where sensible).`
+          : `- Each dish is a complete meal: a carb and vegetables, with a protein only where it suits.`,
     ...levelLines,
     ask.wants !== undefined
       ? `- THE REQUEST: they asked to cook "${ask.wants.replace(/["\n\r]+/g, "").replace(/\s+/g, " ").trim()}". Every one of the ${CANDIDATES} dishes must be that: what they asked for is the dish's main idea and is named in the dish name. Make ${CANDIDATES} versions of it, the simplest first, not ${CANDIDATES} unrelated dishes. Where a line above says to build the dish around another ingredient, add that ingredient to this dish instead. Every other rule here still applies in full. If a rule forbids part of what they asked for, the rule wins: use a food that fits in its place and name the dish by what is really in it.`
@@ -562,15 +598,19 @@ export function dishSystemPrompt(a: {
     `- perServing macros must be realistic: protein*4 + carbs*4 + fat*9 within 5% of the calories. Include fiber.`,
     `- Name each dish by what is IN it and the method you actually use. description is one short sentence and may only mention food in ingredients. Every dish needs a distinct name.`,
     ...DISH_CRAFT_LINES,
-    saltRuleLine(a.sodiumLimitMg),
-    // The judge drops a dish over this figure, so the model is told it.
-    steer.ceilings.sodium !== undefined && steer.ceilings.sodium < a.sodiumLimitMg
-      ? `- Sodium: each serving must stay at or under ${Math.floor(steer.ceilings.sodium / 10) * 10} mg in total, counting salt, stock, sauces, cheese and bread.`
-      : ``,
+    // ONE sodium figure in the whole prompt: the ceiling the judge holds the dish to, and the salt
+    // that leaves room for (a quarter teaspoon of salt is about 580 mg). Live run, 2026-11-22: three
+    // figures that disagreed cost a salty-week person every generated dish.
+    sodiumMax !== null
+      ? `- Sodium and salt: each serving must stay at or under ${sodiumMax} mg of sodium in total, counting what is already in the food (stock, sauces, cheese, bread). That leaves room for at most ${sodiumMax >= 1000 ? "a quarter teaspoon" : sodiumMax >= 600 ? "an eighth of a teaspoon" : "a pinch"} of salt per serving.${a.sodiumLimitMg < 2300 ? " Avoid salty additions (soy sauce, stock cubes, bouillon, cured meats, salted cheese, pickles)." : ""}`
+      : saltRuleLine(a.sodiumLimitMg),
     `- Cooking fat: one teaspoon per serving is normal and one tablespoon is the maximum; write the same amount in the steps as in ingredients.`,
-    ...targetLines(steer.target, ask.mealType, brain.rules.mainsOnProtein),
+    // A macro split asks for ~30% protein: not said to someone who needs no push (or a modest portion).
+    ...targetLines(steer.need === "push" ? steer.target : { ...steer.target, split: null }, ask.mealType, brain.rules.mainsOnProtein),
     proteinLine,
     dayPlanLine,
+    recentLine,
+    styleLine,
     atHomeLine,
     basicsLine,
     favorites.length > 0
@@ -727,7 +767,7 @@ async function gateOne(
   person: Person,
   catalogFoodTokens: Set<string>,
   seen: Set<string>,
-  note: (name: string, stage: CandidateTrace["stage"]) => void,
+  note: (name: string, stage: CandidateTrace["stage"], reasons?: string[]) => void,
   steer: AskSteer,
 ): Promise<JudgedDish | null> {
   const meal = capitalize(ask.mealType);
@@ -760,7 +800,7 @@ async function gateOne(
   // The judge runs after the gates: the protein rule, honesty, size, protein share and the level ceilings.
   const judged = judgeGated(r, ask, person, steer);
   if (judged.verdict.level === "fail") {
-    note(label, judged.verdict.reasons.some((x) => x.startsWith("protein:")) ? "kept" : "judge");
+    note(label, judged.verdict.reasons.some((x) => x.startsWith("protein:")) ? "kept" : "judge", judged.verdict.reasons);
     return null;
   }
   seen.add(r.name.trim().toLowerCase());
@@ -848,6 +888,7 @@ function safeBrainFrom(a: Parameters<typeof brainFrom>[0] & { matchers: DietMatc
     return {
       rules: a.rules ?? { ...DEFAULT_DISH_RULES },
       kept: NO_KEPT_FOODS,
+      usedRecently: [],
       home: [],
       favourites: [],
       basics: [],
@@ -885,7 +926,7 @@ async function generateGated(
 ): Promise<FridgeRecipe[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
   const t0 = Date.now();
-  const note = (name: string, stage: CandidateTrace["stage"]) => opts.trace?.({ ms: Date.now() - t0, name, stage });
+  const note = (name: string, stage: CandidateTrace["stage"], reasons?: string[]) => opts.trace?.({ ms: Date.now() - t0, name, stage, ...(reasons ? { reasons } : {}) });
   const [person, catalogFoodTokens] = await Promise.all([personFor(ctx, loadRows), catalogTokens()]);
   if (!person || opts.signal?.aborted) return [];
   const meal = capitalize(ask.mealType);

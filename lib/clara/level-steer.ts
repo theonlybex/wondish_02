@@ -181,6 +181,8 @@ export interface SteerLineOptions {
   atHome?: readonly string[];
   /** false drops that example (a meat or fish the dish may not use). */
   keepExample?: (food: string) => boolean;
+  /** The figure the sodium line names (this dish's ceiling). Absent: the "low sodium" figure. */
+  sodiumMaxMg?: number;
   /** The dish already has its base (a chosen protein, or an at-home breakfast or snack): fibre is added to it, not built on. */
   fibreAdded?: boolean;
 }
@@ -209,7 +211,7 @@ export function steerLines(levels: readonly LevelSteer[], opts: SteerLineOptions
       if (l.why === "today") {
         return `- Today's meals have already used most of the day's sodium: keep this serving at or under ${SODIUM_REASON_MAX_MG} mg of sodium — ${SODIUM_FOODS_OUT}, and no added salt.`;
       }
-      return `- ${answers ? "From their answers they probably get a lot of sodium" : "They have had a lot of sodium this week"}: keep every serving at or under ${SODIUM_REASON_MAX_MG} mg of sodium — ${SODIUM_FOODS_OUT}, and little or no added salt.`;
+      return `- ${answers ? "From their answers they probably get a lot of sodium" : "They have had a lot of sodium this week"}: keep every serving at or under ${opts.sodiumMaxMg ?? SODIUM_REASON_MAX_MG} mg of sodium — ${SODIUM_FOODS_OUT}, and little or no added salt.`;
     }
     const little = l.direction === "more";
     const opening =

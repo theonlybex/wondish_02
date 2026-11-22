@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { saltRuleLine } from "@/lib/clara/recipe-generation";
 import assert from "node:assert/strict";
 import {
   makeDishHandlers,
@@ -19,6 +20,7 @@ import {
   DAY_PLAN_LUNCH_LINE,
   DAY_PLAN_DINNER_LINE,
   DAY_PLAN_QUICK_DINNER_LINE,
+  styleOfTheDay,
   parseStartingPicture,
   type StartingPicture,
   type DishAsk,
@@ -1034,12 +1036,14 @@ test("prompt: without kept foods (absent or NO_KEPT_FOODS) the prompt is today's
   ];
   // DISH_CRAFT_LINES includes the plain-ingredient-names line (dish names stay readable, 2026-11-21).
   assert.ok(DISH_CRAFT_LINES.includes(`- Ingredient names are plain food names, with no comma and no state or cut after it: "jasmine rice", "carrots" — never "jasmine rice, dry" or "carrots, peeled and sliced".`));
-  const NEW_FOR_EVERYONE = [...DISH_CRAFT_LINES, "- Macro split to aim for, by calories: ~30% protein, ~45% carbs, ~25% fat.", "- Sodium: each serving must stay at or under 1030 mg in total, counting salt, stock, sauces, cheese and bread."];
+  const NEW_FOR_EVERYONE = [...DISH_CRAFT_LINES, "- Macro split to aim for, by calories: ~30% protein, ~45% carbs, ~25% fat."];
+  // The one sodium line stands where the salt line stood (2026-11-22).
+  const SODIUM = "- Sodium and salt: each serving must stay at or under 1030 mg of sodium in total, counting what is already in the food (stock, sauces, cheese, bread). That leaves room for at most a quarter teaspoon of salt per serving.";
   for (const [bannedNames, hash] of before) {
     for (const kept of [undefined, NO_KEPT_FOODS]) {
       const lines = dishSystemPrompt({ ...KEPT_BASE, bannedNames, ...(kept ? { kept } : {}) }).split("\n");
-      for (const l of NEW_FOR_EVERYONE) assert.equal(lines.filter((x) => x === l).length, 1, l);
-      assert.equal(sha(lines.filter((l) => !NEW_FOR_EVERYONE.includes(l)).join("\n")), hash, JSON.stringify(bannedNames));
+      for (const l of [...NEW_FOR_EVERYONE, SODIUM]) assert.equal(lines.filter((x) => x === l).length, 1, l);
+      assert.equal(sha(lines.filter((l) => !NEW_FOR_EVERYONE.includes(l)).map((l) => (l === SODIUM ? saltRuleLine(2300) : l)).join("\n")), hash, JSON.stringify(bannedNames));
     }
   }
   assert.doesNotMatch(dishSystemPrompt({ ...KEPT_BASE, bannedNames: [] }), /at home|kcal/);
@@ -1135,10 +1139,12 @@ test("prompt: levels from the answers (at most four), and today's sodium", () =>
   const weekOf = (dates: string[]) => withBrain({ kept: NO_KEPT_FOODS, today: "2026-11-12", patient: NOBODY, rows: { ...NO_BRAIN_ROWS, week: { range: { fromDate: "2026-11-06", toDate: "2026-11-12" }, days: dates.map(day) } } });
   const one = weekOf(["2026-11-12"]);
   assert.doesNotMatch(one, /Today's meals have already used|a lot of sodium this week/);
-  assert.ok(one.split("\n").includes("- Sodium: each serving must stay at or under 1030 mg in total, counting salt, stock, sauces, cheese and bread."));
+  assert.ok(one.split("\n").includes("- Sodium and salt: each serving must stay at or under 1030 mg of sodium in total, counting what is already in the food (stock, sauces, cheese, bread). That leaves room for at most a quarter teaspoon of salt per serving."));
   const salty = weekOf(["2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12"]);
-  assert.match(salty, /- They have had a lot of sodium this week: keep every serving at or under 350 mg/);
-  assert.ok(salty.split("\n").includes("- Sodium: each serving must stay at or under 690 mg in total, counting salt, stock, sauces, cheese and bread."));
+  // One figure in the whole prompt: the week line and the salt line agree, and nothing says 350 or "four of these dishes".
+  assert.match(salty, /- They have had a lot of sodium this week: keep every serving at or under 690 mg of sodium/);
+  assert.ok(salty.split("\n").includes("- Sodium and salt: each serving must stay at or under 690 mg of sodium in total, counting what is already in the food (stock, sauces, cheese, bread). That leaves room for at most an eighth of a teaspoon of salt per serving."));
+  assert.doesNotMatch(salty, /350 mg|quarter teaspoon|four of these dishes/);
 });
 test("prompt: kitchen basics, and every liked food", () => {
   const matchers = buildDietMatchers(derivePatientBans({ foodAllergies: [], foodToAvoid: [], healthConditions: [], foodPreferences: [], motivations: [] } as any));
@@ -1165,7 +1171,7 @@ test("prompt: every switch removes its own lines, and no switch removes a safety
   assert.doesNotMatch(off({ steerByLevels: false }), /fibre-rich ingredient|a lot of sodium this week/);
   assert.doesNotMatch(off({ favourFavourites: false }), /favourite/);
   const allOff = off(Object.fromEntries(Object.keys(DEFAULT_DISH_RULES).map((k) => [k, false])));
-  for (const safety of [/FORBIDDEN WORDS/, /- Salt: /, /Their dietary profile/]) assert.match(allOff, safety);
+  for (const safety of [/FORBIDDEN WORDS/, /- Sodium and salt: /, /Their dietary profile/]) assert.match(allOff, safety);
 });
 
 // ─── wording fixes: the protein is the heart; breakfast, snack and levels follow what is at home ───
@@ -1353,6 +1359,34 @@ test("prompt: protein is pushed when needed, optional when the week is on track,
   const held = person(15, { ...NOBODY, healthConditions: [{ condition: { name: "Chronic kidney disease" } }] });
   assert.match(held, /- Their condition calls for modest protein: keep the protein portion of this Dinner small\. If it has a protein food, make it (Salmon fillets|Ground beef), which they have at home\./);
   assert.doesNotMatch(held, HEART);
+});
+
+// Live run, 2026-11-22: one rice bowl four times in a week, and three identical prompts three days running.
+test("prompt: the week stays varied: recent dishes are not repeated and each day leans to a different kind of dish", () => {
+  const on = (today: string, ask: DishAsk = DINNER, rows = NO_BRAIN_ROWS) =>
+    dishSystemPrompt({ ...KEPT_BASE, ask, bannedNames: [], brain: brainFrom({ kept: SALMON_AND_BEEF, rows }), who: { patientId: "p1", today } });
+  const style = (p: string) => /- To keep their week varied, make today's (Lunch|Dinner) (.+?) if that suits/.exec(p)?.[2];
+  const week = ["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14"].map((d) => style(on(d)));
+  assert.equal(new Set(week).size, 6);
+  for (let i = 0; i < 5; i++) assert.notEqual(week[i], week[i + 1]);
+  assert.equal(style(on("2026-11-09")), style(on("2026-11-09")));
+  // Short of time: nothing slow.
+  for (const d of ["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14"]) {
+    assert.doesNotMatch(style(on(d, { ...DINNER, maxMinutes: 20 }))!, /bake|roast|stew|stuffed/);
+  }
+  // Not for breakfast, a request or a day plan (which has its own lines).
+  for (const ask of [{ mealType: "breakfast" as const, summary: NO_LOGS }, { ...DINNER, wants: "a curry" }, { ...DINNER, dayPlan: true }]) {
+    assert.equal(style(on("2026-11-09", ask)), undefined);
+  }
+  // What their log says they had this week.
+  const p = on("2026-11-12", DINNER, { ...NO_BRAIN_ROWS, recentDishes: ["Salmon Rice Bowl", "Beef; Skillet", "Salmon Rice Bowl"] });
+  assert.ok(p.split("\n").includes("- They had these in the last few days; make a clearly different dish, not one of these and not a small variation of one: Salmon Rice Bowl; Beef Skillet."));
+  assert.doesNotMatch(on("2026-11-12"), /in the last few days/);
+});
+test("prompt: a time limit shorter than breakfast's own is the only one named", () => {
+  const p = withBrain({ kept: SALMON_AND_BEEF }, { mealType: "breakfast", summary: NO_LOGS, maxMinutes: 20 });
+  assert.match(p, /This is BREAKFAST: morning food, under 20 minutes in total/);
+  assert.doesNotMatch(p, /under 30 minutes/);
 });
 
 // Owner, 2026-11-22: eggs as the only protein at home.

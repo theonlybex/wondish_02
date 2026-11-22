@@ -23,6 +23,8 @@ export interface BrainRows {
   pills: { name: string; contents: unknown; estimated: boolean }[] | null;
   /** Today's logged dish names, oldest first. */
   todayDishes: string[];
+  /** Dish names logged in the six days before today, oldest first. Optional: absent is none. */
+  recentDishes?: string[];
   /** Every food they marked as liked, catalog or not. */
   liked: { name: string; allergenGroups: string[] }[];
 }
@@ -61,6 +63,8 @@ export interface DishBrain {
   picture: PictureLevels | null;
   today: TodayTotals | null;
   usedToday: string[];
+  /** Dish names from the six days before today (their log), oldest first: the next dish is asked to differ. */
+  usedRecently: string[];
   /** The diet matchers the brain was built with; absent without them. Level examples are filtered through them. */
   matchers?: DietMatchers;
 }
@@ -149,6 +153,7 @@ export function brainFrom(a: {
     picture,
     today,
     usedToday: [...rows.todayDishes],
+    usedRecently: [...(rows.recentDishes ?? [])],
     ...(a.matchers ? { matchers: a.matchers } : {}),
   };
 }
