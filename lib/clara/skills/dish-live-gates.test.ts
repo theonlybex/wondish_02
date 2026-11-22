@@ -65,6 +65,8 @@ let pantryFails = false;
 /** When set, the pantry read never answers (a stalled database). */
 let pantryHangs = false;
 let queries: string[] = [];
+/** The arguments of every mealLog.findMany, so a test can tell the queries apart by shape. */
+let mealLogArgs: any[] = [];
 const fakePrisma = {
   patient: {
     findFirst: async () => ({
@@ -101,7 +103,7 @@ const fakePrisma = {
   patientIngredientPreference: { findMany: async () => [] },
   mealType: { findMany: async () => [{ id: "mt-dinner", name: "Dinner" }, { id: "mt-lunch", name: "Lunch" }] },
   recipe: { findMany: async (args: any) => { queries.push("recipe"); return args?.where?.mealTypeId === "mt-lunch" ? CHICKEN_LIBRARY : LIBRARY; } },
-  mealLog: { findMany: async () => { queries.push("mealLog"); return []; } },
+  mealLog: { findMany: async (args: any) => { queries.push("mealLog"); mealLogArgs.push(args); return []; } },
 };
 
 const CTX: ClaraContext = { patientId: "p1", accountId: "a1", firstName: "Sam", isPremium: false, today: "2026-11-12", surface: "ios", disabledSkills: [] };
@@ -204,11 +206,20 @@ test("generator: accepting a dish aborts the stream — the rest is never read",
 
 test("dish_plan_today: the recent-dishes query runs once per tool call, not once per meal", async () => {
   queries = [];
+  mealLogArgs = [];
   const deps = { ...dish.createLiveDishDeps({ client: fakeClient('{"dishes":[]}').client }), loadSummary: async () => NO_LOGS, loadStartingPicture: undefined };
   const res: any = await dish.makeDishHandlers(deps).planToday({ ...CTX }, {});
   assert.equal(res.ok, true);
   // One for the meals already logged today, one for the recent dishes — three meals asked.
-  assert.equal(queries.filter((q) => q === "mealLog").length, 2, queries.join(", "));
+  // (Counted by shape since the brain reads also read mealLog; see the brain test below.)
+  const shapes = JSON.stringify(mealLogArgs);
+  const recentOrLogged = mealLogArgs.filter((a) => a?.select?.recipeId || a?.distinct);
+  assert.equal(recentOrLogged.length, 2, shapes);
+  assert.equal(mealLogArgs.filter((a) => a?.select?.recipeId).length, 1, shapes);
+  assert.equal(mealLogArgs.filter((a) => a?.distinct).length, 1, shapes);
+  // The brain reads are memoised with the person: once per tool call, not once per dish.
+  assert.equal(mealLogArgs.filter((a) => a?.select?.nutrients).length, 1, `week levels: ${shapes}`);
+  assert.equal(mealLogArgs.filter((a) => a?.orderBy?.createdAt && a?.select?.name && !a?.select?.recipeId).length, 1, `today's dishes: ${shapes}`);
 });
 
 test("fibre: declared above the declared carbs, or above the PRICED carbs the card shows, is not a dish", async () => {
@@ -384,6 +395,34 @@ test("kept: a pantry read that never answers holds the dish up for at most the k
     assert.deepEqual(got.map((r) => r.name), ["Red Lentil and Spinach Stew"]);
     assert.ok(ms >= 1_400 && ms < 3_000, `took ${ms} ms`);
     assert.equal(warns.filter((w) => w.includes("kept foods took longer")).length, 1, warns.join("\n"));
+  } finally {
+    console.warn = realWarn;
+    pantryHangs = false;
+  }
+});
+
+test("brain: reads that reject still serve the dish, and the person carries the injected rows", async () => {
+  const text = JSON.stringify({ dishes: [item("Red Lentil and Spinach Stew")] });
+  const got = await dish.createLiveDishDeps({ client: fakeClient(text).client }).generate({ ...CTX }, ASK, { accept: () => true });
+  assert.deepEqual(got.map((r) => r.name), ["Red Lentil and Spinach Stew"]);
+  let asked: string[] = [];
+  const brainRows = async (patientId: string, today: string) => { asked = [patientId, today]; return { week: null, dayTarget: null, pills: null, todayDishes: [], liked: [] }; };
+  await dish.createLiveDishDeps({ client: fakeClient(text).client, brainRows }).generate({ ...CTX }, ASK, { accept: () => true });
+  assert.deepEqual(asked, ["p1", "2026-11-12"]);
+});
+test("brain: reads that never answer hold the dish for at most 1.5 s, in parallel with the marks (Review Focus 3)", async () => {
+  pantryHangs = true;
+  const warns: string[] = [];
+  const realWarn = console.warn;
+  console.warn = (...a: unknown[]) => { warns.push(a.join(" ")); };
+  try {
+    const t0 = Date.now();
+    const deps = dish.createLiveDishDeps({ client: fakeClient(JSON.stringify({ dishes: [item("Red Lentil and Spinach Stew")] })).client, brainRows: () => new Promise<never>(() => {}) });
+    const got = await deps.generate({ ...CTX }, ASK, { accept: () => true });
+    const ms = Date.now() - t0;
+    assert.deepEqual(got.map((r) => r.name), ["Red Lentil and Spinach Stew"]);
+    assert.ok(ms >= 1_400 && ms < 2_500, `took ${ms} ms`); // one cap, not two in a row
+    assert.equal(warns.filter((w) => w.includes("brain reads took longer")).length, 1, warns.join("\n"));
   } finally {
     console.warn = realWarn;
     pantryHangs = false;

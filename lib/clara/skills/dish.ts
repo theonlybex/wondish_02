@@ -25,6 +25,9 @@ import { DISH_OUTPUT_SCHEMA, DISH_UNITS, DishItemExtractor, toFridgeItem } from 
 import { libraryToFridge, matchesRequest, rankLibrary, suggestionName, type LibraryRecipe, type RecentDishes } from "@/lib/clara/dish-library";
 import { breaksProteinRule, proteinKey, proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-foods";
 import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
+import { brainFrom, NO_BRAIN_ROWS, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
+import { loadBrainRows } from "@/lib/clara/dish-brain-db";
+import { DEFAULT_DISH_RULES, type DishRules } from "@/lib/clara/dish-rules";
 import crypto from "crypto";
 import { MAX_SERVINGS } from "@/lib/meal-log";
 import {
@@ -413,7 +416,15 @@ interface Person {
   sodiumLimitMg: number;
   /** What they keep at home and love, through the same matchers (a banned or disliked food is never here). */
   kept: KeptFoods;
+  /** Everything the dish brain knows about them (lib/clara/dish-brain.ts), under the live switches. */
+  brain: DishBrain;
 }
+
+/** The live switches. A mutable object only so the simulation (and piece D) can flip one; all on. */
+export const dishRulesNow: { rules: DishRules } = { rules: { ...DEFAULT_DISH_RULES } };
+
+/** The brain reads, injectable so tests can stand in for the database (createLiveDishDeps). */
+type BrainRowsLoader = (patientId: string, today: string) => Promise<BrainRows>;
 
 function loadPatient(id: string) {
   return prisma.patient.findFirst({ where: { id }, include: PATIENT_FOOD_MAP_INCLUDE });
@@ -442,34 +453,51 @@ async function withinMs<T>(ms: number, work: Promise<T>, fallback: T, onTimeout?
 // One load per tool call: dish_plan_today asks for up to three dishes with the
 // same ctx, and the generator and the library both need the person.
 const personMemo = new WeakMap<ClaraContext, Promise<Person | null>>();
-function personFor(ctx: ClaraContext): Promise<Person | null> {
+function personFor(ctx: ClaraContext, loadRows: BrainRowsLoader = loadBrainRows): Promise<Person | null> {
   let p = personMemo.get(ctx);
   if (!p) {
     p = (async () => {
-      // The marks need only the id: read them alongside the patient, not after.
+      // The marks and the brain reads need only the id: read them alongside the patient, not after.
       const marks = loadKeptMarks(ctx.patientId);
       marks.catch(() => {}); // handled below; never an unhandled rejection if the patient is missing
+      const rows = Promise.resolve().then(() => loadRows(ctx.patientId, ctx.today));
+      rows.catch(() => {}); // as above
       const patient = await loadPatient(ctx.patientId);
       if (!patient) return null;
       // The person's own today decides which trigger trials are enforced.
       const bans = derivePatientBans(patient, new Date(`${ctx.today}T12:00:00`));
       const matchers = buildDietMatchers(bans);
       // Never fails or stalls the dish: without the marks, dishes are as they were before them.
-      const kept = await withinMs(
-        KEPT_FOODS_BUDGET_MS,
-        marks.then((m) => keptFoodsFrom(m, matchers)),
-        NO_KEPT_FOODS,
-        () => console.warn(`[clara-dish] kept foods took longer than ${KEPT_FOODS_BUDGET_MS} ms; serving without them`),
-      ).catch((err) => {
-        console.warn(`[clara-dish] kept foods failed to load: ${(err as Error)?.message ?? String(err)}`);
-        return NO_KEPT_FOODS;
-      });
+      // The marks and the brain reads wait together, so the two caps overlap: 1.5 s at worst, not 3.
+      const [kept, brainRows] = await Promise.all([
+        withinMs(
+          KEPT_FOODS_BUDGET_MS,
+          marks.then((m) => keptFoodsFrom(m, matchers)),
+          NO_KEPT_FOODS,
+          () => console.warn(`[clara-dish] kept foods took longer than ${KEPT_FOODS_BUDGET_MS} ms; serving without them`),
+        ).catch((err) => {
+          console.warn(`[clara-dish] kept foods failed to load: ${(err as Error)?.message ?? String(err)}`);
+          return NO_KEPT_FOODS;
+        }),
+        // Each read already fails soft (loadBrainRows); this catch is for an injected loader that rejects.
+        withinMs(
+          KEPT_FOODS_BUDGET_MS,
+          rows,
+          NO_BRAIN_ROWS,
+          () => console.warn(`[clara-dish] brain reads took longer than ${KEPT_FOODS_BUDGET_MS} ms; serving without them`),
+        ).catch((err) => {
+          console.warn(`[clara-dish] brain reads failed to load: ${(err as Error)?.message ?? String(err)}`);
+          return NO_BRAIN_ROWS;
+        }),
+      ]);
+      const sodiumLimitMg = dailySodiumLimitMg(patient.healthConditions.map((h) => h.condition.name));
       return {
         patient,
         bans,
         matchers,
-        sodiumLimitMg: dailySodiumLimitMg(patient.healthConditions.map((h) => h.condition.name)),
+        sodiumLimitMg,
         kept,
+        brain: brainFrom({ kept, rules: dishRulesNow.rules, rows: brainRows, today: ctx.today, patient, matchers, sodiumLimitMg }),
       };
     })();
     personMemo.set(ctx, p);
@@ -574,11 +602,12 @@ async function generateGated(
   ask: DishAsk,
   opts: GenerateOptions = {},
   client: () => DishModelClient = defaultDishClient,
+  loadRows?: BrainRowsLoader,
 ): Promise<FridgeRecipe[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
   const t0 = Date.now();
   const note = (name: string, stage: CandidateTrace["stage"]) => opts.trace?.({ ms: Date.now() - t0, name, stage });
-  const [person, catalogFoodTokens] = await Promise.all([personFor(ctx), catalogTokens()]);
+  const [person, catalogFoodTokens] = await Promise.all([personFor(ctx, loadRows), catalogTokens()]);
   if (!person || opts.signal?.aborted) return [];
   const meal = capitalize(ask.mealType);
 
@@ -758,9 +787,9 @@ const LIBRARY_KEEP = 3;
  * With the at-home protein rule on and nothing passing, it ranks and gates
  * once more without that rule: a dish they could cook beats no dish.
  */
-async function libraryGated(ctx: ClaraContext, ask: DishAsk, signal?: AbortSignal): Promise<FridgeRecipe[]> {
+async function libraryGated(ctx: ClaraContext, ask: DishAsk, signal?: AbortSignal, loadRows?: BrainRowsLoader): Promise<FridgeRecipe[]> {
   const [person, pool, recent, catalogFoodTokens] = await Promise.all([
-    personFor(ctx),
+    personFor(ctx, loadRows),
     libraryPool(ask.mealType),
     recentFor(ctx),
     catalogTokens(),
@@ -847,15 +876,17 @@ export const dishTiming = { budgetMs: DISH_BUDGET_MS };
  * The production effects. `client` replaces the model client (tests drive the
  * real gates with a fake stream); everything else is the real code.
  */
-export function createLiveDishDeps(io: { client?: () => DishModelClient } = {}): DishDeps {
+export function createLiveDishDeps(
+  io: { client?: () => DishModelClient; brainRows?: (patientId: string, today: string) => Promise<BrainRows> } = {},
+): DishDeps {
   return {
     get budgetMs() {
       return dishTiming.budgetMs;
     },
     // Claims only where Numbers says the same (simulation finding 2).
     loadSummary: (patientId, today) => loadClaraLevelSummary(patientId, today, 7),
-    generate: (ctx, ask, opts) => generateGated(ctx, ask, opts, io.client),
-    library: libraryGated,
+    generate: (ctx, ask, opts) => generateGated(ctx, ask, opts, io.client, io.brainRows),
+    library: (ctx, ask, signal) => libraryGated(ctx, ask, signal, io.brainRows),
     requestConflicts: liveRequestConflicts,
     loadStartingPicture: async (patientId) => {
       // Computed now from the answers and the live pills (the stored column can be stale).
