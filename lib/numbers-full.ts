@@ -24,6 +24,8 @@ export interface FullDay {
   calories: number;
   protein: number;
   carbs: number;
+  /** Grams of fat; absent in older callers (then the Macros block has no fat figure). */
+  fat?: number;
   /** Null unless every meal that day carries the value (fibre, sodium, saturated fat, added sugar). */
   fibre: number | null;
   sodium: number | null;
@@ -64,10 +66,33 @@ export interface FullLevelRow {
   goal: number | null;
 }
 
+export interface FullMacroRow {
+  key: "protein" | "carbs" | "fat";
+  name: string;
+  /** Grams a day, averaged over the days with a meal logged; null with none (or no fat figure). */
+  average: number | null;
+  /** The day's target in grams, from the same macro split the dishes are sized with; null without one. */
+  target: number | null;
+  /**
+   * What the average is fairly compared with when the logs cover only part of the day
+   * (target × `loggedShare`); absent when that is the whole target.
+   */
+  wordTarget?: number;
+  /** Grams logged today; null when nothing is logged today. */
+  today: number | null;
+}
+export interface FullMacros {
+  /** How much of a day the logs cover, by calories: 0.5 to 1 (1 with no calorie target). */
+  loggedShare: number;
+  rows: FullMacroRow[];
+}
+
 export interface FullNumbers {
   summary: { fromDate: string; toDate: string; daysCounted: number; enoughLogs: boolean };
   source: "logged" | "answers" | "none";
   calories: { amount: number | null; target: number | null };
+  /** The Macros block of the Numbers tab: protein, carbohydrate and fat, eaten against the day's targets. */
+  macros: FullMacros;
   weight: FullWeight | null;
   levels: FullLevelRow[];
   areas: { key: string; name: string; uses: FullLevelKey[] }[];
@@ -80,7 +105,7 @@ export interface FullNumbers {
 export interface FullNumbersInput {
   days: FullDay[];
   range: { fromDate: string; toDate: string };
-  macroTargets: { calories: number; protein: number; carbs: number } | null;
+  macroTargets: { calories: number; protein: number; carbs: number; fat?: number } | null;
   person: { sexAtBirth: "MALE" | "FEMALE" | null; age: number | null };
   conditionNames: string[];
   pills: { contents: unknown; estimated: boolean }[];
@@ -227,11 +252,33 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
   const picture = input.picture && (input.picture.little.length > 0 || input.picture.aLot.length > 0) ? input.picture : null;
   const source: FullNumbers["source"] = enoughLogs ? "logged" : picture ? "answers" : "none";
   const calAvg = mean(counted.map((d) => d.calories));
+  const todayRow = days.find((d) => d.localDate === range.toDate && d.meals >= 1);
+  const macroRow = (key: FullMacroRow["key"], name: string, pickDay: (d: FullDay) => number | undefined, target: number | undefined): FullMacroRow => {
+    const values = counted.map(pickDay);
+    const average = values.length > 0 && values.every((v): v is number => v !== undefined) ? mean(values as number[]) : null;
+    const today = todayRow ? pickDay(todayRow) : undefined;
+    return {
+      key, name,
+      average: average === null ? null : roundAmount(average, "g"),
+      target: target ?? null,
+      ...(target !== undefined && share < 1 ? { wordTarget: roundAmount(target * share, "g") } : {}),
+      today: today === undefined ? null : roundAmount(today, "g"),
+    };
+  };
+  const macros: FullMacros = {
+    loggedShare: Math.round(share * 100) / 100,
+    rows: [
+      macroRow("protein", "Protein", (d) => d.protein, macroTargets?.protein),
+      macroRow("carbs", "Carbohydrate", (d) => d.carbs, macroTargets?.carbs),
+      macroRow("fat", "Fat", (d) => d.fat, macroTargets?.fat),
+    ],
+  };
 
   return {
     summary: { fromDate: range.fromDate, toDate: range.toDate, daysCounted, enoughLogs },
     source,
     calories: { amount: calAvg === null ? null : Math.round(calAvg), target: macroTargets?.calories ?? null },
+    macros,
     weight: input.weight,
     levels,
     areas: AREAS.map((a) => ({ key: a.key, name: a.name, uses: [...a.uses] })),

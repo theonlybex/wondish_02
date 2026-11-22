@@ -76,7 +76,7 @@ async function loadFull(
   return buildFullNumbers({
     days: data.days,
     range: data.range,
-    macroTargets: dayTarget ? { calories: dayTarget.calories, protein: dayTarget.protein, carbs: dayTarget.carbs } : null,
+    macroTargets: dayTarget ? { calories: dayTarget.calories, protein: dayTarget.protein, carbs: dayTarget.carbs, fat: dayTarget.fat } : null,
     person: {
       sexAtBirth: patient.sexAtBirth === "MALE" || patient.sexAtBirth === "FEMALE" ? patient.sexAtBirth : null,
       age: patient.birthday ? ageOn(patient.birthday.toISOString().slice(0, 10), today) : null,

@@ -277,3 +277,29 @@ test("a whole-day need is judged against the part of the day that was logged", (
   assert.deepEqual(summarizeLevels(days6, t6, range, { byLoggedShare: true }).little, []);
   assert.deepEqual(summarizeLevels(days6, t6, range).little, ["fibre"]);
 });
+
+// Piece C (2026-11-22): the Macros block of the Numbers tab.
+test("macros: protein, carbohydrate and fat, eaten against the day's targets, with today's figures", () => {
+  const targets = { calories: 2000, protein: 150, carbs: 225, fat: 56 };
+  const days = [5, 6, 7, 8].map((i) => day(i, { calories: 1300, protein: 75, carbs: 140, fat: 40 }));
+  const withToday = [...days, { ...day(1), localDate: "2026-11-11", meals: 1, calories: 600, protein: 32, carbs: 60, fat: 20 }];
+  const out = buildFullNumbers(base({ macroTargets: targets, days: withToday }));
+  assert.deepEqual(out.macros.rows.map((r) => r.key), ["protein", "carbs", "fat"]);
+  const protein = out.macros.rows[0];
+  // Five counted days: (4 × 75 + 32) / 5 = 66.4 g; (4 × 1300 + 600) / 5 = 1160 kcal of 2000 = 0.58 of the day.
+  assert.deepEqual([protein.name, protein.average, protein.target, protein.wordTarget, protein.today], ["Protein", 66.4, 150, 87, 32]);
+  assert.equal(out.macros.loggedShare, 0.58);
+  assert.deepEqual([out.macros.rows[2].average, out.macros.rows[2].target, out.macros.rows[2].today], [36, 56, 20]);
+  // Nothing logged today: today is null. The whole day logged: no prorated target.
+  const whole = buildFullNumbers(base({ macroTargets: targets, days: [5, 6, 7, 8].map((i) => day(i, { calories: 2100, protein: 120, carbs: 230, fat: 60 })) }));
+  assert.deepEqual([whole.macros.loggedShare, whole.macros.rows[0].wordTarget, whole.macros.rows[0].today], [1, undefined, null]);
+  // No targets and nothing logged: rows with nulls, never missing.
+  const none = buildFullNumbers(base());
+  assert.deepEqual(none.macros, { loggedShare: 1, rows: [
+    { key: "protein", name: "Protein", average: null, target: null, today: null },
+    { key: "carbs", name: "Carbohydrate", average: null, target: null, today: null },
+    { key: "fat", name: "Fat", average: null, target: null, today: null },
+  ] });
+  // A caller that sends no fat (the dish brain): protein and carbs still come, fat is unknown.
+  assert.equal(buildFullNumbers(base({ macroTargets: { calories: 2000, protein: 150, carbs: 225 }, days: [5, 6, 7].map((i) => day(i)) })).macros.rows[2].average, null);
+});

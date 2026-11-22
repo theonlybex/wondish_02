@@ -135,6 +135,7 @@ export function fullDaysFromRows(rows: MealLevelRow[]): FullDay[] {
       calories: d.calories,
       protein: d.protein,
       carbs: d.carbs,
+      fat: d.fat,
       fibre: d.fibre,
       sodium: d.sodium,
       saturatedFat: sumKnown(meals, "saturatedFat"),
