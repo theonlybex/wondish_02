@@ -1,19 +1,25 @@
-// LIVE check for one question: does Clara follow the person's at-home and
-// favourite foods when she suggests dishes? (docs/superpowers/specs/2026-11-21-clara-ingredients-design.md)
+// The dish brain's ACCEPTANCE run (docs/superpowers/specs/2026-11-21-clara-dish-brain-design.md,
+// section A, "How we will know it works"). It grew out of the at-home foods
+// check (2026-11-21-clara-ingredients-design.md) and keeps its machinery.
 // The REAL dish model through the product's own dish_suggest handler
 // (makeDishHandlers with liveDishDeps), the in-memory store only (no database:
-// sim/clara-live-key.ts drops every database URL). The marks are written to the
-// store's PatientPantryItem / PatientIngredientPreference tables, so the dish
-// skill reads them the way it does in production (loadKeptMarks, keptFoodsFrom).
+// sim/clara-live-key.ts drops every database URL). Marks, onboarding answers
+// and today's logged meals are written to the store, so the dish skill reads
+// them the way it does in production (loadKeptMarks, loadBrainRows).
 //
 //   SIM_LIVE=1 npm run sim:clara-kept-foods      (real model, at most SIM_CALL_CAP calls)
-//   SIM_DRY=1  npm run sim:clara-kept-foods      (no model: library fallback only, free)
+//   SIM_DRY=1  npm run sim:clara-kept-foods      (no model: the stored-recipe step only, free)
 //
-// Env: SIM_OUT (default sim/.snapshot/kept-foods-live.jsonl, or kept-foods-dry.jsonl when dry),
-// SIM_CALL_CAP (default 40, across all runs: sim/.snapshot/kept-foods-live-ledger.json),
-// SIM_ONLY="A|C" runs only those scenarios. Rows are appended as they finish; a
-// request already in SIM_OUT is skipped, so a stopped run resumes without
-// spending a call twice. The summary is printed from every row in SIM_OUT.
+// Env: SIM_OUT (default sim/.snapshot/dish-brain-live.jsonl, or dish-brain-dry.jsonl when dry),
+// SIM_CALL_CAP (default 60, across all runs: sim/.snapshot/dish-brain-live-ledger.json),
+// SIM_ONLY="A|C" runs only those scenarios, SIM_READ_ALL=0 stops reading the
+// model's answer when the product does (default: the spy reads the rest of the
+// SAME call in the background, so all three candidates are recorded; no extra
+// call, only the output tokens the product would have cut off). Rows are
+// appended as they finish; a request already in SIM_OUT is skipped, so a
+// stopped run resumes without spending a call twice. The summary is printed
+// from every row in SIM_OUT, one PASS / FAIL line per acceptance line; the
+// process exits 0 either way.
 import "./clara-live-key";
 import "./setup";
 import { mock } from "node:test";
@@ -26,7 +32,11 @@ import { createClaraStore } from "./fake-db";
 import { makePatient, type RuleKey } from "./profiles";
 import { makeOracle } from "./oracle";
 import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
-import { breaksProteinRule, foodMatches, proteinKey, proteinRuleOn, splitKeptFoods, type KeptFoods } from "@/lib/clara/kept-foods";
+import type { DishIngredient, HomeProtein } from "@/lib/clara/dish-protein";
+import { DEFAULT_DISH_RULES } from "@/lib/clara/dish-rules";
+// Product modules that reach @/lib/db are imported inside main(), after the
+// in-memory store is installed as globalThis.prisma (a static import would bind
+// the database client to the snapshot's read-only fake first).
 
 const DRY = process.env.SIM_DRY === "1";
 if (process.env.SIM_LIVE !== "1" && !DRY) {
@@ -37,9 +47,10 @@ const key = (globalThis as any).__simLiveKey as string | undefined;
 if (!key && !DRY) { console.log("No ANTHROPIC_API_KEY in .env.local — skipped."); process.exit(0); }
 process.env.ANTHROPIC_API_KEY = key ?? "sim-dry-never-sent";
 
-const OUT = process.env.SIM_OUT ?? join(__dirname, ".snapshot", DRY ? "kept-foods-dry.jsonl" : "kept-foods-live.jsonl");
-const CAP = Number(process.env.SIM_CALL_CAP ?? 40);
-const LEDGER = join(__dirname, ".snapshot", "kept-foods-live-ledger.json");
+const OUT = process.env.SIM_OUT ?? join(__dirname, ".snapshot", DRY ? "dish-brain-dry.jsonl" : "dish-brain-live.jsonl");
+const CAP = Number(process.env.SIM_CALL_CAP ?? 60);
+const READ_ALL = process.env.SIM_READ_ALL !== "0";
+const LEDGER = join(__dirname, ".snapshot", "dish-brain-live-ledger.json");
 const ledger: { calls: number; models: Record<string, number> } = existsSync(LEDGER) ? JSON.parse(readFileSync(LEDGER, "utf8")) : { calls: 0, models: {} };
 const spend = (model: string) => {
   if (existsSync(LEDGER)) Object.assign(ledger, JSON.parse(readFileSync(LEDGER, "utf8")));
@@ -50,21 +61,36 @@ const spend = (model: string) => {
 };
 
 // ── the spy between the product and the API (same shape as clara-fast-live) ──
-type CallRec = { model: string; ms: number; inTokens: number; outTokens: number | null; stop: string | null; aborted: boolean; error?: string };
+type CallRec = {
+  model: string; ms: number; inTokens: number; outTokens: number | null; stop: string | null; aborted: boolean; error?: string;
+  /** The model's whole answer text (all of it with READ_ALL, else what the product read). */
+  text: string;
+  /** The product stopped reading before the answer ended (a dish accepted, or the deadline). */
+  productStopped: boolean;
+  /** Resolves when the background read of the rest of the answer ends. */
+  fullRead?: Promise<void>;
+};
 const calls: CallRec[] = [];
 const realClient = key ? new Anthropic({ apiKey: key }) : null;
+const abortError = () => Object.assign(new Error("Request was aborted."), { name: "AbortError" });
+const recordEvent = (rec: CallRec, ev: any) => {
+  if (ev.type === "message_start") rec.inTokens = ev.message.usage.input_tokens + (ev.message.usage.cache_read_input_tokens ?? 0) + (ev.message.usage.cache_creation_input_tokens ?? 0);
+  if (ev.type === "message_delta") { rec.outTokens = ev.usage.output_tokens; rec.stop = ev.delta.stop_reason; }
+  if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") rec.text += ev.delta.text;
+};
 mock.module(pathToFileURL(join(__dirname, "..", "lib", "anthropic.ts")).href, {
   namedExports: {
     HAIKU_MODEL: "claude-haiku-5-5",
     createAnthropic: (o: { timeout?: number; maxRetries?: number } = {}) => ({
       messages: {
         create: async (params: any, opts?: { signal?: AbortSignal }) => {
-          const rec: CallRec = { model: params.model, ms: 0, inTokens: 0, outTokens: null, stop: null, aborted: false };
+          const rec: CallRec = { model: params.model, ms: 0, inTokens: 0, outTokens: null, stop: null, aborted: false, text: "", productStopped: false };
           calls.push(rec);
           const t0 = Date.now();
           if (DRY) {
             rec.model = `${params.model} (dry)`;
             if (!params.stream) return { content: [{ type: "tool_use", id: "t", name: "suggest_recipes", input: { recipes: [] } }], usage: { input_tokens: 0, output_tokens: 0 }, stop_reason: "tool_use" };
+            rec.text = '{"dishes":[]}';
             return (async function* () { yield { type: "content_block_delta", delta: { type: "text_delta", text: '{"dishes":[]}' } }; })();
           }
           spend(params.model);
@@ -76,17 +102,54 @@ mock.module(pathToFileURL(join(__dirname, "..", "lib", "anthropic.ts")).href, {
               return msg;
             } catch (e) { rec.ms = Date.now() - t0; rec.error = (e as Error).message; throw e; }
           }
+          if (!READ_ALL) {
+            let s: any;
+            try { s = await client.messages.create(params, opts); } catch (e) { rec.ms = Date.now() - t0; rec.error = (e as Error).message; throw e; }
+            return (async function* () {
+              let ended = false;
+              try {
+                for await (const ev of s) { recordEvent(rec, ev); yield ev; }
+                ended = true;
+              } catch (e) { rec.aborted = true; throw e; }
+              finally { rec.ms = Date.now() - t0; if (!ended) rec.productStopped = true; if (rec.outTokens == null) rec.aborted = true; }
+            })();
+          }
+          // READ_ALL: the real request has its own signal (60 s hard cap), so the
+          // product stopping early does not cut the answer off; the product still
+          // sees an abort the moment its own signal fires, as with the SDK.
+          const own = new AbortController();
+          const hard = setTimeout(() => own.abort(), 60_000);
+          hard.unref?.();
           let s: any;
-          try { s = await client.messages.create(params, opts); } catch (e) { rec.ms = Date.now() - t0; rec.error = (e as Error).message; throw e; }
-          return (async function* () {
+          try { s = await client.messages.create(params, { signal: own.signal }); } catch (e) { clearTimeout(hard); rec.ms = Date.now() - t0; rec.error = (e as Error).message; throw e; }
+          const queue: any[] = [];
+          let done = false;
+          let failure: unknown = null;
+          const waker = { fn: null as null | (() => void) };
+          rec.fullRead = (async () => {
             try {
-              for await (const ev of s) {
-                if (ev.type === "message_start") rec.inTokens = ev.message.usage.input_tokens + (ev.message.usage.cache_read_input_tokens ?? 0) + (ev.message.usage.cache_creation_input_tokens ?? 0);
-                if (ev.type === "message_delta") { rec.outTokens = ev.usage.output_tokens; rec.stop = ev.delta.stop_reason; }
-                yield ev;
+              for await (const ev of s) { recordEvent(rec, ev); queue.push(ev); waker.fn?.(); }
+            } catch (e) {
+              failure = e;
+              if (!own.signal.aborted) rec.error = (e as Error).message;
+            } finally {
+              done = true; clearTimeout(hard); rec.ms = Date.now() - t0; if (rec.outTokens == null) rec.aborted = true; waker.fn?.();
+            }
+          })();
+          return (async function* () {
+            const sig = opts?.signal;
+            const onAbort = () => waker.fn?.();
+            sig?.addEventListener("abort", onAbort, { once: true });
+            let ended = false;
+            try {
+              for (;;) {
+                if (sig?.aborted) throw abortError();
+                if (queue.length) { yield queue.shift(); continue; }
+                if (done) { if (failure) throw failure; ended = true; return; }
+                await new Promise<void>((res) => { waker.fn = res; });
+                waker.fn = null;
               }
-            } catch (e) { rec.aborted = true; throw e; }
-            finally { rec.ms = Date.now() - t0; if (rec.outTokens == null) rec.aborted = true; }
+            } finally { sig?.removeEventListener("abort", onAbort); if (!ended) rec.productStopped = true; }
           })();
         },
       },
@@ -109,64 +172,138 @@ const store = createClaraStore(snap);
 (globalThis as any).prisma = store.client;
 
 // ── scenarios ────────────────────────────────────────────────────────────────
-type Ask = { meal: "breakfast" | "lunch" | "dinner" | "snack"; wants?: string; label?: string };
+type Meal = "breakfast" | "lunch" | "dinner" | "snack";
+type Ask = { meal: Meal; wants?: string; label?: string; day: number;
+  /** Dinner after the lunch of the same day: avoid = [that lunch's name]. */
+  afterLunch?: number };
+type LoggedMeal = { meal: Meal; name: string; calories: number; protein: number; carbs: number; fat: number; fiber: number; sodium: number };
 type Scenario = {
-  id: string; title: string; rules: RuleKey[]; atHome: string[]; favourites: string[];
-  /** At-home foods the person's diet hides (the dish skill drops them before the rule). */
-  hiddenByDiet?: string[];
+  id: string; title: string; rules: RuleKey[]; atHome: string[];
+  /** Onboarding answers (PUT /api/onboarding), for a starting picture. */
+  eating?: Record<string, number>;
+  /** Logged on each ask's day before the asks. */
+  logged?: LoggedMeal[];
+  /** The rule switches for this scenario only (dishRulesNow), restored after. */
+  rules2?: Partial<typeof DEFAULT_DISH_RULES>;
+  /** Pick the day so the rotation alone would choose this protein (scenario I). */
+  rotationPicks?: string;
   asks: Ask[];
-  /** Asks (by label, or all when absent) where a rule break is a failure. */
-  mustKeepRule: (a: Ask) => boolean;
 };
-const MARKS_A = ["Salmon fillets", "Ground beef", "Spinach", "Jasmine rice", "Large eggs"];
-const rep = (n: number, a: Ask): Ask[] => Array.from({ length: n }, () => ({ ...a }));
+const MARKS = ["Salmon fillets", "Ground beef", "Spinach", "Jasmine rice", "Large eggs"];
+const rep = (n: number, a: Omit<Ask, "day">, day: (k: number) => number): Ask[] => Array.from({ length: n }, (_, k) => ({ ...a, day: day(k) }));
 const SCENARIOS: Scenario[] = [
-  { id: "A", title: "at home: salmon + ground beef", rules: [], atHome: MARKS_A, favourites: [],
-    asks: [...rep(4, { meal: "dinner" }), ...rep(3, { meal: "lunch" }), ...rep(2, { meal: "breakfast" }), ...rep(1, { meal: "snack" })], mustKeepRule: () => true },
-  { id: "B", title: "A + favourite salmon", rules: [], atHome: MARKS_A, favourites: ["Salmon fillets"], asks: rep(4, { meal: "dinner" }), mustKeepRule: () => true },
-  { id: "C", title: "A + requests", rules: [], atHome: MARKS_A, favourites: [],
-    asks: [...rep(2, { meal: "dinner", wants: "a chicken dish", label: "chicken" }), ...rep(2, { meal: "dinner", wants: "a stir-fry", label: "stir-fry" })],
-    mustKeepRule: (a) => a.label === "stir-fry" },
-  { id: "D", title: "control: nothing marked", rules: [], atHome: [], favourites: [], asks: rep(3, { meal: "dinner" }), mustKeepRule: () => false },
-  { id: "E", title: "at home salmon; favourite chicken (not at home)", rules: [], atHome: ["Salmon fillets"], favourites: ["Boneless chicken breasts"], asks: rep(2, { meal: "dinner" }), mustKeepRule: () => true },
-  { id: "F", title: "fish allergy; at home salmon + ground beef", rules: ["allergy:Fish"], atHome: ["Salmon fillets", "Ground beef"], favourites: [],
-    hiddenByDiet: ["Salmon fillets"], asks: rep(2, { meal: "dinner" }), mustKeepRule: () => true },
+  { id: "A", title: "at home: salmon + ground beef, 7 days of lunch then dinner", rules: [], atHome: MARKS,
+    asks: Array.from({ length: 7 }, (_, d) => [
+      { meal: "lunch" as const, day: 9 + d },
+      { meal: "dinner" as const, day: 9 + d, afterLunch: 2 * d + 1 },
+    ]).flat() },
+  { id: "B", title: "MARKS: breakfasts and a snack", rules: [], atHome: MARKS,
+    asks: [...rep(2, { meal: "breakfast" }, (k) => 3 + k), ...rep(1, { meal: "snack" }, () => 5)] },
+  { id: "C", title: "MARKS + requests", rules: [], atHome: MARKS,
+    asks: [...rep(2, { meal: "dinner", wants: "a chicken dish", label: "chicken" }, (k) => 17 + k),
+      ...rep(2, { meal: "dinner", wants: "a stir-fry", label: "stir-fry" }, (k) => 19 + k),
+      ...rep(1, { meal: "dinner", label: "dinner" }, () => 21)] },
+  { id: "D", title: "control: nothing marked", rules: [], atHome: [], asks: rep(3, { meal: "dinner" }, (k) => 22 + k) },
+  { id: "E", title: "nothing marked; answers say little iron and potassium", rules: [], atHome: [],
+    eating: { veg: 1, fruit: 1, beans: 0, grains: 2, fish: 2, meat: 1, dairy: 2, packaged: 0, sweet: 0 },
+    asks: rep(3, { meal: "dinner" }, (k) => 23 + k) },
+  { id: "F", title: "nothing marked; today's log already has 2000 mg sodium", rules: [], atHome: [],
+    logged: [{ meal: "lunch", name: "Salted Ramen Bowl", calories: 650, protein: 22, carbs: 80, fat: 24, fiber: 4, sodium: 2000 }],
+    asks: rep(2, { meal: "dinner" }, () => 24) },
+  { id: "G", title: "nothing marked, vegan; protein rule off", rules: ["diet:Vegan"], atHome: [],
+    rules2: { mainsOnProtein: false, onlyHomeProteins: false }, asks: rep(2, { meal: "dinner" }, (k) => 25 + k) },
+  { id: "H", title: "fish allergy; at home salmon + ground beef", rules: ["allergy:Fish"], atHome: ["Salmon fillets", "Ground beef"],
+    asks: rep(2, { meal: "dinner" }, (k) => 26 + k) },
+  { id: "I", title: "MARKS; today's log has Beef and Rice Skillet; rotation alone would pick salmon", rules: [], atHome: MARKS,
+    logged: [{ meal: "lunch", name: "Beef and Rice Skillet", calories: 620, protein: 38, carbs: 60, fat: 22, fiber: 3, sodium: 700 }],
+    rotationPicks: "salmon", asks: rep(2, { meal: "dinner" }, () => 0) },
 ];
+const PLANNED_CALLS = SCENARIOS.reduce((n, s) => n + s.asks.length, 0);
+const dayStr = (d: number) => `2026-11-${String(d).padStart(2, "0")}`;
 
-const groupOf = new Map(INGREDIENT_CATALOG.flatMap((c) => c.items.map((n) => [n, c.key] as const)));
-/** The sim's own view of the marks, built from the scenario (not from what the product loaded). */
-function expectedKept(s: Scenario): KeptFoods {
-  const names = new Set([...s.atHome, ...s.favourites].filter((n) => !(s.hiddenByDiet ?? []).includes(n)));
-  return splitKeptFoods([...names].map((name) => ({ name, groupKey: groupOf.get(name) ?? "?", atHome: s.atHome.includes(name), favorite: s.favourites.includes(name) })));
-}
-
-const done = new Set<string>(existsSync(OUT) ? readFileSync(OUT, "utf8").split("\n").filter(Boolean).map((l) => { const r = JSON.parse(l); return `${r.scenario}|${r.n}`; }) : []);
+const done = new Map<string, any>(existsSync(OUT) ? readFileSync(OUT, "utf8").split("\n").filter(Boolean).map((l) => { const r = JSON.parse(l); return [`${r.scenario}|${r.n}`, r] as const; }) : []);
 const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
 
 (async () => {
   const { NextRequest } = await import("next/server");
   const profile = await import("@/app/api/patient/profile/route");
+  const onboarding = await import("@/app/api/onboarding/route");
   const dishMod: any = await import("@/lib/clara/skills/dish");
   const keptDb = await import("@/lib/clara/kept-foods-db");
+  const { loadBrainRows } = await import("@/lib/clara/dish-brain-db");
+  const { brainFrom, steerForAsk, NO_BRAIN_ROWS } = await import("@/lib/clara/dish-brain");
   const { derivePatientBans, buildDietMatchers } = await import("@/lib/diet-match");
+  const { dailySodiumLimitMg } = await import("@/lib/sodium-limit");
   const { PATIENT_FOOD_MAP_INCLUDE } = await import("@/lib/food-map");
-  // Every candidate the model wrote and where it ended (diagnostics only; same wrap as clara-fast-live).
-  let traces: { meal: string; ms: number; name: string; stage: string }[] = [];
-  const handlers = dishMod.makeDishHandlers({ ...dishMod.liveDishDeps, generate: (c: any, a: any, o: any) => dishMod.liveDishDeps.generate(c, a, { ...o, trace: (e: any) => traces.push({ meal: a.mealType, ...e }) }) });
+
+  // ── the sim's own checks on a served card (independent of the judge) ────────
+  const { foodMatches } = await import("@/lib/clara/kept-foods");
+  const { builtOn, proteinKind } = await import("@/lib/clara/dish-protein");
+  const { chooseProtein, sameProteinKind } = await import("@/lib/clara/protein-rule");
+  const { sizeProblem, proteinShareLow } = await import("@/lib/clara/meal-target");
+  const { RICH_FOODS } = await import("@/lib/clara/level-steer");
+  const { DishItemExtractor } = await import("@/lib/clara/dish-output");
+  const { priceDish } = await import("@/lib/staple-density");
+  const FISH = /\b(salmon|tuna|cod|haddock|tilapia|trout|mackerel|sardines?|anchov(y|ies)|halibut|bass|snapper|pollock|catfish|swordfish|fish)\b/i;
+  /** Proteins on the card that are not at home: a meat/fish/seafood ingredient, or the protein the dish is built on. */
+  function proteinsNotAtHome(ings: readonly DishIngredient[], steps: readonly string[], homeKeys: readonly string[]): string[] {
+    const out = new Set<string>();
+    for (const i of ings) { const k = proteinKind(i.name); if (k && k.cls === "meat" && !homeKeys.includes(k.key)) out.add(k.key); }
+    const b = builtOn(ings, steps);
+    if (b && !homeKeys.includes(b.key)) out.add(b.key);
+    return [...out];
+  }
+  const richIn = (level: "iron" | "potassium", names: readonly string[]) =>
+    RICH_FOODS[level].split(", ").filter((f) => names.some((n) => foodMatches(f, n)));
+
+
+
+  // What the product hands its generator and what the judge said, per request (diagnostics only).
+  let traces: { ms: number; name: string; stage: string }[] = [];
+  let verdicts: { id: string; name: string; source: "generated" | "library"; level: string; reasons: string[]; builtOn: string | null; onTodaysProtein: boolean }[] = [];
+  let seenAsk: any = null;
+  const keepVerdict = (source: "generated" | "library") => (j: any) =>
+    verdicts.push({ id: j.recipe.id, name: j.recipe.name, source, level: j.verdict.level, reasons: j.verdict.reasons, builtOn: j.verdict.builtOn, onTodaysProtein: !!j.onTodaysProtein });
+  const live = dishMod.liveDishDeps;
+  const handlers = dishMod.makeDishHandlers({
+    ...live,
+    get budgetMs() { return live.budgetMs; },
+    generate: (c: any, a: any, o: any = {}) => {
+      seenAsk = a;
+      return live.generate(c, a, { ...o, trace: (e: any) => traces.push(e), judged: (j: any) => { keepVerdict("generated")(j); o.judged?.(j); } });
+    },
+    library: (c: any, a: any, sig: any, judged: any) => live.library(c, a, sig, (j: any) => { keepVerdict("library")(j); judged?.(j); }),
+  });
   const req = (method: string, body: unknown) => new NextRequest(new URL("http://sim.local/api"), { method, body: JSON.stringify(body), headers: { "content-type": "application/json" } });
   const ids = (kind: any, prefix: string, rules: RuleKey[]) => rules.filter((k) => k.startsWith(prefix)).map((k) => store.ref(kind, k.slice(prefix.length)).id);
   const idOf = (name: string) => { const i = snap.ingredients.find((x) => x.name.toLowerCase() === name.toLowerCase()); if (!i) throw new Error(`no ingredient ${name}`); return i.id; };
+
+  /** The brain exactly as personFor builds it (same reads, same switches), with the read warnings it logged. */
+  const brainOf = async (pid: string, today: string) => {
+    const warns: string[] = [];
+    const w = console.warn;
+    console.warn = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+    try {
+      const patient = await (globalThis as any).prisma.patient.findFirst({ where: { id: pid }, include: PATIENT_FOOD_MAP_INCLUDE });
+      const matchers = buildDietMatchers(derivePatientBans(patient, new Date(`${today}T12:00:00`)));
+      const kept = await keptDb.keptFoodsFrom(await keptDb.loadKeptMarks(pid), matchers);
+      const rows = await loadBrainRows(pid, today);
+      const sodiumLimitMg = dailySodiumLimitMg(patient.healthConditions.map((h: any) => h.condition.name));
+      const brain = brainFrom({ kept, rules: dishMod.dishRulesNow.rules, rows, today, patient, matchers, sodiumLimitMg });
+      return { brain, rows, warns };
+    } finally { console.warn = w; }
+  };
 
   let pi = 0;
   for (const s of SCENARIOS) {
     pi++;
     if (only && !only.includes(s.id)) continue;
     if (s.asks.every((_, n) => done.has(`${s.id}|${n + 1}`))) continue;
-    const clerkId = `clerk_kept_${s.id}`;
+    const clerkId = `clerk_brain_${s.id}`;
     store.seedAccount(clerkId, `${clerkId}@sim.invalid`);
     state.patient = { account: { clerkId } } as any;
     const pr = await profile.PATCH(req("PATCH", {
-      firstName: "Sim", lastName: "Kept", birthday: "1988-03-14", sexAtBirth: pi % 2 ? "FEMALE" : "MALE", height: 168, heightUnit: "cm", weight: 150,
+      firstName: "Sim", lastName: "Brain", birthday: "1988-03-14", sexAtBirth: pi % 2 ? "FEMALE" : "MALE", height: 168, heightUnit: "cm", weight: 150,
       physicalActivityId: snap.physicalActivities[1].id,
       healthConditionIds: ids("healthCondition", "condition:", s.rules), foodAllergyIds: ids("foodAllergy", "allergy:", s.rules),
       foodPreferenceIds: ids("foodPreference", "diet:", s.rules), foodToAvoidIds: ids("foodToAvoid", "avoid:", s.rules), motivationIds: [],
@@ -175,107 +312,260 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
     const accountId = store.tables.account.find((a: any) => a.clerkId === clerkId).id;
     const pid = store.tables.patient.find((x: any) => x.accountId === accountId).id;
     for (const n of s.atHome) await store.client.patientPantryItem.create({ data: { patientId: pid, ingredientId: idOf(n) } });
-    for (const n of s.favourites) await store.client.patientIngredientPreference.create({ data: { patientId: pid, ingredientId: idOf(n), liked: true } });
-
-    // Wiring check: what the product's own loader sees for this person (not the sim's expectation).
-    const dietPatient = await (globalThis as any).prisma.patient.findFirst({ where: { id: pid }, include: PATIENT_FOOD_MAP_INCLUDE });
-    const matchers = buildDietMatchers(derivePatientBans(dietPatient, new Date("2026-11-21T12:00:00")));
-    const productKept = await keptDb.keptFoodsFrom(await keptDb.loadKeptMarks(pid), matchers);
-    const kept = expectedKept(s);
-    console.log(`\n── ${s.id}: ${s.title}\n   product sees: ${JSON.stringify(productKept)}\n   sim expects proteinKeys ${JSON.stringify(kept.proteinKeys)}, favourites ${JSON.stringify(kept.favorites)}`);
-    if (JSON.stringify([...productKept.proteinKeys].sort()) !== JSON.stringify([...kept.proteinKeys].sort()))
-      console.log(`   !! the product's protein keys differ from the sim's expectation`);
-    const oracle = makeOracle(makePatient(snap, { id: `kept-${s.id}`, tier: "curated", rules: s.rules }) as any, s.rules);
-
-    for (const [k, ask] of s.asks.entries()) {
-      const n = k + 1;
-      if (done.has(`${s.id}|${n}`)) continue;
-      // A different day per request: the library seed and the model's context both change.
-      const today = `2026-11-${String(1 + ((pi * 7 + n * 3) % 28)).padStart(2, "0")}`;
-      const ctx = { patientId: pid, accountId, firstName: "Sim", isPremium: false, today, surface: "ios", disabledSkills: [] };
-      const input: Record<string, unknown> = { mealType: ask.meal, ...(ask.wants ? { wants: ask.wants } : {}) };
-      const before = calls.length;
-      traces = [];
-      const warns: string[] = [];
-      const quiet = { warn: console.warn, info: console.info, log: console.log };
-      const t0 = Date.now();
-      let res: any;
-      let thrown: string | null = null;
-      try {
-        console.info = () => {};
-        console.warn = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
-        res = await handlers.suggest(ctx, input);
-      } catch (e) { thrown = (e as Error).message; }
-      finally { Object.assign(console, quiet); }
-      const latencyMs = Date.now() - t0;
-      const mine = calls.slice(before);
-      const d = res?.ok ? res.data.dish : null;
-      const part = d ? (res.parts ?? []).find((x: any) => x.kind === "dish" && x.dishId === d.dishId) : null;
-      const steps = d ? (res.parts ?? []).find((x: any) => x.kind === "steps" && x.dishId === d.dishId) : null;
-      const ingredients: string[] = part?.recipe?.ingredients?.map((x: any) => String(x.name)) ?? [];
-      const meats = [...new Set(ingredients.map(proteinKey).filter((x): x is string => x !== null))];
-      const ruleOn = proteinRuleOn(kept, ask.wants);
-      const breaks = d ? breaksProteinRule(ingredients, kept) : null;
-      const nameMeat = d ? proteinKey(d.name) : null;
-      const stepMeats = [...new Set((steps?.steps ?? []).map((x: any) => proteinKey(String(x.text))).filter((x: string | null): x is string => x !== null))];
-      const favouriteIn = kept.favorites.filter((f) => ingredients.some((i) => foodMatches(f, i)));
-      let oracleVerdict: string | null = null;
-      if (d) {
-        const items = ingredients.map((name) => ({ name, allergenGroups: ingByName.get(name.toLowerCase())?.allergenGroups ?? [] }));
-        const bad = oracle.judgeMany(items).map((v, j) => ({ v, n: items[j].name })).filter(({ v }) => v.engine.length || v.groups.length);
-        oracleVerdict = bad.length ? `VIOLATION: ${bad.map((b) => b.n).join(", ")}` : "pass";
+    if (s.eating) {
+      const or = await onboarding.PUT(req("PUT", { usualEating: s.eating, pills: [] }) as any);
+      if (or.status !== 200) throw new Error(`${s.id}: onboarding ${or.status} ${JSON.stringify(await or.json())}`);
+    }
+    // Scenario I: the day on which the rotation alone (nothing used today) picks the wanted protein.
+    if (s.rotationPicks) {
+      const { brain } = await brainOf(pid, dayStr(1));
+      const home: HomeProtein[] = brain.home;
+      const day = Array.from({ length: 28 }, (_, k) => k + 1).find((d) =>
+        chooseProtein({ mealType: "dinner", home, usedToday: [], patientId: pid, today: dayStr(d), rules: brain.rules })?.key === s.rotationPicks);
+      if (!day) throw new Error(`${s.id}: no day in November on which the rotation picks ${s.rotationPicks}`);
+      for (const a of s.asks) a.day = day;
+      console.log(`   ${s.id}: the rotation alone picks ${s.rotationPicks} on ${dayStr(day)}`);
+    }
+    for (const day of [...new Set(s.asks.map((a) => a.day))]) {
+      for (const m of s.logged ?? []) {
+        await store.client.mealLog.create({ data: { patientId: pid, localDate: dayStr(day), mealType: m.meal, source: "MANUAL", name: m.name,
+          calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, fiber: m.fiber, sodium: m.sodium } });
       }
-      const row = {
-        scenario: s.id, n, title: s.title, meal: ask.meal, request: ask.wants ?? null, today, dry: DRY,
-        ok: !!d, failure: d ? null : (thrown ?? res?.message ?? res?.reason ?? "no dish"),
-        dishName: d?.name ?? null, source: d ? (d.source === "library" ? "library" : "generated") : null,
-        ingredients, meats, nameMeat, stepMeats,
-        ruleApplies: ruleOn, mustKeepRule: s.mustKeepRule(ask), breaksProteinRule: breaks,
-        favouriteIn, oracle: oracleVerdict,
-        keptProteinKeys: kept.proteinKeys, productProteinKeys: productKept.proteinKeys,
-        candidates: traces.map((t) => ({ name: t.name, stage: t.stage, meats: [...new Set(t.name ? [proteinKey(t.name)].filter(Boolean) : [])] })),
-        latencyMs, modelCalls: mine.length,
-        calls: mine.map((c) => ({ model: c.model, ms: c.ms, inTokens: c.inTokens, outTokens: c.outTokens, stop: c.stop, aborted: c.aborted, error: c.error ?? null })),
-        warnings: warns.filter((w) => w.includes("[clara-dish]")),
-      };
-      appendFileSync(OUT, JSON.stringify(row) + "\n");
-      const flag = row.mustKeepRule && breaks ? "  << BREAKS THE RULE" : "";
-      console.log(`${s.id}#${n} ${ask.meal}${ask.wants ? ` "${ask.wants}"` : ""}: ${d ? `${row.source} "${d.name}" meats=[${meats.join(", ")}]${favouriteIn.length ? ` fav=${favouriteIn.join(",")}` : ""} · ${oracleVerdict}` : `NO DISH (${row.failure})`} · ${latencyMs} ms · ${mine.length} call(s)${mine.some((c) => c.error) ? ` ERROR ${mine.find((c) => c.error)!.error}` : ""}${flag}`);
-      if (mine.some((c) => c.error && /credit|quota|billing|authentication|permission|rate|ENOTFOUND|ECONN|network/i.test(c.error))) {
-        console.log("sim: stopping on an account/quota/network error (no retry).");
-        process.exit(2);
+    }
+    const saved = { ...dishMod.dishRulesNow.rules };
+    if (s.rules2) dishMod.dishRulesNow.rules = { ...DEFAULT_DISH_RULES, ...s.rules2 };
+    try {
+      // What the product sees for this person (its own reads, not the sim's expectation).
+      const first = await brainOf(pid, dayStr(s.asks[0].day));
+      const b0 = first.brain;
+      console.log(`\n── ${s.id}: ${s.title}\n   product sees (${dayStr(s.asks[0].day)}): day calories ${b0.dayCalories ?? "NULL"}, home proteins [${b0.home.map((h: HomeProtein) => `${h.key}/${h.cls}`).join(", ")}], ` +
+        `today ${b0.today ? `${b0.today.meals} meal(s) ${Math.round(b0.today.calories)} kcal sodium ${b0.today.sodium ?? "?"} mg` : "nothing logged"}, ` +
+        `picture ${b0.picture ? `little [${b0.picture.little.join(", ")}] a lot [${b0.picture.aLot.join(", ")}]` : "none"}, used today [${b0.usedToday.join("; ")}], ` +
+        `rules off [${Object.entries(b0.rules).filter(([, v]) => !v).map(([k]) => k).join(", ")}]` +
+        (first.warns.length ? `\n   !! read warnings: ${first.warns.join(" | ")}` : ""));
+      const oracle = makeOracle(makePatient(snap, { id: `brain-${s.id}`, tier: "curated", rules: s.rules }) as any, s.rules);
+
+      for (const [k, ask] of s.asks.entries()) {
+        const n = k + 1;
+        if (done.has(`${s.id}|${n}`)) continue;
+        const today = dayStr(ask.day);
+        const lunchRow = ask.afterLunch ? done.get(`${s.id}|${ask.afterLunch}`) : null;
+        const avoid: string[] = lunchRow?.dishName ? [lunchRow.dishName] : [];
+        const notes: string[] = [];
+        if (ask.afterLunch && !lunchRow?.dishName) notes.push("the same day's lunch has no dish: no avoid list");
+        const pre = await brainOf(pid, today);
+        const brain = pre.brain;
+        for (const w of pre.warns) notes.push(`read: ${w}`);
+        if (brain.dayCalories == null) notes.push("fixture gap: no day calorie target (calorie profile incomplete?): size not steered");
+        if ((s.logged?.length ?? 0) > 0 && !brain.today) notes.push("fixture gap: today's seeded log not seen by the week read");
+        if (s.eating && !brain.picture) notes.push("fixture gap: onboarding answers not seen (no picture)");
+
+        const ctx = { patientId: pid, accountId, firstName: "Sim", isPremium: false, today, surface: "ios", disabledSkills: [] };
+        const input: Record<string, unknown> = { mealType: ask.meal, ...(ask.wants ? { wants: ask.wants } : {}), ...(avoid.length ? { avoid } : {}) };
+        const before = calls.length;
+        traces = []; verdicts = []; seenAsk = null;
+        const warns: string[] = [];
+        const quiet = { warn: console.warn, info: console.info, log: console.log };
+        const t0 = Date.now();
+        let res: any;
+        let thrown: string | null = null;
+        try {
+          console.info = () => {};
+          console.warn = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+          res = await handlers.suggest(ctx, input);
+        } catch (e) { thrown = (e as Error).message; }
+        finally { Object.assign(console, quiet); }
+        const latencyMs = Date.now() - t0;
+        const mine = calls.slice(before);
+        // The rest of the model's answer (READ_ALL), so every candidate is on the row.
+        await Promise.race([Promise.all(mine.map((c) => c.fullRead ?? Promise.resolve())), new Promise((r) => setTimeout(r, 65_000).unref?.())]);
+
+        // The steer the product computed for this ask (the ask it handed the generator).
+        const askForSteer = seenAsk ?? { mealType: ask.meal, ...(ask.wants ? { wants: ask.wants } : {}), ...(avoid.length ? { avoid } : {}), summary: { little: [], aLot: [] } };
+        if (!seenAsk) notes.push("the generator was not called: steer computed from an empty level summary");
+        const steer = steerForAsk(brain, askForSteer, { patientId: pid, today });
+        const steerKeys = steer.levels.map((l: any) => `${l.key}:${l.direction}:${l.why}`);
+
+        const d = res?.ok ? res.data.dish : null;
+        const part = d ? (res.parts ?? []).find((x: any) => x.kind === "dish" && x.dishId === d.dishId) : null;
+        const recipe = part?.recipe ?? null;
+        const ings: DishIngredient[] = recipe?.ingredients?.map((x: any) => ({ name: String(x.name), quantity: x.quantity ?? null, unit: x.unit ?? "" })) ?? [];
+        const steps: string[] = recipe?.steps ?? [];
+        const names = ings.map((i) => i.name);
+        const homeKeys: string[] = brain.home.map((h: HomeProtein) => h.key);
+        const built = d ? builtOn(ings, steps) : null;
+        const calories: number | null = part?.calories ?? null;
+        const proteinG: number | null = recipe?.perServing?.protein ?? null;
+        const verdict = d ? verdicts.find((v) => v.id === d.dishId) ?? null : null;
+        const ladder = !d ? "none" : d.source === "library" ? "stored recipe" : verdict ? verdict.level : "generated (no verdict seen)";
+        let oracleVerdict: string | null = null;
+        if (d) {
+          const items = names.map((name) => ({ name, allergenGroups: ingByName.get(name.toLowerCase())?.allergenGroups ?? [] }));
+          const bad = oracle.judgeMany(items).map((v, j) => ({ v, n: items[j].name })).filter(({ v }) => v.engine.length || v.groups.length);
+          oracleVerdict = bad.length ? `VIOLATION: ${bad.map((b) => b.n).join(", ")}` : "pass";
+        }
+
+        // Every candidate the model wrote, and where each one ended in the product.
+        const text = mine.map((c) => c.text).join("");
+        const items = new DishItemExtractor().push(text) as any[];
+        const productStopped = mine.some((c) => c.productStopped);
+        const candidates = items.map((it, i) => {
+          const cIngs: DishIngredient[] = (it?.ingredients ?? []).map((x: any) => ({ name: String(x?.name ?? ""), quantity: typeof x?.quantity === "number" ? x.quantity : null, unit: String(x?.unit ?? "") }));
+          const cSteps: string[] = Array.isArray(it?.steps) ? it.steps.map(String) : [];
+          const t = traces[i];
+          const v = t ? verdicts.find((x) => x.source === "generated" && x.name === t.name) : undefined;
+          const priced = priceDish(cIngs, cSteps);
+          const cal = priced?.calories ?? it?.perServing?.calories ?? null;
+          const prot = priced?.protein ?? it?.perServing?.protein ?? null;
+          return {
+            name: String(it?.name ?? "?"),
+            product: t ? t.stage : productStopped ? "not read (the product stopped reading: a dish was accepted or the deadline passed)" : "not reached",
+            productName: t?.name ?? null,
+            served: !!(d && t && t.name === d.name && d.source !== "library"),
+            judge: v ? { level: v.level, reasons: v.reasons, builtOn: v.builtOn, onTodaysProtein: v.onTodaysProtein } : null,
+            // The sim's own estimate from the raw candidate (the judge's reasons for a failed candidate are not observable).
+            est: {
+              builtOn: builtOn(cIngs, cSteps)?.key ?? null,
+              proteinsNotAtHome: ask.wants ? [] : proteinsNotAtHome(cIngs, cSteps, homeKeys),
+              calories: cal == null ? null : Math.round(cal), declaredCalories: it?.perServing?.calories ?? null,
+              sizeProblem: cal == null ? null : sizeProblem(ask.meal, cal, steer.target.calories),
+              proteinShare: cal && prot != null ? Math.round((prot * 400) / cal) / 100 : null,
+            },
+            ingredients: cIngs.map((x) => x.name),
+          };
+        });
+        if (!DRY && mine.length && items.length < 3 && !mine.some((c) => c.error)) notes.push(`the model's answer held ${items.length} candidate(s), not 3${READ_ALL ? "" : " (SIM_READ_ALL=0: the rest was not read)"}`);
+
+        const sodium: number | null = recipe?.perServing?.sodium ?? null;
+        const sodiumCeiling: number | null = steer.ceilings.sodium ?? null;
+        const row = {
+          scenario: s.id, n, title: s.title, meal: ask.meal, request: ask.wants ?? null, label: ask.label ?? null, today, avoid, dry: DRY,
+          ok: !!d, failure: d ? null : (thrown ?? res?.message ?? res?.reason ?? "no dish"),
+          dishName: d?.name ?? null, source: d ? (d.source === "library" ? "library" : "generated") : null,
+          ladder, judgeLevel: verdict?.level ?? null, judgeReasons: verdict?.reasons ?? null, judgeBuiltOn: verdict?.builtOn ?? null,
+          builtOn: built?.key ?? null, builtOnName: built?.name ?? null,
+          chosen: steer.choice, ruleOn: steer.ruleOn, homeProteins: homeKeys,
+          targetCalories: steer.target.calories, band: steer.target.band, calories, proteinG,
+          proteinShare: calories && proteinG != null ? Math.round((proteinG * 400) / calories) / 100 : null,
+          sizeProblem: d && calories != null ? sizeProblem(ask.meal, calories, steer.target.calories) : null,
+          proteinShareLow: d && calories != null && proteinG != null ? proteinShareLow(ask.meal, calories, proteinG) : null,
+          hasFromHomeKey: !!part && Object.prototype.hasOwnProperty.call(part, "fromHome"), fromHome: part?.fromHome ?? null,
+          steer: steerKeys, sodium, sodiumCeiling,
+          proteinsNotAtHome: d ? proteinsNotAtHome(ings, steps, homeKeys) : [],
+          proteinKinds: [...new Set(names.map((x) => proteinKind(x)?.key).filter(Boolean))],
+          fish: names.filter((x) => FISH.test(x)),
+          richIron: richIn("iron", names), richPotassium: richIn("potassium", names),
+          oracle: oracleVerdict, ingredients: names,
+          candidates, notes,
+          latencyMs, modelCalls: mine.length,
+          calls: mine.map((c) => ({ model: c.model, ms: c.ms, inTokens: c.inTokens, outTokens: c.outTokens, stop: c.stop, aborted: c.aborted, productStopped: c.productStopped, error: c.error ?? null })),
+          warnings: warns.filter((w) => w.includes("[clara-dish]")),
+        };
+        appendFileSync(OUT, JSON.stringify(row) + "\n");
+        done.set(`${s.id}|${n}`, row);
+        console.log(`${s.id}#${n} ${today} ${ask.meal}${ask.wants ? ` "${ask.wants}"` : ""}${avoid.length ? ` avoid=[${avoid.join(", ")}]` : ""}: ` +
+          (d ? `[${ladder}${verdict?.reasons.length ? `: ${verdict.reasons.join(", ")}` : ""}] "${d.name}" on ${built?.key ?? "nothing"} · ${calories} kcal / target ${steer.target.calories ?? "-"} · protein ${row.proteinShare ?? "?"} · ${oracleVerdict}` : `NO DISH (${row.failure})`) +
+          ` · chosen ${steer.choice ? `${steer.choice.key} (${steer.choice.why})` : "-"} · steer [${steerKeys.join(", ")}] · sodium ceiling ${sodiumCeiling ?? "-"}` +
+          ` · ${latencyMs} ms · ${mine.length} call(s)${mine.some((c) => c.error) ? ` ERROR ${mine.find((c) => c.error)!.error}` : ""}` +
+          (candidates.length ? `\n     candidates: ${candidates.map((c) => `"${c.name}" → ${c.product.split(" (")[0]}${c.judge?.reasons.length ? ` (${c.judge.reasons.join(", ")})` : ""}`).join("; ")}` : "") +
+          (notes.length ? `\n     notes: ${notes.join(" | ")}` : ""));
+        if (mine.some((c) => c.error && /credit|quota|billing|authentication|permission|rate|ENOTFOUND|ECONN|network/i.test(c.error))) {
+          console.log("sim: stopping on an account/quota/network error (no retry).");
+          process.exit(2);
+        }
       }
+    } finally {
+      dishMod.dishRulesNow.rules = saved;
     }
   }
 
   // ── summary from every row in OUT ──────────────────────────────────────────
   const rows: any[] = readFileSync(OUT, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-  const main = (r: any) => (r.meats.length ? r.meats.join("+") : "no meat/fish");
-  const groups: [string, any[]][] = [];
+  const id = (r: any) => `${r.scenario}#${r.n}`;
+  const of = (sc: string, f: (r: any) => boolean = () => true) => rows.filter((r) => r.scenario === sc && f(r));
+  const allDry = rows.length > 0 && rows.every((r) => r.dry);
+  type Line = { line: string; verdict: string };
+  const lines: Line[] = [];
+  /** Every served dish in `rs` must pass `ok`; no rows → n/a. */
+  const each = (line: string, rs: any[], ok: (r: any) => boolean, needsModel = false) => {
+    if (needsModel && allDry) return lines.push({ line, verdict: "n/a (dry)" });
+    if (rs.length === 0) return lines.push({ line, verdict: "n/a (no rows)" });
+    const served = rs.filter((r) => r.ok);
+    const bad = served.filter((r) => !ok(r));
+    const tail = served.length < rs.length ? ` [${served.length} of ${rs.length} asks served]` : "";
+    lines.push({ line, verdict: (bad.length ? `FAIL ${bad.map(id).join(", ")}` : served.length ? "PASS" : "n/a (no dish served)") + tail });
+  };
+  const whole = (line: string, rs: any[], ok: () => string | null, needsModel = false) => {
+    if (needsModel && allDry) return lines.push({ line, verdict: "n/a (dry)" });
+    if (rs.length === 0) return lines.push({ line, verdict: "n/a (no rows)" });
+    const fail = ok();
+    lines.push({ line, verdict: fail ? `FAIL ${fail}` : "PASS" });
+  };
+  const onSalmonOrBeef = (r: any) => !!r.builtOn && ["salmon", "ground beef"].some((k) => sameProteinKind(r.builtOn, k));
+
+  const a = of("A");
+  each("A1 every lunch and dinner is built on salmon or ground beef", a, onSalmonOrBeef);
+  whole("A2 both salmon and ground beef appear; at least 3 different dish names", a, () => {
+    const served = a.filter((r) => r.ok);
+    const salmon = served.some((r) => r.builtOn && sameProteinKind(r.builtOn, "salmon"));
+    const beef = served.some((r) => r.builtOn && sameProteinKind(r.builtOn, "ground beef"));
+    const names = new Set(served.map((r) => r.dishName.trim().toLowerCase())).size;
+    const why = [!salmon && "no salmon dish", !beef && "no ground beef dish", names < 3 && `${names} different name(s)`].filter(Boolean);
+    return why.length ? `(${why.join(", ")})` : null;
+  }, true);
+  whole("A3 each day's lunch and dinner: same protein, different names", a, () => {
+    const bad: string[] = [];
+    for (const lunch of a.filter((r) => r.meal === "lunch")) {
+      const dinner = a.find((r) => r.meal === "dinner" && r.today === lunch.today);
+      if (!lunch.ok || !dinner?.ok) { bad.push(`${lunch.today} (a dish missing)`); continue; }
+      if (!lunch.builtOn || !dinner.builtOn || !sameProteinKind(lunch.builtOn, dinner.builtOn)) bad.push(`${id(lunch)}/${id(dinner)} (${lunch.builtOn} vs ${dinner.builtOn})`);
+      else if (lunch.dishName.trim().toLowerCase() === dinner.dishName.trim().toLowerCase()) bad.push(`${id(lunch)}/${id(dinner)} (same name)`);
+    }
+    return bad.length ? bad.join(", ") : null;
+  }, true);
+  each("A4 every lunch and dinner within 0.55-1.25 x target and >= 15% protein", a, (r) => r.targetCalories != null && r.sizeProblem === null && r.proteinShareLow === false);
+  each("B  no dish has a protein that is not at home", of("B"), (r) => r.proteinsNotAtHome.length === 0);
+  each("C1 chicken: built on chicken and fromHome.proteinNotAtHome is set", of("C", (r) => r.label === "chicken"), (r) => r.builtOn === "chicken" && !!r.fromHome?.proteinNotAtHome);
+  each("C2 stir-fry and plain dinner: no protein that is not at home", of("C", (r) => r.label !== "chicken"), (r) => r.proteinsNotAtHome.length === 0);
+  const dR = of("D");
+  whole("D  nothing marked: a dish each time; no fromHome key", dR, () => {
+    const bad = dR.filter((r) => !r.ok || r.hasFromHomeKey);
+    return bad.length ? bad.map((r) => `${id(r)}${r.ok ? " (fromHome)" : " (no dish)"}`).join(", ") : null;
+  });
+  const eR = of("E");
+  whole("E1 the product's steer names iron and potassium", eR, () => {
+    const bad = eR.filter((r) => !(r.steer.some((k: string) => k.startsWith("iron:more")) && r.steer.some((k: string) => k.startsWith("potassium:more"))));
+    return bad.length ? bad.map((r) => `${id(r)} [${r.steer.join(", ")}]`).join(", ") : null;
+  });
+  each("E2 each dish has a food rich in iron or potassium", eR, (r) => r.richIron.length + r.richPotassium.length > 0, true);
+  const fR = of("F");
+  whole("F1 the product's steer has sodium:less:today", fR, () => {
+    const bad = fR.filter((r) => !r.steer.includes("sodium:less:today"));
+    return bad.length ? bad.map((r) => `${id(r)} [${r.steer.join(", ")}]`).join(", ") : null;
+  });
+  each("F2 each dish's sodium is unknown or at most the product's ceiling", fR, (r) => r.sodium === null || (r.sodiumCeiling != null && r.sodium <= r.sodiumCeiling));
+  const gR = of("G");
+  whole("G  protein rule off (vegan): a dish each time", gR, () => {
+    const bad = gR.filter((r) => !r.ok);
+    return bad.length ? bad.map(id).join(", ") : null;
+  }, true);
+  each("H  fish allergy: no fish; diet oracle passes; built on ground beef", of("H"), (r) => r.fish.length === 0 && r.oracle === "pass" && r.builtOn === "ground beef");
+  each("I  beef logged today, rotation says salmon: built on ground beef", of("I"), (r) => r.builtOn === "ground beef");
+  const noDish = rows.filter((r) => !r.ok);
+  lines.push({ line: "all every request returned a dish", verdict: noDish.length ? `FAIL ${noDish.map(id).join(", ")}` : "PASS" });
+  const dietBreaks = rows.filter((r) => r.ok && r.oracle !== "pass");
+
+  console.log(`\n${"scenario".padEnd(9)}${"asks".padEnd(6)}${"dishes".padEnd(8)}ladder (pass/relaxed/stored/none) · dishes [built on]`);
   for (const s of SCENARIOS) {
-    const rs = rows.filter((r) => r.scenario === s.id);
-    if (s.id === "C") {
-      groups.push(["C-chicken", rs.filter((r) => r.request === "a chicken dish")], ["C-stir-fry", rs.filter((r) => r.request === "a stir-fry")]);
-    } else groups.push([s.id, rs]);
-  }
-  console.log(`\n${"scenario".padEnd(11)}${"asks".padEnd(6)}${"dishes".padEnd(8)}${"breaks".padEnd(8)}${"must=0".padEnd(8)}${"diet".padEnd(6)}dishes (main protein)`);
-  for (const [id, rs] of groups) {
+    const rs = of(s.id);
     if (!rs.length) continue;
-    const dishes = rs.filter((r) => r.ok);
-    const breaks = dishes.filter((r) => r.breaksProteinRule).length;
-    const must = rs.some((r) => r.mustKeepRule) ? "yes" : "no";
-    const diet = dishes.filter((r) => r.oracle !== "pass").length;
-    console.log(`${id.padEnd(11)}${String(rs.length).padEnd(6)}${String(dishes.length).padEnd(8)}${String(breaks).padEnd(8)}${must.padEnd(8)}${String(diet).padEnd(6)}${rs.map((r) => r.ok ? `${r.dishName} [${r.source[0]}] (${main(r)})` : `NO DISH`).join("; ")}`);
+    const count = (l: string) => rs.filter((r) => r.ladder === l).length;
+    console.log(`${s.id.padEnd(9)}${String(rs.length).padEnd(6)}${String(rs.filter((r) => r.ok).length).padEnd(8)}${count("pass")}/${count("relaxed")}/${count("stored recipe")}/${count("none")} · ${rs.map((r) => (r.ok ? `${r.dishName} [${r.builtOn ?? "-"}]` : "NO DISH")).join("; ")}`);
   }
-  const b = rows.filter((r) => r.scenario === "B" && r.ok);
-  if (b.length) {
-    const salmon = b.filter((r) => r.meats.includes("salmon")).length;
-    const beef = b.filter((r) => r.meats.some((m: string) => m.includes("beef"))).length;
-    console.log(`\nB salmon share: ${salmon}/${b.length} dishes have salmon, ${beef}/${b.length} have beef, ${b.filter((r) => !r.meats.includes("salmon") && !r.meats.some((m: string) => m.includes("beef"))).length}/${b.length} neither`);
-  }
-  const dRows = rows.filter((r) => r.scenario === "D" && r.ok);
-  if (dRows.length) console.log(`D proteins seen: ${[...new Set(dRows.flatMap((r) => r.meats))].join(", ") || "none"}`);
-  const failing = rows.filter((r) => r.mustKeepRule && r.breaksProteinRule);
-  console.log(`\nrule breaks where the rule must hold: ${failing.length}${failing.length ? " — " + failing.map((r) => `${r.scenario}#${r.n} ${r.dishName}`).join("; ") : ""}`);
+  console.log(`\nacceptance (${allDry ? "DRY run: no model" : "live run"}; ${rows.length} rows in ${OUT.split("/").slice(-2).join("/")})`);
+  for (const l of lines) console.log(`  ${l.line.padEnd(72)} ${l.verdict}`);
+  console.log(`\nrequests with no dish: ${noDish.length} of ${rows.length}`);
+  console.log(`diet oracle breaks: ${dietBreaks.length}${dietBreaks.length ? " — " + dietBreaks.map((r) => `${id(r)} ${r.oracle}`).join("; ") : ""}`);
+  console.log(`planned live calls: ${PLANNED_CALLS} (cap ${CAP})`);
   console.log(`ledger: ${ledger.calls} live calls in total (${JSON.stringify(ledger.models)}); this run: ${calls.filter((c) => !c.model.endsWith("(dry)")).length}`);
 })().catch((e) => { console.error(e); process.exit(1); });
