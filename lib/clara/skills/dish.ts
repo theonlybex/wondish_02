@@ -24,7 +24,8 @@ import { applyAllergenFilter, parseFridgeRecipes, type FridgeRecipe } from "@/li
 import { DISH_OUTPUT_SCHEMA, DISH_UNITS, DishItemExtractor, toFridgeItem } from "@/lib/clara/dish-output";
 import { libraryToFridge, matchesRequest, rankLibrary, suggestionName, type LibraryRecipe, type RecentDishes } from "@/lib/clara/dish-library";
 import { foodMatches, proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-foods";
-import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
+import { keptFoodsFrom, loadCatalogRows, loadKeptMarks } from "@/lib/clara/kept-foods-db";
+import { groceryGroups, type GroceryGroup } from "@/lib/clara/grocery";
 import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type AskSteer, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
 import { builtOn, eggsOnlyKitchen, proteinKind } from "@/lib/clara/dish-protein";
 import { dishShape, judgeDish, keepWayOfCooking, starchFamily, type DishShape, type DishVerdict } from "@/lib/clara/dish-judge";
@@ -2108,6 +2109,23 @@ export function makeSwapHandlers(deps: DishDeps = prismaDeps) {
   };
 
   return { options, apply, without };
+}
+
+// ─── The Grocery list (lib/clara/grocery.ts) ─────────────────────────────────
+
+/**
+ * What to buy, for the app's Grocery tab: the same person the dishes are made for (their week on
+ * the Numbers list, their first-run answers, their diet) and the catalog with their marks. No
+ * model call. null when there is no such patient.
+ */
+export async function groceryListFor(patientId: string, today: string): Promise<{ groups: GroceryGroup[]; visibleIds: Set<string> } | null> {
+  const person = await personFor({ patientId, today } as ClaraContext);
+  if (!person) return null;
+  const rows = await loadCatalogRows(patientId, person.matchers);
+  return {
+    groups: groceryGroups({ rows, week: person.brain.week, picture: person.brain.picture }),
+    visibleIds: new Set(rows.map((r) => r.id)),
+  };
 }
 
 /** The production effects, for the live simulation (sim/clara-fast-live.sim.ts) to wrap with a trace. */
