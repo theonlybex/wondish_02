@@ -24,6 +24,11 @@ export interface JudgeInput {
   rules: DishRules;
   targetCalories: number | null;
   ceilings: Partial<Record<FullLevelKey, number>>;
+  /**
+   * An exchange (piece B): the dish must still be the dish. At least two thirds of `names` (its other
+   * foods) are among the ingredients, and the calories stay inside the band around what they were.
+   */
+  mustKeep?: { names: readonly string[]; calories: number; band: { min: number; max: number } };
   /** Foods the person said they do not have for this dish: a dish that uses one is out. */
   without?: readonly string[];
   /** Dish names they had today or in the last days, or were just shown. A dish that is one of them reworded is only served when nothing else passes. */
@@ -152,6 +157,13 @@ export function judgeDish(input: JudgeInput): DishVerdict {
     if (input.ingredients.some((i) => foodMatches(w, i.name))) reasons.push(`without:${w}`);
   }
 
+  if (input.mustKeep) {
+    const { names, calories, band } = input.mustKeep;
+    const kept = names.filter((n) => input.ingredients.some((i) => foodMatches(n, i.name))).length;
+    if (names.length > 0 && kept * 3 < names.length * 2) reasons.push("exchange:another-dish");
+    if (calories > 0 && (input.calories < calories * band.min || input.calories > calories * band.max)) reasons.push("exchange:size");
+  }
+
   if (namedAfterOwnIngredient(input.name, input.ingredients.map((i) => i.name))) reasons.push("honest:named-after-ingredient");
 
   if (input.rules.sizeToCalories) {
@@ -177,6 +189,6 @@ export function judgeDish(input: JudgeInput): DishVerdict {
     if (amount !== undefined && ceiling !== undefined && amount > ceiling) reasons.push(`limit:${key}`);
   }
 
-  const hard = reasons.some((r) => r.startsWith("protein:") || r.startsWith("honest:") || r.startsWith("limit:") || r.startsWith("without:"));
+  const hard = reasons.some((r) => r.startsWith("protein:") || r.startsWith("honest:") || r.startsWith("limit:") || r.startsWith("without:") || r.startsWith("exchange:"));
   return { level: hard ? "fail" : reasons.length ? "relaxed" : "pass", reasons, builtOn: built?.key ?? null };
 }

@@ -597,7 +597,10 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
                 const re = new RegExp(`\\b${h}(s|es|oes)?\\b`, "i");
                 return re.test(r.dish.name) || r.dish.recipe.steps.some((st: string) => re.test(st));
               })(),
-              replacementInSteps: t.replacement && r?.ok ? r.dish.recipe.steps.some((st: string) => st.toLowerCase().includes(t.replacement!.trim().toLowerCase().split(/\s+/).pop()!.replace(/(es|s)$/, ""))) : null,
+              // Any word of the replacement's name, in either number ("Salmon fillets" is "the salmon" in a step).
+              replacementInSteps: t.replacement && r?.ok ? r.dish.recipe.steps.some((st: string) => t.replacement!.trim().toLowerCase().split(/\s+/).filter((w) => w.length > 3).some((w) => st.toLowerCase().includes(w.replace(/(es|s)$/, "")))) : null,
+              vsOriginal: r?.ok && calories ? Math.round((r.dish.calories / calories) * 100) / 100 : null,
+              notAtHome: rIngs.map((i) => i.name).filter((nm) => !brain.kept.atHome.some((h: string) => foodMatches(h, nm)) && !brain.kept.proteinNames.some((h: string) => foodMatches(h, nm)) && !brain.basics.some((h: string) => foodMatches(h, nm)) && !/onion|garlic|lemon|lime|herb|parsley|cilantro|basil|water|salt|pepper/i.test(nm)),
               keptShare: r?.ok ? (() => { const others = names.filter((nm) => nm !== t.ingredient && !/salt|pepper|water/i.test(nm)); return others.length ? others.filter((nm) => rIngs.some((i) => foodMatches(nm, i.name))).length / others.length : 1; })() : null,
               sizeProblem: r?.ok ? sizeProblem(ask.meal, r.dish.calories, steer.target.calories) : null,
               amounts: rIngs.map((i) => `${i.quantity ?? ""} ${i.unit} ${i.name}`.replace(/\s+/g, " ").trim()),
@@ -789,7 +792,8 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
   swapLine("B2 the food they do not have is gone from the ingredients, the steps and the name", ({ x }) => x.ok && (x.stillHasIt || x.headLeft));
   swapLine("B3 an exchange puts the replacement in the ingredients and in a step", ({ x }) => x.ok && (x.hasReplacement === false || x.replacementInSteps === false), ({ x }) => x.kind !== "without");
   swapLine("B7 a rewritten dish keeps at least two thirds of the other ingredients", ({ x }) => x.ok && x.keptShare < 2 / 3, ({ x }) => x.how === "rewritten");
-  swapLine("B8 every changed lunch and dinner is inside the size band", ({ x }) => x.ok && x.sizeProblem !== null);
+  swapLine("B8 an exchanged or rewritten dish stays within 0.7-1.25 x the original's calories", ({ x }) => x.ok && (x.vsOriginal < 0.7 || x.vsOriginal > 1.25), ({ x }) => x.kind !== "without");
+  swapLine("B9 a 'nothing similar' dish is inside the meal's size band", ({ x }) => x.ok && x.sizeProblem !== null, ({ x }) => x.kind === "without");
   swapLine("B4 a like-for-like exchange is made in code: no model call", ({ x }) => x.ok && x.modelCalls !== 0, ({ x }) => x.kind === "plain");
   swapLine("B5 every changed dish passes the diet oracle", ({ x }) => x.ok && x.oracle !== "pass");
   whole("B6 no offer names a food already in the dish; at-home foods are offered first", swapRows, () => {

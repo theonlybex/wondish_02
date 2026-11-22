@@ -160,7 +160,7 @@ export interface DishAsk {
    * The ingredients check before cooking (piece B): they were about to cook `dish` and do not
    * have `from`. Set together with `wants` (what takes its place) and `without`.
    */
-  swap?: { dish: string; from: string; ingredients: string[]; steps: string[] };
+  swap?: { dish: string; from: string; ingredients: string[]; steps: string[]; calories: number; others: string[] };
   /** Foods they said they do not have: told to the generator, and a dish that uses one is dropped by the judge. */
   without?: string[];
 }
@@ -543,7 +543,8 @@ export function dishSystemPrompt(a: {
       proteinLine += ` If this dish has a protein at its centre, make it ${cleanOne(lean.name)}, which they have at home; a dish that needs no protein (pancakes, a salad, a soup) stays as asked.`;
     }
   } else if (a.proteinOptions.length > 0 && a.bannedNames.length > 0) {
-    proteinLine = `- Protein sources that fit this person — build every main around one of them: ${a.proteinOptions.join(", ")}.`;
+    // Not for an exchange: the dish is given, and "build every main around lean beef" was said to someone exchanging their beef for mushrooms.
+    proteinLine = ask.swap ? "" : `- Protein sources that fit this person — build every main around one of them: ${a.proteinOptions.join(", ")}.`;
   }
   // A day plan makes lunch and dinner at once on the same chosen protein, with nothing else keeping
   // them apart (final review, 2026-11-21): the same protein in different dishes.
@@ -647,7 +648,11 @@ export function dishSystemPrompt(a: {
   const servings = ask.servings ?? 1;
   const units = DISH_UNITS.filter((u) => u !== "").join(", ");
   return [
-    `You are Clara, Wondish's nutrition assistant. Suggest ${CANDIDATES} different, realistic, home-cookable ${meal} dishes for this person to cook today. ${opening}`,
+    ask.swap
+      // An exchange is one dish written again, not a new dish to think up (live swap run 2, 2026-11-22:
+      // "what they asked for is the dish's main idea ... the simplest first" turned a potato skillet into a seared fillet on rice).
+      ? `You are Clara, Wondish's nutrition assistant. This person is about to cook a ${meal} and is missing one ingredient. Write the SAME dish again with the exchange below, ${CANDIDATES} times, the version closest to the original first. The app shows the first one that passes its checks.`
+      : `You are Clara, Wondish's nutrition assistant. Suggest ${CANDIDATES} different, realistic, home-cookable ${meal} dishes for this person to cook today. ${opening}`,
     `Rules:`,
     `- Every dish is a ${meal}. servings is ${servings}; every amount and every perServing number is for ONE serving.`,
     servings > 1
@@ -664,7 +669,9 @@ export function dishSystemPrompt(a: {
           ? `- Each dish is a complete meal (protein + carb + vegetables where sensible).`
           : `- Each dish is a complete meal: a carb and vegetables, with a protein only where it suits.`,
     ...levelLines,
-    ask.wants !== undefined
+    ask.swap && ask.wants !== undefined
+      ? `- THE EXCHANGE: use ${cleanOne(ask.wants)} in place of ${cleanOne(ask.swap.from)}, and name the dish with it. Every other rule here still applies in full.`
+      : ask.wants !== undefined
       ? `- THE REQUEST: they asked to cook "${ask.wants.replace(/["\n\r]+/g, "").replace(/\s+/g, " ").trim()}". Every one of the ${CANDIDATES} dishes must be that: what they asked for is the dish's main idea and is named in the dish name. Make ${CANDIDATES} versions of it, the simplest first, not ${CANDIDATES} unrelated dishes. Where a line above says to build the dish around another ingredient, add that ingredient to this dish instead. Every other rule here still applies in full. If a rule forbids part of what they asked for, the rule wins: use a food that fits in its place and name the dish by what is really in it.`
       : ``,
     ask.swap
@@ -691,12 +698,15 @@ export function dishSystemPrompt(a: {
       : saltRuleLine(a.sodiumLimitMg),
     `- Cooking fat: one teaspoon per serving is normal and one tablespoon is the maximum; write the same amount in the steps as in ingredients.`,
     // A macro split asks for ~30% protein: not said to someone who needs no push (or a modest portion).
-    ...targetLines(steer.need === "push" ? steer.target : { ...steer.target, split: null }, ask.mealType, brain.rules.mainsOnProtein),
+    ...(ask.swap
+      ? [`- Size: keep each serving at about ${Math.round(ask.swap.calories)} kcal, as the dish was. It must be between ${Math.ceil(ask.swap.calories * SWAP_REWRITE_BAND.min)} and ${Math.floor(ask.swap.calories * SWAP_REWRITE_BAND.max)} kcal: if the new food has fewer calories, use more of it and more of the dish's starch.`]
+      : targetLines(steer.need === "push" ? steer.target : { ...steer.target, split: null }, ask.mealType, brain.rules.mainsOnProtein)),
     proteinLine,
     dayPlanLine,
     recentLine,
     styleLine,
-    atHomeLine,
+    // For an exchange the dish's own foods are kept, all of them.
+    ask.swap ? atHomeLine.replace(" Use the at-home foods that make a good dish, not all of them at once: one starch (rice, potatoes, pasta or bread) per dish.", "") : atHomeLine,
     basicsLine,
     favorites.length > 0
       ? `- These are their favourite foods; at least one of the dishes should feature one when it suits the meal: ${clean(favorites)}.`
@@ -942,7 +952,9 @@ function judgeGated(gated: FridgeRecipe, ask: DishAsk, person: Person, steer: As
     known: card.sodium !== null ? { sodium: card.sodium } : {},
     home: person.brain.home,
     rules: person.brain.rules,
-    targetCalories: steer.target.calories,
+    // An exchange is sized against the dish it came from, not the meal.
+    targetCalories: ask.swap ? null : steer.target.calories,
+    ...(ask.swap ? { mustKeep: { names: ask.swap.others, calories: ask.swap.calories, band: SWAP_REWRITE_BAND } } : {}),
     ceilings: steer.ceilings,
     notLike: [...person.brain.usedToday, ...person.brain.usedRecently, ...(ask.avoid ?? [])],
     ...(ask.without && ask.without.length > 0 ? { without: ask.without } : {}),
@@ -1962,6 +1974,8 @@ export const SWAP_NOT_IN_DISH = "That ingredient is not in this dish.";
 export const SWAP_NOT_OFFERED = "That is not one of the exchanges for this ingredient.";
 /** A code-made exchange is served only when the dish's calories stay within this share of what they were. */
 export const SWAP_CALORIE_BAND = 0.15;
+/** A rewritten exchange stays between these shares of the original's calories (a non-protein option is lighter, so the floor is lower than the ceiling is high). */
+export const SWAP_REWRITE_BAND = { min: 0.7, max: 1.25 } as const;
 export const SWAP_COULDNT = "I couldn't make that change fit you. Try another one, or a different dish.";
 
 /** The dish as the generator would have written it, so it goes through the very same gates. */
@@ -2038,6 +2052,9 @@ export function makeSwapHandlers(deps: DishDeps = prismaDeps) {
         dish: a.recipe.name, from: a.ingredient,
         ingredients: a.recipe.ingredients.map((i) => `${i.quantity ?? ""} ${i.unit} ${i.name}`.replace(/\s+/g, " ").trim()),
         steps: a.recipe.steps,
+        calories: a.recipe.perServing.calories,
+        // What a rewrite must keep: every food of the dish but the one exchanged and the pinches.
+        others: a.recipe.ingredients.map((i) => i.name).filter((n) => n.trim().toLowerCase() !== a.ingredient.trim().toLowerCase() && !/^(salt|water|pepper|black pepper)$/i.test(n.trim())),
       },
       without: [a.ingredient],
     };

@@ -146,7 +146,16 @@ export function swapInRecipe(recipe: ClaraRecipe, from: string, to: string): Cla
   const toLower = to.trim().toLowerCase();
   // One pass over every way the food can be written, longest first, so "russet potatoes" goes before "potato".
   const all = new RegExp(`\\b(${mentions(from).map(escapeRe).join("|")})\\b`, "gi");
-  const swapText = (text: string, cased: (s: string) => string) => text.replace(all, cased(toLower));
+  // The replacement takes the number of what it replaces: "Russet Potato Skillet" → "Sweet Potato Skillet", "each potato" → "each sweet potato".
+  const toWords = toLower.split(/\s+/);
+  const toLast = toWords.pop() ?? "";
+  const toSingular = [...toWords, singular(toLast)].join(" ");
+  const swapText = (text: string, cased: (s: string) => string) =>
+    text.replace(all, (hit) => {
+      const last = hit.toLowerCase().split(/\s+/).pop() ?? "";
+      const one = singular(last) === last && plural(last) !== last && singular(toLast) !== toLast;
+      return cased(one ? toSingular : toLower);
+    });
   const out = {
     ...recipe,
     name: swapText(recipe.name, titleCase),

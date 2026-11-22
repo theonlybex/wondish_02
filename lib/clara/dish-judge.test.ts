@@ -117,3 +117,18 @@ test("a rebuilt name keeps 'Salad' always and 'Wrap' only with the bread in the 
   assert.equal(keepWayOfCooking("Warm Salmon and Pea Salad", "Salmon with Spinach and Jasmine Rice"), "Salmon with Spinach and Jasmine Rice Salad");
   assert.equal(dishShape("Salmon and Spinach Jasmine Rice Congee").way, "wet");
 });
+
+// Live swap run 2, 2026-11-22: beef for salmon in a potato skillet came back as a seared fillet on rice.
+test("an exchange must still be the dish: two thirds of its other foods, and its size", () => {
+  // As the product calls it for an exchange: sized against the original, not the meal.
+  const j = (over: Partial<JudgeInput> = {}) => judgeDish({ ...BASE, targetCalories: null, ...over });
+  const mustKeep = { names: ["jasmine rice", "spinach", "olive oil"], calories: 600, band: { min: 0.7, max: 1.25 } };
+  assert.equal(j({ mustKeep, wants: "salmon fillets" }).level, "pass");
+  // One of three dropped is still two thirds.
+  assert.equal(j({ mustKeep, wants: "salmon fillets", ingredients: BASE.ingredients.filter((i) => i.name !== "spinach") }).level, "pass");
+  const other = j({ mustKeep, wants: "salmon fillets", ingredients: [g("salmon fillet", 150), g("russet potatoes", 200)] });
+  assert.deepEqual([other.level, other.reasons], ["fail", ["exchange:another-dish"]]);
+  assert.deepEqual(j({ mustKeep, wants: "salmon fillets", calories: 400 }).reasons, ["exchange:size"]);
+  assert.deepEqual(j({ mustKeep, wants: "salmon fillets", calories: 760 }).reasons, ["exchange:size"]);
+  assert.equal(j({ mustKeep, wants: "salmon fillets", calories: 430 }).level, "pass");
+});

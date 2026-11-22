@@ -91,13 +91,13 @@ test("plainSwap and swapInRecipe: a like-for-like exchange changes the line, the
     steps: ["Dice the russet potatoes.", "Brown the ground beef, then return the potatoes to the pan."],
   };
   const sweet = swapInRecipe(hash, "russet potatoes", "sweet potatoes")!;
-  assert.equal(sweet.name, "Ground Beef and Sweet Potatoes Skillet");
+  assert.equal(sweet.name, "Ground Beef and Sweet Potato Skillet");
   assert.deepEqual(sweet.steps, ["Dice the sweet potatoes.", "Brown the ground beef, then return the sweet potatoes to the pan."]);
   // A mention the replacement cannot reach (another word for the food) refuses the exchange rather than leave it in.
   const stray: ClaraRecipe = { ...recipe, steps: [...recipe.steps, "Scatter the greens over the bowl."] };
   assert.ok(swapInRecipe(stray, "baby spinach", "Kale"));
   const left: ClaraRecipe = { ...hash, name: "Beef and Spud Skillet", steps: ["Boil each potato whole.", "Mash with the ground beef."], ingredients: [{ name: "ground beef", quantity: 120, unit: "g" }, { name: "new potatoes", quantity: 200, unit: "g" }] };
-  assert.equal(swapInRecipe(left, "new potatoes", "sweet potatoes")?.steps[0], "Boil each sweet potatoes whole.");
+  assert.equal(swapInRecipe(left, "new potatoes", "sweet potatoes")?.steps[0], "Boil each sweet potato whole.");
   assert.equal(swapInRecipe({ ...left, steps: ["Peel the potato-like tubers."] }, "new potatoes", "quinoa")?.steps[0] ?? null, "Peel the quinoa-like tubers.");
 });
 

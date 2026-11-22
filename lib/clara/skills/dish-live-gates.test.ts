@@ -697,9 +697,13 @@ test("swap: a protein is exchanged by rewriting the dish as a request for the ot
     const r: any = await dish.makeSwapHandlers(deps).apply({ ...CTX }, { mealType: "dinner", recipe, ingredient: "salmon fillet", replacement: "Ground beef" });
     assert.deepEqual([r.ok, r.how, r.dish.name], [true, "rewritten", "Ground Beef and Lentil Skillet"]);
     const system: string = seen.params.system;
-    assert.match(system, /They were about to cook "Pan-Seared Salmon with Lentils and Spinach" but do not have salmon fillet: write that same dish with what they asked for in its place/);
+    assert.match(system, /is missing one ingredient\. Write the SAME dish again with the exchange below/);
+    assert.match(system, /They were about to cook "Pan-Seared Salmon with Lentils and Spinach" but do not have salmon fillet: write that same dish with what they asked for in its place\. Keep every other ingredient and its amount/);
+    assert.match(system, /The dish as it was — ingredients: 80 g red lentils; 60 g spinach; .*120 g salmon fillet\. Steps: 1\) Heat the olive oil/);
+    assert.match(system, /- Size: keep each serving at about \d+ kcal, as the dish was\. It must be between \d+ and \d+ kcal/);
+    assert.doesNotMatch(system, /THE REQUEST|Suggest 3 different|not all of them at once|Protein sources that fit/);
     assert.match(system, /They do not have these, so no dish may use them, not in an ingredient, the name or a step: salmon fillet\./);
-    assert.match(system, /THE REQUEST: they asked to cook "Ground beef"/);
+    assert.match(system, /- THE EXCHANGE: use Ground beef in place of salmon fillet, and name the dish with it\./);
   } finally { pantry = []; }
 });
 
