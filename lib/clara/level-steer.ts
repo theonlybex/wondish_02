@@ -7,6 +7,7 @@ import type { FullLevelRow } from "@/lib/numbers-full";
 import { FIBRE_RICH_EXAMPLES, SODIUM_REASON_MAX_MG } from "@/lib/dish-reasons";
 import { computeMealCalories } from "@/lib/caloric-engine";
 import type { MealType } from "@/lib/local-date";
+import { foodMatches } from "./kept-foods";
 
 export type SteerRow = Pick<FullLevelRow, "key" | "name" | "direction" | "target" | "amount" | "word">;
 export interface PictureLevels { little: readonly string[]; aLot: readonly string[] }
@@ -136,11 +137,34 @@ export const RICH_FOODS: Readonly<Record<FullLevelKey, string>> = {
 
 const SODIUM_FOODS_OUT = "no soy sauce, stock cubes, bouillon, cured meats, salted cheese or pickles";
 
-export function steerLines(levels: readonly LevelSteer[]): string[] {
+/** How the "eat more of it" lines read for a person with foods marked at home. Absent: today's wording, unchanged. */
+export interface SteerLineOptions {
+  /** Every food they have at home. Non-empty: the examples prefer these, and the line says so. */
+  atHome?: readonly string[];
+  /** false drops that example (a meat or fish the dish may not use). */
+  keepExample?: (food: string) => boolean;
+  /** A protein is chosen for the dish: fibre is added to it, not built on. */
+  fibreAdded?: boolean;
+}
+
+// The examples for an "eat more" line: the allowed ones; of those, the ones at home when any are.
+function moreExamples(list: string, o: SteerLineOptions): { text: string; preferring: boolean } {
+  const all = list.split(", ").filter((f) => o.keepExample?.(f) ?? true);
+  const home = o.atHome ?? [];
+  const atHome = all.filter((f) => home.some((h) => foodMatches(f, h)));
+  return { text: (atHome.length > 0 ? atHome : all).join(", "), preferring: home.length > 0 };
+}
+
+export function steerLines(levels: readonly LevelSteer[], opts: SteerLineOptions = {}): string[] {
+  const examples = (list: string) => {
+    const { text, preferring } = moreExamples(list, opts);
+    if (text.length === 0) return "";
+    return preferring ? `, preferring any they have at home (${text})` : ` (${text})`;
+  };
   return levels.map((l) => {
     const answers = l.why === "answers";
     if (l.key === "fibre" && l.direction === "more" && l.why !== "today") {
-      return `- ${answers ? "From their answers they probably get little fibre" : "They have had little fibre this week"}: build every dish around a fibre-rich ingredient (${FIBRE_RICH_EXAMPLES}).`;
+      return `- ${answers ? "From their answers they probably get little fibre" : "They have had little fibre this week"}: ${opts.fibreAdded ? "include a fibre-rich ingredient in every dish" : "build every dish around a fibre-rich ingredient"}${examples(FIBRE_RICH_EXAMPLES)}.`;
     }
     if (l.key === "sodium" && l.direction === "less") {
       if (l.why === "today") {
@@ -155,7 +179,7 @@ export function steerLines(levels: readonly LevelSteer[]): string[] {
       : little ? `So far today they are well behind on ${l.name}`
       : `Today's meals have already used most of the day's ${l.name}`;
     return little
-      ? `- ${opening}: build the dish on foods rich in it (${RICH_FOODS[l.key]}).`
+      ? `- ${opening}: build the dish on foods rich in it${examples(RICH_FOODS[l.key])}.`
       : `- ${opening}: keep it low in this dish; go easy on ${RICH_FOODS[l.key]}.`;
   });
 }

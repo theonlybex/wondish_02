@@ -62,3 +62,19 @@ test("steerLines: today's two sentences unchanged, and no number for a level the
   for (const l of LEVELS) if (l.key !== "sodium" && l.key !== "fibre") for (const d of ["more", "less"] as const) assert.doesNotMatch(line(l.key, d, "week").split(l.key).join(""), /\d/, l.key); // the name itself (omega3, vitamin B12) may carry a digit
   assert.deepEqual(Object.keys(RICH_FOODS).sort(), LEVELS.map((l) => l.key).sort());
 });
+test("steerLines options: at-home examples are preferred, a dropped example never shows, fibre can be added rather than built on", () => {
+  const lv = (key: string, why: LevelSteer["why"] = "week"): LevelSteer => ({ key: key as FullLevelKey, name: key, direction: "more", why, score: 1 });
+  // Empty options: today's wording.
+  assert.deepEqual(steerLines([lv("iron"), lv("fibre")], {}), steerLines([lv("iron"), lv("fibre")]));
+  const noBeef = (f: string) => f !== "beef";
+  assert.deepEqual(steerLines([lv("iron")], { atHome: ["Ground beef"], keepExample: noBeef }), [
+    "- They have had little iron this week: build the dish on foods rich in it, preferring any they have at home (lentils, beans, chickpeas, spinach, tofu).",
+  ]);
+  assert.deepEqual(steerLines([lv("iron")], { atHome: ["Black beans", "Spinach"] }), [
+    "- They have had little iron this week: build the dish on foods rich in it, preferring any they have at home (beans, spinach).",
+  ]);
+  assert.equal(steerLines([lv("fibre", "answers")], { fibreAdded: true })[0], `- From their answers they probably get little fibre: include a fibre-rich ingredient in every dish (${FIBRE_RICH_EXAMPLES}).`);
+  // "Less" lines are untouched by the options.
+  const less: LevelSteer = { key: "saturatedFat" as FullLevelKey, name: "saturated fat", direction: "less", why: "week", score: 1 };
+  assert.deepEqual(steerLines([less], { atHome: ["Unsalted butter"], keepExample: () => false }), steerLines([less]));
+});
