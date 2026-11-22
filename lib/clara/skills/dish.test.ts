@@ -1175,36 +1175,58 @@ test("prompt: a rule-on dinner makes the chosen protein the heart of the dish an
   assert.ok(withBrain({ kept: NO_KEPT_FOODS }).includes(SIMPLEST));
 });
 
-test("prompt: level examples drop a meat at home that is not the chosen protein, and prefer at-home foods", () => {
+test("prompt: level examples name only proteins the dish may use, and say 'at home' only for foods that are", () => {
   const ask = { ...DINNER, summary: { ...NO_LOGS, little: ["iron", "fibre"] } as unknown as LevelSummary };
   const iron = (p: string) => lineOf(p, "- They have had little iron this week");
+  const fibre = (p: string) => lineOf(p, "- They have had little fibre this week");
+  // Salmon chosen, beef at home: no beef, and no pulse or tofu that is not at home; nothing at home matches, so no "preferring".
   const bare = withBrain({ kept: SALMON_AND_BEEF, rows: SALMON_TODAY }, ask);
-  assert.equal(iron(bare), "- They have had little iron this week: build the dish on foods rich in it, preferring any they have at home (lentils, beans, chickpeas, spinach, tofu).");
-  const spinach = withBrain({ kept: { ...SALMON_AND_BEEF, atHome: ["Spinach"] }, rows: SALMON_TODAY }, ask);
-  assert.equal(iron(spinach), "- They have had little iron this week: build the dish on foods rich in it, preferring any they have at home (spinach).");
-  // A protein is chosen: fibre is added to the dish, not built on.
-  assert.match(spinach, /- They have had little fibre this week: include a fibre-rich ingredient in every dish, preferring any they have at home \(lentils, chickpeas/);
-  assert.doesNotMatch(spinach, /build every dish around a fibre-rich ingredient/);
-  // Marked foods without a rule: at-home preference, every example kept, fibre wording unchanged.
+  assert.equal(iron(bare), "- They have had little iron this week: build the dish on foods rich in it (spinach).");
+  // Case (a): spinach, rice and eggs at home.
+  const a = withBrain({ kept: { ...SALMON_AND_BEEF, atHome: ["Spinach", "Jasmine rice", "Large eggs"] }, rows: SALMON_TODAY }, ask);
+  assert.equal(iron(a), "- They have had little iron this week: build the dish on foods rich in it, preferring any they have at home (spinach).");
+  assert.equal(fibre(a), "- They have had little fibre this week: include a fibre-rich ingredient in every dish (peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds).");
+  assert.doesNotMatch(a, /build every dish around a fibre-rich ingredient/);
+  // Lentils at home: kept, and preferred.
+  const lentils = withBrain({ kept: { ...SALMON_AND_BEEF, atHome: ["Red lentils"] }, rows: SALMON_TODAY }, ask);
+  assert.equal(fibre(lentils), "- They have had little fibre this week: include a fibre-rich ingredient in every dish, preferring any they have at home (lentils).");
+  assert.equal(iron(lentils), "- They have had little iron this week: build the dish on foods rich in it, preferring any they have at home (lentils).");
+  // Marked foods without a rule: every example kept, at-home preference, fibre wording unchanged.
   const noRule = withBrain({ kept: { ...NO_KEPT_FOODS, atHome: ["Spinach", "Rolled oats"] } }, ask);
   assert.equal(iron(noRule), "- They have had little iron this week: build the dish on foods rich in it, preferring any they have at home (spinach).");
-  assert.match(noRule, /build every dish around a fibre-rich ingredient, preferring any they have at home \(oats\)\./);
+  assert.equal(fibre(noRule), "- They have had little fibre this week: build every dish around a fibre-rich ingredient, preferring any they have at home (oats).");
+  // Marked, no rule, no example at home: the plain form with every example.
+  assert.equal(fibre(withBrain({ kept: { ...NO_KEPT_FOODS, atHome: ["Jasmine rice"] } }, ask)), "- They have had little fibre this week: build every dish around a fibre-rich ingredient (lentils, chickpeas, beans, peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds).");
 });
 
-test("prompt: breakfast and snack name only what is at home when the rule is on", () => {
-  const breakfast = { mealType: "breakfast" as const, summary: NO_LOGS };
+test("prompt: breakfast and snack name only what is at home when the rule is on, and the level lines add to that base", () => {
+  const breakfast = { mealType: "breakfast" as const, summary: { ...NO_LOGS, little: ["iron", "fibre"] } as unknown as LevelSummary };
   const snack = { mealType: "snack" as const, summary: NO_LOGS };
-  const eggs = { ...SALMON_AND_BEEF, atHome: ["Large eggs"] };
-  const b = lineOf(withBrain({ kept: eggs }, breakfast), "- This is BREAKFAST");
-  assert.equal(b, "- This is BREAKFAST: morning food, under 30 minutes in total, built on Large eggs or on cheese, nut butter or nuts. Not a braise, a roast or a rice bowl.");
+  const eggs = { ...SALMON_AND_BEEF, atHome: ["Spinach", "Jasmine rice", "Large eggs"] };
+  const levelText = (p: string) => p.split("\n").filter((l) => l.startsWith("- They have had little")).join("\n");
+  // Case (b).
+  const pb = withBrain({ kept: eggs }, breakfast);
+  const b = lineOf(pb, "- This is BREAKFAST");
+  assert.equal(b, "- This is BREAKFAST: morning food, under 30 minutes in total, built on Large eggs or on cheese, nut butter or nuts. Not a braise, a roast or a rice bowl. Add what the lines below ask for to this; do not replace it.");
   assert.doesNotMatch(b, /yoghurt|beans|tofu/);
-  const only = lineOf(withBrain({ kept: SALMON_AND_BEEF }, breakfast), "- This is BREAKFAST");
-  assert.equal(only, "- This is BREAKFAST: morning food, under 30 minutes in total, built on cheese, nut butter or nuts, or on Salmon fillets or Ground beef if one suits a breakfast. Not a braise, a roast or a rice bowl.");
-  assert.equal(lineOf(withBrain({ kept: eggs }, snack), "- This is a SNACK"), "- This is a SNACK: small and quick, under 20 minutes in total, with no added salt. Fruit, nuts, toast, a boiled egg, raw vegetables and a dip.");
-  assert.equal(lineOf(withBrain({ kept: { ...SALMON_AND_BEEF, atHome: ["Plain Greek yogurt"] } }, snack), "- This is a SNACK"), "- This is a SNACK: small and quick, under 20 minutes in total, with no added salt. Fruit, yoghurt, nuts, toast, raw vegetables and a dip.");
+  assert.equal(levelText(pb), [
+    "- They have had little fibre this week: include a fibre-rich ingredient in every dish (peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds).",
+    "- They have had little iron this week: build the dish on foods rich in it, preferring any they have at home (spinach).",
+  ].join("\n"));
+  // Case (d): only salmon and beef.
+  const pd = withBrain({ kept: SALMON_AND_BEEF }, breakfast);
+  assert.equal(lineOf(pd, "- This is BREAKFAST"), "- This is BREAKFAST: morning food, under 30 minutes in total, built on cheese, nut butter or nuts, or on Salmon fillets or Ground beef if one suits a breakfast. Not a braise, a roast or a rice bowl. Add what the lines below ask for to this; do not replace it.");
+  assert.equal(levelText(pd), [
+    "- They have had little fibre this week: include a fibre-rich ingredient in every dish (peas, oats, barley, quinoa, brown rice, whole-wheat bread or pasta, chia or flax seeds).",
+    "- They have had little iron this week: build the dish on foods rich in it (spinach).",
+  ].join("\n"));
+  for (const p of [pb, pd]) assert.doesNotMatch(levelText(p), /beef|lentils|chickpeas|beans|tofu/);
+  assert.equal(lineOf(withBrain({ kept: eggs }, snack), "- This is a SNACK"), "- This is a SNACK: small and quick, under 20 minutes in total, with no added salt. Fruit, nuts, toast, a boiled egg, raw vegetables and a dip. Add what the lines below ask for to this; do not replace it.");
+  assert.equal(lineOf(withBrain({ kept: { ...SALMON_AND_BEEF, atHome: ["Plain Greek yogurt"] } }, snack), "- This is a SNACK"), "- This is a SNACK: small and quick, under 20 minutes in total, with no added salt. Fruit, yoghurt, nuts, toast, raw vegetables and a dip. Add what the lines below ask for to this; do not replace it.");
   // Nothing marked: today's lines.
-  assert.match(withBrain({ kept: NO_KEPT_FOODS }, breakfast), /built on a breakfast protein \(eggs, yoghurt, cottage cheese, cheese, nut butter, nuts, beans, tofu\)/);
-  assert.match(withBrain({ kept: NO_KEPT_FOODS }, snack), /Fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip\./);
+  assert.match(withBrain({ kept: NO_KEPT_FOODS }, breakfast), /built on a breakfast protein \(eggs, yoghurt, cottage cheese, cheese, nut butter, nuts, beans, tofu\)\. Not a braise, a roast or a rice bowl\.\n/);
+  assert.match(withBrain({ kept: NO_KEPT_FOODS }, breakfast), /little fibre this week: build every dish around a fibre-rich ingredient \(lentils, chickpeas/);
+  assert.match(withBrain({ kept: NO_KEPT_FOODS }, snack), /Fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip\.\n/);
 });
 
 test("prompt: today's dish names are capped at the latest 6, 60 characters each, with no semicolons", () => {

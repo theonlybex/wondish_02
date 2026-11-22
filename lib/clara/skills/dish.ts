@@ -421,33 +421,40 @@ export function dishSystemPrompt(a: {
         return !k || homeKeys.has(k.key);
       })
     : brain.favourites;
-  // Level examples: with the rule on, no meat or fish the dish may not use (the chosen one, else any at home).
+  // Breakfast and snack: with the rule on, name only the proteins they have.
+  const orList = (names: readonly string[]) => names.map(cleanOne).join(" or ");
+  const morning = brain.home.filter((p) => BREAKFAST_PROTEIN_KEYS.has(p.key)).map((p) => p.name);
+  // The line that breaks the tie with the level lines, which sit below the breakfast and snack lines.
+  const ADD_DONT_REPLACE = ` Add what the lines below ask for to this; do not replace it.`;
+  let breakfastLine = `- This is BREAKFAST: morning food, under ${BREAKFAST_MAX_MINUTES} minutes in total, built on a breakfast protein (eggs, yoghurt, cottage cheese, cheese, nut butter, nuts, beans, tofu). Not a braise, a roast or a rice bowl.`;
+  let snackLine = `- This is a SNACK: small and quick, under ${SNACK_MAX_MINUTES} minutes in total, with no added salt. Fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip.`;
+  if (steer.ruleOn) {
+    breakfastLine = (morning.length > 0
+      ? `- This is BREAKFAST: morning food, under ${BREAKFAST_MAX_MINUTES} minutes in total, built on ${orList(morning)}${morning.length > 1 ? "," : ""} or on cheese, nut butter or nuts. Not a braise, a roast or a rice bowl.`
+      : `- This is BREAKFAST: morning food, under ${BREAKFAST_MAX_MINUTES} minutes in total, built on cheese, nut butter or nuts, or on ${orList(brain.home.map((p) => p.name))} if one suits a breakfast. Not a braise, a roast or a rice bowl.`) + ADD_DONT_REPLACE;
+    const eggs = brain.home.some((p) => p.key === "egg");
+    const yoghurt = homeNames.some((n) => /\byogh?urt\b/i.test(n));
+    snackLine = `- This is a SNACK: small and quick, under ${SNACK_MAX_MINUTES} minutes in total, with no added salt. ${["Fruit", ...(yoghurt ? ["yoghurt"] : []), "nuts", "toast", ...(eggs ? ["a boiled egg"] : [])].join(", ")}, raw vegetables and a dip.${ADD_DONT_REPLACE}`;
+  }
+  // Level examples, with the rule on: only proteins the dish may use. A main keeps the chosen meat
+  // and any other protein at home; a breakfast or snack keeps no meat or fish; a request keeps what is at home.
   const choiceKey = steer.ruleOn && steer.choice ? steer.choice.key : null;
   const keepExample = steer.ruleOn
     ? (food: string) => {
         const k = proteinKind(food);
-        if (!k || k.cls !== "meat") return true;
-        return choiceKey !== null ? sameProteinKind(choiceKey, k.key) : brain.home.some((p) => p.cls === "meat" && sameProteinKind(p.key, k.key));
+        if (!k) return true;
+        if (k.cls !== "meat") return homeKeys.has(k.key);
+        if (choiceKey !== null) return sameProteinKind(choiceKey, k.key);
+        if (ask.mealType === "snack" || ask.mealType === "breakfast") return false;
+        return brain.home.some((p) => p.cls === "meat" && sameProteinKind(p.key, k.key));
       }
     : undefined;
   const levelLines = steerLines(steer.levels, {
     ...(marked ? { atHome: homeNames } : {}),
     ...(keepExample ? { keepExample } : {}),
-    ...(choiceKey !== null ? { fibreAdded: true } : {}),
+    // The protein (a main's chosen one, or the breakfast or snack base) is the dish; fibre is added to it.
+    ...(steer.ruleOn ? { fibreAdded: true } : {}),
   });
-  // Breakfast and snack: with the rule on, name only the proteins they have.
-  const orList = (names: readonly string[]) => names.map(cleanOne).join(" or ");
-  let breakfastLine = `- This is BREAKFAST: morning food, under ${BREAKFAST_MAX_MINUTES} minutes in total, built on a breakfast protein (eggs, yoghurt, cottage cheese, cheese, nut butter, nuts, beans, tofu). Not a braise, a roast or a rice bowl.`;
-  let snackLine = `- This is a SNACK: small and quick, under ${SNACK_MAX_MINUTES} minutes in total, with no added salt. Fruit, yoghurt, nuts, toast, a boiled egg, raw vegetables and a dip.`;
-  if (steer.ruleOn) {
-    const morning = brain.home.filter((p) => BREAKFAST_PROTEIN_KEYS.has(p.key)).map((p) => p.name);
-    breakfastLine = morning.length > 0
-      ? `- This is BREAKFAST: morning food, under ${BREAKFAST_MAX_MINUTES} minutes in total, built on ${orList(morning)}${morning.length > 1 ? "," : ""} or on cheese, nut butter or nuts. Not a braise, a roast or a rice bowl.`
-      : `- This is BREAKFAST: morning food, under ${BREAKFAST_MAX_MINUTES} minutes in total, built on cheese, nut butter or nuts, or on ${orList(brain.home.map((p) => p.name))} if one suits a breakfast. Not a braise, a roast or a rice bowl.`;
-    const eggs = brain.home.some((p) => p.key === "egg");
-    const yoghurt = homeNames.some((n) => /\byogh?urt\b/i.test(n));
-    snackLine = `- This is a SNACK: small and quick, under ${SNACK_MAX_MINUTES} minutes in total, with no added salt. ${["Fruit", ...(yoghurt ? ["yoghurt"] : []), "nuts", "toast", ...(eggs ? ["a boiled egg"] : [])].join(", ")}, raw vegetables and a dip.`;
-  }
   const opening = steer.ruleOn || marked
     ? `The app shows the first one that passes its checks, so put first the dish that follows every rule below most closely, then the next.`
     : `The app shows the first one that passes its checks, so put the simplest, surest fit first.`;

@@ -139,11 +139,11 @@ const SODIUM_FOODS_OUT = "no soy sauce, stock cubes, bouillon, cured meats, salt
 
 /** How the "eat more of it" lines read for a person with foods marked at home. Absent: today's wording, unchanged. */
 export interface SteerLineOptions {
-  /** Every food they have at home. Non-empty: the examples prefer these, and the line says so. */
+  /** Every food they have at home. When an example is one of them, only those are named, and the line says so. */
   atHome?: readonly string[];
   /** false drops that example (a meat or fish the dish may not use). */
   keepExample?: (food: string) => boolean;
-  /** A protein is chosen for the dish: fibre is added to it, not built on. */
+  /** The dish already has its base (a chosen protein, or an at-home breakfast or snack): fibre is added to it, not built on. */
   fibreAdded?: boolean;
 }
 
@@ -152,7 +152,8 @@ function moreExamples(list: string, o: SteerLineOptions): { text: string; prefer
   const all = list.split(", ").filter((f) => o.keepExample?.(f) ?? true);
   const home = o.atHome ?? [];
   const atHome = all.filter((f) => home.some((h) => foodMatches(f, h)));
-  return { text: (atHome.length > 0 ? atHome : all).join(", "), preferring: home.length > 0 };
+  // "Preferring any they have at home" only when one of the examples is.
+  return { text: (atHome.length > 0 ? atHome : all).join(", "), preferring: atHome.length > 0 };
 }
 
 export function steerLines(levels: readonly LevelSteer[], opts: SteerLineOptions = {}): string[] {
