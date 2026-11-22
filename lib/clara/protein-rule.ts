@@ -1,7 +1,7 @@
 // The strict protein rule, today's protein, and the "from your kitchen" line.
 // Pure: no database, no model client.
 import type { MealType } from "../local-date";
-import { builtOn, homeProteins, mainProteins, proteinKind, type BuiltOn, type DishIngredient, type HomeProtein } from "./dish-protein";
+import { builtOn, eggsOnlyKitchen, homeProteins, mainProteins, proteinKind, type BuiltOn, type DishIngredient, type HomeProtein } from "./dish-protein";
 import type { DishRules } from "./dish-rules";
 import { foodMatches, type KeptFoods } from "./kept-foods";
 
@@ -31,16 +31,19 @@ export function proteinRuleBreak(a: {
   if (!proteinRuleApplies(a.home, a.wants)) return null;
   const homeKeys = new Set(a.home.map((p) => p.key));
   const built = builtOn(a.ingredients, a.steps);
+  const isMain = a.mealType === "lunch" || a.mealType === "dinner";
+  // An eggs-only kitchen: a main may be built on any meat-free protein (the meat check below still runs).
+  const freeMain = isMain && eggsOnlyKitchen(a.home);
   if (a.rules.onlyHomeProteins) {
     for (const ing of a.ingredients) {
       const kind = proteinKind(ing.name);
       if (kind && kind.cls === "meat" && !homeKeys.has(kind.key)) return "meat-not-at-home";
     }
-    if (built && !homeKeys.has(built.key)) return "built-on-not-at-home";
+    if (built && !homeKeys.has(built.key) && !freeMain) return "built-on-not-at-home";
   }
-  if (a.rules.mainsOnProtein && (a.mealType === "lunch" || a.mealType === "dinner") && a.wants === undefined) {
+  if (a.rules.mainsOnProtein && isMain && a.wants === undefined) {
     if (!built) return "main-without-protein";
-    if (a.rules.onlyHomeProteins && !mainProteins(a.home).some((p) => p.key === built.key)) return "main-on-side-protein";
+    if (a.rules.onlyHomeProteins && !freeMain && !mainProteins(a.home).some((p) => p.key === built.key)) return "main-on-side-protein";
   }
   return null;
 }
@@ -70,7 +73,7 @@ function fnv1a(s: string): number {
   return h >>> 0;
 }
 
-/** null for breakfast and snack, when `wants` is set, and when the wheel is empty. */
+/** null for breakfast and snack, when `wants` is set, when the wheel is empty, and in an eggs-only kitchen. */
 export function chooseProtein(a: {
   mealType: MealType; wants?: string;
   home: readonly HomeProtein[];
@@ -81,6 +84,7 @@ export function chooseProtein(a: {
 }): ProteinChoice | null {
   if (a.mealType !== "lunch" && a.mealType !== "dinner") return null;
   if (a.wants !== undefined) return null;
+  if (eggsOnlyKitchen(a.home)) return null;
   const wheel = rotationWheel(a.home, a.rules.favourFavourites);
   if (wheel.length === 0) return null;
   if (a.rules.sameProteinToday) {

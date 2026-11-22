@@ -85,3 +85,13 @@ export function mainProteins(home: readonly HomeProtein[]): HomeProtein[] {
   const main = home.filter((p) => p.cls === "meat" || p.cls === "plant" || p.cls === "pulse");
   return main.length > 0 ? main : home.filter((p) => p.cls === "egg");
 }
+
+/**
+ * Eggs are the only protein at home a main could be built on (owner, 2026-11-22). Such a kitchen is
+ * not held to eggs for every lunch and dinner: a main may be built on any meat-free protein.
+ * Meat, fish and seafood they do not have stay out.
+ */
+export function eggsOnlyKitchen(home: readonly HomeProtein[]): boolean {
+  const main = mainProteins(home);
+  return main.length > 0 && main.every((p) => p.cls === "egg");
+}

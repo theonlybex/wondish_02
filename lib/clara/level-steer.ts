@@ -135,6 +135,31 @@ export const RICH_FOODS: Readonly<Record<FullLevelKey, string>> = {
   phosphorus: "processed meats, processed cheese, cola",
 };
 
+// The allergen groups of the example foods above. A profile can ban a whole group ("fish") with no
+// food names stored, and an example is only a word, with no catalog row to carry its groups.
+const EXAMPLE_GROUPS: readonly (readonly [RegExp, readonly string[]])[] = [
+  [/\b(fish|salmon|sardines?|mackerel)\b/, ["BIG9-FISH"]],
+  [/\b(shrimp|prawns?|crab|lobster)\b/, ["BIG9-CRUSTACEAN"]],
+  [/\beggs?\b/, ["BIG9-EGG"]],
+  [/\b(milk|yogh?urt|cheese|butter|cream)\b/, ["BIG9-COW-MILK"]],
+  [/\b(tofu|soy)\b/, ["BIG9-SOY"]],
+  [/\b(walnuts?|almonds?|cashews?)\b/, ["BIG9-TREE-NUT"]],
+  [/\b(pasta|bread|whole-wheat|barley|soy sauce)\b/, ["BIG9-WHEAT"]],
+];
+const NOT_DAIRY = /\b(coconut|soy|oat|almond)\s+milk\b|\b(peanut|almond|nut)\s+butter\b/;
+
+/** The allergen groups an example food belongs to ("salmon" → fish), for the diet check. */
+export function exampleAllergenGroups(food: string): string[] {
+  const lower = food.toLowerCase();
+  const out = new Set<string>();
+  for (const [re, groups] of EXAMPLE_GROUPS) {
+    if (!re.test(lower)) continue;
+    if (groups[0] === "BIG9-COW-MILK" && NOT_DAIRY.test(lower)) continue;
+    for (const g of groups) out.add(g);
+  }
+  return [...out];
+}
+
 const SODIUM_FOODS_OUT = "no soy sauce, stock cubes, bouillon, cured meats, salted cheese or pickles";
 
 /** How the "eat more of it" lines read for a person with foods marked at home. Absent: today's wording, unchanged. */

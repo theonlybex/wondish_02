@@ -18,6 +18,7 @@ import {
   DISH_CRAFT_LINES,
   DAY_PLAN_LUNCH_LINE,
   DAY_PLAN_DINNER_LINE,
+  DAY_PLAN_QUICK_DINNER_LINE,
   parseStartingPicture,
   type StartingPicture,
   type DishAsk,
@@ -1273,6 +1274,21 @@ test("prompt: level examples never name a food the diet bans, with or without fo
   }
 });
 
+// Re-check, 2026-11-21: an allergy stored as a group only ("fish", with no food names) still let
+// salmon and walnuts through, because an example word has no catalog row to carry its groups.
+test("prompt: level examples never name a food from an allergen group the diet bans", () => {
+  const ask = { ...DINNER, summary: { ...NO_LOGS, little: ["omega3", "calcium", "iodine", "fibre"] } as unknown as LevelSummary };
+  const line = (p: string, what: string) => p.split("\n").find((l) => l.startsWith(`- They have had little ${what} this week`)) ?? "";
+  const groupsOnly = (allergyGroupCodes: string[]) => buildDietMatchers({ allergyNames: [], exactBanned: [], allergyGroupCodes });
+  const p = withBrain({ kept: NO_KEPT_FOODS, matchers: groupsOnly(["BIG9-FISH", "BIG9-TREE-NUT"]) }, ask);
+  assert.equal(line(p, "omega-3"), "- They have had little omega-3 this week: build the dish on foods rich in it (chia or flax seeds).");
+  assert.equal(line(p, "calcium"), "- They have had little calcium this week: build the dish on foods rich in it (yogurt, milk, cheese, tofu, kale).");
+  const d = withBrain({ kept: NO_KEPT_FOODS, matchers: groupsOnly(["BIG9-COW-MILK", "BIG9-CRUSTACEAN", "BIG9-EGG", "BIG9-WHEAT"]) }, ask);
+  assert.equal(line(d, "calcium"), "- They have had little calcium this week: build the dish on foods rich in it (tofu, sardines, kale).");
+  assert.equal(line(d, "iodine"), "- They have had little iodine this week: build the dish on foods rich in it (white fish).");
+  assert.equal(line(d, "fibre"), "- They have had little fibre this week: build every dish around a fibre-rich ingredient (lentils, chickpeas, beans, peas, oats, quinoa, brown rice, chia or flax seeds).");
+});
+
 test("prompt: today's dish names are capped at the latest 6, 60 characters each, with no semicolons", () => {
   const names = ["Salmon One", "Two", "Three", "Four", "Five;Six", "Seven", `Salmon ${"x".repeat(80)}`];
   const p = withBrain({ kept: SALMON_AND_BEEF, rows: { ...NO_BRAIN_ROWS, todayDishes: names } });
@@ -1305,6 +1321,32 @@ test("prompt: a lunch or dinner request that names no protein leans on the prote
   assert.doesNotMatch(withBrain({ kept: NO_KEPT_FOODS }, stirFry), /protein at its centre/);
 });
 
+// Owner, 2026-11-22: eggs as the only protein at home.
+test("prompt: an eggs-only kitchen gets a main on any meat-free protein, and no meat or fish", () => {
+  const eggsOnly: KeptFoods = { proteinKeys: [], proteinNames: [], atHome: ["Large eggs", "Spinach"], favorites: ["Red lentils", "Chicken thighs"] };
+  const ask = { ...DINNER, summary: { ...NO_LOGS, little: ["iron"] } as unknown as LevelSummary };
+  const p = withBrain({ kept: eggsOnly }, ask);
+  assert.equal(lineOf(p, "- Build this Dinner on"), "- Build this Dinner on a meat-free protein: Large eggs, which they have at home, or beans, lentils, chickpeas, tofu, Greek yogurt or cottage cheese. Use no meat, fish or seafood: not in an ingredient, the dish name, the description or a step.");
+  assert.doesNotMatch(p, /This protein is the heart of the dish/);
+  // Level examples keep the meat-free proteins and drop the meat; a meat-free favourite stays, a meat one goes.
+  assert.equal(lineOf(p, "- They have had little iron"), "- They have had little iron this week: build the dish on foods rich in it, preferring any they have at home (spinach).");
+  assert.match(lineOf(withBrain({ kept: { ...eggsOnly, atHome: ["Large eggs"] } }, ask), "- They have had little iron"), /\(lentils, beans, chickpeas, spinach, tofu\)/);
+  assert.match(lineOf(p, "- These are their favourite foods"), /Red lentils/);
+  assert.doesNotMatch(lineOf(p, "- These are their favourite foods"), /Chicken/);
+  // A request: no "build on", the same freedom.
+  const asked = withBrain({ kept: eggsOnly }, { ...DINNER, wants: "a curry" });
+  assert.equal(lineOf(asked, "- If this dish has a protein food"), "- If this dish has a protein food, make it Large eggs, which they have at home, or another meat-free one: beans, lentils, chickpeas, tofu, Greek yogurt or cottage cheese. Use no meat, fish or seafood: not in an ingredient, the dish name, the description or a step.");
+  // The diet takes its share of the list: soy and milk allergies by group.
+  const soyMilk = buildDietMatchers({ allergyNames: [], exactBanned: [], allergyGroupCodes: ["BIG9-SOY", "BIG9-COW-MILK"] });
+  assert.match(lineOf(withBrain({ kept: eggsOnly, matchers: soyMilk }, ask), "- Build this Dinner on"), /at home, or beans, lentils or chickpeas\. Use no meat/);
+  // Breakfast is as before: only what they have.
+  assert.match(withBrain({ kept: eggsOnly }, { mealType: "breakfast", summary: NO_LOGS }), /built on Large eggs/);
+  // A day plan still tells lunch from dinner.
+  assert.ok(withBrain({ kept: eggsOnly }, { ...DINNER, dayPlan: true }).split("\n").includes(DAY_PLAN_DINNER_LINE));
+  // Tofu at home too: the strict line.
+  assert.match(withBrain({ kept: { ...eggsOnly, proteinKeys: ["tofu"], proteinNames: ["Extra-firm tofu"] } }, ask), /- Build this Dinner on Extra-firm tofu, which they have at home\./);
+});
+
 // Final review, 2026-11-21: a day plan made lunch and dinner at once on the same protein with nothing
 // keeping them apart. Each now carries its part of the day.
 test("prompt: a day plan's lunch and dinner carry their own line; a plain dish and a breakfast do not", () => {
@@ -1318,6 +1360,13 @@ test("prompt: a day plan's lunch and dinner carry their own line; a plain dish a
   assert.ok(dinner.includes(DAY_PLAN_DINNER_LINE) && !dinner.includes(DAY_PLAN_LUNCH_LINE));
   // Right after the protein line.
   assert.match(dinner[dinner.indexOf(DAY_PLAN_DINNER_LINE) - 1], /^- Build this Dinner on /);
+  // Short of time: the dinner line asks for nothing slow, and the lunch line is as it was.
+  const quick = (mealType: "lunch" | "dinner") =>
+    withBrain({ kept: SALMON_AND_BEEF }, { mealType, summary: NO_LOGS, dayPlan: true, maxMinutes: 20 }).split("\n");
+  assert.equal(DAY_PLAN_QUICK_DINNER_LINE, "- This is the day's dinner: make it the fuller, warm dish (a pan dish with a sauce, or a stir-fry with a cooked side), not a bowl, a salad or a wrap.");
+  assert.ok(quick("dinner").includes(DAY_PLAN_QUICK_DINNER_LINE) && !quick("dinner").includes(DAY_PLAN_DINNER_LINE));
+  assert.doesNotMatch(quick("dinner").join("\n"), /a bake, a roast, a braise/);
+  assert.ok(quick("lunch").includes(DAY_PLAN_LUNCH_LINE));
   // A plain dish_suggest, a breakfast in a plan, and a plan with no protein chosen: no line.
   for (const p of [plan("lunch"), plan("dinner"), plan("breakfast", true), withBrain({ kept: NO_KEPT_FOODS }, { ...DINNER, dayPlan: true }).split("\n")]) {
     assert.ok(!p.includes(DAY_PLAN_LUNCH_LINE) && !p.includes(DAY_PLAN_DINNER_LINE));

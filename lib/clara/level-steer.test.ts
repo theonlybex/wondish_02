@@ -81,3 +81,21 @@ test("steerLines options: at-home examples are preferred, a dropped example neve
   const less: LevelSteer = { key: "saturatedFat" as FullLevelKey, name: "saturated fat", direction: "less", why: "week", score: 1 };
   assert.deepEqual(steerLines([less], { atHome: ["Unsalted butter"], keepExample: () => false }), steerLines([less]));
 });
+
+test("exampleAllergenGroups: every example food that carries a big-nine allergen", async () => {
+  const { exampleAllergenGroups, RICH_FOODS } = await import("./level-steer");
+  const of = (f: string) => exampleAllergenGroups(f).sort();
+  assert.deepEqual(of("salmon"), ["BIG9-FISH"]);
+  assert.deepEqual(of("white fish"), ["BIG9-FISH"]);
+  assert.deepEqual(of("shrimp"), ["BIG9-CRUSTACEAN"]);
+  assert.deepEqual(of("Greek yogurt"), ["BIG9-COW-MILK"]);
+  assert.deepEqual(of("processed cheese"), ["BIG9-COW-MILK"]);
+  assert.deepEqual(of("coconut milk"), []);
+  assert.deepEqual(of("soy sauce"), ["BIG9-SOY", "BIG9-WHEAT"]);
+  assert.deepEqual(of("whole-wheat bread or pasta"), ["BIG9-WHEAT"]);
+  assert.deepEqual(of("walnuts"), ["BIG9-TREE-NUT"]);
+  assert.deepEqual(of("eggs"), ["BIG9-EGG"]);
+  for (const f of ["spinach", "lentils", "oats", "beef", "chia or flax seeds", "pumpkin seeds"]) assert.deepEqual(of(f), []);
+  // Every list still splits into single foods the table can read.
+  for (const list of Object.values(RICH_FOODS)) for (const f of list.split(", ")) assert.ok(Array.isArray(exampleAllergenGroups(f)));
+});

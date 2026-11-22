@@ -82,3 +82,24 @@ test("fromHomeLine", () => {
   assert.deepEqual(fromHomeLine(["rolled oats", "banana"], KEPT, null), { text: "Nothing from your at-home list.", foods: [] });
   assert.equal(fromHomeLine(["salmon fillet"], NO_KEPT_FOODS, null), null);
 });
+
+// Owner, 2026-11-22: eggs as the only protein at home do not force an egg dish at every lunch and dinner.
+test("an eggs-only kitchen: a main may be built on any meat-free protein, never on meat or fish", () => {
+  const eggs = { home: homeOf(row("Large eggs", "dairy"), row("Plain Greek yogurt", "dairy")) };
+  assert.equal(brk("dinner", [g("eggs", 3, ""), g("spinach", 60)], eggs), null);
+  assert.equal(brk("dinner", [g("red lentils", 80), RICE], eggs), null);
+  assert.equal(brk("lunch", [g("extra-firm tofu", 150), RICE], eggs), null);
+  assert.equal(brk("dinner", [g("extra-firm tofu", 150), RICE], { ...eggs, wants: "a stir-fry" }), null);
+  assert.equal(brk("dinner", [g("ground chicken", 120), RICE], eggs), "meat-not-at-home");
+  assert.equal(brk("dinner", [g("salmon fillet", 150), RICE], eggs), "meat-not-at-home");
+  assert.equal(brk("dinner", [g("spinach", 120), RICE], eggs), "main-without-protein");
+  // Breakfast and a snack keep the at-home rule.
+  assert.equal(brk("breakfast", [g("red lentils", 80), RICE], eggs), "built-on-not-at-home");
+  // No protein is chosen in code, at any meal or day.
+  for (const d of days(7)) assert.equal(pick(d, eggs.home), null);
+  // Another main protein at home: the strict rule, as before.
+  const withTofu = { home: homeOf(row("Large eggs", "dairy"), row("Extra-firm tofu")) };
+  assert.equal(brk("dinner", [g("red lentils", 80), RICE], withTofu), "built-on-not-at-home");
+  assert.equal(brk("dinner", [g("eggs", 3, ""), g("spinach", 60)], withTofu), "main-on-side-protein");
+  assert.equal(pick("2026-11-03", withTofu.home)!.key, "tofu");
+});

@@ -26,11 +26,11 @@ import { libraryToFridge, matchesRequest, rankLibrary, suggestionName, type Libr
 import { proteinRuleOn, NO_KEPT_FOODS, type KeptFoods } from "@/lib/clara/kept-foods";
 import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
 import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type AskSteer, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
-import { builtOn, proteinKind } from "@/lib/clara/dish-protein";
+import { builtOn, eggsOnlyKitchen, proteinKind } from "@/lib/clara/dish-protein";
 import { judgeDish, type DishVerdict } from "@/lib/clara/dish-judge";
 import { chooseProtein, fromHomeLine, requestedProtein, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
 import { targetLines } from "@/lib/clara/meal-target";
-import { steerLines, levelCeilings } from "@/lib/clara/level-steer";
+import { exampleAllergenGroups, steerLines, levelCeilings } from "@/lib/clara/level-steer";
 import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
 import { loadBrainRows } from "@/lib/clara/dish-brain-db";
 import { DEFAULT_DISH_RULES, type DishRules } from "@/lib/clara/dish-rules";
@@ -157,7 +157,7 @@ export interface DishAsk {
   dayPlan?: boolean;
 }
 
-/** The onboarding "starting picture"": levels they probably get little of / a lot of. */
+/** The onboarding "starting picture": levels they probably get little of / a lot of. */
 export interface StartingPicture {
   little: FullLevelKey[];
   aLot: FullLevelKey[];
@@ -367,9 +367,16 @@ function groupedAtHome(names: readonly string[]): { title: string; names: string
   return order.filter((t) => byTitle.has(t)).map((t) => ({ title: t, names: byTitle.get(t)! }));
 }
 
+/** What a main may be built on, besides their eggs, in an eggs-only kitchen. */
+const MEAT_FREE_PROTEINS = ["beans", "lentils", "chickpeas", "tofu", "Greek yogurt", "cottage cheese"] as const;
+const orWords = (w: readonly string[]) => (w.length > 1 ? `${w.slice(0, -1).join(", ")} or ${w[w.length - 1]}` : w.join(""));
+
 /** The day plan's lunch and dinner lines (see DishAsk.dayPlan). */
 export const DAY_PLAN_LUNCH_LINE = `- This is the day's lunch: make it the lighter, quicker dish (a bowl, a salad, a wrap or a quick skillet).`;
 export const DAY_PLAN_DINNER_LINE = `- This is the day's dinner: make it the fuller cooked dish (a bake, a roast, a braise, stuffed vegetables or a pan dish with a sauce), not a bowl.`;
+
+/** The dinner line when the day has a time limit: nothing that needs an oven hour. */
+export const DAY_PLAN_QUICK_DINNER_LINE = `- This is the day's dinner: make it the fuller, warm dish (a pan dish with a sauce, or a stir-fry with a cooked side), not a bowl, a salad or a wrap.`;
 
 export function dishSystemPrompt(a: {
   ask: DishAsk;
@@ -398,6 +405,16 @@ export function dishSystemPrompt(a: {
   // Anything marked at home (under the switches): the wording turns to what they have.
   const homeNames = [...kept.proteinNames, ...kept.atHome];
   const marked = homeNames.length > 0;
+  // Level examples, for everyone with a ban: never a food their diet bans ("walnuts" for a tree-nut
+  // allergy, "beef" for a vegetarian), through the same check as liked foods. A line whose every
+  // example is banned is stated without examples.
+  const dietMatchers = brain.matchers && hasAnyBan(brain.matchers) ? brain.matchers : null;
+  const dietKeeps = dietMatchers
+    ? (food: string) => evaluateDishAgainstProfile([food], dietMatchers, [exampleAllergenGroups(food)]).passed
+    : undefined;
+  // Lunch and dinner in an eggs-only kitchen: any meat-free protein will do (see eggsOnlyKitchen).
+  const isMainMeal = ask.mealType === "lunch" || ask.mealType === "dinner";
+  const freeMain = steer.ruleOn && isMainMeal && eggsOnlyKitchen(brain.home);
   // The at-home protein rule replaces today's protein line, banned names or not.
   let proteinLine = "";
   if (steer.ruleOn && steer.choice) {
@@ -412,6 +429,14 @@ export function dishSystemPrompt(a: {
       ? ` Any other meat, fish or seafood in it must be one of these, which they have at home: ${clean(homeMeats)}; use no other meat, fish or seafood: not in an ingredient, the dish name, the description or a step.`
       : ` Use no meat, fish or seafood: not in an ingredient, the dish name, the description or a step.`;
     proteinLine += ` This protein is the heart of the dish. Where a line above says to build the dish on or around another food, add a portion of that food to this dish instead; do not replace ${choiceName}.`;
+  } else if (freeMain) {
+    const eggs = clean(brain.home.filter((p) => p.cls === "egg").map((p) => p.name));
+    const others = MEAT_FREE_PROTEINS.filter((f) => dietKeeps?.(f) ?? true);
+    const orOthers = others.length > 0 ? `, or ${ask.wants === undefined ? "" : "another meat-free one: "}${orWords(others)}` : ``;
+    proteinLine = (ask.wants === undefined
+      ? `- Build this ${meal} on a meat-free protein: ${eggs}, which they have at home${orOthers}.`
+      : `- If this dish has a protein food, make it ${eggs}, which they have at home${orOthers}.`)
+      + ` Use no meat, fish or seafood: not in an ingredient, the dish name, the description or a step.`;
   } else if (steer.ruleOn) {
     // Breakfast, a snack and a request: any protein food must be at home, none is required.
     proteinLine = `- If this dish has a protein food (meat, fish, seafood, eggs, tofu, tempeh, seitan, or beans, lentils, chickpeas, Greek yogurt or cottage cheese as its main protein), it must be one they have at home: ${clean(brain.home.map((p) => p.name))}. No other meat, fish or seafood may appear in any dish: not in an ingredient, the dish name, the description or a step.`;
@@ -437,11 +462,11 @@ export function dishSystemPrompt(a: {
   }
   // A day plan makes lunch and dinner at once on the same chosen protein, with nothing else keeping
   // them apart (final review, 2026-11-21): the same protein in different dishes.
-  const dayPlanLine = ask.dayPlan && steer.choice
+  const dayPlanLine = ask.dayPlan && (steer.choice || freeMain)
     ? ask.mealType === "lunch"
       ? DAY_PLAN_LUNCH_LINE
       : ask.mealType === "dinner"
-        ? DAY_PLAN_DINNER_LINE
+        ? ask.maxMinutes !== undefined ? DAY_PLAN_QUICK_DINNER_LINE : DAY_PLAN_DINNER_LINE
         : ``
     : ``;
   const atHome = kept.atHome.slice(0, MAX_AT_HOME_IN_PROMPT);
@@ -455,7 +480,7 @@ export function dishSystemPrompt(a: {
   const favorites = steer.ruleOn
     ? brain.favourites.filter((f) => {
         const k = proteinKind(f);
-        return !k || homeKeys.has(k.key);
+        return !k || homeKeys.has(k.key) || (freeMain && k.cls !== "meat");
       })
     : brain.favourites;
   // Breakfast and snack: with the rule on, name only the proteins they have.
@@ -480,18 +505,11 @@ export function dishSystemPrompt(a: {
     ? (food: string) => {
         const k = proteinKind(food);
         if (!k) return true;
-        if (k.cls !== "meat") return homeKeys.has(k.key);
+        if (k.cls !== "meat") return freeMain || homeKeys.has(k.key);
         if (choiceKey !== null) return sameProteinKind(choiceKey, k.key);
         if (ask.mealType === "snack" || ask.mealType === "breakfast") return false;
         return brain.home.some((p) => p.cls === "meat" && sameProteinKind(p.key, k.key));
       }
-    : undefined;
-  // Level examples, for everyone with a ban: never a food their diet bans ("walnuts" for a tree-nut
-  // allergy, "beef" for a vegetarian), through the same check as liked foods. A line whose every
-  // example is banned is stated without examples.
-  const dietMatchers = brain.matchers && hasAnyBan(brain.matchers) ? brain.matchers : null;
-  const dietKeeps = dietMatchers
-    ? (food: string) => evaluateDishAgainstProfile([food], dietMatchers).passed
     : undefined;
   const keepExample = ruleKeeps && dietKeeps
     ? (food: string) => ruleKeeps(food) && dietKeeps(food)

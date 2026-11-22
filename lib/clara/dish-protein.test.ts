@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { splitKeptFoods, NO_KEPT_FOODS } from "./kept-foods";
-import { proteinKind, builtOn, homeProteins, mainProteins } from "./dish-protein";
+import { proteinKind, builtOn, homeProteins, mainProteins, eggsOnlyKitchen } from "./dish-protein";
 
 const g = (name: string, quantity: number, unit = "g") => ({ name, quantity, unit });
 test("proteinKind: every kind in the design, and names that only sound like one", () => {
@@ -39,6 +39,10 @@ test("homeProteins and mainProteins", () => {
   const only = (name: string) => homeProteins(splitKeptFoods([row(name, "dairy")]));
   assert.deepEqual(mainProteins(only("Large eggs")).map((p) => p.key), ["egg"]);
   assert.deepEqual(mainProteins(only("Plain Greek yogurt")), []);
+  assert.equal(eggsOnlyKitchen(only("Large eggs")), true);
+  assert.equal(eggsOnlyKitchen(only("Plain Greek yogurt")), false);
+  assert.equal(eggsOnlyKitchen(homeProteins(kept)), false);
+  assert.equal(eggsOnlyKitchen([]), false);
   assert.deepEqual(homeProteins(NO_KEPT_FOODS), []);
 });
 test("builtOn: an amount that cannot be priced (a can) still counts, below 15 g of priced protein", () => {
