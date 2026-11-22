@@ -8,6 +8,7 @@ import { ingredientTokens } from "@/lib/basket-match";
 import { builtOn, proteinKind, type DishIngredient, type HomeProtein } from "./dish-protein";
 import type { DishRules } from "./dish-rules";
 import { proteinRuleBreak } from "./protein-rule";
+import { foodMatches } from "./kept-foods";
 import { sizeProblem } from "./meal-target";
 
 export interface JudgeInput {
@@ -23,6 +24,8 @@ export interface JudgeInput {
   rules: DishRules;
   targetCalories: number | null;
   ceilings: Partial<Record<FullLevelKey, number>>;
+  /** Foods the person said they do not have for this dish: a dish that uses one is out. */
+  without?: readonly string[];
   /** Dish names they had today or in the last days, or were just shown. A dish that is one of them reworded is only served when nothing else passes. */
   notLike?: readonly string[];
 }
@@ -145,6 +148,10 @@ export function judgeDish(input: JudgeInput): DishVerdict {
   // const toBuy = foodsToBuy(input.ingredients, input.kept, input.basics);
   // if (toBuy.length > MAX_FOODS_TO_BUY) reasons.push(`to-buy:${toBuy.length}`);
 
+  for (const w of input.without ?? []) {
+    if (input.ingredients.some((i) => foodMatches(w, i.name))) reasons.push(`without:${w}`);
+  }
+
   if (namedAfterOwnIngredient(input.name, input.ingredients.map((i) => i.name))) reasons.push("honest:named-after-ingredient");
 
   if (input.rules.sizeToCalories) {
@@ -170,6 +177,6 @@ export function judgeDish(input: JudgeInput): DishVerdict {
     if (amount !== undefined && ceiling !== undefined && amount > ceiling) reasons.push(`limit:${key}`);
   }
 
-  const hard = reasons.some((r) => r.startsWith("protein:") || r.startsWith("honest:") || r.startsWith("limit:"));
+  const hard = reasons.some((r) => r.startsWith("protein:") || r.startsWith("honest:") || r.startsWith("limit:") || r.startsWith("without:"));
   return { level: hard ? "fail" : reasons.length ? "relaxed" : "pass", reasons, builtOn: built?.key ?? null };
 }

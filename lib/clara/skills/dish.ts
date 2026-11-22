@@ -28,6 +28,7 @@ import { keptFoodsFrom, loadKeptMarks } from "@/lib/clara/kept-foods-db";
 import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type AskSteer, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
 import { builtOn, eggsOnlyKitchen, proteinKind } from "@/lib/clara/dish-protein";
 import { dishShape, judgeDish, keepWayOfCooking, starchFamily, type DishVerdict } from "@/lib/clara/dish-judge";
+import { plainSwap, swapInRecipe, swapOptions } from "@/lib/clara/exchange";
 import { chooseProtein, fnv1a, fromHomeLine, requestedProtein, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
 import { targetLines } from "@/lib/clara/meal-target";
 import { exampleAllergenGroups, steerLines, levelCeilings } from "@/lib/clara/level-steer";
@@ -155,6 +156,13 @@ export interface DishAsk {
    * fuller dinner. Prompt only; no gate reads it.
    */
   dayPlan?: boolean;
+  /**
+   * The ingredients check before cooking (piece B): they were about to cook `dish` and do not
+   * have `from`. Set together with `wants` (what takes its place) and `without`.
+   */
+  swap?: { dish: string; from: string };
+  /** Foods they said they do not have: told to the generator, and a dish that uses one is dropped by the judge. */
+  without?: string[];
 }
 
 /** The onboarding "starting picture": levels they probably get little of / a lot of. */
@@ -659,6 +667,12 @@ export function dishSystemPrompt(a: {
     ask.wants !== undefined
       ? `- THE REQUEST: they asked to cook "${ask.wants.replace(/["\n\r]+/g, "").replace(/\s+/g, " ").trim()}". Every one of the ${CANDIDATES} dishes must be that: what they asked for is the dish's main idea and is named in the dish name. Make ${CANDIDATES} versions of it, the simplest first, not ${CANDIDATES} unrelated dishes. Where a line above says to build the dish around another ingredient, add that ingredient to this dish instead. Every other rule here still applies in full. If a rule forbids part of what they asked for, the rule wins: use a food that fits in its place and name the dish by what is really in it.`
       : ``,
+    ask.swap
+      ? `- They were about to cook "${promptDishName(ask.swap.dish)}" but do not have ${cleanOne(ask.swap.from)}: write that same dish with what they asked for in its place, keeping the rest of it as it was wherever the exchange allows.`
+      : ``,
+    ask.without && ask.without.length > 0
+      ? `- They do not have these, so no dish may use them, not in an ingredient, the name or a step: ${ask.without.map(cleanOne).join(", ")}.`
+      : ``,
     ask.avoid && ask.avoid.length > 0
       ? `- They were already shown these and asked for something else: suggest a clearly different dish, not one of these and not a small variation of one: ${ask.avoid.map((n) => n.replace(/["\n\r]+/g, "")).join("; ")}.`
       : ``,
@@ -906,6 +920,7 @@ function judgeGated(gated: FridgeRecipe, ask: DishAsk, person: Person, steer: As
     targetCalories: steer.target.calories,
     ceilings: steer.ceilings,
     notLike: [...person.brain.usedToday, ...person.brain.usedRecently, ...(ask.avoid ?? [])],
+    ...(ask.without && ask.without.length > 0 ? { without: ask.without } : {}),
   });
   const fromHome = fromHomeLine(ingredients.map((i) => i.name), person.brain.kept, builtOn(ingredients, r.steps));
   return { recipe: r, verdict, fromHome };
@@ -1908,6 +1923,119 @@ export function makeDishHandlers(deps: DishDeps = prismaDeps) {
   };
 
   return { suggest, planToday };
+}
+
+// ─── The ingredients check before cooking (piece B) ──────────────────────────
+
+export type SwapResult =
+  | { ok: true; how: "exchanged" | "rewritten" | "new"; dish: BuiltDish["dish"]; steps: BuiltDish["steps"] }
+  | { ok: false; status: 404 | 422; message: string };
+
+export const SWAP_NOT_IN_DISH = "That ingredient is not in this dish.";
+export const SWAP_NOT_OFFERED = "That is not one of the exchanges for this ingredient.";
+export const SWAP_COULDNT = "I couldn't make that change fit you. Try another one, or a different dish.";
+
+/** The dish as the generator would have written it, so it goes through the very same gates. */
+function itemFromRecipe(recipe: ClaraRecipe): Record<string, unknown> {
+  const prep = Math.max(1, Math.round(recipe.minutes / 3));
+  return {
+    name: recipe.name,
+    description: recipe.name,
+    ingredients: recipe.ingredients.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit })),
+    steps: recipe.steps,
+    prepMinutes: Math.min(prep, recipe.minutes),
+    cookMinutes: Math.max(0, recipe.minutes - prep),
+    perServing: {
+      calories: recipe.perServing.calories, protein: recipe.perServing.protein, carbs: recipe.perServing.carbs,
+      fat: recipe.perServing.fat, fiber: recipe.perServing.fibre ?? 0,
+    },
+  };
+}
+
+/**
+ * What the person can do about an ingredient they do not have, and doing it:
+ *  - `options`: the exchanges on offer, chosen in code (lib/clara/exchange.ts), diet-checked;
+ *  - `apply`: a like-for-like exchange is made in code (the line, the steps, the name), re-priced
+ *    and put through every gate and the judge; any other exchange (a protein, or one the gates
+ *    turn down) is rewritten by the generator as a request for the replacement;
+ *  - `without`: "nothing similar": a different dish that does not use the food.
+ * A replacement the server did not offer is refused, so no free text from the app reaches the generator.
+ */
+export function makeSwapHandlers(deps: DishDeps = prismaDeps) {
+  const inDish = (recipe: ClaraRecipe, ingredient: string) =>
+    recipe.ingredients.some((i) => i.name.trim().toLowerCase() === ingredient.trim().toLowerCase());
+
+  const optionsFor = async (ctx: ClaraContext, recipe: ClaraRecipe, ingredient: string) => {
+    const person = await personFor(ctx);
+    if (!person) return null;
+    const banned = hasAnyBan(person.matchers);
+    return swapOptions({
+      ingredient,
+      inDish: recipe.ingredients.map((i) => i.name),
+      atHome: [...person.kept.proteinNames, ...person.kept.atHome],
+      home: person.brain.home,
+      allowed: (food) => !banned || evaluateDishAgainstProfile([food], person.matchers, [exampleAllergenGroups(food)]).passed,
+    });
+  };
+
+  const options = async (ctx: ClaraContext, a: { recipe: ClaraRecipe; ingredient: string }) => {
+    if (!inDish(a.recipe, a.ingredient)) return { ok: false as const, status: 422 as const, message: SWAP_NOT_IN_DISH };
+    const found = await optionsFor({ ...ctx }, a.recipe, a.ingredient);
+    if (!found) return { ok: false as const, status: 404 as const, message: "Profile not found" };
+    return { ok: true as const, ...found };
+  };
+
+  const serve = (how: "exchanged" | "rewritten" | "new", built: BuiltDish | null): SwapResult =>
+    built ? { ok: true, how, dish: built.dish, steps: built.steps } : { ok: false, status: 422, message: SWAP_COULDNT };
+
+  const apply = async (
+    ctx: ClaraContext,
+    a: { mealType: DishMealType; recipe: ClaraRecipe; ingredient: string; replacement: string },
+  ): Promise<SwapResult> => {
+    if (!inDish(a.recipe, a.ingredient)) return { ok: false, status: 422, message: SWAP_NOT_IN_DISH };
+    const call = { ...ctx };
+    const offered = await optionsFor(call, a.recipe, a.ingredient);
+    if (!offered) return { ok: false, status: 404, message: "Profile not found" };
+    const to = offered.options.find((o) => o.name.trim().toLowerCase() === a.replacement.trim().toLowerCase());
+    if (!to) return { ok: false, status: 422, message: SWAP_NOT_OFFERED };
+    const summary = claimableSummary(await deps.loadSummary(call.patientId, call.today));
+    const ask: DishAsk = {
+      mealType: a.mealType,
+      summary,
+      ...(a.recipe.servings > 1 ? { servings: a.recipe.servings } : {}),
+      wants: to.name,
+      swap: { dish: a.recipe.name, from: a.ingredient },
+      without: [a.ingredient],
+    };
+    if (plainSwap(a.ingredient, to.name)) {
+      const swapped = swapInRecipe(a.recipe, a.ingredient, to.name);
+      const person = swapped ? await personFor(call) : null;
+      if (swapped && person) {
+        const judged = await gateOne(itemFromRecipe(swapped), ask, person, await catalogTokens(), new Set(), () => {}, steerFor(call, ask, person));
+        if (judged) return serve("exchanged", buildDish(judged.recipe, ask, "generated", judged));
+      }
+    }
+    return serve("rewritten", await generateOne(deps, call, ask));
+  };
+
+  const without = async (
+    ctx: ClaraContext,
+    a: { mealType: DishMealType; recipe: ClaraRecipe; ingredient: string },
+  ): Promise<SwapResult> => {
+    if (!inDish(a.recipe, a.ingredient)) return { ok: false, status: 422, message: SWAP_NOT_IN_DISH };
+    const call = { ...ctx };
+    const summary = claimableSummary(await deps.loadSummary(call.patientId, call.today));
+    const ask: DishAsk = {
+      mealType: a.mealType,
+      summary,
+      ...(a.recipe.servings > 1 ? { servings: a.recipe.servings } : {}),
+      avoid: [a.recipe.name],
+      without: [a.ingredient],
+    };
+    return serve("new", await generateOne(deps, call, ask));
+  };
+
+  return { options, apply, without };
 }
 
 /** The production effects, for the live simulation (sim/clara-fast-live.sim.ts) to wrap with a trace. */
