@@ -397,7 +397,7 @@ export const CLARA_SCHEMA: Record<string, ModelDef> = {
       physicalActivityId: SN(), mealTypeId: SN(), goalWeight: FN(), goalWeightUnit: { t: "S", null: true, def: () => "lbs" }, weeklyGoal: FN(),
       mealPlanStartDate: DN(), activePlanVersion: { t: "I", def: () => 0 }, mealPlanStatus: S({ def: () => "IDLE" }), mealPlanStale: B(false),
       mealPlanGenStartedAt: DN(), mealPlanError: SN(), mealPlanWeight: FN(), recentDishes: JN(), missingStaples: { t: "S[]", def: () => [] },
-      usualEating: JN(), startingPicture: JN(), weightGoal: SN(), noCondition: B(false), profileCompleted: B(false), tasteCompleted: B(false),
+      usualEating: JN(), startingPicture: JN(), claraRules: JN(), weightGoal: SN(), noCondition: B(false), profileCompleted: B(false), tasteCompleted: B(false),
       createdAt: DNOW(), updatedAt: UPD(),
     },
     relations: {

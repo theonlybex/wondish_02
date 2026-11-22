@@ -188,6 +188,8 @@ type Scenario = {
   eating?: Record<string, number>;
   /** Logged on each ask's day before the asks. */
   logged?: LoggedMeal[];
+  /** "How Clara cooks" as stored on the person (Patient.claraRules): their switches and their own rules. */
+  claraRules?: { switches?: Record<string, boolean>; mine?: { id: string; text: string; on: boolean }[] };
   /** No dishes: the Grocery list for this person on `groceryDay`, then again after "Got it" on the first food of each group. No model call. */
   grocery?: true;
   groceryDay?: number;
@@ -254,6 +256,15 @@ SCENARIOS.push(
   // Round A3 (2026-11-22): with protein on track, one lunch in two goes without meat, fish or eggs.
   { id: "T", title: "MARKS + potatoes, lentils, feta; protein on track; four lunches", rules: [], atHome: [...MARKS, "Russet potatoes", "Green lentils", "Feta cheese"], week: wk3("Logged", 45, 500),
     asks: [15, 18, 21, 24].map((day) => ({ meal: "lunch" as const, day })) },
+  // Piece D (2026-11-22): the person's own rules and switches reach the dishes.
+  { id: "Y", title: "MARKS + potatoes, kale; own rules: no spinach, dinners under 25 minutes (one switched off); variety off", rules: [],
+    atHome: [...MARKS, "Russet potatoes", "Kale"],
+    claraRules: { switches: { keepWeekVaried: false }, mine: [
+      { id: "r1", text: "Never put spinach in my dishes", on: true },
+      { id: "r2", text: "Keep dinners under 25 minutes", on: true },
+      { id: "r3", text: "No rice", on: false },
+    ] },
+    asks: rep(3, { meal: "dinner" }, (k) => 9 + k) },
   // Grocery list (2026-11-22): chosen in code, no model call.
   { id: "U", title: "grocery: eggs, spinach, rice at home; answers poor in everything", rules: [], grocery: true, groceryDay: 12,
     atHome: ["Large eggs", "Spinach", "Jasmine rice"], eating: { veg: 0, fruit: 0, beans: 0, grains: 0, fish: 0, meat: 0, dairy: 0, packaged: 2, sweet: 2 }, asks: [] },
@@ -368,6 +379,7 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
     const accountId = store.tables.account.find((a: any) => a.clerkId === clerkId).id;
     const pid = store.tables.patient.find((x: any) => x.accountId === accountId).id;
     for (const n of s.atHome) await store.client.patientPantryItem.create({ data: { patientId: pid, ingredientId: idOf(n) } });
+    if (s.claraRules) store.tables.patient.find((x: any) => x.id === pid).claraRules = s.claraRules;
     if (s.eating) {
       const or = await onboarding.PUT(req("PUT", { usualEating: s.eating, pills: [] }) as any);
       if (or.status !== 200) throw new Error(`${s.id}: onboarding ${or.status} ${JSON.stringify(await or.json())}`);
@@ -592,7 +604,7 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
           proteinKinds: [...new Set(names.map((x) => proteinKind(x)?.key).filter(Boolean))],
           fish: names.filter((x) => FISH.test(x)),
           richIron: richIn("iron", names), richPotassium: richIn("potassium", names),
-          oracle: oracleVerdict, ingredients: names,
+          oracle: oracleVerdict, ingredients: names, minutes: part?.minutes ?? null, steps,
           prompts: mine.map((c) => c.system), need: steer.need,
           candidates, notes,
           latencyMs, modelCalls: mine.length,
@@ -850,6 +862,19 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
       return l && d && dishShape(l.name).way === dishShape(d.name).way && (starchesIn(l.ingredients)[0] ?? null) === (starchesIn(d.ingredients)[0] ?? null); });
     return bad.length ? bad.map((r) => `${id(r)} (${planDishes(r, "lunch")[0].name} / ${planDishes(r, "dinner")[0].name})`).join(", ") : null;
   }, true);
+  const yR = of("Y");
+  each("Y1 own rule 'never put spinach': no dish has spinach (held in code)", yR, (r) => !r.ingredients.some((n: string) => /spinach/i.test(n)));
+  whole("Y2 own rules are in the instructions in their words; a switched-off one is not", yR, () => {
+    const ps = promptsOf(yR);
+    if (!ps.length) return "no prompt recorded";
+    const bad = ps.filter(({ p }) => !/Their own rules for their dishes.*Never put spinach in my dishes; Keep dinners under 25 minutes\./.test(p) || /No rice/.test(p));
+    return bad.length ? bad.map(({ r }) => id(r)).join(", ") : null;
+  }, true);
+  whole("Y3 'Keep my week varied' off: no kind-of-dish line and no last-days line", yR, () => {
+    const bad = promptsOf(yR).filter(({ p }) => /To keep their week varied|in the last few days/.test(p));
+    return bad.length ? bad.map(({ r }) => id(r)).join(", ") : null;
+  }, true);
+  each("Y4 own rule 'dinners under 25 minutes' (an instruction only): minutes on the card", yR, (r) => r.minutes == null || r.minutes <= 25, true);
   const gRows = rows.filter((r) => r.meal === "grocery");
   whole("G1 grocery: no listed food is already at home, banned by the diet, or listed twice", gRows, () => {
     const bad: string[] = [];
