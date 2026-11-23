@@ -90,7 +90,7 @@ export function targetLines(t: MealTarget, mealType: MealType, mainsOnProtein: b
     // average), so a lunch asked for at 689 kcal was served at 488–577. The judge still holds the real target.
     const aim = t.band ? Math.round((t.calories * MAIN_SAID_AIM) / 5) * 5 : t.calories;
     let size = `- Size: this ${meal} should be about ${aim} kcal per serving (their day is ${t.dayCalories} kcal); choose the portions to land there.`;
-    if (t.band) size += ` It must be no less than ${t.calories} kcal and no more than ${t.band.max} kcal: a smaller serving is too small to be this meal. Reach it with full portions of the protein and the starch, not with extra oil.`;
+    if (t.band) size += ` It must be no less than ${t.calories} kcal and no more than ${t.band.max} kcal: a smaller serving is too small to be this meal. Reach it with full portions of the protein and the starch, not with extra oil or a second starch: for this size the starch is about ${Math.min(80, Math.round((t.calories * 0.4) / 3.5 / 5) * 5)} g of dry rice or pasta, or about ${Math.round((t.calories * 0.38) / 10) * 10} g of potatoes.`;
     lines.push(size);
   }
   if (t.split) lines.push(`- Macro split to aim for, by calories: ${macroSplitLine(t.split)}.`);
