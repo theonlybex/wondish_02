@@ -184,7 +184,16 @@ export function showsPhosphorus(conditionNames: string[]): boolean {
 }
 
 export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
-  const { days, range, macroTargets, person } = input;
+  const { range, macroTargets, person } = input;
+  // A figure that is not a real amount counts as nothing, everywhere on the screen (a negative or
+  // NaN protein pulled the levels list and the Macros block apart, review 2026-11-22).
+  const real = (v: number) => (Number.isFinite(v) && v > 0 ? v : 0);
+  const realOrNull = (v: number | null) => (v === null ? null : real(v));
+  const days: FullDay[] = input.days.map((d) => ({
+    ...d, calories: real(d.calories), protein: real(d.protein), carbs: real(d.carbs),
+    ...(d.fat !== undefined ? { fat: real(d.fat) } : {}),
+    fibre: realOrNull(d.fibre), sodium: realOrNull(d.sodium), saturatedFat: realOrNull(d.saturatedFat), addedSugar: realOrNull(d.addedSugar),
+  }));
   const counted = days.filter((d) => d.meals >= 1);
   const daysCounted = counted.length;
   const enoughLogs = days.filter((d) => d.meals >= ENOUGH_MEALS_PER_DAY).length >= ENOUGH_LOG_DAYS;
@@ -195,7 +204,7 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
   const withPhosphorus = showsPhosphorus(input.conditionNames);
 
   // How much of the day the logs cover (lunch and dinner only is about two thirds).
-  const share = loggedShare(mean(counted.map((d) => d.calories)), macroTargets?.calories);
+  const share = loggedShare(mean(counted.map((d) => d.calories)), macroTargets?.calories, mean(counted.map((d) => d.meals)));
   const avgCalories = mean(counted.map((d) => d.calories));
   const rawShare = avgCalories !== null && avgCalories > 0 && macroTargets?.calories && macroTargets.calories > 0
     ? Math.round(Math.min(1, avgCalories / macroTargets.calories) * 100) / 100
@@ -277,7 +286,8 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
     const ratio = average !== null && against !== null ? average / against : null;
     const word: FullMacroRow["word"] = ratio === null || daysCounted < ENOUGH_LOG_DAYS
       ? null
-      : ratio < 0.7 ? "little" : ratio > 1.3 && key !== "protein" ? "a lot" : "on track";
+      // "A lot" is of the whole day's target: a fatty dinner alone is not a lot of fat for the day.
+      : ratio < 0.7 ? "little" : key !== "protein" && target !== undefined && average !== null && average > target * 1.3 ? "a lot" : "on track";
     return {
       key, name,
       average: average === null ? null : roundAmount(average, "g"),

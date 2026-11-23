@@ -265,9 +265,9 @@ test("a whole-day need is judged against the part of the day that was logged", (
   assert.deepEqual([lv(whole, "protein").word, lv(whole, "protein").wordTarget], ["little", undefined]);
   // Still little when the logged part is thin in protein: 30 g in 1,300 kcal.
   assert.equal(lv(buildFullNumbers(base({ macroTargets: targets, days: [1, 2, 3, 4].map((i) => day(i, { calories: 1300, protein: 30 })) })), "protein").word, "little");
-  // Never under a quarter of a day, and a limit is not prorated (a partial day cannot be over).
+  // Two meals a day is never under half a day, and a limit is not prorated (a partial day cannot be over).
   const thin = buildFullNumbers(base({ macroTargets: targets, days: [1, 2, 3, 4].map((i) => day(i, { calories: 400, protein: 30, sodium: 2500 })) }));
-  assert.equal(lv(thin, "protein").wordTarget, 37.5);
+  assert.equal(lv(thin, "protein").wordTarget, 75);
   assert.deepEqual([lv(thin, "sodium").word, lv(thin, "sodium").wordTarget], ["a lot", undefined]);
   // No calorie target: unchanged.
   assert.equal(lv(buildFullNumbers(base({ days: [1, 2, 3, 4].map((i) => day(i, { calories: 900, protein: 20 })) })), "protein").wordTarget, undefined);
@@ -319,4 +319,17 @@ test("macros: a dinner-only logger reads on track, a thin log says how thin, far
   // A negative figure counts as nothing; a day without a fat figure does not blank the week's fat.
   const odd = buildFullNumbers(base({ macroTargets: targets, days: [day(1, { calories: 2000, protein: 150, fat: -10 }), day(2, { calories: 2000, protein: 150, fat: 50 }), day(3, { calories: 2000, protein: 150 })] }));
   assert.ok((row(odd, "fat").average ?? -1) >= 0);
+});
+
+test("macros: three meals and 500 kcal is eating little, not logging little; a fatty dinner alone is not a lot of fat", () => {
+  const targets = { calories: 2000, protein: 150, carbs: 225, fat: 55.6 };
+  const row = (o: ReturnType<typeof buildFullNumbers>, k: string) => o.macros.rows.find((r) => r.key === k)!;
+  const under = buildFullNumbers(base({ macroTargets: targets, days: [1, 2, 3, 4].map((i) => ({ ...day(i, { calories: 500, protein: 35, carbs: 50, fat: 12, fibre: 8 }), meals: 3 })) }));
+  assert.deepEqual([under.macros.loggedShare, row(under, "protein").word, row(under, "carbs").word, lv(under, "protein").word, lv(under, "fibre").word], [1, "little", "little", "little", "little"]);
+  const dinner = buildFullNumbers(base({ macroTargets: targets, days: [1, 2, 3, 4].map((i) => ({ ...day(i, { calories: 600, protein: 45, carbs: 80, fat: 25 }), meals: 1 })) }));
+  assert.deepEqual([row(dinner, "fat").word, row(dinner, "carbs").word, row(dinner, "protein").word], ["on track", "on track", "on track"]);
+  // Not a real amount: the same nothing in the levels list and the Macros block.
+  const odd = buildFullNumbers(base({ macroTargets: targets, days: [day(1, { protein: -50 }), day(2, { protein: 150, carbs: NaN }), day(3, { protein: 150 })] }));
+  assert.deepEqual([row(odd, "protein").average, lv(odd, "protein").amount], [100, 100]);
+  assert.ok(Number.isFinite(lv(odd, "carbs").amount));
 });

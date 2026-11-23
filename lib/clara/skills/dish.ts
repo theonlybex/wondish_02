@@ -699,7 +699,7 @@ export function dishSystemPrompt(a: {
       ? `- THE REQUEST: they asked to cook "${ask.wants.replace(/["\n\r]+/g, "").replace(/\s+/g, " ").trim()}". Every one of the ${CANDIDATES} dishes must be that: what they asked for is the dish's main idea and is named in the dish name. Make ${CANDIDATES} versions of it, the simplest first, not ${CANDIDATES} unrelated dishes. Where a line above says to build the dish around another ingredient, add that ingredient to this dish instead. Every other rule here still applies in full. If a rule forbids part of what they asked for, the rule wins: use a food that fits in its place and name the dish by what is really in it.`
       : ``,
     ask.swap
-      ? `- They were about to cook "${promptDishName(ask.swap.dish)}" but do not have ${cleanOne(ask.swap.from)}: write that same dish with what they asked for in its place. Keep every other ingredient and its amount, and the way it is cooked; change only what the exchange needs (how long the new food cooks, the step that prepares it, the name). Make it the same size: about ${Math.round(ask.swap.calories)} kcal a serving, and not under ${Math.ceil(ask.swap.calories * SWAP_REWRITE_BAND.min)}. If the new food has fewer calories, use more of it and more of the dish's starch, or add a filling food that fits the rules here (beans, lentils, cheese, nuts), so it is still a meal. The dish as it was — ingredients: ${ask.swap.ingredients.map((x) => cleanOne(x).replace(/;/g, "")).join("; ")}. Steps: ${ask.swap.steps.map((x, i) => `${i + 1}) ${cleanOne(x)}`).join(" ")}`
+      ? `- They were about to cook "${promptDishName(ask.swap.dish)}" but do not have ${cleanOne(ask.swap.from)}: write that same dish with what they asked for in its place. Keep every other ingredient and its amount, and the way it is cooked; change only what the exchange needs (how long the new food cooks, the step that prepares it, the name). Make it the same size, about ${Math.round(ask.swap.calories)} kcal a serving: if the new food has fewer calories, use more of it and more of the dish's starch, or add a filling food that fits the rules here (canned or already cooked beans or lentils, cheese, nuts), so it is still a meal. The dish as it was — ingredients: ${ask.swap.ingredients.map((x) => cleanOne(x).replace(/;/g, "")).join("; ")}. Steps: ${ask.swap.steps.map((x, i) => `${i + 1}) ${cleanOne(x)}`).join(" ")}`
       : ``,
     ask.without && ask.without.length > 0
       ? `- They do not have these, so no dish may use them, not in an ingredient, the name or a step: ${ask.without.map(cleanOne).join(", ")}.`
@@ -2143,7 +2143,10 @@ export function makeSwapHandlers(deps: DishDeps = prismaDeps) {
     // The same dish cannot be made with it (mushrooms in place of the beef came out a third lighter
     // and were refused, live run 2026-11-22): a dish of its own with the food they chose, not a refusal.
     const { swap: _swap, ...fresh } = ask;
-    return serve("new", await generateOne(deps, call, { ...fresh, avoid: [a.recipe.name] }));
+    const other = await generateOne(deps, call, { ...fresh, avoid: [a.recipe.name] });
+    // Only a dish that really uses the food they chose.
+    const uses = other?.dish.recipe?.ingredients.some((i) => ruleFoodMatches(to.name, i.name)) ?? false;
+    return serve("new", uses ? other : null);
   };
 
   const without = async (

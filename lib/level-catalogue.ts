@@ -61,9 +61,16 @@ export const LEVELS: readonly LevelDef[] = [
  * dishes from clara then it should say enough of protein in numbers"). 1 with no calorie target.
  */
 export const MIN_LOGGED_SHARE = 0.25;
-export function loggedShare(avgCalories: number | null, calorieTarget: number | null | undefined): number {
+/**
+ * `avgMeals` (meals logged a day) tells logging part of the day from eating little: three meals a
+ * day is the whole day however few the calories (someone who logs three meals and 500 kcal is
+ * eating little, not logging little), two meals is at least half a day, one at least a quarter.
+ */
+export function loggedShare(avgCalories: number | null, calorieTarget: number | null | undefined, avgMeals?: number | null): number {
   if (avgCalories === null || !calorieTarget || !(calorieTarget > 0) || !(avgCalories > 0)) return 1;
-  return Math.min(1, Math.max(MIN_LOGGED_SHARE, avgCalories / calorieTarget));
+  if (typeof avgMeals === "number" && avgMeals >= 3) return 1;
+  const floor = typeof avgMeals === "number" && avgMeals >= 2 ? 0.5 : MIN_LOGGED_SHARE;
+  return Math.min(1, Math.max(floor, avgCalories / calorieTarget));
 }
 /** The levels that are a need of the whole day counted from logged food: these are compared with the logged share. */
 export const DAY_NEED_KEYS: ReadonlySet<FullLevelKey> = new Set<FullLevelKey>(["protein", "carbs", "fibre"]);
