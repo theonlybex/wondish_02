@@ -12,7 +12,7 @@ export async function loadLevelSummary(patientId: string, toDate: string, days: 
 
   const rows = await prisma.mealLog.findMany({
     where: { patientId, localDate: { gte: fromDate, lte: toDate }, deletedAt: null },
-    select: { localDate: true, servings: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, sodium: true },
+    select: { localDate: true, servings: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, sodium: true, mealType: true },
   });
 
   const dayInputs = levelDaysFromRows(rows);
@@ -32,7 +32,7 @@ export async function loadClaraLevelSummary(patientId: string, toDate: string, d
   const fromDate = addDays(toDate, -(days - 1));
   const rows = await prisma.mealLog.findMany({
     where: { patientId, localDate: { gte: fromDate, lte: toDate }, deletedAt: null },
-    select: { localDate: true, servings: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, sodium: true },
+    select: { localDate: true, servings: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, sodium: true, mealType: true },
   });
   const dayInputs = levelDaysFromRows(rows);
   const dayTarget = await getDayTarget(patientId, toDate, false);
@@ -51,7 +51,7 @@ export async function loadFullLevelData(patientId: string, toDate: string, days:
   const fromDate = addDays(toDate, -(days - 1));
   const rows = await prisma.mealLog.findMany({
     where: { patientId, localDate: { gte: fromDate, lte: toDate }, deletedAt: null },
-    select: { localDate: true, servings: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, sodium: true, nutrients: true },
+    select: { localDate: true, servings: true, calories: true, protein: true, carbs: true, fat: true, fiber: true, sodium: true, nutrients: true, mealType: true },
   });
   return { range: { fromDate, toDate }, days: fullDaysFromRows(rows as MealLevelRow[]) };
 }
@@ -68,6 +68,8 @@ export interface MealLevelRow {
   sodium: number | null;
   /** Per-serving extras beyond the columns, { saturatedFat, addedSugar, ... }. */
   nutrients?: unknown;
+  /** "breakfast" | "lunch" | "dinner" | "snack"; absent in older callers. */
+  mealType?: string | null;
 }
 
 /**
@@ -78,6 +80,8 @@ export interface MealLevelRow {
  */
 export function levelDaysFromRows(rows: MealLevelRow[]): LevelDayInput[] {
   const byDate = new Map<string, LevelDayInput & { sodiumComplete: boolean; fibreComplete: boolean }>();
+  // null: a row of that day has no meal type (an older caller), so its main meals are not known.
+  const mains = new Map<string, Set<string> | null>();
   for (const r of rows) {
     let d = byDate.get(r.localDate);
     if (!d) {
@@ -86,6 +90,13 @@ export function levelDaysFromRows(rows: MealLevelRow[]): LevelDayInput[] {
     }
     const s = r.servings;
     d.meals += 1;
+    // The day's main meals, each once: three snacks, or a dinner entered in two parts, are not three meals.
+    const type = typeof r.mealType === "string" ? r.mealType.trim().toLowerCase() : null;
+    if (type === null) { mains.set(r.localDate, null); }
+    else if (type === "breakfast" || type === "lunch" || type === "dinner") {
+      const seen = mains.get(r.localDate);
+      if (seen !== null) mains.set(r.localDate, (seen ?? new Set<string>()).add(type));
+    } else if (!mains.has(r.localDate)) mains.set(r.localDate, new Set<string>());
     d.calories += (r.calories ?? 0) * s;
     d.protein += (r.protein ?? 0) * s;
     d.carbs += (r.carbs ?? 0) * s;
@@ -99,6 +110,7 @@ export function levelDaysFromRows(rows: MealLevelRow[]): LevelDayInput[] {
   }
   return Array.from(byDate.values()).map(({ sodiumComplete, fibreComplete, ...d }) => ({
     ...d,
+    ...(mains.get(d.localDate) ? { mainMeals: mains.get(d.localDate)!.size } : {}),
     fibre: fibreComplete ? d.fibre : null,
     sodium: sodiumComplete ? d.sodium : null,
   }));
@@ -132,6 +144,7 @@ export function fullDaysFromRows(rows: MealLevelRow[]): FullDay[] {
     return {
       localDate: d.localDate,
       meals: d.meals,
+      ...(d.mainMeals !== undefined ? { mainMeals: d.mainMeals } : {}),
       calories: d.calories,
       protein: d.protein,
       carbs: d.carbs,

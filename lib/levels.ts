@@ -17,6 +17,8 @@ export interface LevelRow {
 export interface LevelDayInput {
   localDate: string;
   meals: number;
+  /** Breakfast, lunch and dinner logged that day, each once (0 to 3); absent when the meal types are not known. */
+  mainMeals?: number;
   calories: number;
   protein: number;
   carbs: number;
@@ -68,7 +70,7 @@ export function summarizeLevels(
   );
 
   // Judged against the part of the day that was logged, as the Numbers screen does (loggedShare).
-  const share = opts.byLoggedShare ? loggedShare(avg((d) => d.calories), targets?.calories, avg((d) => d.meals)) : 1;
+  const share = opts.byLoggedShare ? loggedShare(avg((d) => d.calories), targets?.calories, avg((d) => d.mainMeals ?? d.meals)) : 1;
   const fibreWord: LevelWord | null =
     fibreAvg === null ? null : fibreAvg < FIBRE_TARGET_G * share * LITTLE_BELOW ? "little" : "on track";
   const sodiumWord: LevelWord | null =

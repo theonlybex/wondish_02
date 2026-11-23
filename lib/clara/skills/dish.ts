@@ -2145,7 +2145,9 @@ export function makeSwapHandlers(deps: DishDeps = prismaDeps) {
     const { swap: _swap, ...fresh } = ask;
     const other = await generateOne(deps, call, { ...fresh, avoid: [a.recipe.name] });
     // Only a dish that really uses the food they chose.
-    const uses = other?.dish.recipe?.ingredients.some((i) => ruleFoodMatches(to.name, i.name)) ?? false;
+    // By the food's own word ("salmon" for "Salmon fillets", "chicken" for "Boneless chicken breasts").
+    const kind = proteinKind(to.name)?.key;
+    const uses = other?.dish.recipe?.ingredients.some((i) => ruleFoodMatches(to.name, i.name) || (kind !== undefined && proteinKind(i.name)?.key === kind)) ?? false;
     return serve("new", uses ? other : null);
   };
 

@@ -60,3 +60,10 @@ test("fibre averages only the days whose fibre is fully known", () => {
   const s = summarizeLevels(levelDaysFromRows(rows), null, RANGE);
   assert.equal(s.levels.find((l) => l.key === "fibre")!.amount, 30);
 });
+
+test("levelDaysFromRows counts the day's main meals once each; snacks are not meals; unknown types leave it out", () => {
+  const row = (mealType: string | undefined) => ({ localDate: "2026-11-20", servings: 1, calories: 200, protein: 10, carbs: 20, fat: 5, fiber: 2, sodium: 100, ...(mealType ? { mealType } : {}) });
+  assert.deepEqual(levelDaysFromRows([row("breakfast"), row("snack"), row("Snack"), row("dinner"), row("dinner")]).map((d) => [d.meals, d.mainMeals]), [[5, 2]]);
+  assert.deepEqual(levelDaysFromRows([row("snack"), row("snack")]).map((d) => d.mainMeals), [0]);
+  assert.deepEqual(levelDaysFromRows([row("lunch"), row(undefined)]).map((d) => d.mainMeals), [undefined]);
+});

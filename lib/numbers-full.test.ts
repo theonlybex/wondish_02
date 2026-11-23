@@ -333,3 +333,10 @@ test("macros: three meals and 500 kcal is eating little, not logging little; a f
   assert.deepEqual([row(odd, "protein").average, lv(odd, "protein").amount], [100, 100]);
   assert.ok(Number.isFinite(lv(odd, "carbs").amount));
 });
+
+test("macros: snacks and a meal entered twice are not three meals", () => {
+  const targets = { calories: 2000, protein: 150, carbs: 225, fat: 55.6 };
+  // Breakfast and two snacks, 800 kcal with 60 g protein: a part of the day, read against that part.
+  const part = buildFullNumbers(base({ macroTargets: targets, days: [1, 2, 3, 4].map((i) => ({ ...day(i, { calories: 800, protein: 60, carbs: 90, fat: 22 }), meals: 3, mainMeals: 1 })) }));
+  assert.deepEqual([part.macros.loggedShare, part.macros.rows[0].word], [0.4, "on track"]);
+});

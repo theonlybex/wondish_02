@@ -21,6 +21,8 @@ import {
 export interface FullDay {
   localDate: string;
   meals: number;
+  /** Breakfast, lunch and dinner logged that day, each once (0 to 3); absent when the meal types are not known. */
+  mainMeals?: number;
   calories: number;
   protein: number;
   carbs: number;
@@ -204,7 +206,7 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
   const withPhosphorus = showsPhosphorus(input.conditionNames);
 
   // How much of the day the logs cover (lunch and dinner only is about two thirds).
-  const share = loggedShare(mean(counted.map((d) => d.calories)), macroTargets?.calories, mean(counted.map((d) => d.meals)));
+  const share = loggedShare(mean(counted.map((d) => d.calories)), macroTargets?.calories, mean(counted.map((d) => d.mainMeals ?? d.meals)));
   const avgCalories = mean(counted.map((d) => d.calories));
   const rawShare = avgCalories !== null && avgCalories > 0 && macroTargets?.calories && macroTargets.calories > 0
     ? Math.round(Math.min(1, avgCalories / macroTargets.calories) * 100) / 100
