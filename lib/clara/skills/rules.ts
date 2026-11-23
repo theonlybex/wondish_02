@@ -9,7 +9,7 @@ import { prisma } from "@/lib/db";
 import type { ClaraContext, SkillTool, ToolResult } from "../types";
 import {
   DISH_RULE_COPY, DISH_RULE_KEYS, MAX_USER_RULES, MAX_USER_RULE_CHARS,
-  cleanRuleText, ruleFood, ruleFoodMatches, storedRulesFrom, type DishRules, type StoredRules, type UserRule,
+  cleanRuleText, ruleFood, ruleFoodMatches, foodWordsIn, ruleFoodWords, storedRulesFrom, type DishRules, type StoredRules, type UserRule,
 } from "../dish-rules";
 
 /** Effects, injected so every path is unit-tested without a database. */
@@ -102,8 +102,8 @@ const singular = (w: string) => (/ies$/.test(w) ? `${w.slice(0, -3)}y` : /(oes|s
  * Both belong in the profile, where every dish is checked against them; a rule is only an instruction.
  */
 export function notARule(text: string): "allergy" | "diet" | null {
-  if (/\b(allerg\w*|anaphyla\w*|intoleran\w*|c[oe]?eliac|epipen|hives|reaction)\b|\b(?:makes?|made|gets?|got) me (?:sick|ill)\b|\bthroat\b.*\b(?:swell\w*|clos\w*|itch\w*)\b|\b(?:swell\w*|clos\w*|itch\w*)\b.*\bthroat\b/i.test(text)) return "allergy";
-  if (/\b(?:i'?m|i am|we'?re|we are)\s+(?:a\s+)?(?:vegan|vegetarian|pescatarian|pescetarian|keto|paleo|halal|kosher|gluten[- ]free|dairy[- ]free)\b/i.test(text)) return "diet";
+  if (/\b(allerg\w*|anaphyla\w*|intoleran\w*|c[oe]?eliac|epipen|hives|react\w*|bloat\w*)\b|\b(?:makes?|made|gets?|got) me (?:sick|ill)\b|\bupsets? my stomach\b|\bbreak out\b|\bi (?:can'?t|cannot) have\b|\bthroat\b.*\b(?:swell\w*|clos\w*|itch\w*)\b|\b(?:swell\w*|clos\w*|itch\w*)\b.*\bthroat\b/i.test(text)) return "allergy";
+  if (/\b(?:i'?m|i am|i'?ve gone|i have gone|we'?re|we are|we eat|i eat)\s+(?:\w+\s+)?(?:a\s+)?(?:vegan|vegetarian|pescatarian|pescetarian|keto|paleo|halal|kosher|gluten[- ]free|dairy[- ]free)\b|\b(?:i|we) (?:don'?t|do not|never) eat (?:meat|fish|animal products|dairy|gluten)\b/i.test(text)) return "diet";
   return null;
 }
 
@@ -113,7 +113,11 @@ export function rulesMatching(mine: readonly UserRule[], text: string): UserRule
   const exact = mine.filter((r) => fold(r.text) === asked);
   if (exact.length > 0) return exact;
   const askedWords = new Set(asked.split(" ").map(singular));
-  const byFood = mine.filter((r) => {
+  // A request that names a food beside the rule's own ("cream cheese is fine", "mushroom broth is
+  // fine") lets one form of it back in, not the food: no rule is removed for it.
+  const ruleWords = new Set(mine.flatMap((r) => { const f = ruleFood(r.text); return f ? ruleFoodWords(f) : []; }));
+  const otherFood = foodWordsIn(asked).some((w) => !ruleWords.has(w));
+  const byFood = otherFood ? [] : mine.filter((r) => {
     const food = ruleFood(r.text);
     // The request names that food itself, not another one made with its word ("you can use rice
     // vinegar" does not lift "No rice", "olive oil is fine" does not lift a rule about olives).

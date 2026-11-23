@@ -115,3 +115,11 @@ test("an allergy or a diet is never a rule, in chat or from the app; the same fo
   const two = applyRulesBody(current, { mine: [{ id: "r1", text: "No rice" }, { id: "r1", text: "No kale" }] })!;
   assert.equal(new Set(two.mine.map((r) => r.id)).size, 2);
 });
+
+test("round D3: one form of a food lifts no rule; looser allergy and diet words are caught; a food the catalog lacks is not 'checked'", () => {
+  const mine = [{ id: "c", text: "no cheese", on: true }, { id: "m", text: "No mushrooms", on: true }, { id: "r", text: "No rice", on: true }];
+  for (const t of ["cream cheese is fine", "mushroom broth is fine"]) assert.deepEqual(rulesMatching(mine, t), [], t);
+  assert.deepEqual(rulesMatching(mine, "the mushrooms and rice rules").map((x) => x.id), ["m", "r"]);
+  for (const t of ["I can't have gluten", "gluten makes me bloated", "I react badly to shellfish", "no fish, my kid reacts to it", "dairy upsets my stomach", "no shrimp, I break out"]) assert.equal(notARule(t), "allergy", t);
+  for (const t of ["I'm now vegan", "I've gone vegan", "I am strictly vegetarian", "I don't eat meat", "we eat halal only"]) assert.equal(notARule(t), "diet", t);
+});

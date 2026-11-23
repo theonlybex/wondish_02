@@ -111,7 +111,6 @@ const NOT_A_FOOD = new Set([
 const OTHER_FOOD_BESIDE: Readonly<Record<string, readonly string[]>> = {
   olive: ["oil"],
   rice: ["vinegar", "noodle", "wine", "paper", "flour", "milk", "syrup"],
-  egg: ["noodle"],
   butter: ["peanut", "almond", "cashew", "nut", "sunflower", "bean", "lettuce", "cocoa", "apple"],
   milk: ["coconut", "almond", "oat", "soy", "rice", "cashew"],
   potato: ["sweet"],
@@ -151,8 +150,19 @@ export function ruleFood(text: string): string | null {
   if (words.length === 0 || words.length > 3) return null;
   // Every word a catalog food's word, and at least one of them a food itself (not "red" or "ground").
   if (!words.every((w) => FOOD_WORDS.has(w)) || !words.some((w) => !NOT_A_FOOD.has(w))) return null;
+  // And it is a food the catalog has under those words: "fresh tomatoes" or "cream sauces" would be
+  // "checked" against nothing, so they stay an instruction.
+  if (!INGREDIENT_CATALOG.some((g) => g.items.some((i) => ruleFoodMatches(food, i)))) return null;
   return food;
 }
+
+const PLAIN_WORDS = new Set(["in", "all", "o", "purpose", "whole", "fresh", "extra", "large", "plain"]);
+/** The words of a text that name foods the catalog knows, describing words included ("cream cheese", "mushroom broth"). */
+export function foodWordsIn(text: string): string[] {
+  return wordsOf(text).filter((w) => FOOD_WORDS.has(w) && !PLAIN_WORDS.has(w));
+}
+/** A food's words, folded the same way. */
+export const ruleFoodWords = (food: string): string[] => wordsOf(food);
 
 /**
  * A rule food against one ingredient: the ingredient is, or is made of, that food. Every word of

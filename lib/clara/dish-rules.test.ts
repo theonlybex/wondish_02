@@ -57,7 +57,7 @@ test("ruleFood: a rule that is just 'no such food' names it; anything else is an
 test("ruleFoodMatches: the ingredient is that food, not a food made from it or one that shares a word", () => {
   const hit: [string, string][] = [["mushrooms", "cremini mushrooms"], ["rice", "jasmine rice"], ["spinach", "Baby spinach"], ["sweet potatoes", "sweet potato"], ["eggs", "large eggs"], ["olive oil", "extra virgin olive oil"], ["bell peppers", "red bell pepper"]];
   for (const [food, ing] of hit) assert.equal(ruleFoodMatches(food, ing), true, `${food} / ${ing}`);
-  const miss: [string, string][] = [["rice", "rice vinegar"], ["rice", "rice noodles"], ["eggs", "egg noodles"], ["sweet potatoes", "russet potatoes"], ["spinach", "kale"],
+  const miss: [string, string][] = [["rice", "rice vinegar"], ["rice", "rice noodles"], ["sweet potatoes", "russet potatoes"], ["spinach", "kale"],
     ["butter", "peanut butter"], ["milk", "coconut milk"], ["milk", "oat milk"], ["potatoes", "sweet potatoes"], ["beans", "green beans"], ["cream", "ice cream"], ["steak", "tuna steak"], ["ground beef", "beef strips"], ["bell peppers", "black pepper"], ["olives", "olive oil"], ["olives", "extra virgin olive oil"]];
   assert.equal(ruleFoodMatches("olives", "kalamata olives"), true);
   // The food in any cut or form, as the catalog and Clara name it; text after a comma is how it is prepared.
