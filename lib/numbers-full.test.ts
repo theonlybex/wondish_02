@@ -265,9 +265,9 @@ test("a whole-day need is judged against the part of the day that was logged", (
   assert.deepEqual([lv(whole, "protein").word, lv(whole, "protein").wordTarget], ["little", undefined]);
   // Still little when the logged part is thin in protein: 30 g in 1,300 kcal.
   assert.equal(lv(buildFullNumbers(base({ macroTargets: targets, days: [1, 2, 3, 4].map((i) => day(i, { calories: 1300, protein: 30 })) })), "protein").word, "little");
-  // Never under half a day, and a limit is not prorated (a partial day cannot be over).
+  // Never under a quarter of a day, and a limit is not prorated (a partial day cannot be over).
   const thin = buildFullNumbers(base({ macroTargets: targets, days: [1, 2, 3, 4].map((i) => day(i, { calories: 400, protein: 30, sodium: 2500 })) }));
-  assert.equal(lv(thin, "protein").wordTarget, 75);
+  assert.equal(lv(thin, "protein").wordTarget, 37.5);
   assert.deepEqual([lv(thin, "sodium").word, lv(thin, "sodium").wordTarget], ["a lot", undefined]);
   // No calorie target: unchanged.
   assert.equal(lv(buildFullNumbers(base({ days: [1, 2, 3, 4].map((i) => day(i, { calories: 900, protein: 20 })) })), "protein").wordTarget, undefined);
@@ -295,11 +295,28 @@ test("macros: protein, carbohydrate and fat, eaten against the day's targets, wi
   assert.deepEqual([whole.macros.loggedShare, whole.macros.rows[0].wordTarget, whole.macros.rows[0].today], [1, undefined, null]);
   // No targets and nothing logged: rows with nulls, never missing.
   const none = buildFullNumbers(base());
-  assert.deepEqual(none.macros, { loggedShare: 1, rows: [
+  assert.deepEqual({ ...none.macros, rows: none.macros.rows.map(({ word: _w, ...r }) => r) }, { loggedShare: 1, loggedShareRaw: 1, daysCounted: 0, rows: [
     { key: "protein", name: "Protein", average: null, target: null, today: null },
     { key: "carbs", name: "Carbohydrate", average: null, target: null, today: null },
     { key: "fat", name: "Fat", average: null, target: null, today: null },
   ] });
   // A caller that sends no fat (the dish brain): protein and carbs still come, fat is unknown.
   assert.equal(buildFullNumbers(base({ macroTargets: { calories: 2000, protein: 150, carbs: 225 }, days: [5, 6, 7].map((i) => day(i)) })).macros.rows[2].average, null);
+});
+
+test("macros: a dinner-only logger reads on track, a thin log says how thin, far over on fat is a lot", () => {
+  const targets = { calories: 2000, protein: 150, carbs: 225, fat: 55.6 };
+  // Seven Clara dinners at the dinner share: 600 kcal and 45 g protein of a 150 g day.
+  const dinners = buildFullNumbers(base({ macroTargets: targets, days: [1, 2, 3, 4, 5, 6, 7].map((i) => ({ ...day(i, { calories: 600, protein: 45, carbs: 68, fat: 17 }), meals: 1 })) }));
+  const row = (o: ReturnType<typeof buildFullNumbers>, k: string) => o.macros.rows.find((r) => r.key === k)!;
+  assert.deepEqual([dinners.macros.loggedShare, row(dinners, "protein").wordTarget, row(dinners, "protein").word], [0.3, 45, "on track"]);
+  // One 90 kcal snack in the week: the words stay silent, and the raw share says how little was logged.
+  const snack = buildFullNumbers(base({ macroTargets: targets, days: [{ ...day(1, { calories: 90, protein: 2, carbs: 10, fat: 4 }), meals: 1 }] }));
+  assert.deepEqual([snack.macros.loggedShare, snack.macros.loggedShareRaw, snack.macros.daysCounted, row(snack, "protein").word], [0.25, 0.05, 1, null]);
+  // 300 g of fat a day against 55.6 g is a lot, not a full on-track bar; more protein than the target is on track.
+  const fatty = buildFullNumbers(base({ macroTargets: targets, days: [1, 2, 3, 4].map((i) => day(i, { calories: 2000, protein: 220, carbs: 225, fat: 300 })) }));
+  assert.deepEqual([row(fatty, "fat").word, row(fatty, "protein").word, row(fatty, "carbs").word], ["a lot", "on track", "on track"]);
+  // A negative figure counts as nothing; a day without a fat figure does not blank the week's fat.
+  const odd = buildFullNumbers(base({ macroTargets: targets, days: [day(1, { calories: 2000, protein: 150, fat: -10 }), day(2, { calories: 2000, protein: 150, fat: 50 }), day(3, { calories: 2000, protein: 150 })] }));
+  assert.ok((row(odd, "fat").average ?? -1) >= 0);
 });

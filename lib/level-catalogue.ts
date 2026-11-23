@@ -54,12 +54,13 @@ export const LEVELS: readonly LevelDef[] = [
 
 /**
  * How much of a day the logs cover, by calories: 1 when the logged days average the calorie target
- * or more, never under a half. A need for the whole day ("enough protein") is compared with this
+ * or more, never under a quarter (a dinner alone is 30% of a day; a floor of a half told someone
+ * who logs only Clara's dinners they get little protein, review 2026-11-22). A need for the whole day ("enough protein") is compared with this
  * share of its target, so someone who logs lunch and dinner is not told "little protein" for the
  * breakfast and snack they did not log (owner, 2026-11-22: "if user protein goal is satisfied with
  * dishes from clara then it should say enough of protein in numbers"). 1 with no calorie target.
  */
-export const MIN_LOGGED_SHARE = 0.5;
+export const MIN_LOGGED_SHARE = 0.25;
 export function loggedShare(avgCalories: number | null, calorieTarget: number | null | undefined): number {
   if (avgCalories === null || !calorieTarget || !(calorieTarget > 0) || !(avgCalories > 0)) return 1;
   return Math.min(1, Math.max(MIN_LOGGED_SHARE, avgCalories / calorieTarget));

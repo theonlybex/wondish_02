@@ -80,10 +80,20 @@ export interface FullMacroRow {
   wordTarget?: number;
   /** Grams logged today; null when nothing is logged today. */
   today: number | null;
+  /**
+   * The average against what it is fairly compared with: "little" under 70%, "a lot" over 130% for
+   * carbohydrate and fat (more protein than the target is on track), else "on track". null with
+   * fewer than three logged days, no average or no target.
+   */
+  word: "little" | "on track" | "a lot" | null;
 }
 export interface FullMacros {
-  /** How much of a day the logs cover, by calories: 0.5 to 1 (1 with no calorie target). */
+  /** How much of a day the logs cover, by calories: 0.25 to 1 (1 with no calorie target). What the words are judged against. */
   loggedShare: number;
+  /** The same before the floor: a single snack in the week is 0.05, not a quarter. For saying how much was logged. */
+  loggedShareRaw: number;
+  /** The days the averages are over: those with a meal logged. */
+  daysCounted: number;
   rows: FullMacroRow[];
 }
 
@@ -186,6 +196,10 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
 
   // How much of the day the logs cover (lunch and dinner only is about two thirds).
   const share = loggedShare(mean(counted.map((d) => d.calories)), macroTargets?.calories);
+  const avgCalories = mean(counted.map((d) => d.calories));
+  const rawShare = avgCalories !== null && avgCalories > 0 && macroTargets?.calories && macroTargets.calories > 0
+    ? Math.round(Math.min(1, avgCalories / macroTargets.calories) * 100) / 100
+    : 1;
 
   type Food = { values: (number | null)[] };
   // Protein and carbs count on every counted day (a missing figure is 0, as in
@@ -254,19 +268,29 @@ export function buildFullNumbers(input: FullNumbersInput): FullNumbers {
   const calAvg = mean(counted.map((d) => d.calories));
   const todayRow = days.find((d) => d.localDate === range.toDate && d.meals >= 1);
   const macroRow = (key: FullMacroRow["key"], name: string, pickDay: (d: FullDay) => number | undefined, target: number | undefined): FullMacroRow => {
-    const values = counted.map(pickDay);
-    const average = values.length > 0 && values.every((v): v is number => v !== undefined) ? mean(values as number[]) : null;
-    const today = todayRow ? pickDay(todayRow) : undefined;
+    // A figure that is missing or not a real amount is left out; a negative one counts as nothing.
+    const grams = (d: FullDay) => { const v = pickDay(d); return typeof v === "number" && Number.isFinite(v) ? Math.max(0, v) : undefined; };
+    const values = counted.map(grams).filter((v): v is number => v !== undefined);
+    const average = values.length > 0 ? mean(values) : null;
+    const today = todayRow ? grams(todayRow) : undefined;
+    const against = target !== undefined && target > 0 ? target * share : null;
+    const ratio = average !== null && against !== null ? average / against : null;
+    const word: FullMacroRow["word"] = ratio === null || daysCounted < ENOUGH_LOG_DAYS
+      ? null
+      : ratio < 0.7 ? "little" : ratio > 1.3 && key !== "protein" ? "a lot" : "on track";
     return {
       key, name,
       average: average === null ? null : roundAmount(average, "g"),
-      target: target ?? null,
-      ...(target !== undefined && share < 1 ? { wordTarget: roundAmount(target * share, "g") } : {}),
+      target: target !== undefined && target > 0 ? target : null,
+      ...(target !== undefined && target > 0 && share < 1 ? { wordTarget: roundAmount(target * share, "g") } : {}),
       today: today === undefined ? null : roundAmount(today, "g"),
+      word,
     };
   };
   const macros: FullMacros = {
     loggedShare: Math.round(share * 100) / 100,
+    loggedShareRaw: rawShare,
+    daysCounted,
     rows: [
       macroRow("protein", "Protein", (d) => d.protein, macroTargets?.protein),
       macroRow("carbs", "Carbohydrate", (d) => d.carbs, macroTargets?.carbs),
