@@ -216,3 +216,11 @@ test("plural per-item breads price, and corn tortillas are tortillas not corn", 
     assert.notEqual(gramsOf(n, 2, null), null, n);
   }
 });
+
+test("canned beans are priced as cooked, dry ones as dry, canned tuna untouched", () => {
+  const kcal = (name: string) => Math.round(priceDish([{ name, quantity: 100, unit: "g" }] as never, null)?.calories ?? -1);
+  assert.equal(kcal("Chickpeas"), 354);
+  assert.equal(kcal("Canned chickpeas"), kcal("Cooked lentils"));
+  assert.equal(kcal("Black beans, drained"), kcal("Cooked lentils"));
+  assert.ok(kcal("Canned chickpeas") < 140);
+});

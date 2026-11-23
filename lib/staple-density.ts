@@ -490,6 +490,10 @@ const NEGLIGIBLE =
  * other direction: the steps said nothing, so the default said dry.
  */
 const ROW_SAYS_COOKED = /\bcooked\b/i;
+// A canned bean is a cooked bean: "Canned chickpeas, 150 g" priced dry was 531 kcal for a 186 kcal can.
+const ROW_SAYS_CANNED = /\b(canned|tinned|jarred|drained)\b/i;
+const PULSE_ROW = /\b(lentils?|chickpeas?|garbanzos?|(?<!\b(green|string|runner|french|snap) )beans?)\b/i;
+const rowIsCooked = (text: string): boolean => ROW_SAYS_COOKED.test(text) || (ROW_SAYS_CANNED.test(text) && PULSE_ROW.test(text));
 
 /**
  * Cooked grain against dry, as a fraction. Rice triples in weight boiling, so
@@ -545,7 +549,7 @@ export function priceDish(
       continue;
     }
     // A row that declares itself cooked is priced cooked.
-    const factor = ROW_SAYS_COOKED.test(`${ing.name} ${ing.note ?? ""}`) ? COOKED_FACTOR : 1;
+    const factor = rowIsCooked(`${ing.name} ${ing.note ?? ""}`) ? COOKED_FACTOR : 1;
     priced += grams;
     sodiumMg += (grams * (density.sodium ?? 0)) / 100;
     protein += (grams * (density.protein ?? 0) * factor) / 100;

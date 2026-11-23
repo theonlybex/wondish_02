@@ -28,7 +28,7 @@ import { keptFoodsFrom, loadCatalogRows, loadKeptMarks } from "@/lib/clara/kept-
 import { groceryGroups, type GroceryGroup } from "@/lib/clara/grocery";
 import { brainFrom, steerForAsk, NO_BRAIN_ROWS, type AskSteer, type BrainRows, type DishBrain } from "@/lib/clara/dish-brain";
 import { builtOn, eggsOnlyKitchen, proteinKind } from "@/lib/clara/dish-protein";
-import { dishShape, judgeDish, keepWayOfCooking, starchFamily, type DishShape, type DishVerdict } from "@/lib/clara/dish-judge";
+import { dishShape, judgeDish, keepWayOfCooking, starchFamily, undercookedPulse, type DishShape, type DishVerdict } from "@/lib/clara/dish-judge";
 import { plainSwap, swapInRecipe, swapOptions } from "@/lib/clara/exchange";
 import { RULES_PROMPT, ruleTools } from "@/lib/clara/skills/rules";
 import { chooseProtein, fnv1a, fromHomeLine, requestedProtein, sameProteinKind, type FromHome } from "@/lib/clara/protein-rule";
@@ -36,7 +36,7 @@ import { targetLines } from "@/lib/clara/meal-target";
 import { exampleAllergenGroups, steerLines, levelCeilings } from "@/lib/clara/level-steer";
 import { INGREDIENT_CATALOG } from "@/lib/ingredient-catalog";
 import { loadBrainRows } from "@/lib/clara/dish-brain-db";
-import { DEFAULT_DISH_RULES, DISH_RULE_KEYS, ruleFood, ruleFoodMatches, storedRulesFrom, type DishRules } from "@/lib/clara/dish-rules";
+import { DEFAULT_DISH_RULES, DISH_RULE_KEYS, ruleFood, ruleFoodMatches, ruleMinutesFor, storedRulesFrom, type DishRules } from "@/lib/clara/dish-rules";
 import crypto from "crypto";
 import { MAX_SERVINGS } from "@/lib/meal-log";
 import {
@@ -708,7 +708,7 @@ export function dishSystemPrompt(a: {
       ? `- They were already shown these and asked for something else: suggest a clearly different dish, not one of these and not a small variation of one: ${ask.avoid.map((n) => n.replace(/["\n\r]+/g, "")).join("; ")}.`
       : ``,
     `- Everyday dishes with common, individually named ingredients — no compound items, no brand names.`,
-    `- ingredients: EVERY ingredient, each with its per-serving quantity and unit (${units}; "" only for eggs). Grains, pasta and pulses in GRAMS of DRY weight. Use the same ingredient name in the steps.`,
+    `- ingredients: EVERY ingredient, each with its per-serving quantity and unit (${units}; "" only for eggs). Grains, pasta and dry pulses in GRAMS of DRY weight. A dry pulse needs a step that simmers it at least 40 minutes (15 for the small quick-cooking kinds): when the dish has no such time, use the canned form, named "Canned …", with grams as drained. Use the same ingredient name in the steps.`,
     `- Name the oil you cook with (e.g. "olive oil") in the ingredients and the steps — never "cooking oil", "oil" or "cooking spray". If a step sears, fries, sautés or browns anything, that fat MUST be in ingredients with its amount.`,
     `- steps: 4–6 short, clear instructions a home cook can follow. EVERY meat, poultry and fish must be cooked by a step that names it.`,
     `- perServing macros must be realistic: protein*4 + carbs*4 + fat*9 within 5% of the calories. Include fiber.`,
@@ -939,6 +939,13 @@ export function fibreIsPlausible(r: FridgeRecipe): boolean {
  * One candidate through the oil repair and every gate, alone. null when it
  * fails; `trace` (diagnostics only) says where.
  */
+/** The ask under their own time rules ("Dinners under 25 minutes"): the stricter of the rule and what was asked. */
+function underTimeRules(ask: DishAsk, person: Person, today: string): DishAsk {
+  const limit = ruleMinutesFor(person.brain.userRules, ask.mealType, today);
+  if (limit === null) return ask;
+  return { ...ask, maxMinutes: Math.min(ask.maxMinutes ?? limit, limit) };
+}
+
 async function gateOne(
   item: unknown,
   ask: DishAsk,
@@ -973,6 +980,17 @@ async function gateOne(
   }
   if (!r || seen.has(r.name.trim().toLowerCase())) {
     note(label, applyAllergenFilter([named], person.matchers, groupsOf).length === 0 ? "safety" : "gates");
+    return null;
+  }
+  // A dry bean the dish has no time to cook, and a dish over the time asked for or set by their own rule.
+  const took = rawMinutesOf(r, ask.mealType);
+  const rawPulse = undercookedPulse([...r.usesIngredients, ...r.missingIngredients], took);
+  if (rawPulse) {
+    note(label, "gates", [`pulse:${rawPulse}`]);
+    return null;
+  }
+  if (ask.maxMinutes !== undefined && took > 0 && minutesOf(r, ask.mealType) > ask.maxMinutes) {
+    note(label, "gates", ["time"]);
     return null;
   }
   // The judge runs after the gates: the protein rule, honesty, size, protein share and the level ceilings.
@@ -1117,6 +1135,7 @@ async function generateGated(
   const [loaded, catalogFoodTokens] = await Promise.all([personFor(ctx, loadRows), catalogTokens()]);
   if (!loaded || opts.signal?.aborted) return [];
   const person = personWithout(loaded, ask.without);
+  ask = underTimeRules(ask, person, ctx.today);
   const meal = capitalize(ask.mealType);
   const steer = steerFor(ctx, ask, person);
   // With a protein chosen for today, the stream stops early only on a dish built on it.
@@ -1346,6 +1365,7 @@ async function libraryGated(
   ]);
   const person = loadedPerson ? personWithout(loadedPerson, ask.without) : loadedPerson;
   if (!person || signal?.aborted) return [];
+  ask = underTimeRules(ask, person, ctx.today);
   const meal = capitalize(ask.mealType);
   const steer = steerFor(ctx, ask, person);
   // Removed 2026-11 (dish brain, "Always answers"): the second pass that ranked again with `proteinRule: false` when nothing passed. The protein rule is never relaxed.
@@ -2219,7 +2239,7 @@ export const dishSkill: Skill = {
           type: "object",
           properties: {
             mealType: { type: "string", enum: [...MEAL_TYPES], description: "Which meal the dish is for." },
-            maxMinutes: { type: "number", description: "Most minutes the dish may take in total, when they are short of time." },
+            maxMinutes: { type: "number", description: "Most minutes the dish may take in total, when they are short of time. \"Under 25 minutes\" is 24; \"25 minutes at most\" is 25." },
             servings: { type: "number", description: "How many people it serves; omit for one." },
             wants: {
               type: "string",

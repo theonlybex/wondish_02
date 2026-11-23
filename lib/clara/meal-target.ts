@@ -6,7 +6,9 @@ import { macroSplitLine } from "@/lib/clara/recipe-generation";
 import type { MealType } from "@/lib/local-date";
 import type { DishRules } from "./dish-rules";
 
-export const MAIN_SIZE_BAND = { min: 0.55, max: 1.25 } as const;
+export const MAIN_SIZE_BAND = { min: 0.7, max: 1.25 } as const;
+/** The floor SAID to the model, higher than the one the judge holds: told "between 418 and 950", it wrote 428 for a 760 kcal lunch. */
+export const MAIN_SAID_FLOOR = 0.85;
 export const MAIN_MIN_PROTEIN_SHARE = 0.15;
 
 export type Leaning = "protein" | "fibre" | "less fat";
@@ -24,9 +26,9 @@ export interface MealTarget {
 
 const isMain = (m: MealType) => m === "lunch" || m === "dinner";
 
-// Whole-number arithmetic (55 / 125 percent), so 0.55 × 700 is 385 exactly.
+// Whole-number arithmetic (70 / 125 percent), so 0.7 × 700 is 490 exactly.
 function bandFor(calories: number): { min: number; max: number } {
-  return { min: Math.ceil((calories * 55) / 100), max: Math.floor((calories * 125) / 100) };
+  return { min: Math.ceil((calories * 70) / 100), max: Math.floor((calories * 125) / 100) };
 }
 
 function leaningsFrom(motivationNames: readonly string[]): Leaning[] {
@@ -84,7 +86,7 @@ export function targetLines(t: MealTarget, mealType: MealType, mainsOnProtein: b
   if (t.calories != null && t.dayCalories != null) {
     const meal = mealType.charAt(0).toUpperCase() + mealType.slice(1);
     let size = `- Size: this ${meal} should be about ${t.calories} kcal per serving (their day is ${t.dayCalories} kcal); choose the portions to land there.`;
-    if (t.band) size += ` It must be between ${t.band.min} and ${t.band.max} kcal.`;
+    if (t.band) size += ` It must be no less than ${Math.ceil((t.calories * 85) / 100)} kcal and no more than ${t.band.max} kcal: a serving well under ${t.calories} kcal is too small to be this meal.`;
     lines.push(size);
   }
   if (t.split) lines.push(`- Macro split to aim for, by calories: ${macroSplitLine(t.split)}.`);

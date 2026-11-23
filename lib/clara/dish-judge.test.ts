@@ -153,3 +153,15 @@ test("a dish that uses a food their own rule rules out is dropped", () => {
   assert.equal(j({ without: ["spinach"] }).level, "fail");
   assert.equal(j({ without: ["mushrooms"] }).level, "pass");
 });
+
+test("a dry bean with no time to cook it is caught; canned, cooked and green beans are not", async () => {
+  const { undercookedPulse } = await import("./dish-judge");
+  assert.equal(undercookedPulse(["Olive oil", "Chickpeas", "Spinach"], 6), "Chickpeas");
+  assert.equal(undercookedPulse(["Black beans"], 39), "Black beans");
+  assert.equal(undercookedPulse(["Black beans"], 40), null);
+  assert.deepEqual([undercookedPulse(["Red lentils"], 14), undercookedPulse(["Green lentils"], 15)], ["Red lentils", null]);
+  for (const ok of ["Canned chickpeas", "Chickpeas, drained", "Cooked lentils", "Green beans", "Bean sprouts", "Chickpea flour", "Black bean sauce", "Frozen edamame", "Vanilla bean"]) {
+    assert.equal(undercookedPulse([ok], 5), null, ok);
+  }
+  assert.equal(undercookedPulse(["Chickpeas"], 0), null);
+});

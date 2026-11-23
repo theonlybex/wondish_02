@@ -203,3 +203,51 @@ export function keptUnderRules(kept: KeptFoods, rules: DishRules): KeptFoods {
     favorites: rules.favourFavourites ? kept.favorites : [],
   };
 }
+
+// ---- A rule about time: "Dinners under 25 minutes", "No cooking over 30 minutes on weekdays".
+
+export interface RuleTime {
+  /** Most whole minutes a dish may take. "under 25" is 24; "at most 25" and "nothing over 25" are 25. */
+  max: number;
+  /** The meals it is about; null for every meal. */
+  meals: ("breakfast" | "lunch" | "dinner" | "snack")[] | null;
+  /** Days of the week it is about, 0 = Sunday; null for every day. */
+  days: number[] | null;
+}
+
+const TIME_AMOUNT = /\b(\d{1,3})\s*-?\s*(?:min(?:ute)?s?\b|mins\b)|\b(half an hour|an hour|one hour|1 hour)\b/i;
+const TIME_STRICT = /\b(under|less than|below|shorter than|faster than|fewer than)\b/i;
+/** A floor, not a ceiling ("simmer at least 30 minutes"), or nothing about how long cooking takes. */
+const TIME_NOT_A_LIMIT = /\b(at least|minimum|or more|or longer|no less than)\b/i;
+const TIME_MEALS: [RegExp, "breakfast" | "lunch" | "dinner" | "snack"][] = [
+  [/\bbreakfasts?\b/i, "breakfast"], [/\blunch(es)?\b/i, "lunch"], [/\b(dinners?|suppers?)\b/i, "dinner"], [/\bsnacks?\b/i, "snack"],
+];
+const DAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+export function ruleTime(text: string): RuleTime | null {
+  const m = TIME_AMOUNT.exec(text);
+  if (!m || TIME_NOT_A_LIMIT.test(text)) return null;
+  const stated = m[1] ? Number(m[1]) : /half/i.test(m[2]) ? 30 : 60;
+  const max = TIME_STRICT.test(text) ? stated - 1 : stated;
+  if (!Number.isFinite(max) || max < 1) return null;
+  const meals = TIME_MEALS.filter(([re]) => re.test(text)).map(([, k]) => k);
+  const days = new Set<number>();
+  if (/\bweekdays?\b|\bwork ?days?\b|\bweeknights?\b/i.test(text)) [1, 2, 3, 4, 5].forEach((d) => days.add(d));
+  if (/\bweekends?\b/i.test(text)) [0, 6].forEach((d) => days.add(d));
+  DAY_NAMES.forEach((d, i) => { if (new RegExp(`\\b${d}s?\\b`, "i").test(text)) days.add(i); });
+  return { max, meals: meals.length > 0 ? meals : null, days: days.size > 0 ? [...days].sort() : null };
+}
+
+/** The strictest time limit their rules set for this meal on this day ("YYYY-MM-DD"); null when none does. */
+export function ruleMinutesFor(rules: readonly string[], mealType: string, today: string): number | null {
+  const day = new Date(`${today}T12:00:00`).getDay();
+  let out: number | null = null;
+  for (const text of rules) {
+    const t = ruleTime(text);
+    if (!t) continue;
+    if (t.meals && !t.meals.includes(mealType as never)) continue;
+    if (t.days && !Number.isNaN(day) && !t.days.includes(day)) continue;
+    out = out === null ? t.max : Math.min(out, t.max);
+  }
+  return out;
+}

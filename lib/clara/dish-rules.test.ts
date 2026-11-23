@@ -76,3 +76,18 @@ test("ruleFoodMatches: the ingredient is that food, not a food made from it or o
   }
   for (const [food, ing] of miss) assert.equal(ruleFoodMatches(food, ing), false, `${food} / ${ing}`);
 });
+
+test("a rule about time: under is one less, at most and over are the number, meals and days narrow it", async () => {
+  const { ruleTime, ruleMinutesFor } = await import("./dish-rules");
+  assert.deepEqual(ruleTime("Dinners under 25 minutes"), { max: 24, meals: ["dinner"], days: null });
+  assert.deepEqual(ruleTime("No cooking over 30 minutes on weekdays"), { max: 30, meals: null, days: [1, 2, 3, 4, 5] });
+  assert.deepEqual(ruleTime("Lunch in 15 min or less on Fridays"), { max: 15, meals: ["lunch"], days: [5] });
+  assert.equal(ruleTime("Less than half an hour")?.max, 29);
+  assert.deepEqual([ruleTime("No mushrooms"), ruleTime("Simmer sauces at least 30 minutes"), ruleTime("Under 1 minute")?.max ?? null], [null, null, null]);
+  const rules = ["Dinners under 25 minutes", "No cooking over 30 minutes on weekdays", "No mushrooms"];
+  // 2026-11-23 is a Monday, 2026-11-22 a Sunday.
+  assert.deepEqual(
+    [ruleMinutesFor(rules, "dinner", "2026-11-23"), ruleMinutesFor(rules, "lunch", "2026-11-23"), ruleMinutesFor(rules, "lunch", "2026-11-22"), ruleMinutesFor(rules, "dinner", "2026-11-22"), ruleMinutesFor([], "dinner", "2026-11-22")],
+    [24, 30, null, 24, null],
+  );
+});

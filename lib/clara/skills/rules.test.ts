@@ -22,20 +22,23 @@ test("rule_add saves a rule in their words, says whether the app checks it, and 
   assert.equal(a.data.checkedByApp, true);
   assert.deepEqual(s.get().mine.map((r) => [r.text, r.on]), [["Never put mushrooms in my dishes", true]]);
   const b: any = await h.add(CTX, { text: "No cooking over 30 minutes on weekdays" });
-  assert.match(b.data.note, /an instruction to you, NOT something the app checks/);
-  assert.equal(b.data.checkedByApp, false);
+  assert.match(b.data.note, /take at most 30 minutes; the app checks every dish for it/);
+  assert.equal(b.data.checkedByApp, true);
+  const c: any = await h.add(CTX, { text: "Something sweet after dinner on Sundays" });
+  assert.match(c.data.note, /an instruction to you, NOT something the app checks/);
+  assert.equal(c.data.checkedByApp, false);
   // An allergy is never saved as a rule.
   for (const text of ["I'm allergic to peanuts", "no peanuts (allergy)", "lactose intolerant, no milk"]) {
     const r: any = await h.add(CTX, { text });
     assert.equal(r.ok, false, text);
     assert.match(r.message, /profile/);
   }
-  assert.equal(s.get().mine.length, 2);
+  assert.equal(s.get().mine.length, 3);
   // Said again: not saved twice; a switched-off one is switched back on.
   s.deps.save("p1", { ...s.get(), mine: s.get().mine.map((r) => ({ ...r, on: false })) });
   const again: any = await h.add(CTX, { text: "never put mushrooms in my dishes" });
   assert.equal(again.data.alreadyThere, true);
-  assert.equal(s.get().mine.length, 2);
+  assert.equal(s.get().mine.length, 3);
   assert.equal(s.get().mine[0].on, true);
   for (const bad of [{}, { text: "" }, { text: "x".repeat(121) }, { text: 5 }]) assert.equal((await h.add(CTX, bad)).ok, false);
   // The cap.

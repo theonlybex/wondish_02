@@ -1035,8 +1035,8 @@ const sha = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
 test("prompt: without kept foods (absent or NO_KEPT_FOODS) the prompt is today's plus the lines the brain adds for everyone", () => {
   // Hashes of the prompt taken from the function before kept foods existed.
   const before: [string[], string][] = [
-    [[], "53f3878bb521e2f1dfe6d7eb6cf1b8248bd490b4c4b4d178f8b71f7e941b0979"],
-    [["peanut", "milk"], "863c7597d7af29401cca2a245b50dd3ce06f7a8456661466436929f2871125e9"],
+    [[], "efe3ece74e64707c0c21b2fb457bf1814d18e64da73e9e58d908e8904e9f2aaa"],
+    [["peanut", "milk"], "2db975ea11116c157252c56997a0b1496f50d2a7de706f099965d011151baaf9"],
   ];
   // DISH_CRAFT_LINES includes the plain-ingredient-names line (dish names stay readable, 2026-11-21).
   assert.ok(DISH_CRAFT_LINES.includes(`- Ingredient names are plain food names, with no comma and no state or cut after it: "jasmine rice", "carrots" — never "jasmine rice, dry" or "carrots, peeled and sliced".`));
@@ -1118,7 +1118,7 @@ const answersLines = (p: string) => p.split("\n").filter((l) => /^- From their a
 test("prompt: the size, the split, the protein floor and the goal", () => {
   const p = withBrain({ kept: NO_KEPT_FOODS, rows: { ...NO_BRAIN_ROWS, dayTarget: TARGET }, patient: { ...NOBODY, motivations: [{ motivation: { name: "Build muscle" } }] } });
   for (const l of [
-    "- Size: this Dinner should be about 600 kcal per serving (their day is 2000 kcal); choose the portions to land there. It must be between 330 and 750 kcal.",
+    "- Size: this Dinner should be about 600 kcal per serving (their day is 2000 kcal); choose the portions to land there. It must be no less than 510 kcal and no more than 750 kcal: a serving well under 600 kcal is too small to be this meal.",
     "- Macro split to aim for, by calories: ~30% protein, ~40% carbs, ~30% fat.",
     "- Their goal: lean towards protein.",
   ]) assert.ok(p.split("\n").includes(l), l);

@@ -10,6 +10,7 @@ import type { ClaraContext, SkillTool, ToolResult } from "../types";
 import {
   DISH_RULE_COPY, DISH_RULE_KEYS, MAX_USER_RULES, MAX_USER_RULE_CHARS,
   cleanRuleText, ruleFood, ruleFoodMatches, foodWordsIn, ruleFoodWords, storedRulesFrom, type DishRules, type StoredRules, type UserRule,
+  ruleTime,
 } from "../dish-rules";
 
 /** Effects, injected so every path is unit-tested without a database. */
@@ -160,13 +161,16 @@ export function makeRuleHandlers(deps: RulesDeps = prismaRulesDeps) {
       const rule: UserRule = { id: newRuleId(), text, on: true };
       await deps.save(ctx.patientId, { ...rules, mine: [...rules.mine, rule] });
       const food = ruleFood(text);
+      const time = ruleTime(text);
       return {
         ok: true,
         data: {
           saved: true,
           rule: rule.text,
-          checkedByApp: food !== null,
-          note: food
+          checkedByApp: food !== null || time !== null,
+          note: time && !food
+            ? `Saved. From now on ${time.meals ? time.meals.join(" and ") + " dishes" : "dishes"}${time.days ? " on those days" : ""} take at most ${time.max} minutes; the app checks every dish for it. Tell them in one short sentence, and that they can switch it off under How Clara cooks in settings.`
+            : food
             ? `Saved. From now on no dish you suggest will use ${food}; the app checks every dish for it. Tell them in one short sentence, and that they can switch it off under How Clara cooks in settings.`
             : "Saved. You will follow it when you suggest dishes. It is an instruction to you, NOT something the app checks, so do not say it is guaranteed. Tell them in one short sentence, and that they can switch it off under How Clara cooks in settings.",
         },

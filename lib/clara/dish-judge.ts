@@ -209,3 +209,22 @@ export function judgeDish(input: JudgeInput): DishVerdict {
   const hard = reasons.some((r) => r.startsWith("protein:") || r.startsWith("honest:") || r.startsWith("limit:") || r.startsWith("without:") || r.startsWith("exchange:") || r.startsWith("rule:"));
   return { level: hard ? "fail" : reasons.length ? "relaxed" : "pass", reasons, builtOn: built?.key ?? null };
 }
+
+// ---- A dry bean with no time to cook it (live swap run, 2026-11-22: dry chickpeas, six minutes).
+
+const DRY_PULSE = /\b(lentils?|chickpeas?|garbanzos?|split peas|beans?)\b/i;
+const NOT_A_DRY_PULSE =
+  /\b(canned|tinned|jarred|drained|cooked|pre-?cooked|refried|baked beans|frozen|sprouts?|sprouted|edamame|flour|pasta|noodles?|sauce|paste|hummus|curd|coffee|vanilla|cocoa|cacao|jelly|(green|string|runner|french|snap|wax|long) beans?)\b/i;
+export const DRY_LENTIL_MINUTES = 15;
+export const DRY_BEAN_MINUTES = 40;
+
+/** The first ingredient that is a dry pulse the dish has no time to cook; null when there is none. A dish that names no time (minutes ≤ 0) is not judged here. */
+export function undercookedPulse(ingredientNames: readonly string[], minutes: number): string | null {
+  if (!(minutes > 0)) return null;
+  for (const name of ingredientNames) {
+    if (!DRY_PULSE.test(name) || NOT_A_DRY_PULSE.test(name)) continue;
+    const needs = /\blentils?\b/i.test(name) ? DRY_LENTIL_MINUTES : DRY_BEAN_MINUTES;
+    if (minutes < needs) return name;
+  }
+  return null;
+}

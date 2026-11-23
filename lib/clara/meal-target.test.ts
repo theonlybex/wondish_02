@@ -7,7 +7,7 @@ import { mealTarget, sizeProblem, proteinShareLow, targetLines, MAIN_PROTEIN_LIN
 const t = (mealType: MealType, over: object = {}) => mealTarget({ mealType, dayCalories: 2000, conditionNames: [], motivationNames: [], rules: DEFAULT_DISH_RULES, ...over });
 test("20 / 35 / 30 / 15 % of the day, and the band for mains only", () => {
   assert.deepEqual((["breakfast", "lunch", "dinner", "snack"] as const).map((m) => t(m).calories), [400, 700, 600, 300]);
-  assert.deepEqual([t("lunch").band, t("dinner").band, t("breakfast").band, t("snack").band], [{ min: 385, max: 875 }, { min: 330, max: 750 }, null, null]);
+  assert.deepEqual([t("lunch").band, t("dinner").band, t("breakfast").band, t("snack").band], [{ min: 490, max: 875 }, { min: 420, max: 750 }, null, null]);
 });
 test("no calorie target, or the switch off: no size at all (Review Focus 3)", () => {
   for (const x of [t("dinner", { dayCalories: null }), t("dinner", { rules: { ...DEFAULT_DISH_RULES, sizeToCalories: false } })]) {
@@ -26,15 +26,15 @@ test("macro split by profile, and motivation leanings", () => {
   assert.deepEqual(lean("Eat healthier", "More energy", "Build muscle"), ["protein", "fibre", "less fat"]);
 });
 test("sizeProblem and proteinShareLow: the edges", () => {
-  assert.deepEqual([329, 330, 750, 751].map((kcal) => sizeProblem("dinner", kcal, 600)), ["too-small", null, null, "too-large"]);
-  assert.deepEqual([sizeProblem("lunch", 385, 700), sizeProblem("breakfast", 900, 400), sizeProblem("snack", 20, 300)], [null, null, null]);
+  assert.deepEqual([419, 420, 750, 751].map((kcal) => sizeProblem("dinner", kcal, 600)), ["too-small", null, null, "too-large"]);
+  assert.deepEqual([sizeProblem("lunch", 490, 700), sizeProblem("breakfast", 900, 400), sizeProblem("snack", 20, 300)], [null, null, null]);
   assert.equal(proteinShareLow("dinner", 600, 22), true);
   assert.equal(proteinShareLow("lunch", 600, 22.5), false);
   assert.deepEqual([proteinShareLow("snack", 200, 1), proteinShareLow("dinner", 0, 0)], [false, false]);
 });
 test("targetLines: exact wording", () => {
   assert.deepEqual(targetLines(t("dinner", { motivationNames: ["Eat healthier"] }), "dinner", true), [
-    "- Size: this Dinner should be about 600 kcal per serving (their day is 2000 kcal); choose the portions to land there. It must be between 330 and 750 kcal.",
+    "- Size: this Dinner should be about 600 kcal per serving (their day is 2000 kcal); choose the portions to land there. It must be no less than 510 kcal and no more than 750 kcal: a serving well under 600 kcal is too small to be this meal.",
     "- Macro split to aim for, by calories: ~30% protein, ~45% carbs, ~25% fat.",
     "- Their goal: lean towards fibre, less fat.",
   ]);
