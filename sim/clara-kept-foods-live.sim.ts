@@ -195,6 +195,10 @@ type Scenario = {
   groceryDay?: number;
   /** After each served dish, run the ingredients check on it: the offers for every ingredient, one like-for-like exchange, one protein exchange and one "nothing similar" (piece B). */
   swaps?: true;
+  /** Which swap tries to run (default all three). */
+  swapKinds?: ("plain" | "protein" | "without")[];
+  /** The protein exchange takes the first offer matching this (default the first offer). */
+  proteinTo?: RegExp;
   /** Every served dish is logged on its day, as when the person cooks it (the product's own memory of the week). */
   cooks?: true;
   /** Logged on each of the four days before every ask's day (a week of logs). */
@@ -280,6 +284,23 @@ SCENARIOS.push(
     atHome: [...MARKS, "Russet potatoes", "Kale", "Mushrooms"], asks: [{ meal: "dinner", day: 9 }, { meal: "lunch", day: 10 }] },
   { id: "S", title: "swaps: fish + dairy allergy; ground beef, spinach, rice at home", rules: ["allergy:Fish", "allergy:Dairy"], swaps: true,
     atHome: ["Ground beef", "Spinach", "Jasmine rice"], asks: [{ meal: "dinner", day: 9 }] },
+  // Round 56de444 (2026-11-23): mains sized nearer their target; time rules checked by the app; dry pulses need time.
+  { id: "Z1", title: "size: MARKS + potatoes, three days of lunch and dinner, each dish cooked and logged", rules: [], atHome: [...MARKS, "Russet potatoes"], cooks: true,
+    asks: Array.from({ length: 3 }, (_, d) => [{ meal: "lunch" as const, day: 3 + d }, { meal: "dinner" as const, day: 3 + d }]).flat() },
+  { id: "Z2", title: "time: own rules 'Dinners under 25 minutes' + 'No cooking over 30 minutes on weekdays'", rules: [],
+    atHome: [...MARKS, "Russet potatoes"],
+    claraRules: { mine: [
+      { id: "t1", text: "Dinners under 25 minutes", on: true },
+      { id: "t2", text: "No cooking over 30 minutes on weekdays", on: true },
+    ] },
+    // 2026-11-24 Tuesday, 2026-11-28 Saturday, 2026-11-29 Sunday.
+    asks: [{ meal: "dinner", day: 24 }, { meal: "lunch", day: 24 }, { meal: "lunch", day: 28 }, { meal: "dinner", day: 29 }] },
+  { id: "Z3", title: "pulses: ground beef + salmon at home; the protein swapped for beans / lentils", rules: [], swaps: true, swapKinds: ["protein"],
+    atHome: ["Ground beef", "Salmon fillets", "Spinach", "Jasmine rice"], proteinTo: /\bbeans?\b/i,
+    asks: [{ meal: "dinner", wants: "a quick 15-minute ground beef skillet", label: "quick beef", day: 10 }, { meal: "lunch", day: 11 }] },
+  { id: "Z4", title: "pulses: ground beef at home; a quick dinner's protein swapped for lentils", rules: [], swaps: true, swapKinds: ["protein"],
+    atHome: ["Ground beef", "Spinach", "Jasmine rice"], proteinTo: /\blentils?\b/i,
+    asks: [{ meal: "dinner", wants: "a quick ground beef stir-fry", label: "quick beef", day: 12 }] },
 );
 const PLANNED_CALLS = SCENARIOS.reduce((n, s) => n + s.asks.reduce((m, a) => m + (a.plan ? 4 : s.swaps ? 4 : 1), 0), 0);
 const dayStr = (d: number) => `2026-11-${String(d).padStart(2, "0")}`;
@@ -622,12 +643,14 @@ const only = process.env.SIM_ONLY?.split("|").map((x) => x.trim());
           const { plainSwap } = await import("@/lib/clara/exchange");
           const firstWith = (pred: (name: string, o: any) => boolean) => ings.map((i) => i.name).find((nm) => offers[nm]?.options?.length > 0 && pred(nm, offers[nm]));
           const plainOf = firstWith((nm, o) => !o.protein && plainSwap(nm, o.options[0].name));
-          const proteinOf = firstWith((_nm, o) => o.protein);
+          const proteinOf = firstWith((_nm, o) => o.protein && (!s.proteinTo || o.options.some((x: any) => s.proteinTo!.test(x.name))));
+          const proteinTo = proteinOf ? (s.proteinTo ? offers[proteinOf].options.find((x: any) => s.proteinTo!.test(x.name)) : offers[proteinOf].options[0]).name : undefined;
           const starchOf = ings.map((i) => i.name).find((nm) => /rice|potato|pasta|quinoa/i.test(nm)) ?? ings[ings.length - 1]?.name;
           const tries: { kind: string; ingredient: string; replacement?: string; run: () => Promise<any> }[] = [];
           if (plainOf) tries.push({ kind: "plain", ingredient: plainOf, replacement: offers[plainOf].options[0].name, run: () => swapH.apply({ ...ctx }, { mealType: ask.meal, recipe, ingredient: plainOf, replacement: offers[plainOf].options[0].name }) });
-          if (proteinOf) tries.push({ kind: "protein", ingredient: proteinOf, replacement: offers[proteinOf].options[0].name, run: () => swapH.apply({ ...ctx }, { mealType: ask.meal, recipe, ingredient: proteinOf, replacement: offers[proteinOf].options[0].name }) });
-          if (starchOf) tries.push({ kind: "without", ingredient: starchOf, run: () => swapH.without({ ...ctx }, { mealType: ask.meal, recipe, ingredient: starchOf }) });
+          if (proteinOf) tries.push({ kind: "protein", ingredient: proteinOf, replacement: proteinTo, run: () => swapH.apply({ ...ctx }, { mealType: ask.meal, recipe, ingredient: proteinOf, replacement: proteinTo! }) });
+          if (s.swapKinds) for (let i = tries.length - 1; i >= 0; i--) if (!s.swapKinds.includes(tries[i].kind as any)) tries.splice(i, 1);
+          if (starchOf && (!s.swapKinds || s.swapKinds.includes("without"))) tries.push({ kind: "without", ingredient: starchOf, run: () => swapH.without({ ...ctx }, { mealType: ask.meal, recipe, ingredient: starchOf }) });
           const results: any[] = [];
           for (const t of tries) {
             const b4 = calls.length;
