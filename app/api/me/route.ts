@@ -62,7 +62,8 @@ export async function DELETE() {
   // D12: never delete over live Apple billing the server can't cancel — the
   // client must send the user to the App Store's Manage Subscriptions sheet
   // and get an explicit second confirmation before a forced delete.
-  if (active.some((s) => s.source === "APPLE")) {
+  // A lifetime purchase (no end date) has nothing to cancel and never blocks.
+  if (active.some((s) => s.source === "APPLE" && s.appleExpiresAt && s.appleExpiresAt.getTime() > Date.now())) {
     return NextResponse.json(
       {
         error: "apple_subscription_active",

@@ -89,6 +89,11 @@ model Subscription {
   // Stripe cancel_at_period_end mirror: Premium stays on until
   // stripeCurrentPeriodEnd, and the billing panel offers "Resume".
   cancelAtPeriodEnd      Boolean            @default(false)
+  // Apple in-app purchase (source APPLE). One Apple purchase belongs to one
+  // account. appleExpiresAt is null for the lifetime purchase.
+  appleOriginalTransactionId String?        @unique
+  appleProductId             String?
+  appleExpiresAt             DateTime?
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
 

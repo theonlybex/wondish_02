@@ -22,7 +22,7 @@ const PERIOD_END_GRACE_MS = 24 * 60 * 60 * 1000;
 
 export function hasActivePremium(
   subscription:
-    | { plan: string; status: string; stripeCurrentPeriodEnd?: Date | null }
+    | { plan: string; status: string; stripeCurrentPeriodEnd?: Date | null; appleExpiresAt?: Date | null }
     | null
     | undefined
 ): boolean {
@@ -31,7 +31,8 @@ export function hasActivePremium(
   if (!["ACTIVE", "TRIALING"].includes(subscription.status)) return false;
   // Period-end backstop: only rows that carry a Stripe period end are
   // subject to it — coupon/admin grants (null periodEnd) never expire here.
-  const periodEnd = subscription.stripeCurrentPeriodEnd;
+  // An Apple subscription carries its end in appleExpiresAt (lifetime: null).
+  const periodEnd = subscription.stripeCurrentPeriodEnd ?? subscription.appleExpiresAt;
   if (periodEnd && periodEnd.getTime() + PERIOD_END_GRACE_MS < Date.now()) return false;
   return true;
 }

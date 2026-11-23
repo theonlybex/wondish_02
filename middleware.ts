@@ -21,6 +21,9 @@ export const isPublicRoute = createRouteMatcher([
   "/terms(.*)",
   "/privacy(.*)",
   "/api/stripe/webhook",
+  // Apple posts signed App Store notifications with no session; the route
+  // verifies Apple's signature itself.
+  "/api/billing/apple/notifications",
   "/api/health",
   // Cookie-only locale switch — signed-out visitors on public pages
   // previously got a middleware 401 when changing language (audit Task 18).
