@@ -151,13 +151,17 @@ export const RICH_FOODS: Readonly<Record<FullLevelKey, string>> = {
 // The allergen groups of the example foods above. A profile can ban a whole group ("fish") with no
 // food names stored, and an example is only a word, with no catalog row to carry its groups.
 const EXAMPLE_GROUPS: readonly (readonly [RegExp, readonly string[]])[] = [
-  [/\b(fish|salmon|sardines?|mackerel)\b/, ["BIG9-FISH"]],
-  [/\b(shrimp|prawns?|crab|lobster)\b/, ["BIG9-CRUSTACEAN"]],
-  [/\beggs?\b/, ["BIG9-EGG"]],
-  [/\b(milk|yogh?urt|cheese|butter|cream)\b/, ["BIG9-COW-MILK"]],
-  [/\b(tofu|soy)\b/, ["BIG9-SOY"]],
-  [/\b(walnuts?|almonds?|cashews?)\b/, ["BIG9-TREE-NUT"]],
-  [/\b(pasta|bread|whole-wheat|barley|soy sauce)\b/, ["BIG9-WHEAT"]],
+  [/\b(fish|salmon|sardines?|mackerel|tuna|tilapia|catfish|cod|trout|anchov(?:y|ies)|halibut|haddock)\b/, ["BIG9-FISH"]],
+  [/\b(shrimp|prawns?|crab|lobster|crayfish)\b/, ["BIG9-CRUSTACEAN"]],
+  [/\b(eggs?|mayonnaise|mayo)\b/, ["BIG9-EGG"]],
+  // Every cheese by its own name too: "gouda" was offered in place of parmesan to a person with a
+  // dairy allergy, because only the word "cheese" was read as dairy (combined run, 2026-11-22).
+  [/\b(milk|yogh?urt|cheeses?|butter|cream|ghee|whey|casein|kefir|custard|parmesan|parmigiano|pecorino|cheddar|gouda|gruy[eè]re|manchego|mozzarella|feta|ricotta|brie|camembert|halloumi|paneer|provolone|gorgonzola|mascarpone|queso)\b/, ["BIG9-COW-MILK"]],
+  [/\b(tofu|soy|edamame|tempeh|miso)\b/, ["BIG9-SOY"]],
+  [/\b(walnuts?|almonds?|cashews?|pecans?|pistachios?|hazelnuts?|macadamias?|pine nuts?)\b/, ["BIG9-TREE-NUT"]],
+  [/\bpeanuts?\b/, ["BIG9-PEANUT"]],
+  [/\b(sesame|tahini)\b/, ["BIG9-SESAME"]],
+  [/\b(pasta|spaghetti|penne|noodles?|bread|tortillas?|couscous|flour|whole-wheat|barley|soy sauce)\b/, ["BIG9-WHEAT"]],
 ];
 const NOT_DAIRY = /\b(coconut|soy|oat|almond)\s+milk\b|\b(peanut|almond|nut)\s+butter\b/;
 

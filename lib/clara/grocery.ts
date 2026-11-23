@@ -188,7 +188,9 @@ export function groceryGroups(a: { rows: readonly CatalogRow[]; week: readonly S
     if (rich.some((x) => x.strong && x.row.atHome)) continue; // Clara already has a real source to cook with.
     const lower = lowerFirst(low.name);
     const opening = low.why === "week" ? `You've had little ${lower} this week` : `From your answers you probably get little ${lower}`;
-    const strong = rich.filter((x) => x.strong).map((x) => x.row);
+    // Real sources they may be sent to buy. When every one is ruled out (too salty for them, or
+    // their own rule), the level is not dropped in silence: it goes the way of a diet that leaves none.
+    const strong = rich.filter((x) => x.strong).map((x) => x.row).filter(allowed);
     if (strong.length === 0) {
       // Nothing they eat is a real source. A small source already on the list is named there; else
       // say so, and list the small sources they may eat, if any.

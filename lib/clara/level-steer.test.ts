@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { LEVELS, type FullLevelKey } from "@/lib/level-catalogue";
 import type { MealType } from "@/lib/local-date";
+import { exampleAllergenGroups } from "./level-steer";
 import { FIBRE_RICH_EXAMPLES } from "@/lib/dish-reasons";
 import { steerLevels, steerLines, levelCeilings, RICH_FOODS, type SteerRow, type TodayTotals, type LevelSteer } from "./level-steer";
 
@@ -126,4 +127,12 @@ test("exampleAllergenGroups: every example food that carries a big-nine allergen
   for (const f of ["spinach", "lentils", "oats", "beef", "chia or flax seeds", "pumpkin seeds"]) assert.deepEqual(of(f), []);
   // Every list still splits into single foods the table can read.
   for (const list of Object.values(RICH_FOODS)) for (const f of list.split(", ")) assert.ok(Array.isArray(exampleAllergenGroups(f)));
+});
+
+test("every cheese is dairy by its own name, and the common fish, nuts and wheat foods carry their groups", () => {
+  for (const f of ["gouda", "Grated parmesan", "shredded cheddar", "feta", "ghee", "mozzarella"]) assert.deepEqual(exampleAllergenGroups(f), ["BIG9-COW-MILK"], f);
+  for (const f of ["oat milk", "peanut butter", "almond butter"]) assert.ok(!exampleAllergenGroups(f).includes("BIG9-COW-MILK"), f);
+  assert.deepEqual(exampleAllergenGroups("Canned tuna"), ["BIG9-FISH"]);
+  assert.ok(exampleAllergenGroups("peanut butter").includes("BIG9-PEANUT"));
+  assert.ok(exampleAllergenGroups("Spaghetti").includes("BIG9-WHEAT"));
 });
