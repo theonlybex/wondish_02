@@ -20,6 +20,9 @@ async function gate() {
   return { patientId: caller.patient.id };
 }
 
+// Read per person on every request: never prerendered at build time.
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const g = await gate();
