@@ -154,7 +154,7 @@ export default function PrivacyPage() {
           <ul className={list}>
             <li>
               <strong>Delete your account:</strong> in the Clara app, open Account and choose
-              &ldquo;Delete account&rdquo;. If you only use the website, write to privacy@wondish.io
+              &ldquo;Delete account&rdquo;. If you only use the website, write to info@wondish.io
               and we will delete it for you. Deletion cannot be undone.
             </li>
             <li><strong>See or correct your data:</strong> your profile, log and memories can be edited in the app and on the website.</li>
@@ -165,7 +165,7 @@ export default function PrivacyPage() {
             </li>
             <li>
               <strong>Ask us:</strong> for a copy of your data, or for anything else about it,
-              write to privacy@wondish.io.
+              write to info@wondish.io.
             </li>
           </ul>
         </section>
@@ -183,7 +183,7 @@ export default function PrivacyPage() {
           <h2 className={h2}>10. Children</h2>
           <p>
             The service is not meant for children under 13, and we do not knowingly collect their
-            data. If you believe a child has given us data, write to privacy@wondish.io and we will
+            data. If you believe a child has given us data, write to info@wondish.io and we will
             delete it.
           </p>
         </section>
