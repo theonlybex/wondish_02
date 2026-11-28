@@ -152,12 +152,23 @@ export function createFakePrisma(snap: Snapshot, state: SimState) {
     ingredient: {
       findMany: async (args: any) => snap.ingredients.filter((i) => ingredientWhere(i, args?.where)),
       findFirst: async (args: any) => snap.ingredients.find((i) => ingredientWhere(i, args?.where)) ?? null,
-      // resolveCatalogIngredientIds creates missing catalog names; the
-      // snapshot holds them all, so this is a no-op (and reported if not).
+      // resolveCatalogIngredientIds creates missing catalog names, and so does this: a catalog name added in code
+      // after the snapshot was taken ("Ground chicken") used to throw here, which failed every simulation that
+      // opens the pantry catalog until someone re-took the snapshot. Each added name is reported once.
       createMany: async (args: any) => {
-        const missing = (args?.data ?? []).map((d: any) => d.name);
-        if (missing.length) throw new UnsupportedQuery(`fake-db: catalog names missing from snapshot: ${missing.join(", ")}`);
-        return { count: 0 };
+        let count = 0;
+        for (const d of args?.data ?? []) {
+          const name = String(d.name);
+          if (snap.ingredients.some((i) => i.name.toLowerCase() === name.toLowerCase())) continue;
+          const row = { id: `sim_${name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, name, allergenGroups: [], groceryCategory: null } as (typeof snap.ingredients)[number];
+          snap.ingredients.push(row);
+          // The lookups built from the snapshot above must know the new row too (a pantry row joins through them).
+          ingById.set(row.id, row);
+          ingByNameLower.set(name.toLowerCase(), row);
+          console.log(`sim: catalog name missing from the snapshot, added as production would: ${name}`);
+          count++;
+        }
+        return { count };
       },
       create: refuseWrite("ingredient"),
     },

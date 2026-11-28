@@ -432,7 +432,12 @@ test("15 · garlic powder and pepper are used only when the diner has them; an u
   const usesGp = uses(GP), usesPepper = uses(PEPPER), usesOnionPowder = uses(ONION_POWDER);
   // A pantry covering two dozen dishes that use garlic powder, pepper or onion
   // powder — everything those dishes need EXCEPT those three.
-  const target = snap.recipes.filter((r) => r.isPublic !== false && (usesGp(r.id) || usesPepper(r.id) || usesOnionPowder(r.id))).slice(0, 24);
+  // The control below needs dishes that use onion powder WITHOUT garlic powder or pepper (only those can be served
+  // here). The first 24 matches used to be taken as they came; with today's catalog none of them is such a dish
+  // (9 of 2,432 are), so the control could not pass. Four of them are put in on purpose.
+  const all3 = snap.recipes.filter((r) => r.isPublic !== false && (usesGp(r.id) || usesPepper(r.id) || usesOnionPowder(r.id)));
+  const onionOnly = all3.filter((r) => usesOnionPowder(r.id) && !usesGp(r.id) && !usesPepper(r.id)).slice(0, 4);
+  const target = [...onionOnly, ...all3.filter((r) => !onionOnly.includes(r)).slice(0, 24 - onionOnly.length)];
   const ids = new Set(target.flatMap((r) => r.ingredients.map((ri) => ri.ingredientId)));
   const base = snap.ingredients.filter((i) => ids.has(i.id) && !GP.test(i.name.toLowerCase()) && !PEPPER.test(i.name.toLowerCase()) && !ONION_POWDER.test(i.name.toLowerCase()));
   const byName = (n: string) => snap.ingredients.find((i) => i.name === n)!;
