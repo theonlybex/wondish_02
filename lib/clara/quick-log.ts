@@ -11,7 +11,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { MealLogSource } from "@prisma/client";
 import { CLARA_MODEL } from "./anthropic-client";
-import { priceFoodRow, MAX_FOOD_GRAMS, MAX_FOOD_ROWS } from "./food-grams";
+import { mealTotals, MAX_FOOD_GRAMS, MAX_FOOD_ROWS } from "./food-grams";
 import type { ClaraPhoto } from "./photo";
 import {
   buildMealLogCreateData,
@@ -111,25 +111,16 @@ export interface QuickLogTotals {
   modelEstimated: string[];
 }
 
-const r1 = (n: number): number => Math.round(n * 10) / 10;
-
 /**
  * The meal's numbers: each food priced from the food table, and the model's
  * own figure for a food the table does not know.
  */
 export function quickLogTotals(foods: readonly QuickLogFood[]): QuickLogTotals {
-  let calories = 0, protein = 0, carbs = 0, fat = 0;
-  const modelEstimated: string[] = [];
-  for (const f of foods) {
-    const priced = priceFoodRow({ name: f.name, grams: f.grams, asServed: f.asServed });
-    if (priced.source === "unknown" || priced.calories === null) {
-      modelEstimated.push(f.name);
-      calories += f.calories; protein += f.protein; carbs += f.carbs; fat += f.fat;
-    } else {
-      calories += priced.calories; protein += priced.protein ?? 0; carbs += priced.carbs ?? 0; fat += priced.fat ?? 0;
-    }
-  }
-  return { calories: Math.round(calories), protein: r1(protein), carbs: r1(carbs), fat: r1(fat), modelEstimated };
+  const { estimated, missing: _none, ...totals } = mealTotals(
+    foods.map((f) => ({ name: f.name, grams: f.grams, asServed: f.asServed, own: { calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat } })),
+  );
+  void _none; // every quick-log food carries the model's own figures, so nothing is ever missing
+  return { ...totals, modelEstimated: estimated };
 }
 
 export type QuickLogModel = Pick<Anthropic, "messages">;

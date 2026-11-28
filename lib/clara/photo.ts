@@ -70,10 +70,10 @@ const PHOTO_GRAM_STEPS = [
   "Your goal is the grams of each food inside the meal. Ask up to 3 short questions to pin them down, ONE per message, each with answer boxes that give amounts in everyday words with grams (\"Small bowl, about 100 g\", \"Medium, about 180 g\", \"Large, about 250 g\").",
   "Ask first about what the photo cannot show and what changes calories most: oil, butter, dressing or sauce (\"None\", \"1 tsp, about 5 g\", \"1 tbsp, about 14 g\", \"More\"), then the portion of the most filling food. Skip anything their note already answers. A simple food with nothing hidden (an apple, a yoghurt pot) needs no questions.",
   "Every question's boxes end with \"Just estimate\", which means stop asking and use your best guesses.",
-  "When the grams are settled, call foods_nutrition with every food and its grams (oil, butter, dressing and sauce as their own rows). Estimate any `unknown` foods yourself.",
-  "Then give one short list of the foods with their grams, the totals per serving (calories, protein, carbs, fat), and one line on what it adds to their day (intake words: \"this adds a good amount of fibre\", never \"your fibre is low\").",
+  "When the grams are settled, call foods_nutrition with every food and its grams (oil, butter, dressing and sauce as their own rows), and on every row your own calories, protein, carbs and fat for that many grams: they are used only for a food the food data does not know.",
+  "Then give one short list of the foods with their grams, the totals per serving (calories, protein, carbs, fat) exactly as `totals` gives them, never a sum of your own, and one line on what it adds to their day (intake words: \"this adds a good amount of fibre\", never \"your fibre is low\").",
   "End by asking whether to log it, with answer boxes: the meal for now first (\"Log as lunch\"), then the other likely meal, then \"Don't log\".",
-  "Logging only happens after they tap a \"Log as …\" box: then call logs_create with the name and exactly the totals you stated. Answering a gram question never logs anything.",
+  "Logging only happens after they tap a \"Log as …\" box: then call logs_create with the name and the same foods list you sent to foods_nutrition (no macro numbers: the app works them out from the foods). Answering a gram question never logs anything.",
 ].join(" ");
 
 /** Said to Clara on the turns that follow a photo, while its questions run. */

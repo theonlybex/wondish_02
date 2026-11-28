@@ -69,6 +69,13 @@ const DENSITY: {
    */
   volumeUnambiguous?: boolean;
   /**
+   * True for the dry grains and pulses, which take up water as they cook: only
+   * these weigh about three times as much cooked, so only these are shrunk by
+   * COOKED_FACTOR. The factor used to apply to ANY row that said "cooked", and
+   * 150 g of "cooked chicken breast" came out at 82 kcal against a real ~248.
+   */
+  absorbsWater?: boolean;
+  /**
    * Grams in one of the thing, for rows written as a bare count.
    *
    * "Sliced bread 2" and "Large eggs 2" carry a quantity and no unit, and
@@ -87,12 +94,12 @@ const DENSITY: {
 }[] = [
   // Grains and pasta, dry. ~75 g carbs/100 g is true of every rice, and of
   // pasta, couscous and most flours within a few grams.
-  { match: /\b(rice)\b/i, carbs: 78, fat: 1, protein: 7, gramsPerCup: 185 },
-  { match: /\b(pasta|spaghetti|macaroni|penne|noodle|couscous|orzo)\b/i, carbs: 75, fat: 2, protein: 13, gramsPerCup: 100 },
-  { match: /\b(oats?|oatmeal)\b/i, carbs: 66, fat: 7, protein: 13, gramsPerCup: 90 },
-  { match: /\b(quinoa|bulgur|farro|barley|millet)\b/i, carbs: 70, fat: 6, protein: 13, gramsPerCup: 170 },
+  { match: /\b(rice)\b/i, carbs: 78, fat: 1, protein: 7, gramsPerCup: 185, absorbsWater: true },
+  { match: /\b(pasta|spaghetti|macaroni|penne|noodle|couscous|orzo)\b/i, carbs: 75, fat: 2, protein: 13, gramsPerCup: 100, absorbsWater: true },
+  { match: /\b(oats?|oatmeal)\b/i, carbs: 66, fat: 7, protein: 13, gramsPerCup: 90, absorbsWater: true },
+  { match: /\b(quinoa|bulgur|farro|barley|millet)\b/i, carbs: 70, fat: 6, protein: 13, gramsPerCup: 170, absorbsWater: true },
   { match: /\b(flour|cornmeal|breadcrumbs?)\b/i, carbs: 76, fat: 1, protein: 10, gramsPerCup: 120 },
-  { match: /\b(lentils?|chickpeas?|black beans?|kidney beans?|white beans?)\b/i, carbs: 60, fat: 2, protein: 24, gramsPerCup: 190 , sodium: 240},
+  { match: /\b(lentils?|chickpeas?|black beans?|kidney beans?|white beans?)\b/i, carbs: 60, fat: 2, protein: 24, gramsPerCup: 190 , sodium: 240, absorbsWater: true },
   { match: /\b(sugar|honey|maple syrup)\b/i, carbs: 95, fat: 0, protein: 0, gramsPerCup: 200 , volumeUnambiguous: true },
   // Fats. Oil is the one ingredient that is essentially 100% fat.
   { match: /\b(oil)\b/i, carbs: 0, fat: 100, protein: 0, gramsPerCup: 218 , volumeUnambiguous: true },
@@ -221,13 +228,13 @@ const DENSITY: {
   // gluten-free products. Textbook values per 100 g as bought.
   { match: /\b(sour cream|cr[eè]me fra[iî]che)\b/i, carbs: 4, fat: 20, protein: 2, gramsPerCup: 230, volumeUnambiguous: true , sodium: 80},
   { match: /\b(heavy cream|double cream|whipping cream|half.and.half)\b/i, carbs: 3, fat: 37, protein: 2, gramsPerCup: 238, volumeUnambiguous: true },
-  { match: /\b(soymilks?|soy milk|oat milk|almond milk|coconut milk|rice milk)\b/i, carbs: 2, fat: 2, protein: 2, gramsPerCup: 243, volumeUnambiguous: true },
+  { match: /\b(soymilks?|soy milk|oat milk|almond milk|rice milk)\b/i, carbs: 2, fat: 2, protein: 2, gramsPerCup: 243, volumeUnambiguous: true },
   { match: /\b(coffees?|espresso|teas?|teabags?|herbal tea)\b/i, carbs: 0, fat: 0, protein: 0, gramsPerCup: 237, volumeUnambiguous: true },
   { match: /\b(stevias?|monkfruit|monk fruit|erythritol|sucralose|aspartame|sweeteners?)\b/i, carbs: 0, fat: 0, protein: 0, gramsPerCup: 200, volumeUnambiguous: true },
   { match: /\b(cocoa powder|cacao powder|unsweetened cocoa)\b/i, carbs: 58, fat: 14, protein: 20, gramsPerCup: 86, volumeUnambiguous: true },
   { match: /\b(raisins?|sultanas?|prunes?|dates?|dried apricots?|dried cranberries|dried fruit)\b/i, carbs: 75, fat: 1, protein: 3, gramsPerCup: 165, volumeUnambiguous: true },
   { match: /\b(peach(es)?|nectarines?|apricots?|plums?|mangos?|mangoes|pineapples?|kiwis?|kiwifruit|cherr(y|ies)|papayas?|guavas?|figs?)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 165, gramsPerItem: 140 },
-  { match: /\b(olives?|capers?)\b/i, carbs: 6, fat: 11, protein: 1, gramsPerCup: 135, volumeUnambiguous: true , sodium: 1550},
+  { match: /\b(olives?|capers?)\b/i, carbs: 6, fat: 11, protein: 1, gramsPerCup: 135, gramsPerItem: 4, volumeUnambiguous: true , sodium: 1550},
   { match: /\b(lima beans?|edamame|butter beans?|fava beans?|split peas?|pinto beans?|cannellini)\b/i, carbs: 20, fat: 1, protein: 8, gramsPerCup: 170 },
   { match: /\b(granola|muesli)\b/i, carbs: 64, fat: 15, protein: 10, gramsPerCup: 120 , sodium: 60},
   { match: /\b(coconut flakes?|shredded coconut|desiccated coconut)\b/i, carbs: 24, fat: 65, protein: 7, gramsPerCup: 80, volumeUnambiguous: true },
@@ -240,7 +247,75 @@ const DENSITY: {
   { match: /\b(clam juice|tomato juice|vegetable juice)\b/i, carbs: 4, fat: 0, protein: 1, gramsPerCup: 240, volumeUnambiguous: true },
   { match: /\b(baking powder|baking soda|bicarbonate|cream of tartar|yeast)\b/i, carbs: 28, fat: 0, protein: 0, gramsPerCup: 220, volumeUnambiguous: true },
   { match: /\b(meatless \w+|plant.based \w+|vegan \w+|seitan|quorn)\b/i, carbs: 5, fat: 5, protein: 20, gramsPerCup: 140 },
+  // Added 2026-11-27 with densityFor: foods that were priced as something else in their name, or as nothing.
+  // "Egg whites" as whole egg (146 kcal against 52), "Cottage cheese" as hard cheese (356 against ~98),
+  // "Basil pesto" and "Protein powder" skipped as seasonings (0 kcal).
+  { match: /\b(egg whites?)\b/i, carbs: 1, fat: 0, protein: 11, gramsPerCup: 243, gramsPerItem: 33, volumeUnambiguous: true, sodium: 166 },
+  { match: /\b(cottage cheese)\b/i, carbs: 3, fat: 4, protein: 11, gramsPerCup: 225, volumeUnambiguous: true, sodium: 360 },
+  // Its own row, not a refusal: recipes use it by the tablespoon, and an unpriced row counts as 100 g against coverage.
+  { match: /\b(sun-?dried tomato(es)?)\b/i, carbs: 44, fat: 3, protein: 14, gramsPerCup: 54, volumeUnambiguous: true, sodium: 250 },
+  { match: /\b(pesto)\b/i, carbs: 6, fat: 45, protein: 5, gramsPerCup: 240, volumeUnambiguous: true, sodium: 900 },
+  { match: /\b(protein powder|whey protein|whey)\b/i, carbs: 8, fat: 6, protein: 78, gramsPerCup: 120, volumeUnambiguous: true, sodium: 200 },
 ];
+
+/** Words that describe a food without changing what it is per gram (as bought). */
+const PLAIN_WORDS = new Set(
+  ("a an the of and with in on or fresh raw cooked boiled steamed grilled baked poached scrambled plain whole wholemeal wholegrain wholewheat " +
+    "wheat grain white brown basmati jasmine long short wild red green yellow black lean extra virgin olive sesame sunflower vegetable canola " +
+    "rapeseed skinless boneless skin fillet fillets sliced slice slices chopped diced shredded grated minced ground large medium small low fat " +
+    "free reduced skimmed semi full unsalted salted unsweetened natural organic dried dry canned tinned drained frozen ripe baby cherry roma " +
+    "plum hard soft mixed kosher sea table piece pieces leaves leaf g grams").split(" "),
+);
+const WORD = /[a-zà-ÿ]+/gi;
+
+/** Every word of `text` outside the given spans that is not a plain describing word. */
+function wordsLeftOver(text: string, spans: readonly [number, number][]): number {
+  let left = 0;
+  for (const w of text.matchAll(WORD)) {
+    const from = w.index ?? 0;
+    const to = from + w[0].length;
+    if (spans.some(([a, b]) => from < b && to > a)) continue;
+    if (!PLAIN_WORDS.has(w[0].toLowerCase())) left++;
+  }
+  return left;
+}
+
+type DensityRow = (typeof DENSITY)[number];
+const ALL_MATCHES = new Map<DensityRow, RegExp>(DENSITY.map((row) => [row, new RegExp(row.match.source, "gi")]));
+
+/** Where in `name` this row's pattern matches. */
+function spansOf(row: DensityRow, name: string): [number, number][] {
+  const spans: [number, number][] = [];
+  for (const m of name.matchAll(ALL_MATCHES.get(row) as RegExp)) {
+    if (m[0].length > 0) spans.push([m.index ?? 0, (m.index ?? 0) + m[0].length]);
+  }
+  return spans;
+}
+
+/**
+ * The table row for a food name: the one that leaves the fewest words of the
+ * name unaccounted for, and the earliest row among equals.
+ *
+ * It was the first row whose pattern matched anywhere in the name, and table
+ * order could not keep every pair apart: "Peanut butter" was priced as butter,
+ * "Almond milk" as almonds (870 kcal a cup), "Butter beans" as butter, "Pumpkin
+ * seeds" as pumpkin. A row that accounts for the whole name now beats a row
+ * that matches one word of it. Where no row does, the first match stands as before.
+ */
+function densityFor(name: string): DensityRow | undefined {
+  let best: DensityRow | undefined;
+  let bestLeft = Infinity;
+  for (const row of DENSITY) {
+    if (!row.match.test(name)) continue;
+    const left = wordsLeftOver(name, spansOf(row, name));
+    if (left < bestLeft) {
+      best = row;
+      bestLeft = left;
+      if (left === 0) break;
+    }
+  }
+  return best;
+}
 
 const GRAMS_PER_UNIT: { match: RegExp; grams: number | "cup" }[] = [
   { match: /^\s*(g|gram|grams|gr)\s*$/i, grams: 1 },
@@ -286,7 +361,7 @@ const COUNT_UNIT = /^\s*(|unit|units|piece|pieces|slice|slices|whole|each|item|i
 export function gramsOf(name: string, quantity: number | null | undefined, unit: string | null | undefined): number | null {
   if (quantity == null || !Number.isFinite(quantity) || quantity <= 0) return null;
   const u = unit ?? "";
-  const density = DENSITY.find((d) => d.match.test(name));
+  const density = densityFor(name);
   // A bare count ("Sliced bread 2", "Large eggs 2") or a count-shaped unit
   // ("2 slices", "1 unit") prices from the food's own per-item weight.
   if (density?.gramsPerItem && COUNT_UNIT.test(u)) return quantity * density.gramsPerItem;
@@ -316,7 +391,7 @@ const isMassUnit = (unit: string | null | undefined): boolean =>
 // A count is as firm as a mass once the food has a per-item weight: two slices
 // of bread is two slices of bread however it is later toasted.
 const isCountOf = (name: string, unit: string | null | undefined): boolean => {
-  const density = DENSITY.find((d) => d.match.test(name));
+  const density = densityFor(name);
   return density?.gramsPerItem != null && COUNT_UNIT.test(unit ?? "");
 };
 
@@ -380,7 +455,7 @@ export function macroFloor(
   let fat = 0;
   const from: string[] = [];
   for (const ing of ingredients) {
-    const density = DENSITY.find((d) => d.match.test(ing.name));
+    const density = densityFor(ing.name);
     if (!density) continue;
     if (!isMassUnit(ing.unit) && !isCountOf(ing.name, ing.unit) && !density.volumeUnambiguous && !volumeCountsAsDry) continue;
     // A seasoning-sized amount contributes nothing worth arguing about and
@@ -478,7 +553,7 @@ function saltRowTspLocal(quantity?: number | null, unit?: string | null): number
 }
 
 const NEGLIGIBLE =
-  /\b(salt|pepper|peppercorns?|water|vinegar|spice|seasoning|powder|paprika|cumin|oregano|thyme|basil|rosemary|parsley|cilantro|cinnamon|turmeric|ginger|bay leaf|chili flakes|cayenne|herbs?|stock|broth|lemon juice|lime juice|zest|extract|baking powder|baking soda|mustard|hot sauce|soy sauce|garlic|shallots?|scallions?|green onions?|chives?|dill|mint|sage|tarragon|lemons?|limes?|capers|olives)\b/i;
+  /\b(salt|pepper|peppercorns?|water|vinegar|spice|seasoning|powder|paprika|cumin|oregano|thyme|basil|rosemary|parsley|cilantro|cinnamon|turmeric|ginger|bay leaf|chili flakes|cayenne|herbs?|stock|broth|lemon juice|lime juice|zest|extract|baking powder|baking soda|mustard|hot sauce|soy sauce|garlic|shallots?|scallions?|green onions?|chives?|dill|mint|sage|tarragon|lemons?|limes?|capers)\b/i;
 
 /**
  * A row that says it is already cooked, in its own note or name.
@@ -490,10 +565,45 @@ const NEGLIGIBLE =
  * other direction: the steps said nothing, so the default said dry.
  */
 const ROW_SAYS_COOKED = /\bcooked\b/i;
+
+// A seasoning word in a name does not make the row a seasoning. "Garlic bread", "Basil pesto", "Tuna, canned in
+// water" and "Protein powder" were all skipped as carrying nothing, so their calories were missing from the dish.
+// A row is skipped only when no food is left once the seasoning words are taken out of its name.
+const POWDER_FOODS = /\b(protein powder|cocoa powder|cacao powder)\b/i;
+const ALWAYS_SEASONING = /\b(broths?|stocks?|bouillon|vinegars?|zest|extract)\b/i;
+
+/** The name to look up in the table when a seasoning-worded row is really a food; null when it is a seasoning. */
+function foodBehindSeasoningWord(name: string): string | null {
+  if (POWDER_FOODS.test(name)) return name;
+  if (ALWAYS_SEASONING.test(name)) return null;
+  // "Celery salt" is salt and "Onion powder" a spice; "Chicken, seasoned with salt" is chicken.
+  if (/\b(salt|powder)\s*$/i.test(name.split(/[,(]/)[0])) return null;
+  const rest = name.replace(new RegExp(NEGLIGIBLE.source, "gi"), " ");
+  return densityFor(rest) ? rest : null;
+}
+
+// Words that make a different food of the one named beside them: 50 g of "Potato chips" is not 50 g of potato
+// (40 kcal against ~268), nor "Coconut milk" milk, nor "Carrot cake" carrot. Unless the table row itself covers the
+// word ("Rice cakes"), such a row is left unpriced, so coverage falls and the dish keeps its declared numbers.
+const MAKES_ANOTHER_FOOD =
+  /\b(chips|crisps|fries|cake|pie|chocolate|condensed|evaporated|candied|battered|breaded|jam|yolks?|coconut (milk|cream|yogurt))\b/gi;
+
+function isAnotherFood(name: string, row: DensityRow): boolean {
+  const spans = spansOf(row, name);
+  for (const m of name.matchAll(MAKES_ANOTHER_FOOD)) {
+    const from = m.index ?? 0;
+    const to = from + m[0].length;
+    if (!spans.some(([a, b]) => a <= from && to <= b)) return true;
+  }
+  return false;
+}
 // A canned bean is a cooked bean: "Canned chickpeas, 150 g" priced dry was 531 kcal for a 186 kcal can.
 const ROW_SAYS_CANNED = /\b(canned|tinned|jarred|drained)\b/i;
 const PULSE_ROW = /\b(lentils?|chickpeas?|garbanzos?|(?<!\b(green|string|runner|french|snap) )beans?)\b/i;
-const rowIsCooked = (text: string): boolean => ROW_SAYS_COOKED.test(text) || (ROW_SAYS_CANNED.test(text) && PULSE_ROW.test(text));
+// "Cooked" shrinks a row only when the food takes up water (absorbsWater). Cooked meat, fish and vegetables keep
+// their as-bought figure: they do not triple in weight, and shrinking them cut their calories by two thirds.
+const rowIsCooked = (text: string, absorbsWater: boolean): boolean =>
+  (absorbsWater && ROW_SAYS_COOKED.test(text)) || (ROW_SAYS_CANNED.test(text) && PULSE_ROW.test(text));
 
 /**
  * Cooked grain against dry, as a fraction. Rice triples in weight boiling, so
@@ -521,13 +631,13 @@ export function priceDish(
     // salt itself, soy sauce (~870 mg a tablespoon), stock, mustard, hot sauce,
     // olives and capers are all on that list. Caught by a test that expected a
     // tablespoon of soy sauce to register and got null.
-    const skipped = NEGLIGIBLE.test(ing.name);
-    if (skipped) {
+    const food = NEGLIGIBLE.test(ing.name) ? foodBehindSeasoningWord(ing.name) : ing.name;
+    if (food === null) {
       const saltTsp = /\bsalt\b/i.test(ing.name) ? saltRowTspLocal(ing.quantity, ing.unit) : null;
       if (saltTsp !== null) {
         sodiumMg += saltTsp * SODIUM_MG_PER_TSP_SALT;
       } else {
-        const seasoning = DENSITY.find((d) => d.match.test(ing.name));
+        const seasoning = densityFor(ing.name);
         if (seasoning?.sodium) {
           const g = gramsOf(ing.name, ing.quantity, ing.unit);
           if (g != null) sodiumMg += (g * seasoning.sodium) / 100;
@@ -535,13 +645,14 @@ export function priceDish(
       }
       continue;
     }
-    const density = DENSITY.find((d) => d.match.test(ing.name));
-    const grams = density ? gramsOf(ing.name, ing.quantity, ing.unit) : null;
+    const row = densityFor(food);
+    const density = row && !isAnotherFood(food, row) ? row : undefined;
+    const grams = density ? gramsOf(food, ing.quantity, ing.unit) : null;
     // A volume amount is only usable when the steps show the grain starts dry;
     // otherwise the same number could mean three times the food.
     const usable =
       grams != null &&
-      (isMassUnit(ing.unit) || isCountOf(ing.name, ing.unit) || density?.volumeUnambiguous === true || volumeOk);
+      (isMassUnit(ing.unit) || isCountOf(food, ing.unit) || density?.volumeUnambiguous === true || volumeOk);
     if (!density || !usable) {
       // Weight unknown, so it cannot be weighed against what IS known. Count
       // it as one average portion of unpriced food so coverage reflects it.
@@ -549,7 +660,7 @@ export function priceDish(
       continue;
     }
     // A row that declares itself cooked is priced cooked.
-    const factor = rowIsCooked(`${ing.name} ${ing.note ?? ""}`) ? COOKED_FACTOR : 1;
+    const factor = rowIsCooked(`${ing.name} ${ing.note ?? ""}`, density.absorbsWater === true) ? COOKED_FACTOR : 1;
     priced += grams;
     sodiumMg += (grams * (density.sodium ?? 0)) / 100;
     protein += (grams * (density.protein ?? 0) * factor) / 100;
@@ -574,6 +685,58 @@ export function priceDish(
     carbs: Math.round(carbs * 10) / 10,
     fat: Math.round(fat * 10) / 10,
     coverage,
+  };
+}
+
+// ── One named food, as in a meal log ─────────────────────────────────────────
+//
+// priceDish reads RECIPE rows, where "garlic" is a clove in a pan and the first
+// pattern that matches is good enough. A meal log names finished foods, and the
+// same two habits priced them far too low (measured 2026-11-27):
+//   - any name holding a seasoning word was skipped as 0 kcal: "cinnamon roll",
+//     "garlic bread", "lemon chicken", "protein powder";
+//   - a prepared food was priced as the raw food in its name: 50 g of "potato
+//     chips" as 50 g of potato (40 kcal against ~268), "milk chocolate" as milk,
+//     "carrot cake" as carrot.
+// So a logged food is priced from the table only when the table row accounts
+// for the WHOLE name, apart from words that do not change what the food is.
+// Anything else is unknown and the caller's own estimate stands.
+
+const NEGLIGIBLE_ALL = new RegExp(NEGLIGIBLE.source, "gi");
+
+export type PlainFoodPrice =
+  | { kind: "seasoning" }
+  | { kind: "unknown" }
+  | { kind: "priced"; protein: number; carbs: number; fat: number; shrunk: boolean };
+
+/**
+ * Macros for `grams` of one named food. `cooked` means the grams are as served.
+ * `shrunk` says the cooked-grain factor was applied.
+ */
+export function pricePlainFood(name: string, grams: number, cooked: boolean): PlainFoodPrice {
+  // A seasoning on its own ("salt", "fresh parsley", "soy sauce") carries nothing worth counting.
+  if (NEGLIGIBLE.test(name) && wordsLeftOver(name.replace(NEGLIGIBLE_ALL, " "), []) === 0) {
+    return { kind: "seasoning" };
+  }
+  // The row that accounts for the whole name; the longest match among those, so
+  // "peanut butter" is its own row and never butter, "almond milk" never almonds.
+  let best: { row: DensityRow; length: number } | null = null;
+  for (const row of DENSITY) {
+    const spans = spansOf(row, name);
+    if (spans.length === 0 || wordsLeftOver(name, spans) > 0) continue;
+    const length = spans.reduce((n, [a, b]) => n + (b - a), 0);
+    if (!best || length > best.length) best = { row, length };
+  }
+  if (!best) return { kind: "unknown" };
+  const row = best.row;
+  const shrunk = row.absorbsWater === true && (cooked || ROW_SAYS_COOKED.test(name));
+  const factor = shrunk || (ROW_SAYS_CANNED.test(name) && PULSE_ROW.test(name)) ? COOKED_FACTOR : 1;
+  return {
+    kind: "priced",
+    protein: (grams * (row.protein ?? 0) * factor) / 100,
+    carbs: (grams * row.carbs * factor) / 100,
+    fat: (grams * row.fat * factor) / 100,
+    shrunk,
   };
 }
 

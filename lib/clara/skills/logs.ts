@@ -14,7 +14,7 @@ import { parseLocalDateStrict } from "@/lib/journal";
 import { rateLimit } from "@/lib/rate-limit";
 import { sumMealLogs } from "@/lib/macros";
 import type { ClaraContext, Skill, ToolResult } from "../types";
-import { foodsNutritionDef, foodsNutritionHandler } from "../food-grams";
+import { FOODS_INPUT, foodsNutritionDef, foodsNutritionHandler, mealTotals, missingFoodsMessage, parseFoodRows } from "../food-grams";
 
 export const MAX_SEARCH_DAYS = 90;
 export const MAX_SEARCH_ROWS = 50;
@@ -186,6 +186,16 @@ export function makeLogsHandlers(deps: LogsDeps = prismaDeps) {
     for (const k of ["calories", "protein", "carbs", "fat", "fiber"] as const) {
       if (typeof input[k] === "number") perServing[k] = input[k];
     }
+    // With `foods`, the four macros are added up here (lib/clara/food-grams.ts mealTotals), the same sum
+    // foods_nutrition showed Clara. Numbers she typed beside them are ignored: she used to add her own estimates
+    // to the table's totals herself and retype the result, and nothing checked either step.
+    if (input.foods !== undefined) {
+      const foods = parseFoodRows(input);
+      if (!foods.ok) return invalid(foods.message);
+      const totals = mealTotals(foods.rows);
+      if (totals.missing.length > 0) return invalid(missingFoodsMessage(totals.missing));
+      Object.assign(perServing, { calories: totals.calories, protein: totals.protein, carbs: totals.carbs, fat: totals.fat });
+    }
     const parsed = parseMealLogInput({
       localDate: date,
       mealType: input.mealType,
@@ -237,7 +247,7 @@ const handlers = makeLogsHandlers();
 export const logsSkill: Skill = {
   name: "logs",
   promptFragment:
-    'About your logs_ tools: the meal log is the record of what the user ACTUALLY ATE (their intake), not what was planned. Use logs_search for any question about past eating; logs_day_summary for a single day\'s items and totals. To log a meal: first state your estimate and ask ("Around 550 kcal — want me to log it for lunch?"); only after they agree call logs_create with exactly the numbers you stated. Omit any macro you are genuinely unsure of rather than inventing it. To delete: find the row with logs_search, and if several match what they described, list them and ask which — never guess. logs_delete needs the id from a search result in this conversation.',
+    'About your logs_ tools: the meal log is the record of what the user ACTUALLY ATE (their intake), not what was planned. Use logs_search for any question about past eating; logs_day_summary for a single day\'s items and totals. To log a meal: first state your estimate and ask ("Around 550 kcal — want me to log it for lunch?"); only after they agree call logs_create. When you priced the meal with foods_nutrition, pass logs_create the same foods list and no macro numbers: the app works the numbers out from the foods. Otherwise pass exactly the numbers you stated. Omit any macro you are genuinely unsure of rather than inventing it. To delete: find the row with logs_search, and if several match what they described, list them and ask which — never guess. logs_delete needs the id from a search result in this conversation.',
   tools: [
     {
       def: {
@@ -278,7 +288,7 @@ export const logsSkill: Skill = {
         name: "logs_create",
         isWrite: true,
         description:
-          "Log a meal the user actually ate, AFTER they have confirmed your stated estimate in conversation. Pass exactly the macro numbers you told them; omit any you did not state. Never call it on the same turn the meal is first mentioned.",
+          "Log a meal the user actually ate, AFTER they have confirmed your stated estimate in conversation. If you priced it with foods_nutrition, pass the same `foods` list and leave calories, protein, carbs and fat out: they are worked out from the foods. Otherwise pass exactly the macro numbers you told them; omit any you did not state. Never call it on the same turn the meal is first mentioned.",
         input_schema: {
           type: "object",
           properties: {
@@ -286,7 +296,8 @@ export const logsSkill: Skill = {
             mealType: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
             date: { type: "string", description: "YYYY-MM-DD; omit for today." },
             servings: { type: "number", description: "Defaults to 1." },
-            calories: { type: "number", description: "Per-serving kcal, exactly as stated to the user." },
+            foods: { ...FOODS_INPUT, description: "The foods of one serving, exactly as you sent them to foods_nutrition. When given, the macros are worked out from them." },
+            calories: { type: "number", description: "Per-serving kcal, exactly as stated to the user. Ignored when foods is given." },
             protein: { type: "number" },
             carbs: { type: "number" },
             fat: { type: "number" },

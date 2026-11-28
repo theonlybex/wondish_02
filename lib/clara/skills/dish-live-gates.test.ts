@@ -21,7 +21,7 @@ const CATALOG: { name: string; allergenGroups: string[] }[] = [
   { name: "ground chicken", allergenGroups: [] },
   { name: "boneless chicken breasts", allergenGroups: [] },
   { name: "ground beef", allergenGroups: [] },
-  { name: "cottage cheese", allergenGroups: [] },
+  { name: "feta", allergenGroups: [] },
 ];
 const ing = (name: string, quantity: number, unit: string) => ({
   quantity, unit, ingredient: { name, allergenGroups: CATALOG.find((c) => c.name === name)?.allergenGroups ?? [] },
@@ -482,7 +482,9 @@ test("judge: nothing marked → a dish built on any protein is served as before,
   assert.ok(!("fromHome" in served(res)));
 });
 test("judge: over the week's sodium, a salty dish is out and a plain one is still served (Review Focus 4)", async () => {
-  const salty = item("Red Lentil Stew with Cottage Cheese", [{ name: "cottage cheese", quantity: 120, unit: "g" }], [...STEW_STEPS.slice(0, 3), "Top with the cottage cheese, season with the salt and serve."]);
+  // Feta, not cottage cheese: the table used to price cottage cheese as hard cheese (700 mg sodium per 100 g).
+  // It has its own row now (~360 mg), so it is no longer the salty dish this test needs.
+  const salty = item("Red Lentil Stew with Feta", [{ name: "feta", quantity: 120, unit: "g" }], [...STEW_STEPS.slice(0, 3), "Top with the feta, season with the salt and serve."]);
   const plain = item("Red Lentil and Spinach Stew");
   const days = ["2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12"].map((localDate) => ({ localDate, meals: 3, calories: 1800, protein: 80, carbs: 200, fibre: 20, sodium: 2600, saturatedFat: 10, addedSugar: 10 }));
   const trace: string[] = [];
@@ -492,7 +494,7 @@ test("judge: over the week's sodium, a salty dish is out and a plain one is stil
   assert.deepEqual((await live([salty, plain]).generate({ ...CTX }, ASK, { accept: () => true })).map((r) => r.name), ["Red Lentil and Spinach Stew"]);
   // a week well under the limit has room for it
   const light = days.map((d) => ({ ...d, sodium: 1200 }));
-  assert.deepEqual((await live([salty, plain], { week: { range: { fromDate: "2026-11-06", toDate: "2026-11-12" }, days: light } }).generate({ ...CTX }, ASK, { accept: () => true })).map((r) => r.name), ["Red Lentil Stew with Cottage Cheese"]);
+  assert.deepEqual((await live([salty, plain], { week: { range: { fromDate: "2026-11-06", toDate: "2026-11-12" }, days: light } }).generate({ ...CTX }, ASK, { accept: () => true })).map((r) => r.name), ["Red Lentil Stew with Feta"]);
 });
 test("judge: today's protein is preferred, not required", async () => {
   pantry = ["salmon fillets", "ground beef"];

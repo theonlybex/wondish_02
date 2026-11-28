@@ -5,7 +5,7 @@
 // from the same per-100 g food table the dish cards are priced with
 // (lib/staple-density.ts), so a photo meal and a cooked dish agree. Foods the
 // table does not know come back as `unknown` for Clara to estimate herself.
-import { priceDish } from "@/lib/staple-density";
+import { pricePlainFood } from "@/lib/staple-density";
 import type { ToolResult } from "./types";
 
 export const MAX_FOOD_ROWS = 20;
@@ -13,11 +13,10 @@ export const MAX_FOOD_GRAMS = 3000;
 
 /**
  * The table is per 100 g as bought: grains dry, meat raw. A photo shows food
- * as served, so cooked grains and pasta are priced at their cooked density
- * (priceDish's own "cooked" rule) and cooked meat and fish at ~1.3x raw,
- * because they lose about a quarter of their weight in water.
+ * as served, so cooked grains and pulses are priced at their cooked density
+ * (pricePlainFood's `cooked`) and cooked meat and fish at ~1.3x raw, because
+ * they lose about a quarter of their weight in water.
  */
-const COOKS_WET = /\b(rice|pasta|spaghetti|macaroni|penne|noodles?|couscous|orzo|oats?|oatmeal|quinoa|bulgur|farro|barley|millet|lentils?|chickpeas?|beans?)\b/i;
 const COOKS_DRY = /\b(chicken|turkey|beef|steak|sirloin|pork|bacon|ham|salmon|tuna|cod|tilapia|haddock|catfish|trout|sole|pollock|fish|shrimp|prawns?)\b/i;
 export const COOKED_MEAT_FACTOR = 1.3;
 
@@ -26,6 +25,15 @@ export interface FoodRow {
   grams: number;
   /** Grams as served (cooked). False for dry or raw weights. */
   asServed: boolean;
+  /** Clara's own figures for that many grams. Used only when the food data does not know the food. */
+  own?: FoodFigures;
+}
+
+export interface FoodFigures {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
 }
 
 export interface PricedFoodRow {
@@ -42,14 +50,13 @@ export interface PricedFoodRow {
 const r1 = (n: number): number => Math.round(n * 10) / 10;
 
 export function priceFoodRow(row: FoodRow): PricedFoodRow {
-  const cookedGrain = row.asServed && COOKS_WET.test(row.name);
-  const priced = priceDish([{ name: row.name, quantity: row.grams, unit: "g", note: cookedGrain ? "cooked" : null }]);
+  const priced = pricePlainFood(row.name, row.grams, row.asServed);
   const base = { name: row.name, grams: row.grams };
-  // Nothing priceable at all: priceDish skips seasonings (salt, herbs, lemon,
-  // garlic, soy sauce...) as carrying no meaningful calories.
-  if (priced === null) return { ...base, source: "negligible", calories: 0, protein: 0, carbs: 0, fat: 0 };
-  if (priced.coverage < 1) return { ...base, source: "unknown", calories: null, protein: null, carbs: null, fat: null };
-  const k = row.asServed && !cookedGrain && COOKS_DRY.test(row.name) ? COOKED_MEAT_FACTOR : 1;
+  // Only a seasoning on its own (salt, herbs, lemon juice, garlic, soy sauce) counts as nothing. A food whose
+  // name merely holds such a word ("garlic bread", "cinnamon roll") is unknown, so the caller's estimate is used.
+  if (priced.kind === "seasoning") return { ...base, source: "negligible", calories: 0, protein: 0, carbs: 0, fat: 0 };
+  if (priced.kind === "unknown") return { ...base, source: "unknown", calories: null, protein: null, carbs: null, fat: null };
+  const k = row.asServed && !priced.shrunk && COOKS_DRY.test(row.name) ? COOKED_MEAT_FACTOR : 1;
   const protein = priced.protein * k;
   const carbs = priced.carbs * k;
   const fat = priced.fat * k;
@@ -63,28 +70,43 @@ export function priceFoodRow(row: FoodRow): PricedFoodRow {
   };
 }
 
-export interface FoodTotals {
-  rows: PricedFoodRow[];
-  /** Sum of the rows the table priced (unknown rows are NOT in it). */
-  known: { calories: number; protein: number; carbs: number; fat: number };
-  unknown: string[];
+export interface MealTotals extends FoodFigures {
+  /** Foods the table did not know: Clara's own figures were used for them. */
+  estimated: string[];
+  /** Foods the table did not know and Clara gave no figures for: NOT in the totals. */
+  missing: string[];
 }
 
-export function priceFoods(rows: readonly FoodRow[]): FoodTotals {
-  const priced = rows.map(priceFoodRow);
-  const known = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-  for (const p of priced) {
-    if (p.calories === null) continue;
-    known.calories += p.calories;
-    known.protein += p.protein ?? 0;
-    known.carbs += p.carbs ?? 0;
-    known.fat += p.fat ?? 0;
+/**
+ * One meal's numbers, added up here and nowhere else: each food from the food
+ * table, and Clara's own figure only for a food the table does not know. The
+ * photo flow, the quick log and logs_create all use this, so the number Clara
+ * says, the number logged and the number on the Numbers tab are one sum.
+ */
+export function mealTotals(rows: readonly FoodRow[]): MealTotals {
+  let calories = 0, protein = 0, carbs = 0, fat = 0;
+  const estimated: string[] = [];
+  const missing: string[] = [];
+  for (const row of rows) {
+    const priced = priceFoodRow(row);
+    if (priced.calories !== null) {
+      calories += priced.calories; protein += priced.protein ?? 0; carbs += priced.carbs ?? 0; fat += priced.fat ?? 0;
+    } else if (row.own) {
+      estimated.push(row.name);
+      calories += row.own.calories; protein += row.own.protein; carbs += row.own.carbs; fat += row.own.fat;
+    } else {
+      missing.push(row.name);
+    }
   }
-  return {
-    rows: priced,
-    known: { calories: Math.round(known.calories), protein: r1(known.protein), carbs: r1(known.carbs), fat: r1(known.fat) },
-    unknown: priced.filter((p) => p.source === "unknown").map((p) => p.name),
-  };
+  return { calories: Math.round(calories), protein: r1(protein), carbs: r1(carbs), fat: r1(fat), estimated, missing };
+}
+
+/** Clara's own figures on a food row: all four numbers, or nothing. */
+function ownFigures(f: Record<string, unknown>): FoodFigures | undefined {
+  const n = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+  const calories = n(f.calories), protein = n(f.protein), carbs = n(f.carbs), fat = n(f.fat);
+  if (calories === null || protein === null || carbs === null || fat === null) return undefined;
+  return { calories, protein, carbs, fat };
 }
 
 /** Reads the tool input; a message for Clara when it is wrong. */
@@ -102,44 +124,65 @@ export function parseFoodRows(input: Record<string, unknown>): { ok: true; rows:
     if (!Number.isFinite(grams) || grams <= 0 || grams > MAX_FOOD_GRAMS) {
       return { ok: false, message: `grams for "${name}" must be between 0 and ${MAX_FOOD_GRAMS}` };
     }
-    rows.push({ name, grams, asServed: f.asServed !== false });
+    const own = ownFigures(f);
+    rows.push({ name, grams, asServed: f.asServed !== false, ...(own ? { own } : {}) });
   }
   return { ok: true, rows };
 }
 
-export const UNKNOWN_FOODS_NOTE =
-  "Foods in `unknown` are not in the food data: estimate those yourself, add them to the known totals, and say which part is your own estimate.";
+export const MISSING_FOODS_NOTE =
+  "The foods in `missing` are not in the food data and came without your own figures, so `totals` leaves them out: call foods_nutrition again with the same foods and your own calories, protein, carbs and fat on those rows.";
+
+/** A message naming the foods nobody has figures for. */
+export function missingFoodsMessage(missing: readonly string[]): string {
+  return `No figures for: ${missing.join(", ")}. Send the same foods again with your own calories, protein, carbs and fat on those rows.`;
+}
 
 export async function foodsNutritionHandler(_ctx: unknown, input: Record<string, unknown>): Promise<ToolResult> {
   const parsed = parseFoodRows(input);
   if (!parsed.ok) return { ok: false, reason: "INVALID_INPUT", message: parsed.message };
-  const totals = priceFoods(parsed.rows);
-  return { ok: true, data: { ...totals, ...(totals.unknown.length > 0 ? { note: UNKNOWN_FOODS_NOTE } : {}) } };
+  const { estimated, missing, ...totals } = mealTotals(parsed.rows);
+  return {
+    ok: true,
+    data: {
+      rows: parsed.rows.map(priceFoodRow),
+      totals,
+      estimated,
+      ...(missing.length > 0 ? { missing, note: MISSING_FOODS_NOTE } : {}),
+    },
+  };
 }
+
+const OWN_FIGURE = "Your own figure for that many grams. Used only when the food data does not know the food.";
+
+/** The foods list both foods_nutrition and logs_create take. */
+export const FOODS_INPUT = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "Plain food name, e.g. 'white rice', 'chicken breast', 'olive oil'." },
+      grams: { type: "number", description: "Grams of this food in the serving." },
+      asServed: {
+        type: "boolean",
+        description: "True (default) when the grams are as served/cooked, as in a photo. False for dry or raw weights.",
+      },
+      calories: { type: "number", description: OWN_FIGURE },
+      protein: { type: "number", description: OWN_FIGURE },
+      carbs: { type: "number", description: OWN_FIGURE },
+      fat: { type: "number", description: OWN_FIGURE },
+    },
+    required: ["name", "grams"],
+  },
+} as const;
 
 export const foodsNutritionDef = {
   name: "foods_nutrition",
   description:
-    "Calories, protein, carbs and fat for a list of foods with gram amounts, from Wondish's food data (the same data dish cards use). Use it whenever you estimate a meal from a photo or from amounts the user gave, once you know the grams. List oil, butter, dressing and sauce as their own rows. Foods it does not know come back in `unknown`: estimate those yourself.",
+    "Calories, protein, carbs and fat for a list of foods with gram amounts, from Wondish's food data (the same data dish cards use). Use it whenever you estimate a meal from a photo or from amounts the user gave, once you know the grams. List oil, butter, dressing and sauce as their own rows, and give your own calories, protein, carbs and fat on every row: they are used only for a food the food data does not know. `totals` is the finished sum for the meal: say those numbers, never add anything up yourself.",
   input_schema: {
     type: "object" as const,
-    properties: {
-      foods: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string", description: "Plain food name, e.g. 'white rice', 'chicken breast', 'olive oil'." },
-            grams: { type: "number", description: "Grams of this food in the serving." },
-            asServed: {
-              type: "boolean",
-              description: "True (default) when the grams are as served/cooked, as in a photo. False for dry or raw weights.",
-            },
-          },
-          required: ["name", "grams"],
-        },
-      },
-    },
+    properties: { foods: FOODS_INPUT },
     required: ["foods"],
   },
 };

@@ -224,3 +224,59 @@ test("canned beans are priced as cooked, dry ones as dry, canned tuna untouched"
   assert.equal(kcal("Black beans, drained"), kcal("Cooked lentils"));
   assert.ok(kcal("Canned chickpeas") < 140);
 });
+
+test("a row that says 'cooked' is shrunk only when it is a grain or a pulse", () => {
+  const kcal = (name: string) => priceDish([{ name, quantity: 150, unit: "g" }])!.calories;
+  assert.equal(kcal("Cooked chicken breast, shredded"), kcal("Chicken breast"));
+  assert.equal(kcal("Cooked salmon"), kcal("Salmon"));
+  assert.ok(kcal("Cooked brown rice") < kcal("Brown rice") * 0.4);
+  assert.ok(kcal("Cooked quinoa") < kcal("Quinoa") * 0.4);
+});
+
+// 2026-11-27: the same name faults in recipe rows that made logged meals too low.
+const one = (name: string, quantity: number, unit: string) => priceDish([{ name, quantity, unit }], ["Cook the rice in boiling water."]);
+
+test("a recipe row that only CONTAINS a seasoning word is still priced as its food", () => {
+  assert.ok(one("Garlic bread", 80, "g")!.calories > 150);
+  assert.ok(one("Basil pesto", 30, "g")!.calories > 100);
+  assert.ok(one("Tuna, canned in water", 100, "g")!.protein > 15);
+  assert.ok(one("Protein powder", 1, "scoop")!.protein > 15);
+  assert.ok(one("Garlic mayo", 2, "tbsp")!.fat > 15);
+  const olives = one("Olives", 40, "g")!;
+  assert.ok(olives.calories > 35 && olives.calories < 60, `olives ${olives.calories}`);
+  assert.equal(one("Kalamata olives", 10, "")!.coverage, 1);
+});
+
+test("seasonings stay out of the calories, whatever word sits beside them", () => {
+  for (const [name, q, unit] of [["Onion powder", 1, "tsp"], ["Beef broth", 1, "cup"], ["Rice vinegar", 1, "tbsp"], ["Apple cider vinegar", 1, "tbsp"], ["Celery salt", 1, "tsp"], ["Fresh parsley", 10, "g"], ["Kosher salt", 1, "tsp"], ["Black peppercorns", 1, "tsp"], ["vanilla extract", 1, "tsp"], ["fresh ginger", 10, "g"], ["lemon pepper seasoning blend", 1, "tsp"]] as const) {
+    assert.equal(one(name, q, unit), null, name);
+  }
+  // Celery salt is still salt for the sodium count.
+  const dish = priceDish([{ name: "Chicken breast", quantity: 150, unit: "g" }, { name: "Celery salt", quantity: 1, unit: "tsp" }])!;
+  assert.ok(dish.sodiumMg > 2000, `sodium ${dish.sodiumMg}`);
+});
+
+test("the row that accounts for the whole name wins over an earlier partial match", () => {
+  const pb = one("Peanut butter", 100, "g")!;
+  assert.ok(pb.fat < 60 && pb.protein > 20, `peanut butter ${pb.fat} fat ${pb.protein} protein`);
+  assert.ok(one("Almond milk", 1, "cup")!.calories < 120);
+  assert.ok(one("Butter beans", 100, "g")!.calories < 200);
+  assert.ok(one("Pumpkin seeds", 30, "g")!.calories > 120);
+  assert.equal(one("Olive oil", 14, "g")!.calories, 126);
+  assert.equal(one("Peanut oil", 14, "g")!.calories, 126);
+  assert.ok(one("Egg whites", 100, "g")!.calories < 70);
+  assert.ok(one("Cottage cheese", 100, "g")!.calories < 130);
+});
+
+test("a prepared food is not priced as the raw food in its name: the row is left unpriced", () => {
+  for (const name of ["Potato chips", "Milk chocolate", "Coconut milk", "Sweet potato fries", "Tortilla chips", "Carrot cake", "Condensed milk"]) {
+    assert.equal(one(name, 50, "g")!.coverage, 0, name);
+  }
+  // The plain foods are untouched.
+  assert.equal(one("Potatoes", 200, "g")!.coverage, 1);
+  assert.equal(one("Whole milk", 200, "g")!.coverage, 1);
+  assert.equal(one("Rice cakes", 2, "")!.coverage, 1);
+  // Sun-dried tomatoes have their own row: a tablespoon is a few grams at ~260 kcal per 100 g.
+  const sdt = one("Sun-dried tomatoes", 2, "tablespoon")!;
+  assert.ok(sdt.coverage === 1 && sdt.calories > 10 && sdt.calories < 30, `sun-dried ${sdt.calories}`);
+});

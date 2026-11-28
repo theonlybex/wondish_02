@@ -2,9 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildSubscriptionView } from "./subscription-view";
 
+// The period end is far in the future on purpose: hasActivePremium reads the real clock, and with a 2026 date this
+// "active" row expired on its own and the first test began to fail.
 const row = {
   source: "STRIPE" as const, plan: "PREMIUM", status: "ACTIVE", stripePriceId: "price_m",
-  stripeCurrentPeriodEnd: new Date("2026-10-10T00:00:00Z"), cancelAtPeriodEnd: false,
+  stripeCurrentPeriodEnd: new Date("2099-10-10T00:00:00Z"), cancelAtPeriodEnd: false,
 };
 const priceToPlan = (id: string | null) => (id === "price_m" ? "monthly" as const : id === "price_6" ? "sixmonth" as const : null);
 
@@ -14,7 +16,7 @@ test("active monthly: shows $20.00 / month, offers the 6-month switch", () => {
   assert.equal(v.plan, "monthly");
   assert.equal(v.priceLabel, "$20.00 / month");
   assert.equal(v.canSwitchTo, "sixmonth");
-  assert.equal(v.periodEnd, "2026-10-10T00:00:00.000Z");
+  assert.equal(v.periodEnd, "2099-10-10T00:00:00.000Z");
   assert.deepEqual(v.card, { brand: "visa", last4: "4242" });
 });
 

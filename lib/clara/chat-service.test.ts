@@ -177,6 +177,9 @@ function setup(opts: {
     client,
     skills: [...(opts.extraSkills ?? []), makeMemorySkill(memDeps), askChoicesSkill],
     todaysPlan: async () => "\n\nTODAY'S MEAL PLAN — FAKE",
+    // A fixed clock on the day the test client sends (`options.clientDate`). With the real clock the client date
+    // stopped being plausible a few days after it was written, and the prompt test below began to fail.
+    now: () => new Date("2026-10-28T12:00:00Z"),
   };
   return { deps, log, rows, seen };
 }

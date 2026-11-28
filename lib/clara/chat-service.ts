@@ -237,7 +237,8 @@ export async function startClaraAppTurn(
   const storedMessage = photo ? photoStoredText(photo.id, message) : message;
   const surface = options.surface;
   const firstName = account.firstName ?? "there";
-  const resolution = resolveToday(options.clientDate, options.tzOffsetMinutes, new Date());
+  // The injected clock (deps.now), as the meal-for-now line below already uses: a test can then pin the day.
+  const resolution = resolveToday(options.clientDate, options.tzOffsetMinutes, (deps.now ?? (() => new Date()))());
   // A server-derived date is NOT the caller's (see dish-checker): assert a
   // date in the prompt only when they sent one.
   const promptToday = resolution.source === "server" ? null : resolution.localDate;
