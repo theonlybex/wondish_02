@@ -1057,3 +1057,38 @@ test("ask_choices whose question the text already asked earlier, in other words,
   assert.equal(out, text);
   assert.deepEqual(got, [{ question: "What did you eat for lunch today?", options: ["A sandwich", "Leftovers"] }]);
 });
+
+// 2026-11-27: a tool can put its own words into the reply (the priced meal's foods and totals).
+test("a tool result's `say` is written into the reply by the loop, after that round's words and before the next", async () => {
+  const { client, seen } = stubClient([
+    { deltas: ["Let me price the meal."], content: [textBlock("Let me price the meal."), toolUse("t1", "x_get")] },
+    { deltas: ["A good amount of protein."] },
+  ]);
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: TOOLS, messages: [], maxToolRounds: 2,
+      execute: async () => ({ ok: true, data: { totals: { calories: 782 } }, say: "Salmon 140 g.\nPer serving: 782 kcal." }),
+    })
+  );
+  assert.equal(out, "Let me price the meal.\n\nSalmon 140 g.\nPer serving: 782 kcal.\n\nA good amount of protein.");
+  // The model is told what was written, so it does not write it again.
+  const result = (seen[1].messages.at(-1)!.content as { type: string; content?: string }[])[0];
+  assert.ok(result.content!.includes("782 kcal"));
+});
+
+test("`say` is still written when the model goes straight to answer boxes without a word", async () => {
+  const { client } = stubClient([
+    { content: [toolUse("t1", "x_get")] },
+    { content: [toolUse("c1", ASK_CHOICES_TOOL, { question: "Log as lunch?", options: ["Log as lunch", "Don't log"] })] },
+  ]);
+  let boxes: ClaraChoices | null = null;
+  const out = await drain(
+    await startClaraLoop({
+      client, system: "s", tools: [...TOOLS, ...askChoicesSkill.tools.map((t) => t.def)], messages: [], maxToolRounds: 2,
+      execute: async () => ({ ok: true, data: {}, say: "Salmon 140 g.\nPer serving: 782 kcal." }),
+      onChoices: (c) => { boxes = c; },
+    })
+  );
+  assert.equal(out, "Salmon 140 g.\nPer serving: 782 kcal.\n\nLog as lunch?");
+  assert.ok(boxes !== null);
+});

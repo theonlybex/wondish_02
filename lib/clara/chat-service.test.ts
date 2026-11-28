@@ -1027,3 +1027,47 @@ test("a statement reply runs no extra round and has no boxes", async () => {
   assert.equal(seen.length, 1);
   assert.ok(!events.some((e) => e.type === "choices"));
 });
+
+// ─── A priced meal always ends with the log boxes (2026-11-27) ───────────────
+
+const pricingSkill = (ran: string[] = []): Skill => ({
+  name: "logs",
+  promptFragment: "",
+  tools: ["foods_nutrition", "logs_create"].map((name) => ({
+    def: { name, description: name, input_schema: { type: "object" as const, properties: {} }, ...(name === "logs_create" ? { isWrite: true } : {}) },
+    handler: async (): Promise<ToolResult> => {
+      ran.push(name);
+      return name === "foods_nutrition" ? { ok: true, data: { totals: { calories: 620 } }, say: "Pizza 200 g.\nPer serving: 620 kcal." } : { ok: true, data: { logged: true } };
+    },
+  })),
+});
+const priceCall: ScriptedRound = { content: [{ type: "tool_use", id: "f1", name: "foods_nutrition", input: { foods: [] } }] };
+
+test("a priced meal that Clara leaves without a question gets the log boxes from the app", async () => {
+  // In a live run Clara priced a meal, said her line and stopped: no boxes, so "Log as lunch" could not write.
+  const { deps, rows } = setup({ rounds: [priceCall, { deltas: ["A good amount of protein."] }], extraSkills: [pricingSkill()] });
+  const res = await turn(deps, "Just estimate");
+  assert.ok(res.ok);
+  const events = await collect(res.events);
+  // The test clock is 12:00 local: lunch first, then the other main meal.
+  assert.deepEqual(events.find((e) => e.type === "choices"), { type: "choices", question: "Log it?", options: ["Log as lunch", "Log as dinner", "Don't log"] });
+  assert.equal(textOf(events), "Pizza 200 g.\nPer serving: 620 kcal.\n\nA good amount of protein.\n\nLog it?");
+  // Saved with the boxes, so the next turn's "Log as lunch" is allowed to write.
+  assert.deepEqual(rows[0].messages.at(-1)!.choices, { question: "Log it?", options: ["Log as lunch", "Log as dinner", "Don't log"] });
+});
+
+test("Clara's own boxes after a priced meal are left as they are", async () => {
+  const own: ScriptedRound = { content: [{ type: "tool_use", id: "c1", name: "ask_choices", input: { question: "Log this as lunch?", options: ["Log as lunch", "Don't log"] } }] };
+  const { deps } = setup({ rounds: [priceCall, own], extraSkills: [pricingSkill()] });
+  const res = await turn(deps, "Just estimate");
+  assert.ok(res.ok);
+  const events = await collect(res.events);
+  assert.deepEqual(events.filter((e) => e.type === "choices"), [{ type: "choices", question: "Log this as lunch?", options: ["Log as lunch", "Don't log"] }]);
+});
+
+test("no log boxes are added when nothing was priced", async () => {
+  const { deps } = setup({ rounds: [{ deltas: ["Hello."] }], extraSkills: [pricingSkill()] });
+  const res = await turn(deps, "hello");
+  assert.ok(res.ok);
+  assert.equal((await collect(res.events)).some((e) => e.type === "choices"), false);
+});

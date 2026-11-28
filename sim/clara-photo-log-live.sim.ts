@@ -162,6 +162,10 @@ async function runMeal(meal: (typeof MEALS)[number]) {
   const saidKcal = toolTotals ? new RegExp(`\\b${toolTotals.totals.calories}\\b`).test(first.replace(/,/g, "")) : false;
   console.log(`   CHECK said the tool's calories (${toolTotals?.totals.calories ?? "?"}) in the reply: ${saidKcal ? "YES" : "NO"}`);
 
+  // The app writes the foods and totals itself now; a second mention means Clara repeated them.
+  const mentions = toolTotals ? (first.replace(/,/g, "").match(new RegExp(`\\b${toolTotals.totals.calories}\\b`, "g")) ?? []).length : 0;
+  console.log(`   CHECK times the calories appear in the reply (1 is right, 2+ is a repeat): ${mentions}`);
+
   const second = await say("Log as lunch");
   const created = calls.filter((c) => c.name === "logs_create");
   console.log(`   turn 2 reply: ${second.replace(/\s+/g, " ").trim()}`);

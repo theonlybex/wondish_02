@@ -207,6 +207,13 @@ export function mealForNowLine(firstName: string, tzOffsetMinutes: number | unde
   return `Meal for now: ${mealForLocalMinutes(local)} (from ${firstName}'s local time). ${rule} use this meal, unless the dish they ask for clearly belongs to another.`;
 }
 
+/** The log boxes for a priced meal: the meal for the person's local time first, then the other main meal. */
+export function logChoicesFor(tzOffsetMinutes: number | undefined, now: Date): ClaraChoices {
+  const meal = typeof tzOffsetMinutes === "number" ? mealForLocalMinutes(now.getUTCHours() * 60 + now.getUTCMinutes() + tzOffsetMinutes) : "lunch";
+  const other = meal === "lunch" ? "dinner" : "lunch";
+  return { question: "Log it?", options: [`Log as ${meal}`, `Log as ${other}`, "Don't log"] };
+}
+
 export async function startClaraAppTurn(
   deps: ChatServiceDeps,
   input: {
@@ -349,6 +356,8 @@ export async function startClaraAppTurn(
   // history()). Calls the loop answers itself — ask_choices (already saved as
   // `choices`) and writes refused with CONFIRM_REQUIRED — never get here.
   const toolTrace: ToolTraceEntry[] = [];
+  let pricedMeal = false;
+  let loggedMeal = false;
   const record = (id: string, name: string, toolInput: unknown, result: ToolResult) => {
     if (name === ASK_CHOICES_TOOL || toolTrace.length >= TOOL_TRACE_MAX_CALLS) return;
     // Parts ride on the trace entry of the call that produced them (the only
@@ -375,6 +384,9 @@ export async function startClaraAppTurn(
       throw err;
     }
     record(toolUseId, name, toolInput, result);
+    // A meal priced to the end (its foods and totals were written into the reply), and whether it was logged.
+    if (name === "foods_nutrition" && result.ok && typeof result.say === "string") pricedMeal = true;
+    if (name === "logs_create" && result.ok) loggedMeal = true;
     return result;
   };
 
@@ -471,7 +483,16 @@ export async function startClaraAppTurn(
       yield { type: "text", text: MID_STREAM_FALLBACK };
     }
     // The generator is fully drained here, so `choices` is final.
-    const finalChoices = choices as ClaraChoices | null;
+    let finalChoices = choices as ClaraChoices | null;
+    // A priced meal always ends with the way to log it. Clara is asked to end with these boxes, and in a live run
+    // (2026-11-27) she once said her line and stopped: with no boxes there was nothing to tap, and a typed
+    // "Log as lunch" may not write (a log needs her boxes directly before it). The app asks when she did not.
+    if (!finalChoices && pricedMeal && !loggedMeal && !fellBack && skills.some((s) => s.tools.some((t) => t.def.name === ASK_CHOICES_TOOL))) {
+      finalChoices = logChoicesFor(options.tzOffsetMinutes, (deps.now ?? (() => new Date()))());
+      const gap = /\S$/.test(text) ? "\n\n" : "";
+      text += gap + finalChoices.question;
+      yield { type: "text", text: gap + finalChoices.question };
+    }
     if (input.parts === true) for (const part of turnParts) yield { type: "part", part };
     if (finalChoices) yield { type: "choices", question: finalChoices.question, options: finalChoices.options };
 

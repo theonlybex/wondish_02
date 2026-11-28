@@ -138,3 +138,24 @@ test("the tool returns the finished totals, and asks again only for an unknown f
   assert.deepEqual(s.missing, ["pizza"]);
   assert.ok(typeof s.note === "string" && s.note.includes("call foods_nutrition again"));
 });
+
+// 2026-11-27: the foods and totals are written into the reply by code. In a live run Clara priced a meal and
+// then asked "Log as lunch?" without ever saying what it came to.
+test("the tool writes the foods and totals itself, and names what is Clara's own estimate", async () => {
+  const r = await foodsNutritionHandler(null, {
+    foods: [
+      { name: "olive oil", grams: 10 },
+      { name: "pizza", grams: 200, calories: 530, protein: 22, carbs: 66, fat: 20 },
+    ],
+  });
+  assert.ok(r.ok);
+  assert.equal(
+    (r as { say?: string }).say,
+    "Olive oil 10 g, pizza 200 g.\nPer serving: 620 kcal, 22 g protein, 66 g carbs, 30 g fat.\nMy own estimate: pizza.",
+  );
+  const known = await foodsNutritionHandler(null, { foods: [{ name: "white rice", grams: 180 }] });
+  assert.ok(known.ok && !(known as { say: string }).say.includes("My own estimate"));
+  // Not while a food still has no figures: the totals are not finished.
+  const short = await foodsNutritionHandler(null, { foods: [{ name: "pizza", grams: 200 }] });
+  assert.ok(short.ok && !("say" in short));
+});

@@ -142,15 +142,27 @@ export async function foodsNutritionHandler(_ctx: unknown, input: Record<string,
   const parsed = parseFoodRows(input);
   if (!parsed.ok) return { ok: false, reason: "INVALID_INPUT", message: parsed.message };
   const { estimated, missing, ...totals } = mealTotals(parsed.rows);
+  const rows = parsed.rows.map(priceFoodRow);
+  if (missing.length > 0) return { ok: true, data: { rows, totals, estimated, missing, note: MISSING_FOODS_NOTE } };
   return {
     ok: true,
-    data: {
-      rows: parsed.rows.map(priceFoodRow),
-      totals,
-      estimated,
-      ...(missing.length > 0 ? { missing, note: MISSING_FOODS_NOTE } : {}),
-    },
+    data: { rows, totals, estimated, shown: SHOWN_NOTE },
+    say: mealSummaryText(parsed.rows, totals, estimated),
   };
+}
+
+export const SHOWN_NOTE =
+  "The app has already written the foods with their grams and these totals into your reply (the `say` text). Do not write them again.";
+
+/** The priced meal as the person reads it: the foods with grams, the totals, and what is Clara's own estimate. */
+export function mealSummaryText(rows: readonly FoodRow[], totals: FoodFigures, estimated: readonly string[]): string {
+  const foods = rows.map((r) => `${r.name} ${Math.round(r.grams)} g`).join(", ");
+  const lines = [
+    `${foods.charAt(0).toUpperCase()}${foods.slice(1)}.`,
+    `Per serving: ${totals.calories} kcal, ${totals.protein} g protein, ${totals.carbs} g carbs, ${totals.fat} g fat.`,
+  ];
+  if (estimated.length > 0) lines.push(`My own estimate: ${estimated.join(", ")}.`);
+  return lines.join("\n");
 }
 
 const OWN_FIGURE = "Your own figure for that many grams. Used only when the food data does not know the food.";
@@ -179,7 +191,7 @@ export const FOODS_INPUT = {
 export const foodsNutritionDef = {
   name: "foods_nutrition",
   description:
-    "Calories, protein, carbs and fat for a list of foods with gram amounts, from Wondish's food data (the same data dish cards use). Use it whenever you estimate a meal from a photo or from amounts the user gave, once you know the grams. List oil, butter, dressing and sauce as their own rows, and give your own calories, protein, carbs and fat on every row: they are used only for a food the food data does not know. `totals` is the finished sum for the meal: say those numbers, never add anything up yourself.",
+    "Calories, protein, carbs and fat for a list of foods with gram amounts, from Wondish's food data (the same data dish cards use). Use it whenever you estimate a meal from a photo or from amounts the user gave, once you know the grams. List oil, butter, dressing and sauce as their own rows, and give your own calories, protein, carbs and fat on every row: they are used only for a food the food data does not know. `totals` is the finished sum for the meal, and the app writes the foods and those totals into your reply itself: never write them again or add anything up yourself.",
   input_schema: {
     type: "object" as const,
     properties: { foods: FOODS_INPUT },

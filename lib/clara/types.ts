@@ -13,7 +13,18 @@ import type { ClaraPart } from "./parts";
  * They are not sent back to the model.
  */
 export type ToolResult =
-  | { ok: true; data: unknown; parts?: ClaraPart[] }
+  | {
+      ok: true;
+      data: unknown;
+      parts?: ClaraPart[];
+      /**
+       * Words the loop writes into the reply itself, right after the tool runs
+       * (a priced meal's foods and totals). They reach the member whatever the
+       * model does next, and the model sees them in the result so it does not
+       * write them again.
+       */
+      say?: string;
+    }
   | {
       ok: false;
       reason:

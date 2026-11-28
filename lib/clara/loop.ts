@@ -378,6 +378,14 @@ export async function startClaraLoop(params: LoopParams): Promise<AsyncGenerator
           tool_use_id: call.id,
           content: JSON.stringify(forModel),
         });
+        // The tool's own words, written here so they never depend on the model repeating them
+        // (live run 2026-11-27: a meal was priced and the reply went straight to "Log as lunch?").
+        if (result.ok && typeof result.say === "string" && result.say.trim().length > 0) {
+          if (emitted && /\S$/.test(lastChar)) yield "\n\n";
+          emitted = true;
+          lastChar = result.say.slice(-1);
+          yield result.say;
+        }
       }
       toolRoundsUsed += 1;
       // Budget spent: the note goes at the END of this new message (appended,

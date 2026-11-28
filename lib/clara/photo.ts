@@ -71,7 +71,7 @@ const PHOTO_GRAM_STEPS = [
   "Ask first about what the photo cannot show and what changes calories most: oil, butter, dressing or sauce (\"None\", \"1 tsp, about 5 g\", \"1 tbsp, about 14 g\", \"More\"), then the portion of the most filling food. Skip anything their note already answers. A simple food with nothing hidden (an apple, a yoghurt pot) needs no questions.",
   "Every question's boxes end with \"Just estimate\", which means stop asking and use your best guesses.",
   "When the grams are settled, call foods_nutrition with every food and its grams (oil, butter, dressing and sauce as their own rows), and on every row your own calories, protein, carbs and fat for that many grams: they are used only for a food the food data does not know.",
-  "Then give one short list of the foods with their grams, the totals per serving (calories, protein, carbs, fat) exactly as `totals` gives them, never a sum of your own, and one line on what it adds to their day (intake words: \"this adds a good amount of fibre\", never \"your fibre is low\").",
+  "The app then writes the foods with their grams and the totals per serving into your reply by itself: do not write them again, and never give a sum of your own. Add one line on what it adds to their day (intake words: \"this adds a good amount of fibre\", never \"your fibre is low\").",
   "End by asking whether to log it, with answer boxes: the meal for now first (\"Log as lunch\"), then the other likely meal, then \"Don't log\".",
   "Logging only happens after they tap a \"Log as …\" box: then call logs_create with the name and the same foods list you sent to foods_nutrition (no macro numbers: the app works them out from the foods). Answering a gram question never logs anything.",
 ].join(" ");
