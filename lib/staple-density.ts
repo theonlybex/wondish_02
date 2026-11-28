@@ -149,7 +149,7 @@ const DENSITY: {
   // exist, and the protein ring is a number people act on.
   //
   // Leaves: a cup is 30 g, and they carry real protein for their weight.
-  { match: /\b(spinach|kale|arugula|rocket|romaine|lettuce|chard|watercress|radicchio|endive|bok choy|collards?|greens?|herbs?|basil leaves)\b/i, carbs: 4, fat: 0.4, protein: 3, gramsPerCup: 30, gramsPerItem: 100, volumeUnambiguous: true },
+  { match: /\b(spinach|kale|arugula|rocket|romaine|lettuce|chard|watercress|radicchio|endive|bok choy|collards?|greens|herbs?|basil leaves)\b/i, carbs: 4, fat: 0.4, protein: 3, gramsPerCup: 30, gramsPerItem: 100, volumeUnambiguous: true },
   // Watery vegetables and fruit-vegetables: a cup is ~120 g, ~1 g protein.
   { match: /\b(tomato(es)?|cucumbers?|zucchini|courgettes?|celery|mushrooms?|cabbages?|asparagus|green beans?|eggplants?|aubergines?|radish(es)?|bean sprouts?|sauerkraut|okra)\b/i, carbs: 4, fat: 0.2, protein: 1.2, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
   // Brassicas carry real protein for a vegetable — broccoli is 2.8 g/100 g.
@@ -580,11 +580,16 @@ const ROW_SAYS_COOKED = /\bcooked\b/i;
 // water" and "Protein powder" were all skipped as carrying nothing, so their calories were missing from the dish.
 // A row is skipped only when no food is left once the seasoning words are taken out of its name.
 const POWDER_FOODS = /\b(protein powder|cocoa powder|cacao powder)\b/i;
+// "pepper" is on the seasoning list for the grinder, and it took the vegetable with it: "80 g bell pepper" and
+// "100 g red bell pepper" were skipped as 0 kcal (live run 2026-11-28), while "green bell pepper" was priced as salad
+// leaves through the word "green".
+const PEPPER_VEGETABLES = /\b(bell|green|red|yellow|orange|sweet|jalape(n|ñ)o|chipotle|poblano) peppers?\b/i;
 const ALWAYS_SEASONING = /\b(broths?|stocks?|bouillon|vinegars?|zest|extract)\b/i;
 
 /** The name to look up in the table when a seasoning-worded row is really a food; null when it is a seasoning. */
 function foodBehindSeasoningWord(name: string): string | null {
   if (POWDER_FOODS.test(name)) return name;
+  if (PEPPER_VEGETABLES.test(name) && !/\bflakes?\b/i.test(name)) return name;
   if (ALWAYS_SEASONING.test(name)) return null;
   // "Celery salt" is salt and "Onion powder" a spice; "Chicken, seasoned with salt" is chicken.
   if (/\b(salt|powder)\s*$/i.test(name.split(/[,(]/)[0])) return null;

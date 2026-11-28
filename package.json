@@ -28,7 +28,8 @@
     "sim:clara-first": "TZ=UTC node --experimental-test-module-mocks --import tsx --test --test-reporter=spec sim/clara-first.sim.ts",
     "sim:clara-live": "TZ=UTC node --env-file=.env.local --experimental-test-module-mocks --import tsx sim/clara-live.sim.ts",
     "sim:clara-kept-foods": "TZ=UTC node --env-file=.env.local --experimental-test-module-mocks --import tsx sim/clara-kept-foods-live.sim.ts",
-    "sim:clara-photo-log": "TZ=UTC node --env-file=.env.local --import tsx sim/clara-photo-log-live.sim.ts"
+    "sim:clara-photo-log": "TZ=UTC node --env-file=.env.local --import tsx sim/clara-photo-log-live.sim.ts",
+    "sim:clara-size": "TZ=UTC node --experimental-test-module-mocks --import tsx sim/clara-size-measure.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

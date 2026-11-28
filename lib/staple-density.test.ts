@@ -280,3 +280,14 @@ test("a prepared food is not priced as the raw food in its name: the row is left
   const sdt = one("Sun-dried tomatoes", 2, "tablespoon")!;
   assert.ok(sdt.coverage === 1 && sdt.calories > 10 && sdt.calories < 30, `sun-dried ${sdt.calories}`);
 });
+
+test("a bell pepper is a vegetable, whatever its colour; the pepper grinder and pepper flakes are still seasonings", () => {
+  const kcal = (name: string) => one(name, 100, "g")?.calories ?? null;
+  for (const name of ["bell pepper", "red bell pepper", "green bell pepper", "Bell peppers", "yellow pepper"]) {
+    assert.ok(kcal(name)! > 25 && kcal(name)! < 50, `${name}: ${kcal(name)}`);
+  }
+  assert.equal(kcal("green bell pepper"), kcal("red bell pepper"));
+  for (const name of ["black pepper", "Black peppercorns", "pepper", "Crushed red pepper flakes"]) assert.equal(one(name, 1, "tsp"), null, name);
+  // "green" no longer reads as salad greens.
+  assert.ok(one("mixed greens", 60, "g")!.calories < 25);
+});
