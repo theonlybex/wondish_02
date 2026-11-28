@@ -1,5 +1,5 @@
 import { JourneyStats, MacroDay, MacroStats } from "@/types";
-import { sumMealLogs, r1 } from "@/lib/macros";
+import { dayHasNoCalories, sumMealLogs, r1 } from "@/lib/macros";
 
 export type { MacroDay, MacroStats } from "@/types";
 
@@ -136,8 +136,7 @@ export function computeMacroStats(
       incomplete: totals.incomplete, // any row incomplete → day flagged
     });
 
-    const allIncomplete = rows.every((r) => r.incomplete === true);
-    if (allIncomplete) {
+    if (dayHasNoCalories(rows)) {
       daysIncomplete += 1; // quarantined: visible, never averaged
       continue;
     }

@@ -79,11 +79,15 @@ const AS_SERVED: [string, number, number, number?][] = [
   ["coconut milk", 100, 197],
   ["basil pesto", 30, 140],
   ["pizza", 200, 530],
-  // Known to be off today; pinned so they cannot drift further. Each is a lumped table row.
-  ["bacon", 30, 160, 0.55], // priced with raw pork; cooked bacon is about twice as dense
-  ["banana", 120, 107, 0.4], // the fruit row is an average; a banana carries nearly twice its carbohydrate
-  ["oatmeal", 250, 178, 0.9], // porridge takes up more water than the one cooked-grain factor allows (prices high)
-  ["almond milk", 250, 40, 1.2], // the plant-milk row is an average of soy, oat and almond (prices high)
+  ["bacon", 30, 160],
+  ["banana", 120, 107],
+  ["almond milk", 250, 40],
+  ["cauliflower rice", 150, 38],
+  ["zucchini noodles", 150, 26],
+  // Known to be off; pinned so it cannot drift further. Porridge takes up more water than the cooked-grain factor
+  // allows, so it prices high. Left that way on purpose: "oats 40 g" logged as served may well mean dry oats, and a
+  // smaller factor would price those at a fraction of what they are.
+  ["oatmeal", 250, 178, 0.9],
 ];
 
 test("a logged food is priced close to what it is worth, or left to Clara's estimate", () => {
@@ -128,6 +132,12 @@ const AS_BOUGHT: [string, number, string, number][] = [
   ["Potatoes", 200, "g", 154],
   ["Avocados", 0.5, "cup", 120],
   ["Pumpkin seeds", 30, "g", 168],
+  ["Bacon", 2, "slices", 233],
+  ["Bananas", 1, "", 105],
+  ["Almond milk", 1, "cup", 40],
+  ["Cauliflower rice", 150, "g", 38],
+  ["Zucchini noodles", 1, "cup", 20],
+  ["Cooked pasta", 200, "g", 314],
 ];
 
 test("a recipe row is priced close to what the food is worth", () => {

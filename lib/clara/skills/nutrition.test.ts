@@ -377,3 +377,19 @@ test("loop round-trip: 'calories left' → nutrition_day executes and the answer
   assert.match(replayed, /remaining/);
   assert.match(replayed, /480/);
 });
+
+// 2026-11-27: a meal Clara logs from foods has calories, protein, carbs and fat but no fibre, so it is flagged
+// incomplete. A day made only of such meals was dropped from the average although its calories were known.
+test("range: a day whose rows all lack only fibre still counts in the average", async () => {
+  const rows = [
+    slim({ localDate: "2026-07-28", calories: 600, protein: 40 }),
+    slim({ localDate: "2026-07-29", calories: 800, protein: 50, fiber: null, incomplete: true }),
+    slim({ localDate: "2026-07-29", calories: 600, protein: 30, fiber: null, incomplete: true }),
+  ];
+  const { deps } = fakeDeps({ findSlimRows: async () => rows });
+  const res = await makeNutritionHandlers(deps).range(ctx, { fromDate: "2026-07-27", toDate: "2026-08-02" });
+  assert.equal(res.ok, true);
+  const data = (res as { ok: true; data: Record<string, unknown> }).data as { daysAllIncomplete: number; avgPerLoggedDay: Record<string, number> };
+  assert.equal(data.daysAllIncomplete, 0);
+  assert.equal(data.avgPerLoggedDay.calories, 1000); // (600 + 1400) / 2
+});

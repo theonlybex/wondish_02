@@ -1,6 +1,7 @@
 // The brain reads: what the dish brain needs beyond the patient and the marks.
 // Five reads, started together; each one that fails gives its empty value, so a
 // dish is served without that steer rather than not at all.
+import { claraSignal } from "./signal";
 import { prisma } from "@/lib/db";
 import { loadFullLevelData } from "@/lib/level-summary";
 import { getDayTarget } from "@/lib/meal-log";
@@ -14,7 +15,7 @@ function soft<T>(what: string, work: () => Promise<T>, fallback: T): Promise<T> 
     p = Promise.reject(err);
   }
   return p.catch((err) => {
-    console.warn(`[clara-dish] ${what} failed to load: ${(err as Error)?.message ?? String(err)}`);
+    claraSignal("brain-reads-failed", `${what}: ${(err as Error)?.message ?? String(err)}`);
     return fallback;
   });
 }

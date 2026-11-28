@@ -395,3 +395,18 @@ test("computeMacroStats: day totals and averages are r1-rounded at the boundary"
   assert.equal(s.avgCalories, 650);
   assert.equal(s.avgProtein, 31.7); // 21.11 × 1.5 = 31.665 → r1 → 31.7
 });
+
+test("computeMacroStats: a day whose rows all lack only fibre is averaged, not quarantined", () => {
+  // A meal logged from foods (photo, quick log) has no fibre figure and is flagged incomplete; its calories are known.
+  const s = computeMacroStats(
+    [
+      log({ localDate: "2026-07-01", calories: 2000 }),
+      log({ localDate: "2026-07-02", calories: 1200, incomplete: true }),
+      log({ localDate: "2026-07-02", calories: 1000, incomplete: true }),
+    ],
+    TGT
+  );
+  assert.equal(s.daysComplete, 2);
+  assert.equal(s.daysIncomplete, 0);
+  assert.equal(s.avgCalories, 2100);
+});

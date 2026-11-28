@@ -402,7 +402,7 @@ test("kept: a pantry read that never answers holds the dish up for at most the k
     const ms = Date.now() - t0;
     assert.deepEqual(got.map((r) => r.name), ["Red Lentil and Spinach Stew"]);
     assert.ok(ms >= 1_400 && ms < 3_000, `took ${ms} ms`);
-    assert.equal(warns.filter((w) => w.includes("kept foods took longer")).length, 1, warns.join("\n"));
+    assert.equal(warns.filter((w) => w.startsWith("[clara-signal] kept-foods-slow")).length, 1, warns.join("\n"));
   } finally {
     console.warn = realWarn;
     pantryHangs = false;
@@ -430,7 +430,7 @@ test("brain: reads that never answer hold the dish for at most 1.5 s, in paralle
     const ms = Date.now() - t0;
     assert.deepEqual(got.map((r) => r.name), ["Red Lentil and Spinach Stew"]);
     assert.ok(ms >= 1_400 && ms < 2_500, `took ${ms} ms`); // one cap, not two in a row
-    assert.equal(warns.filter((w) => w.includes("brain reads took longer")).length, 1, warns.join("\n"));
+    assert.equal(warns.filter((w) => w.startsWith("[clara-signal] brain-reads-slow")).length, 1, warns.join("\n"));
   } finally {
     console.warn = realWarn;
     pantryHangs = false;
@@ -518,7 +518,7 @@ test("brain guard: brain rows that make the brain throw still get them a dish, a
     const broken = { todayDishes: 42 as unknown as string[] };
     const res: any = await dish.makeDishHandlers(live([item("Red Lentil and Spinach Stew")], broken)).suggest({ ...CTX }, { mealType: "dinner" });
     assert.deepEqual([res.ok, res.data.dish.source, served(res).name], [true, "generated", "Red Lentil and Spinach Stew"]);
-    assert.equal(warned.filter((w) => w.startsWith("[clara-dish] the dish brain failed to build")).length, 1, warned.join("\n"));
+    assert.equal(warned.filter((w) => w.startsWith("[clara-signal] brain-failed")).length, 1, warned.join("\n"));
     // The allergy gate still drops an unsafe candidate on the fallback brain.
     const peanut = item("Peanut Lentil Stew", [{ name: "peanut butter", quantity: 1, unit: "tablespoon" }]);
     const got = await live([peanut, item("Red Lentil and Spinach Stew")], broken).generate({ ...CTX }, ASK, { accept: () => true });
@@ -538,7 +538,7 @@ test("steer guard: a steer that throws still gets them a dish, with the limits k
     const peanut = item("Peanut Lentil Stew", [{ name: "peanut butter", quantity: 1, unit: "tablespoon" }]);
     const got = await live([peanut, item("Red Lentil and Spinach Stew")]).generate({ ...CTX }, bad, { accept: () => true });
     assert.deepEqual(got.map((r) => r.name), ["Red Lentil and Spinach Stew"]);
-    assert.ok(warned.some((w) => w.startsWith("[clara-dish] the steer failed")), warned.join("\n"));
+    assert.ok(warned.some((w) => w.startsWith("[clara-signal] steer-failed")), warned.join("\n"));
   } finally {
     console.warn = warn;
   }

@@ -305,6 +305,20 @@ export interface MealLogRowInput {
  * ZERO_SNAPSHOT. Sums raw (unrounded) per-row scaling and rounds once at the
  * total, avoiding cumulative per-row rounding drift.
  */
+/**
+ * True when a day's rows give no calorie figure at all: every row is flagged
+ * incomplete AND none carries calories. Such a day sums to ~0 kcal and is kept
+ * out of averages (it would read as "wildly under target").
+ *
+ * The test used to be "every row is incomplete" alone. But a row is incomplete
+ * when ANY of its five figures is missing, and a meal Clara logs from foods
+ * (photo, quick log) never has fibre: a day made of such meals was dropped
+ * from the averages although its calories were known.
+ */
+export function dayHasNoCalories(rows: readonly { incomplete?: boolean | null; calories?: number | null }[]): boolean {
+  return rows.every((r) => r.incomplete === true && !((r.calories ?? 0) > 0));
+}
+
 export function sumMealLogs(rows: MealLogRowInput[]): MacroSnapshot {
   let calories = 0, protein = 0, carbs = 0, fat = 0, fiber = 0;
   let incomplete = false;

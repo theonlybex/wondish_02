@@ -75,6 +75,8 @@ const DENSITY: {
    * 150 g of "cooked chicken breast" came out at 82 kcal against a real ~248.
    */
   absorbsWater?: boolean;
+  /** Cooked weight against dry, as a fraction, where the general COOKED_FACTOR is too far off (pasta takes up less water than rice). */
+  cookedFactor?: number;
   /**
    * Grams in one of the thing, for rows written as a bare count.
    *
@@ -95,7 +97,7 @@ const DENSITY: {
   // Grains and pasta, dry. ~75 g carbs/100 g is true of every rice, and of
   // pasta, couscous and most flours within a few grams.
   { match: /\b(rice)\b/i, carbs: 78, fat: 1, protein: 7, gramsPerCup: 185, absorbsWater: true },
-  { match: /\b(pasta|spaghetti|macaroni|penne|noodle|couscous|orzo)\b/i, carbs: 75, fat: 2, protein: 13, gramsPerCup: 100, absorbsWater: true },
+  { match: /\b(pasta|spaghetti|macaroni|penne|noodle|couscous|orzo)\b/i, carbs: 75, fat: 2, protein: 13, gramsPerCup: 100, absorbsWater: true, cookedFactor: 0.43 },
   { match: /\b(oats?|oatmeal)\b/i, carbs: 66, fat: 7, protein: 13, gramsPerCup: 90, absorbsWater: true },
   { match: /\b(quinoa|bulgur|farro|barley|millet)\b/i, carbs: 70, fat: 6, protein: 13, gramsPerCup: 170, absorbsWater: true },
   { match: /\b(flour|cornmeal|breadcrumbs?)\b/i, carbs: 76, fat: 1, protein: 10, gramsPerCup: 120 },
@@ -109,7 +111,7 @@ const DENSITY: {
   { match: /\b(chicken thighs?)\b/i, carbs: 0, fat: 11, protein: 19, gramsPerCup: 140 , sodium: 75},
   { match: /\b(ground beef|beef|steak|sirloin)\b/i, carbs: 0, fat: 15, protein: 20, gramsPerCup: 225 },
   { match: /\b(ground turkey|ground chicken)\b/i, carbs: 0, fat: 8, protein: 19, gramsPerCup: 225 , sodium: 70},
-  { match: /\b(ground pork|pork|bacon|ham)\b/i, carbs: 0, fat: 14, protein: 20, gramsPerCup: 225 , sodium: 700},
+  { match: /\b(ground pork|pork|ham)\b/i, carbs: 0, fat: 14, protein: 20, gramsPerCup: 225 , sodium: 700},
   { match: /\b(salmon)\b/i, carbs: 0, fat: 13, protein: 20, gramsPerCup: 150 , sodium: 60},
   { match: /\b(tuna|cod|tilapia|haddock|catfish|trout|sole|pollock|white fish)\b/i, carbs: 0, fat: 2, protein: 22, gramsPerCup: 150 , sodium: 200},
   { match: /\b(shrimp|prawns?)\b/i, carbs: 1, fat: 1, protein: 20, gramsPerCup: 145 , sodium: 300},
@@ -157,7 +159,7 @@ const DENSITY: {
   // 7 g carbs) with carrots (0.9 and 9.6) lands on neither of them.
   { match: /\b(carrots?|bell peppers?|green peppers?|red peppers?|yellow peppers?|jalape(n|ñ)o peppers?|chipotle peppers?|poblano peppers?|onions?|beets?|turnips?|parsnips?|squash|pumpkins?|artichokes?|fennel|leeks|rutabagas?)\b/i, carbs: 8, fat: 0.2, protein: 1.1, gramsPerCup: 120, gramsPerItem: 110, volumeUnambiguous: true },
   { match: /\b(potato(es)?|sweet potato(es)?|corn|peas)\b/i, carbs: 18, fat: 0, protein: 2, gramsPerCup: 150, gramsPerItem: 170 },
-  { match: /\b(apples?|bananas?|berries|strawberries|blueberries|oranges?|grapes?|pears?|melon)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 150, gramsPerItem: 130 },
+  { match: /\b(apples?|berries|strawberries|blueberries|oranges?|grapes?|pears?|melon)\b/i, carbs: 13, fat: 0, protein: 1, gramsPerCup: 150, gramsPerItem: 130 },
 
   // ── The long tail that was keeping 301 dishes out of the pool ──────────────
   //
@@ -228,7 +230,7 @@ const DENSITY: {
   // gluten-free products. Textbook values per 100 g as bought.
   { match: /\b(sour cream|cr[eè]me fra[iî]che)\b/i, carbs: 4, fat: 20, protein: 2, gramsPerCup: 230, volumeUnambiguous: true , sodium: 80},
   { match: /\b(heavy cream|double cream|whipping cream|half.and.half)\b/i, carbs: 3, fat: 37, protein: 2, gramsPerCup: 238, volumeUnambiguous: true },
-  { match: /\b(soymilks?|soy milk|oat milk|almond milk|rice milk)\b/i, carbs: 2, fat: 2, protein: 2, gramsPerCup: 243, volumeUnambiguous: true },
+  { match: /\b(soymilks?|soy milk|oat milk|rice milk)\b/i, carbs: 2, fat: 2, protein: 2, gramsPerCup: 243, volumeUnambiguous: true },
   { match: /\b(coffees?|espresso|teas?|teabags?|herbal tea)\b/i, carbs: 0, fat: 0, protein: 0, gramsPerCup: 237, volumeUnambiguous: true },
   { match: /\b(stevias?|monkfruit|monk fruit|erythritol|sucralose|aspartame|sweeteners?)\b/i, carbs: 0, fat: 0, protein: 0, gramsPerCup: 200, volumeUnambiguous: true },
   { match: /\b(cocoa powder|cacao powder|unsweetened cocoa)\b/i, carbs: 58, fat: 14, protein: 20, gramsPerCup: 86, volumeUnambiguous: true },
@@ -250,6 +252,14 @@ const DENSITY: {
   // Added 2026-11-27 with densityFor: foods that were priced as something else in their name, or as nothing.
   // "Egg whites" as whole egg (146 kcal against 52), "Cottage cheese" as hard cheese (356 against ~98),
   // "Basil pesto" and "Protein powder" skipped as seasonings (0 kcal).
+  // Rows of their own for foods a shared row priced far off (food-reference.test.ts had them pinned as known gaps):
+  // bacon with lean pork (half its calories), a banana with the average fruit (two thirds), almond milk with the
+  // richer plant milks (twice over), and vegetable "rice" and "noodles" as the grain in their name.
+  { match: /\b(bacon|pancetta)\b/i, carbs: 1, fat: 37, protein: 13, gramsPerCup: 225, gramsPerItem: 28, sodium: 700 },
+  { match: /\b(bananas?)\b/i, carbs: 23, fat: 0.3, protein: 1.1, gramsPerCup: 150, gramsPerItem: 118 },
+  { match: /\b(almond milk)\b/i, carbs: 1, fat: 1.2, protein: 0.5, gramsPerCup: 243, volumeUnambiguous: true, sodium: 70 },
+  { match: /\b(cauliflower rice|riced cauliflower|broccoli rice)\b/i, carbs: 5, fat: 0.3, protein: 2, gramsPerCup: 110, volumeUnambiguous: true },
+  { match: /\b(zucchini noodles|courgette noodles|zoodles|courgetti)\b/i, carbs: 3, fat: 0.3, protein: 1.2, gramsPerCup: 120, volumeUnambiguous: true },
   { match: /\b(egg whites?)\b/i, carbs: 1, fat: 0, protein: 11, gramsPerCup: 243, gramsPerItem: 33, volumeUnambiguous: true, sodium: 166 },
   { match: /\b(cottage cheese)\b/i, carbs: 3, fat: 4, protein: 11, gramsPerCup: 225, volumeUnambiguous: true, sodium: 360 },
   // Its own row, not a refusal: recipes use it by the tablespoon, and an unpriced row counts as 100 g against coverage.
@@ -660,7 +670,7 @@ export function priceDish(
       continue;
     }
     // A row that declares itself cooked is priced cooked.
-    const factor = rowIsCooked(`${ing.name} ${ing.note ?? ""}`, density.absorbsWater === true) ? COOKED_FACTOR : 1;
+    const factor = rowIsCooked(`${ing.name} ${ing.note ?? ""}`, density.absorbsWater === true) ? density.cookedFactor ?? COOKED_FACTOR : 1;
     priced += grams;
     sodiumMg += (grams * (density.sodium ?? 0)) / 100;
     protein += (grams * (density.protein ?? 0) * factor) / 100;
@@ -730,7 +740,7 @@ export function pricePlainFood(name: string, grams: number, cooked: boolean): Pl
   if (!best) return { kind: "unknown" };
   const row = best.row;
   const shrunk = row.absorbsWater === true && (cooked || ROW_SAYS_COOKED.test(name));
-  const factor = shrunk || (ROW_SAYS_CANNED.test(name) && PULSE_ROW.test(name)) ? COOKED_FACTOR : 1;
+  const factor = shrunk || (ROW_SAYS_CANNED.test(name) && PULSE_ROW.test(name)) ? row.cookedFactor ?? COOKED_FACTOR : 1;
   return {
     kind: "priced",
     protein: (grams * (row.protein ?? 0) * factor) / 100,

@@ -5,7 +5,7 @@ import {
   computeRemaining,
   type DayEnvelope,
 } from "@/lib/meal-log";
-import { sumMealLogs, r1, type MacroSnapshot } from "@/lib/macros";
+import { dayHasNoCalories, sumMealLogs, r1, type MacroSnapshot } from "@/lib/macros";
 import type { DailyTargets } from "@/lib/caloric-engine";
 import { parseLocalDateStrict } from "@/lib/journal";
 import type { ClaraContext, Skill, ToolResult } from "../types";
@@ -156,7 +156,7 @@ export function makeNutritionHandlers(deps: NutritionDeps = prismaDeps) {
     // visible in `days` (flagged) but are never averaged.
     const pricedDays = days.filter((d) => {
       const group = byDate.get(d.date);
-      return group !== undefined && !group.every((r) => r.incomplete);
+      return group !== undefined && !dayHasNoCalories(group);
     });
     const daysAllIncomplete = daysLogged - pricedDays.length;
 

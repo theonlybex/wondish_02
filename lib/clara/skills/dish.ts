@@ -68,6 +68,7 @@ import {
   SNACK_MAX_MINUTES,
 } from "@/lib/dish-plausibility";
 import { priceDish, gramsOf } from "@/lib/staple-density";
+import { claraSignal } from "../signal";
 import type { LevelKey, LevelSummary } from "@/lib/levels";
 import { dishReasons } from "@/lib/dish-reasons";
 import type { ClaraPart, ClaraRecipe } from "../parts";
@@ -869,9 +870,9 @@ function personFor(ctx: ClaraContext, loadRows: BrainRowsLoader = loadBrainRows)
           KEPT_FOODS_BUDGET_MS,
           marks.then((m) => keptFoodsFrom(m, matchers)),
           NO_KEPT_FOODS,
-          () => console.warn(`[clara-dish] kept foods took longer than ${KEPT_FOODS_BUDGET_MS} ms; serving without them`),
+          () => claraSignal("kept-foods-slow", `over ${KEPT_FOODS_BUDGET_MS} ms; serving without them`),
         ).catch((err) => {
-          console.warn(`[clara-dish] kept foods failed to load: ${(err as Error)?.message ?? String(err)}`);
+          claraSignal("kept-foods-failed", `${(err as Error)?.message ?? String(err)}`);
           return NO_KEPT_FOODS;
         }),
         // Each read already fails soft (loadBrainRows); this catch is for an injected loader that rejects.
@@ -879,9 +880,9 @@ function personFor(ctx: ClaraContext, loadRows: BrainRowsLoader = loadBrainRows)
           KEPT_FOODS_BUDGET_MS,
           rows,
           NO_BRAIN_ROWS,
-          () => console.warn(`[clara-dish] brain reads took longer than ${KEPT_FOODS_BUDGET_MS} ms; serving without them`),
+          () => claraSignal("brain-reads-slow", `over ${KEPT_FOODS_BUDGET_MS} ms; serving without them`),
         ).catch((err) => {
-          console.warn(`[clara-dish] brain reads failed to load: ${(err as Error)?.message ?? String(err)}`);
+          claraSignal("brain-reads-failed", `${(err as Error)?.message ?? String(err)}`);
           return NO_BRAIN_ROWS;
         }),
       ]);
@@ -1057,11 +1058,12 @@ function safeSteerForAsk(brain: DishBrain, ask: DishAsk, who: { patientId: strin
   try {
     return steerForAsk(brain, ask, who);
   } catch (err) {
-    console.warn(`[clara-dish] the steer failed; serving without it: ${(err as Error)?.message ?? String(err)}`);
+    claraSignal("steer-failed", `serving without it: ${(err as Error)?.message ?? String(err)}`);
     let ceilings: AskSteer["ceilings"];
     try {
       ceilings = levelCeilings({ mealType: ask.mealType, sodiumLimitMg: brain.sodiumLimitMg, week: [] });
-    } catch {
+    } catch (inner) {
+      claraSignal("level-ceilings-failed", `${(inner as Error)?.message ?? String(inner)}`);
       ceilings = { sodium: brain.sodiumLimitMg };
     }
     return {
@@ -1083,11 +1085,12 @@ function safeBrainFrom(a: Parameters<typeof brainFrom>[0] & { matchers: DietMatc
   try {
     return brainFrom(a);
   } catch (err) {
-    console.warn(`[clara-dish] the dish brain failed to build; serving without its reads: ${(err as Error)?.message ?? String(err)}`);
+    claraSignal("brain-failed", `serving without its reads: ${(err as Error)?.message ?? String(err)}`);
   }
   try {
     return brainFrom({ ...a, rows: NO_BRAIN_ROWS });
-  } catch {
+  } catch (err) {
+    claraSignal("brain-minimal", `only their diet and sodium limit are kept: ${(err as Error)?.message ?? String(err)}`);
     return {
       rules: a.rules ?? { ...DEFAULT_DISH_RULES },
       userRules: [],
@@ -1507,8 +1510,22 @@ function levelsPart(summary: LevelSummary): ClaraPart | null {
 /** Where the served dish came from: made now by the model, or the public recipe library. */
 export type DishSource = "generated" | "library";
 
+/**
+ * Where a card's calories came from. Three sources feed the same number, and nothing used to say which:
+ *   - "amounts": priced from the dish's own ingredient amounts (the food table knows them all);
+ *   - "macros": the model's protein, carbs and fat re-added, because its calorie figure disagreed with them;
+ *   - "declared": the model's own figure, as it gave it.
+ */
+export type CaloriesFrom = "amounts" | "macros" | "declared";
+
+export function caloriesFrom(r: FridgeRecipe): CaloriesFrom {
+  if (pricedMacros(r)) return "amounts";
+  return reconcileCalories(r) !== null ? "macros" : "declared";
+}
+
 interface BuiltDish {
   source: DishSource;
+  caloriesFrom: CaloriesFrom;
   recipe: ClaraRecipe;
   dish: Extract<ClaraPart, { kind: "dish" }>;
   steps: Extract<ClaraPart, { kind: "steps" }>;
@@ -1563,8 +1580,12 @@ function buildDish(r: FridgeRecipe, ask: DishAsk, source: DishSource, judged?: J
     steps: r.steps,
     perServing,
   };
+  const from = caloriesFrom(r);
+  // No user content: the meal, where the dish came from and where its calories came from.
+  console.info(`[clara-dish] ${ask.mealType}: served ${source}; calories from ${from}`);
   return {
     source,
+    caloriesFrom: from,
     recipe,
     dish: {
       kind: "dish",
@@ -1732,7 +1753,7 @@ async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Pro
   const libraryStop = new AbortController();
   const library: Promise<FridgeRecipe[]> = deps.library
     ? deps.library(ctx, ask, libraryStop.signal, (j) => judgedBy.set(j.recipe, j)).catch((err) => {
-        console.warn(`[clara-dish] library failed: ${(err as Error)?.message ?? String(err)}`);
+        claraSignal("library-failed", `${(err as Error)?.message ?? String(err)}`);
         return [];
       })
     : Promise.resolve([]);
@@ -1751,7 +1772,7 @@ async function generateOne(deps: DishDeps, ctx: ClaraContext, ask: DishAsk): Pro
     const generated = deps
       .generate(ctx, ask, { signal: deadline.signal, accept: (r) => pickDish([r], ask) !== null && saysRequest(r), judged: onGenerated })
       .catch((err) => {
-        console.warn(`[clara-dish] generate threw: ${(err as Error)?.message ?? String(err)}`);
+        claraSignal("generate-threw", `${(err as Error)?.message ?? String(err)}`);
         return [] as FridgeRecipe[];
       });
     // A generator that ignores the signal still cannot hold the person past the budget.
