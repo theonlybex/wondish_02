@@ -56,7 +56,7 @@ export function priceFoodRow(row: FoodRow): PricedFoodRow {
   // name merely holds such a word ("garlic bread", "cinnamon roll") is unknown, so the caller's estimate is used.
   if (priced.kind === "seasoning") return { ...base, source: "negligible", calories: 0, protein: 0, carbs: 0, fat: 0 };
   if (priced.kind === "unknown") return { ...base, source: "unknown", calories: null, protein: null, carbs: null, fat: null };
-  const k = row.asServed && !priced.shrunk && COOKS_DRY.test(row.name) ? COOKED_MEAT_FACTOR : 1;
+  const k = row.asServed && !priced.shrunk && !priced.asEaten && COOKS_DRY.test(row.name) ? COOKED_MEAT_FACTOR : 1;
   const protein = priced.protein * k;
   const carbs = priced.carbs * k;
   const fat = priced.fat * k;

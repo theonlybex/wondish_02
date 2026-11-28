@@ -269,9 +269,13 @@ test("the row that accounts for the whole name wins over an earlier partial matc
 });
 
 test("a prepared food is not priced as the raw food in its name: the row is left unpriced", () => {
-  for (const name of ["Potato chips", "Milk chocolate", "Coconut milk", "Sweet potato fries", "Tortilla chips", "Carrot cake", "Condensed milk"]) {
+  for (const name of ["Coconut milk", "Condensed milk", "Chocolate milk", "Potato cakes", "Rice pudding pie"]) {
     assert.equal(one(name, 50, "g")!.coverage, 0, name);
   }
+  // The common prepared foods have rows of their own, priced as eaten.
+  assert.ok(one("Potato chips", 50, "g")!.calories > 230);
+  assert.ok(one("Milk chocolate", 50, "g")!.calories > 230);
+  assert.ok(one("Carrot cake", 100, "g")!.calories > 300);
   // The plain foods are untouched.
   assert.equal(one("Potatoes", 200, "g")!.coverage, 1);
   assert.equal(one("Whole milk", 200, "g")!.coverage, 1);

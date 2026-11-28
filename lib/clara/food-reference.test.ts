@@ -158,7 +158,7 @@ test("seasonings and prepared foods are never priced as food in a recipe", () =>
   for (const [name, quantity, unit] of [["Kosher salt", 1, "tsp"], ["Onion powder", 1, "tsp"], ["Beef broth", 1, "cup"], ["Rice vinegar", 1, "tbsp"], ["Fresh parsley", 10, "g"]] as const) {
     assert.equal(priceDish([{ name, quantity, unit }]), null, name);
   }
-  for (const name of ["Potato chips", "Tortilla chips", "Milk chocolate", "Coconut milk", "Carrot cake"]) {
+  for (const name of ["Coconut milk", "Condensed milk", "Chocolate milk"]) {
     assert.equal(priceDish([{ name, quantity: 50, unit: "g" }])!.coverage, 0, name);
   }
 });

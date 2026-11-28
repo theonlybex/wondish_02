@@ -288,7 +288,7 @@ test("create with foods: the macros come from the foods, never from numbers the 
   const { deps, writes } = fakeDeps();
   const foods = [
     { name: "olive oil", grams: 10 },
-    { name: "pizza", grams: 200, calories: 530, protein: 22, carbs: 66, fat: 20 },
+    { name: "moussaka", grams: 200, calories: 530, protein: 22, carbs: 66, fat: 20 },
   ];
   const r = await h(deps).create(ctx, { name: "Pizza", mealType: "dinner", foods, calories: 1, protein: 1, carbs: 1, fat: 1 }, "t-foods");
   assert.equal(r.ok, true);
@@ -298,9 +298,9 @@ test("create with foods: the macros come from the foods, never from numbers the 
 
 test("create with foods refuses a food nobody has figures for, and writes nothing", async () => {
   const { deps, writes } = fakeDeps();
-  const r = await h(deps).create(ctx, { name: "Pizza", mealType: "dinner", foods: [{ name: "pizza", grams: 200 }] }, "t-missing");
+  const r = await h(deps).create(ctx, { name: "Pizza", mealType: "dinner", foods: [{ name: "moussaka", grams: 200 }] }, "t-missing");
   assert.equal(r.ok, false);
-  assert.ok(!r.ok && r.message.includes("pizza"));
+  assert.ok(!r.ok && r.message.includes("moussaka"));
   assert.equal(writes.length, 0);
   const bad = await h(deps).create(ctx, { name: "Pizza", mealType: "dinner", foods: "pizza" }, "t-bad");
   assert.equal(bad.ok, false);

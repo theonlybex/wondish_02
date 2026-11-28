@@ -78,6 +78,11 @@ const DENSITY: {
   /** Cooked weight against dry, as a fraction, where the general COOKED_FACTOR is too far off (pasta takes up less water than rice). */
   cookedFactor?: number;
   /**
+   * True for a prepared food listed as it is EATEN (pizza, fries, cake), not as bought raw. A logged portion of it is
+   * never scaled up for cooking loss, whatever meat its name holds.
+   */
+  asEaten?: boolean;
+  /**
    * Grams in one of the thing, for rows written as a bare count.
    *
    * "Sliced bread 2" and "Large eggs 2" carry a quantity and no unit, and
@@ -260,6 +265,40 @@ const DENSITY: {
   { match: /\b(almond milk)\b/i, carbs: 1, fat: 1.2, protein: 0.5, gramsPerCup: 243, volumeUnambiguous: true, sodium: 70 },
   { match: /\b(cauliflower rice|riced cauliflower|broccoli rice)\b/i, carbs: 5, fat: 0.3, protein: 2, gramsPerCup: 110, volumeUnambiguous: true },
   { match: /\b(zucchini noodles|courgette noodles|zoodles|courgetti)\b/i, carbs: 3, fat: 0.3, protein: 1.2, gramsPerCup: 120, volumeUnambiguous: true },
+  // ── Prepared foods, per 100 g as eaten (2026-11-28) ────────────────────────
+  //
+  // Until now a prepared food was "unknown": the table refused to price "roast potatoes" as raw potato and left the
+  // figure to Clara. Her own figures moved between runs: the same 180 g of roast potatoes was 150, 160, 190, 250, 270
+  // and 280 kcal across six live runs, and a pizza meal 669 to 764. A figure the person sees should not depend on the
+  // run, so the foods people log most have rows. Rounded textbook values; each needs the whole name to match
+  // (densityFor / pricePlainFood), so "pizza" never prices "pizza dough".
+  { match: /\b((pepperoni|cheese|margherita|vegetable|veggie|ham|mushroom) )?pizzas?\b/i, carbs: 33, fat: 10, protein: 11, gramsPerCup: 150, gramsPerItem: 107, sodium: 600, asEaten: true },
+  { match: /\b(french fries|(sweet potato )?fries|potato wedges)\b/i, carbs: 41, fat: 15, protein: 3.4, gramsPerCup: 120, sodium: 210, asEaten: true },
+  { match: /\b(roast(ed)? potato(es)?)\b/i, carbs: 26, fat: 5, protein: 2.5, gramsPerCup: 150, sodium: 150, asEaten: true },
+  { match: /\b(mashed potato(es)?|mash)\b/i, carbs: 16, fat: 4, protein: 2, gramsPerCup: 210, sodium: 300, asEaten: true },
+  { match: /\b(potato chips|potato crisps|crisps|tortilla chips|corn chips)\b/i, carbs: 53, fat: 34, protein: 7, gramsPerCup: 30, sodium: 500, asEaten: true },
+  { match: /\b(garlic bread)\b/i, carbs: 42, fat: 16, protein: 8, gramsPerCup: 120, gramsPerItem: 30, sodium: 550, asEaten: true },
+  { match: /\b((egg )?fried rice)\b/i, carbs: 28, fat: 5, protein: 4.5, gramsPerCup: 170, sodium: 400, asEaten: true },
+  { match: /\b((mushroom )?risotto)\b/i, carbs: 20, fat: 5, protein: 3.5, gramsPerCup: 220, sodium: 350, asEaten: true },
+  { match: /\b((ranch|caesar|creamy|blue cheese) dressing)\b/i, carbs: 6, fat: 44, protein: 1.5, gramsPerCup: 240, volumeUnambiguous: true, sodium: 900, asEaten: true },
+  { match: /\b(vinaigrette|(italian|balsamic|french|salad|oil and vinegar) dressing)\b/i, carbs: 8, fat: 35, protein: 0.5, gramsPerCup: 240, volumeUnambiguous: true, sodium: 800, asEaten: true },
+  { match: /\b(ketchup)\b/i, carbs: 26, fat: 0, protein: 1, gramsPerCup: 270, volumeUnambiguous: true, sodium: 900, asEaten: true },
+  { match: /\b(((vanilla|chocolate|strawberry|mint chocolate) )?ice cream)\b/i, carbs: 24, fat: 11, protein: 3.5, gramsPerCup: 140, volumeUnambiguous: true, sodium: 80, asEaten: true },
+  { match: /\b(((milk|dark|white) )?chocolate( bar)?)\b/i, carbs: 58, fat: 31, protein: 7, gramsPerCup: 170, sodium: 80, asEaten: true },
+  { match: /\b(((carrot|chocolate|sponge|lemon|fruit) )?cake)\b/i, carbs: 50, fat: 17, protein: 4.5, gramsPerCup: 100, sodium: 300, asEaten: true },
+  { match: /\b(cinnamon rolls?|croissants?|danish(es)?|pastr(y|ies))\b/i, carbs: 48, fat: 19, protein: 7, gramsPerCup: 100, gramsPerItem: 65, sodium: 350, asEaten: true },
+  { match: /\b(((ginger|chocolate chip|oat) )?(cookies?|biscuits?)|ginger snaps?)\b/i, carbs: 66, fat: 22, protein: 6, gramsPerCup: 100, gramsPerItem: 15, sodium: 350, asEaten: true },
+  { match: /\b((apple|fruit|cherry) pie)\b/i, carbs: 34, fat: 11, protein: 2, gramsPerCup: 150, gramsPerItem: 120, sodium: 200, asEaten: true },
+  { match: /\b(onion rings)\b/i, carbs: 38, fat: 26, protein: 5, gramsPerCup: 50, sodium: 430, asEaten: true },
+  { match: /\b(corn ?flakes|breakfast cereal|cereal)\b/i, carbs: 84, fat: 1, protein: 7, gramsPerCup: 30, sodium: 600, asEaten: true },
+  { match: /\b(sausages?|chorizo|salami|pepperoni)\b/i, carbs: 2, fat: 27, protein: 14, gramsPerCup: 140, gramsPerItem: 60, sodium: 800, asEaten: true },
+  { match: /\b(sardines?|mackerel|herring|anchov(y|ies))\b/i, carbs: 0, fat: 11, protein: 24, gramsPerCup: 150, sodium: 400, asEaten: true },
+  { match: /\b(tahini)\b/i, carbs: 21, fat: 54, protein: 17, gramsPerCup: 240, volumeUnambiguous: true, sodium: 115 },
+  { match: /\b(jam|marmalade|jelly)\b/i, carbs: 65, fat: 0, protein: 0.4, gramsPerCup: 320, volumeUnambiguous: true, asEaten: true },
+  { match: /\b((orange|apple|fruit|grape|pineapple) juice)\b/i, carbs: 10, fat: 0.2, protein: 0.6, gramsPerCup: 248, volumeUnambiguous: true, asEaten: true },
+  // Meat named without its cut, raw like the other meats: "grilled chicken", "roast lamb".
+  { match: /\b(chicken|turkey)\b/i, carbs: 0, fat: 8, protein: 20, gramsPerCup: 140, sodium: 70 },
+  { match: /\b(lamb|mutton)\b/i, carbs: 0, fat: 17, protein: 17, gramsPerCup: 225, sodium: 70 },
   { match: /\b(egg whites?)\b/i, carbs: 1, fat: 0, protein: 11, gramsPerCup: 243, gramsPerItem: 33, volumeUnambiguous: true, sodium: 166 },
   { match: /\b(cottage cheese)\b/i, carbs: 3, fat: 4, protein: 11, gramsPerCup: 225, volumeUnambiguous: true, sodium: 360 },
   // Its own row, not a refusal: recipes use it by the tablespoon, and an unpriced row counts as 100 g against coverage.
@@ -601,7 +640,7 @@ function foodBehindSeasoningWord(name: string): string | null {
 // (40 kcal against ~268), nor "Coconut milk" milk, nor "Carrot cake" carrot. Unless the table row itself covers the
 // word ("Rice cakes"), such a row is left unpriced, so coverage falls and the dish keeps its declared numbers.
 const MAKES_ANOTHER_FOOD =
-  /\b(chips|crisps|fries|cake|pie|chocolate|condensed|evaporated|candied|battered|breaded|jam|yolks?|coconut (milk|cream|yogurt))\b/gi;
+  /\b(chips|crisps|fries|cakes?|pies?|chocolate|condensed|evaporated|candied|battered|breaded|jam|yolks?|coconut (milk|cream|yogurt))\b/gi;
 
 function isAnotherFood(name: string, row: DensityRow): boolean {
   const spans = spansOf(row, name);
@@ -722,7 +761,7 @@ const NEGLIGIBLE_ALL = new RegExp(NEGLIGIBLE.source, "gi");
 export type PlainFoodPrice =
   | { kind: "seasoning" }
   | { kind: "unknown" }
-  | { kind: "priced"; protein: number; carbs: number; fat: number; shrunk: boolean };
+  | { kind: "priced"; protein: number; carbs: number; fat: number; shrunk: boolean; asEaten: boolean };
 
 /**
  * Macros for `grams` of one named food. `cooked` means the grams are as served.
@@ -752,6 +791,7 @@ export function pricePlainFood(name: string, grams: number, cooked: boolean): Pl
     carbs: (grams * row.carbs * factor) / 100,
     fat: (grams * row.fat * factor) / 100,
     shrunk,
+    asEaten: row.asEaten === true,
   };
 }
 

@@ -54,11 +54,12 @@ test("the tool adds a note only when an unknown food has no figures", async () =
 
 // 2026-11-27: logged meals came out too low. Three faults, each confirmed by pricing real foods.
 test("a food that only CONTAINS a seasoning word is not counted as zero", () => {
+  // Either left to Clara's estimate, or priced as the food it is (the table has rows for the common ones).
   for (const name of ["cinnamon roll", "garlic bread", "lemon cake", "lemon chicken", "basil pesto", "mint chocolate ice cream"]) {
     const r = priceFoodRow({ name, grams: 100, asServed: true });
-    assert.equal(r.source, "unknown", name);
-    assert.equal(r.calories, null, name);
+    assert.ok(r.calories === null || r.calories > 180, `${name}: ${r.source} ${r.calories}`);
   }
+  assert.equal(priceFoodRow({ name: "lemon chicken", grams: 100, asServed: true }).source, "unknown");
   // Protein powder has its own row in the table: 30 g is about 120 kcal.
   const powder = priceFoodRow({ name: "protein powder", grams: 30, asServed: true });
   assert.ok(powder.calories! > 100 && powder.calories! < 140, `protein powder ${powder.calories}`);
@@ -74,9 +75,16 @@ test("a food that only CONTAINS a seasoning word is not counted as zero", () => 
 });
 
 test("a prepared food is not priced as the raw food in its name", () => {
-  for (const name of ["potato chips", "milk chocolate", "carrot cake", "mushroom risotto", "apple pie", "onion rings", "corn flakes", "sweet potato fries", "fried rice", "chocolate milk", "coconut milk"]) {
+  // [food, the least 100 g of it can be worth]. Unknown is fine too: then Clara's own figure is used.
+  for (const [name, least] of [["potato chips", 450], ["milk chocolate", 450], ["carrot cake", 300], ["mushroom risotto", 110], ["apple pie", 200], ["onion rings", 350], ["corn flakes", 300], ["sweet potato fries", 250], ["fried rice", 140]] as const) {
+    const r = priceFoodRow({ name, grams: 100, asServed: true });
+    assert.ok(r.calories === null || r.calories >= least, `${name}: ${r.calories}`);
+  }
+  for (const name of ["chocolate milk", "coconut milk", "potato curry", "rice pudding"]) {
     assert.equal(priceFoodRow({ name, grams: 100, asServed: true }).source, "unknown", name);
   }
+  // A prepared food is priced as eaten: no cooking-loss factor, whatever meat is in its name.
+  assert.equal(priceFoodRow({ name: "ham pizza", grams: 100, asServed: true }).calories, priceFoodRow({ name: "plain pizza", grams: 100, asServed: true }).calories);
 });
 
 test("plain foods with ordinary describing words are still priced from the table", () => {
@@ -125,17 +133,17 @@ test("the tool returns the finished totals, and asks again only for an unknown f
   const done = await foodsNutritionHandler(null, {
     foods: [
       { name: "olive oil", grams: 10 },
-      { name: "pizza", grams: 200, calories: 530, protein: 22, carbs: 66, fat: 20 },
+      { name: "moussaka", grams: 200, calories: 530, protein: 22, carbs: 66, fat: 20 },
     ],
   });
   assert.ok(done.ok);
   const d = done.data as { totals: { calories: number }; estimated: string[]; missing?: string[]; note?: string };
   assert.equal(d.totals.calories, 90 + 530);
-  assert.deepEqual(d.estimated, ["pizza"]);
+  assert.deepEqual(d.estimated, ["moussaka"]);
   assert.ok(!("missing" in d) && !("note" in d));
-  const short = await foodsNutritionHandler(null, { foods: [{ name: "pizza", grams: 200 }] });
+  const short = await foodsNutritionHandler(null, { foods: [{ name: "moussaka", grams: 200 }] });
   const s = short.ok ? (short.data as { missing?: string[]; note?: string }) : {};
-  assert.deepEqual(s.missing, ["pizza"]);
+  assert.deepEqual(s.missing, ["moussaka"]);
   assert.ok(typeof s.note === "string" && s.note.includes("call foods_nutrition again"));
 });
 
@@ -145,17 +153,17 @@ test("the tool writes the foods and totals itself, and names what is Clara's own
   const r = await foodsNutritionHandler(null, {
     foods: [
       { name: "olive oil", grams: 10 },
-      { name: "pizza", grams: 200, calories: 530, protein: 22, carbs: 66, fat: 20 },
+      { name: "moussaka", grams: 200, calories: 530, protein: 22, carbs: 66, fat: 20 },
     ],
   });
   assert.ok(r.ok);
   assert.equal(
     (r as { say?: string }).say,
-    "Olive oil 10 g, pizza 200 g.\nPer serving: 620 kcal, 22 g protein, 66 g carbs, 30 g fat.\nMy own estimate: pizza.",
+    "Olive oil 10 g, moussaka 200 g.\nPer serving: 620 kcal, 22 g protein, 66 g carbs, 30 g fat.\nMy own estimate: moussaka.",
   );
   const known = await foodsNutritionHandler(null, { foods: [{ name: "white rice", grams: 180 }] });
   assert.ok(known.ok && !(known as { say: string }).say.includes("My own estimate"));
   // Not while a food still has no figures: the totals are not finished.
-  const short = await foodsNutritionHandler(null, { foods: [{ name: "pizza", grams: 200 }] });
+  const short = await foodsNutritionHandler(null, { foods: [{ name: "moussaka", grams: 200 }] });
   assert.ok(short.ok && !("say" in short));
 });
