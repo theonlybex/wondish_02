@@ -141,18 +141,23 @@ function expectedWord(direction: Dir, amount: number, target: number, upper: num
 }
 
 // ── wire contracts as shapes (exact keys, types, nullability, enums) ────────
-type Sh = "string" | "number" | "int" | "boolean" | "iso" | "date" | { n: Sh } | { arr: Sh } | { obj: Record<string, Sh> } | { en: readonly unknown[] } | "any";
+// { opt } is a key the server sends only when it has a value (a log entry's calories, a level's wordTarget).
+type Sh = "string" | "number" | "int" | "boolean" | "iso" | "date" | { n: Sh } | { opt: Sh } | { arr: Sh } | { obj: Record<string, Sh> } | { en: readonly unknown[] } | "any";
 function conform(v: unknown, s: Sh, path: string, errs: string[]) {
   if (errs.length > 8) return;
   if (s === "any") return;
   if (typeof s === "object" && "n" in s) { if (v !== null) conform(v, s.n, path, errs); return; }
+  if (typeof s === "object" && "opt" in s) { conform(v, s.opt, path, errs); return; }
   if (typeof s === "object" && "en" in s) { if (!s.en.includes(v)) errs.push(`${path}: ${JSON.stringify(v)} not in ${JSON.stringify(s.en)}`); return; }
   if (typeof s === "object" && "arr" in s) { if (!Array.isArray(v)) { errs.push(`${path}: not an array`); return; } v.forEach((x, i) => conform(x, s.arr, `${path}[${i}]`, errs)); return; }
   if (typeof s === "object" && "obj" in s) {
     if (v === null || typeof v !== "object" || Array.isArray(v)) { errs.push(`${path}: not an object`); return; }
     const keys = Object.keys(v as object);
     for (const k of keys) if (!(k in s.obj)) errs.push(`${path}.${k}: unexpected key`);
-    for (const [k, sub] of Object.entries(s.obj)) { if (!(k in (v as object))) errs.push(`${path}.${k}: missing`); else conform((v as any)[k], sub, `${path}.${k}`, errs); }
+    for (const [k, sub] of Object.entries(s.obj)) {
+      if (!(k in (v as object))) { if (!(typeof sub === "object" && "opt" in sub)) errs.push(`${path}.${k}: missing`); }
+      else conform((v as any)[k], sub, `${path}.${k}`, errs);
+    }
     return;
   }
   const ok =
@@ -183,11 +188,15 @@ const SH = {
     summary: { obj: { fromDate: "date", toDate: "date", daysCounted: "int", enoughLogs: "boolean" } },
     source: { en: ["logged", "answers", "none"] },
     calories: { obj: { amount: { n: "number" }, target: { n: "number" } } },
+    // The Macros block (lib/numbers-full.ts FullMacros), added to the app after this contract was written.
+    macros: { obj: { loggedShare: "number", loggedShareRaw: "number", daysCounted: "int",
+      rows: { arr: { obj: { key: { en: ["protein", "carbs", "fat"] }, name: "string", average: { n: "number" }, target: { n: "number" }, wordTarget: { opt: "number" },
+        today: { n: "number" }, word: { n: { en: ["little", "on track", "a lot"] } } } } } } },
     weight: { n: { obj: { value: "number", unit: { en: ["kg", "lbs"] }, change: { n: "number" } } } },
     levels: { arr: { obj: { key: KEY, name: "string", group: { en: ["food", "minerals", "vitamins"] }, direction: { en: ["enough", "under", "match"] },
       unit: { en: ["g", "mg", "mcg"] }, target: "number", upperLimit: { n: "number" }, amount: { n: "number" }, pillAmount: "number",
       foodCounted: "boolean", estimate: "boolean", word: { n: { en: ["little", "on track", "within limit", "a lot", "more than needed"] } },
-      tracked: "boolean", goal: { n: "number" } } } },
+      wordTarget: { opt: "number" }, tracked: "boolean", goal: { n: "number" } } } },
     areas: { arr: { obj: { key: "string", name: "string", uses: { arr: KEY } } } },
     startingPicture: { n: { obj: { little: NAMED, aLot: NAMED } } },
   } },
@@ -198,7 +207,8 @@ const SH = {
       little: { arr: "string" }, aLot: { arr: "string" } } },
     weight: { n: { obj: { value: "number", unit: { en: ["kg", "lbs"] }, change: { n: "number" } } } },
   } },
-  log: { obj: { days: { arr: { obj: { date: "date", entries: { arr: { obj: { id: "string", mealType: { en: ["breakfast", "lunch", "dinner", "snack"] }, name: "string", source: "string", estimated: "boolean" } } } } } } } },
+  log: { obj: { days: { arr: { obj: { date: "date", entries: { arr: { obj: { id: "string", mealType: { en: ["breakfast", "lunch", "dinner", "snack"] }, name: "string", source: "string", estimated: "boolean",
+    photoId: { opt: "string" }, calories: { opt: "number" }, protein: { opt: "number" }, carbs: { opt: "number" }, fat: { opt: "number" } } } } } } } } },
   tracked: { obj: { tracked: { arr: KEY } } },
   goals: { obj: { goals: { arr: { obj: { key: KEY, amount: { n: "number" } } } } } },
   weight: { obj: { weight: { obj: { value: "number", unit: { en: ["kg", "lbs"] } } } } },
@@ -858,8 +868,15 @@ test("Clara-first: simulated people through first run, Numbers, Log, cooking, pi
           if (explained) observations.push(`${l.key}:${Math.round(l.amount / l.target)}x`);
         }
         // From the unrounded average, as the server judges it (19.58 g is "little" though it shows as 19.6).
-        const word = foodCounted && enough && amount !== null ? expectedWord(def.direction, amount, l.target, def.upper) : null;
-        check("honesty.word", l.word === word, () => `${why}: ${l.key} word ${l.word}, expected ${word} (foodCounted ${foodCounted}, enough ${enough}, amount ${l.amount}/${l.target})`);
+        // A whole-day need is judged against the part of the day that was logged (lib/numbers-full.ts `prorated`):
+        // the server then sends wordTarget = target × the logged share. This check predates that and compared
+        // against the whole target, so a lunch-only week read "little" here and "on track" in the app.
+        const judged: number = l.wordTarget ?? l.target;
+        const word = foodCounted && enough && amount !== null ? expectedWord(def.direction, amount, judged, def.upper) : null;
+        // wordTarget is rounded on the wire, so an amount sitting on a boundary may fall either side.
+        const onEdge = amount !== null && judged > 0 && [0.7, 1, 1.3].some((b) => Math.abs(amount / judged - b) < 0.01);
+        check("honesty.word", l.word === word || (onEdge && l.word !== null), () => `${why}: ${l.key} word ${l.word}, expected ${word} (foodCounted ${foodCounted}, enough ${enough}, amount ${l.amount}/${judged}${l.wordTarget !== undefined ? ` of ${l.target}` : ""})`);
+        if (l.wordTarget !== undefined) check("honesty.word-target", near(l.wordTarget, l.target * n.macros.loggedShare, l.target * 0.006 + 0.06), () => `${why}: ${l.key} wordTarget ${l.wordTarget}, expected ${l.target} × ${n.macros.loggedShare}`);
         if (!foodCounted || !enough) check("honesty.word-null", l.word === null, () => `${l.key} word ${l.word} while not counted/enough`);
         // Fibre honesty: a fibre figure that is partly unknown is not a fibre figure.
         if (l.key === "fibre" && foodCounted && live.some((m) => m.per.fib === null)) {
