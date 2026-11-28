@@ -1118,7 +1118,7 @@ const answersLines = (p: string) => p.split("\n").filter((l) => /^- From their a
 test("prompt: the size, the split, the protein floor and the goal", () => {
   const p = withBrain({ kept: NO_KEPT_FOODS, rows: { ...NO_BRAIN_ROWS, dayTarget: TARGET }, patient: { ...NOBODY, motivations: [{ motivation: { name: "Build muscle" } }] } });
   for (const l of [
-    "- Size: this Dinner should be about 670 kcal per serving (their day is 2000 kcal); choose the portions to land there. It must be no less than 600 kcal and no more than 750 kcal: a smaller serving is too small to be this meal. Reach it with full portions of the protein and the starch, not with extra oil.",
+    "- Size: this Dinner should be about 600 kcal per serving (their day is 2000 kcal); choose the portions to land there. It must be no less than 600 kcal and no more than 750 kcal: a smaller serving is too small to be this meal. Reach it with full portions of the protein and the starch, not with extra oil.",
     "- Macro split to aim for, by calories: ~30% protein, ~40% carbs, ~30% fat.",
     "- Their goal: lean towards protein.",
   ]) assert.ok(p.split("\n").includes(l), l);

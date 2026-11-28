@@ -34,7 +34,7 @@ test("sizeProblem and proteinShareLow: the edges", () => {
 });
 test("targetLines: exact wording", () => {
   assert.deepEqual(targetLines(t("dinner", { motivationNames: ["Eat healthier"] }), "dinner", true), [
-    "- Size: this Dinner should be about 670 kcal per serving (their day is 2000 kcal); choose the portions to land there. It must be no less than 600 kcal and no more than 750 kcal: a smaller serving is too small to be this meal. Reach it with full portions of the protein and the starch, not with extra oil.",
+    "- Size: this Dinner should be about 600 kcal per serving (their day is 2000 kcal); choose the portions to land there. It must be no less than 600 kcal and no more than 750 kcal: a smaller serving is too small to be this meal. Reach it with full portions of the protein and the starch, not with extra oil.",
     "- Macro split to aim for, by calories: ~30% protein, ~45% carbs, ~25% fat.",
     "- Their goal: lean towards fibre, less fat.",
   ]);

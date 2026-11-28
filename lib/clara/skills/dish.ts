@@ -69,6 +69,7 @@ import {
 } from "@/lib/dish-plausibility";
 import { priceDish, gramsOf } from "@/lib/staple-density";
 import { claraSignal } from "../signal";
+import { sizeToTarget } from "../dish-size";
 import type { LevelKey, LevelSummary } from "@/lib/levels";
 import { dishReasons } from "@/lib/dish-reasons";
 import type { ClaraPart, ClaraRecipe } from "../parts";
@@ -974,7 +975,7 @@ async function gateOne(
     catalogFoodTokens,
     sodiumLimitMg: person.sodiumLimitMg,
   });
-  const r = gated[0];
+  let r = gated[0];
   if (r && !fibreIsPlausible(r)) {
     note(label, "gates");
     return null;
@@ -983,6 +984,9 @@ async function gateOne(
     note(label, applyAllergenFilter([named], person.matchers, groupsOf).length === 0 ? "safety" : "gates");
     return null;
   }
+  // A lunch or dinner priced off its target has its portions scaled to it, in code (lib/clara/dish-size.ts).
+  // Not an exchange: that one is sized against the dish it came from.
+  if (steer.target.band && !ask.swap) r = sizeToTarget(r, steer.target.calories);
   // A dry bean the dish has no time to cook, and a dish over the time asked for or set by their own rule.
   const took = rawMinutesOf(r, ask.mealType);
   const rawPulse = undercookedPulse([...r.usesIngredients, ...r.missingIngredients], took);

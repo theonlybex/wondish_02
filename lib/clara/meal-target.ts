@@ -7,8 +7,14 @@ import type { MealType } from "@/lib/local-date";
 import type { DishRules } from "./dish-rules";
 
 export const MAIN_SIZE_BAND = { min: 0.7, max: 1.25 } as const;
-/** The size SAID to the model for a lunch or dinner, as a share of the real target (see targetLines). */
-export const MAIN_SAID_AIM = 1.12;
+/**
+ * The size SAID to the model for a lunch or dinner, as a share of the real target (see targetLines).
+ * It was 1.12 from 2026-11-23, to offset the model declaring more than the food table priced. That held for meat
+ * and fish dishes and was wrong the other way for lentil and tofu ones (live run 2026-11-28: served 27% over
+ * target). The portions are now scaled to the target in code (lib/clara/dish-size.ts), so the prompt says the
+ * real figure.
+ */
+export const MAIN_SAID_AIM = 1;
 export const MAIN_MIN_PROTEIN_SHARE = 0.15;
 
 export type Leaning = "protein" | "fibre" | "less fat";
@@ -85,9 +91,8 @@ export function targetLines(t: MealTarget, mealType: MealType, mainsOnProtein: b
   const lines: string[] = [];
   if (t.calories != null && t.dayCalories != null) {
     const meal = mealType.charAt(0).toUpperCase() + mealType.slice(1);
-    // The figure SAID for a main is 12% over the target: the model counts its own dishes high against the
-    // app's food table (live run 2026-11-23, 39 candidates: priced at 0.64–1.06 of what they declared, 0.85 on
-    // average), so a lunch asked for at 689 kcal was served at 488–577. The judge still holds the real target.
+    // The figure said is the real target (MAIN_SAID_AIM); what the model's dish prices at is corrected afterwards
+    // by scaling its portions (lib/clara/dish-size.ts). The judge holds the real target.
     const aim = t.band ? Math.round((t.calories * MAIN_SAID_AIM) / 5) * 5 : t.calories;
     let size = `- Size: this ${meal} should be about ${aim} kcal per serving (their day is ${t.dayCalories} kcal); choose the portions to land there.`;
     if (t.band) size += ` It must be no less than ${t.calories} kcal and no more than ${t.band.max} kcal: a smaller serving is too small to be this meal. Reach it with full portions of the protein and the starch, not with extra oil.`;
