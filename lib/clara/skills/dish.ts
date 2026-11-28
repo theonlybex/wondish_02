@@ -12,7 +12,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
 import { createAnthropic } from "@/lib/anthropic";
 import { CLARA_MODEL } from "@/lib/clara/anthropic-client";
-import { loadIngredientGroups } from "@/lib/ingredient-catalog-db";
+import { ingredientGroupsFromCatalog } from "@/lib/ingredient-catalog-db";
 import { specifyCookingOil, oilAllowedBy } from "@/lib/clara/oil";
 import { PATIENT_FOOD_MAP_INCLUDE, buildFoodMapText } from "@/lib/food-map";
 import { derivePatientBans, buildDietMatchers, bannedNamesForPrompt, evaluateDishAgainstProfile, hasAnyBan, type DerivedBans, type DietMatchers } from "@/lib/diet-match";
@@ -70,6 +70,7 @@ import {
 import { priceDish, gramsOf } from "@/lib/staple-density";
 import { claraSignal } from "../signal";
 import { sizeToTarget } from "../dish-size";
+import { claraMetric } from "../metric";
 import type { LevelKey, LevelSummary } from "@/lib/levels";
 import { dishReasons } from "@/lib/dish-reasons";
 import type { ClaraPart, ClaraRecipe } from "../parts";
@@ -967,7 +968,7 @@ async function gateOne(
   }
   // Name the oil BEFORE the filter judges the dish, with an oil this person may have.
   const named = specifyCookingOil(parsed[0], oilAllowedBy(person.matchers));
-  const groupsOf = await loadIngredientGroups([...named.usesIngredients, ...named.missingIngredients]);
+  const groupsOf = await ingredientGroupsFromCatalog();
   const gated = gateGeneratedDishes([named], {
     mealTypeName: meal,
     matchers: person.matchers,
@@ -986,7 +987,11 @@ async function gateOne(
   }
   // A lunch or dinner priced off its target has its portions scaled to it, in code (lib/clara/dish-size.ts).
   // Not an exchange: that one is sized against the dish it came from.
-  if (steer.target.band && !ask.swap) r = sizeToTarget(r, steer.target.calories);
+  if (steer.target.band && !ask.swap) {
+    const sized = sizeToTarget(r, steer.target.calories);
+    if (sized !== r) claraMetric("dish_resized", { meal: ask.mealType });
+    r = sized;
+  }
   // A dry bean the dish has no time to cook, and a dish over the time asked for or set by their own rule.
   const took = rawMinutesOf(r, ask.mealType);
   const rawPulse = undercookedPulse([...r.usesIngredients, ...r.missingIngredients], took);
@@ -1395,7 +1400,7 @@ async function libraryGated(
   const candidates = ranked.map((r) => specifyCookingOil(libraryToFridge(r, meal, ask.servings ?? 1, `frg_${crypto.randomUUID()}`), oil));
   if (signal?.aborted) return [];
   // The same catalog lookup a generated dish gets, for every candidate at once.
-  const groupsOf = await loadIngredientGroups(candidates.flatMap((r) => [...r.usesIngredients, ...r.missingIngredients]));
+  const groupsOf = await ingredientGroupsFromCatalog();
   const out: JudgedDish[] = [];
   for (let i = 0; i < candidates.length && out.length < LIBRARY_KEEP && !signal?.aborted; i += LIBRARY_CHUNK) {
     const gated = gateGeneratedDishes(candidates.slice(i, i + LIBRARY_CHUNK), {
@@ -1443,7 +1448,7 @@ async function liveRequestConflicts(ctx: ClaraContext, wants: string, loadRows?:
     .trim();
   if (!asked) return [];
   const names = [...new Set([asked, asked.replace(/s$/i, "")])].filter((n) => n.length > 0);
-  const groupsOf = await loadIngredientGroups(names);
+  const groupsOf = await ingredientGroupsFromCatalog();
   const { violations } = evaluateDishAgainstProfile(names, person.matchers, names.map((n) => groupsOf(n)));
   const reasons = violations.map((v) => `${BAN_SOURCE_WORDS[v.source] ?? v.source}: ${v.term.replace(/^BIG9-/, "").replace(/-/g, " ").toLowerCase()}`);
   return [...new Set(reasons)];
@@ -1586,7 +1591,7 @@ function buildDish(r: FridgeRecipe, ask: DishAsk, source: DishSource, judged?: J
   };
   const from = caloriesFrom(r);
   // No user content: the meal, where the dish came from and where its calories came from.
-  console.info(`[clara-dish] ${ask.mealType}: served ${source}; calories from ${from}`);
+  claraMetric("dish_served", { meal: ask.mealType, source, calories_from: from, ...(judged ? { judge: judged.verdict.level } : {}) });
   return {
     source,
     caloriesFrom: from,

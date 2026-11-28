@@ -15,6 +15,7 @@ import {
   PROFILE_INCOMPLETE_ERROR,
 } from "@/lib/clara/chat-service";
 import { encodeEvent } from "@/lib/clara/ndjson";
+import { withBusyRetry } from "@/lib/clara/busy-retry";
 
 // Saved-chat Clara for web and iOS (spec §2). Five tool rounds, each its own
 // request; maxDuration bounds the whole turn (same reasoning as dish-checker).
@@ -73,7 +74,8 @@ async function handleChat(req: NextRequest) {
     {
       store,
       memory: prismaMemoryDeps,
-      client: createAnthropicClient(anthropic),
+      // One more try on the provider's immediate "busy" answers (lib/clara/busy-retry.ts).
+      client: withBusyRetry(createAnthropicClient(anthropic)),
       skills: claraAppSkills(process.env.CLARA_SKILLS),
     },
     {

@@ -6,6 +6,7 @@ import { createAnthropic } from "@/lib/anthropic";
 import { resolveClaraCaller } from "@/lib/clara/caller";
 import { parsePhoto } from "@/lib/clara/photo";
 import { PROFILE_INCOMPLETE_ERROR } from "@/lib/clara/chat-service";
+import { claraMetric } from "@/lib/clara/metric";
 import { estimateQuickLog, parseQuickLogBody, quickLogTotals, quickLogUpsertArgs } from "@/lib/clara/quick-log";
 
 // POST /api/clara/quick-log  { meal, today, requestId, note?, photo? }
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
     const upsert = quickLogUpsertArgs(caller.patient.id, body.value, estimate, totals, photo.photo?.id);
     if (!upsert.ok) return NextResponse.json({ error: upsert.error }, { status: 400 });
     const row = await prisma.mealLog.upsert(upsert.args);
+    claraMetric("meal_logged", { path: "quick", numbers: "foods", foods: estimate.foods.length, estimated: totals.modelEstimated.length, photo: !!photo.photo });
     return NextResponse.json({ logged: view(row) });
   } catch (err) {
     console.error("[clara-quick-log]", err);

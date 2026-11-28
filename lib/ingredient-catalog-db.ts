@@ -52,3 +52,46 @@ export async function loadIngredientGroups(names: readonly string[]): Promise<(i
   for (const r of rows) byName.set(lower(r.name), [...(byName.get(lower(r.name)) ?? []), ...r.allergenGroups]);
   return (n) => byName.get(lower(n)) ?? [];
 }
+
+/**
+ * The same answer as loadIngredientGroups, from one whole-catalog read kept in
+ * memory for ten minutes, for the dish path.
+ *
+ * Every candidate dish asked the database for its ingredients' allergen groups
+ * with a case-insensitive name match: three or more such queries per dish
+ * request, each one a scan the name index cannot serve. The dish path already
+ * keeps the catalog's names and the recipe library in memory for ten minutes
+ * (recipes with these same groups on them), so the groups are no staler here
+ * than there. With many people asking at dinner time this takes the per-dish
+ * queries to none.
+ */
+const GROUPS_TTL_MS = 10 * 60_000;
+let groupsAt = 0;
+let groupsLoad: Promise<Map<string, string[]>> | null = null;
+
+/** Tests only: forget the cached catalog. */
+export function resetIngredientGroupsCache(): void {
+  groupsAt = 0;
+  groupsLoad = null;
+}
+
+export async function ingredientGroupsFromCatalog(): Promise<(ingredientName: string) => readonly string[]> {
+  if (!groupsLoad || Date.now() - groupsAt > GROUPS_TTL_MS) {
+    groupsAt = Date.now();
+    const load = prisma.ingredient.findMany({ select: { name: true, allergenGroups: true } }).then((rows) => {
+      const byName = new Map<string, string[]>();
+      for (const r of rows) {
+        const key = r.name.trim().toLowerCase();
+        byName.set(key, [...(byName.get(key) ?? []), ...r.allergenGroups]);
+      }
+      return byName;
+    });
+    groupsLoad = load;
+    // A failed read is not kept: the next dish tries again.
+    load.catch(() => {
+      if (groupsLoad === load) groupsLoad = null;
+    });
+  }
+  const byName = await groupsLoad;
+  return (n) => byName.get(n.trim().toLowerCase()) ?? [];
+}

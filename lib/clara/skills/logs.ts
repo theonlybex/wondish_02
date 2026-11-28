@@ -14,6 +14,7 @@ import { parseLocalDateStrict } from "@/lib/journal";
 import { rateLimit } from "@/lib/rate-limit";
 import { sumMealLogs } from "@/lib/macros";
 import type { ClaraContext, Skill, ToolResult } from "../types";
+import { claraMetric } from "../metric";
 import { FOODS_INPUT, foodsNutritionDef, foodsNutritionHandler, mealTotals, missingFoodsMessage, parseFoodRows } from "../food-grams";
 
 export const MAX_SEARCH_DAYS = 90;
@@ -183,6 +184,7 @@ export function makeLogsHandlers(deps: LogsDeps = prismaDeps) {
     // a model input can never smuggle a server-priced source or a foreign row.
     const date = typeof input.date === "string" ? input.date : ctx.today;
     const perServing: Record<string, unknown> = {};
+    let fromFoods: { foods: number; estimated: number } | null = null;
     for (const k of ["calories", "protein", "carbs", "fat", "fiber"] as const) {
       if (typeof input[k] === "number") perServing[k] = input[k];
     }
@@ -195,6 +197,7 @@ export function makeLogsHandlers(deps: LogsDeps = prismaDeps) {
       const totals = mealTotals(foods.rows);
       if (totals.missing.length > 0) return invalid(missingFoodsMessage(totals.missing));
       Object.assign(perServing, { calories: totals.calories, protein: totals.protein, carbs: totals.carbs, fat: totals.fat });
+      fromFoods = { foods: foods.rows.length, estimated: totals.estimated.length };
     }
     const parsed = parseMealLogInput({
       localDate: date,
@@ -215,6 +218,8 @@ export function makeLogsHandlers(deps: LogsDeps = prismaDeps) {
     const resolved = resolveSnapshot(parsed.value, {});
     const data: MealLogCreateData = buildMealLogCreateData(ctx.patientId, parsed.value, resolved);
     const row = await deps.create(buildMealLogUpsertArgs(data));
+    // How the meal's numbers were made: added up from foods in code, or typed by the model.
+    claraMetric("meal_logged", fromFoods ? { path: "chat", numbers: "foods", ...fromFoods } : { path: "chat", numbers: "typed" });
     return { ok: true, data: { logged: serializeMealLog(row) } };
   };
 

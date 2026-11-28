@@ -20,7 +20,9 @@ export type ClaraSignalKind =
   | "kept-foods-failed"
   | "kept-foods-slow"
   | "library-failed"
-  | "generate-threw";
+  | "generate-threw"
+  | "model-busy-retried"
+  | "model-busy";
 
 type Reporter = (kind: ClaraSignalKind, detail: string) => void;
 

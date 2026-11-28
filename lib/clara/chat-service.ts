@@ -10,6 +10,8 @@ import { ALL_SKILLS, resolveActiveSkills, buildToolDefs, buildSystemPrompt, find
 import { memorySkill, buildMemoryBlock, type MemoryDeps } from "./skills/memory";
 import { askChoicesSkill, ASK_CHOICES_TOOL } from "./ask-choices";
 import { resolveToday } from "./dates";
+import { claraSignal } from "./signal";
+import { claraMetric } from "./metric";
 import { detectIntent, mealForLocalMinutes } from "./intent";
 import { buildTodaysPlanText } from "./today-plan";
 import type { ConversationStore, ToolTraceEntry } from "./conversations";
@@ -452,7 +454,12 @@ export async function startClaraAppTurn(
   } catch (err) {
     onError(err);
     const busy = claraBusyStatus(err);
-    if (busy) return { ok: false, status: busy, body: { error: CLARA_BUSY_MESSAGE, conversationId } };
+    if (busy) {
+      // The person is told "Clara is busy". Reported, so a busy evening is seen while it happens.
+      claraSignal("model-busy", `status ${busy}`);
+      claraMetric("chat_busy", { status: busy });
+      return { ok: false, status: busy, body: { error: CLARA_BUSY_MESSAGE, conversationId } };
+    }
     return { ok: false, status: 500, body: { error: UNAVAILABLE_ERROR, conversationId } };
   }
 

@@ -93,7 +93,8 @@ const fakePrisma = {
       }
       queries.push("ingredient");
       const wanted: string[] | undefined = args?.where?.name?.in;
-      return wanted ? CATALOG.filter((c) => wanted.some((w) => w.toLowerCase() === c.name)) : CATALOG.map((c) => ({ name: c.name }));
+      // With no name filter: the whole catalog, names and groups (the dish path reads it once and keeps it in memory).
+      return wanted ? CATALOG.filter((c) => wanted.some((w) => w.toLowerCase() === c.name)) : CATALOG.map((c) => ({ name: c.name, allergenGroups: c.allergenGroups }));
     },
     createMany: async () => ({ count: 0 }), // the catalog's idempotent insert of names it lacks
   },
@@ -173,7 +174,9 @@ test("library: once the signal fires no further query is made, and the allergen 
   assert.ok(!queries.includes("ingredient"), `queries after the abort: ${queries.join(", ")}`);
   queries = [];
   await dish.createLiveDishDeps().library!({ ...CTX }, ASK);
-  assert.equal(queries.filter((q) => q === "ingredient").length, 1, `one groups query for every ranked candidate: ${queries.join(", ")}`);
+  // The groups come from the catalog kept in memory (ingredientGroupsFromCatalog): at most one read, and none
+  // when an earlier dish in this process already loaded it. Never one per candidate.
+  assert.ok(queries.filter((q) => q === "ingredient").length <= 1, `at most one groups query for every ranked candidate: ${queries.join(", ")}`);
 });
 
 test("generator: candidate 1 breaks the allergy, candidate 2 passes → candidate 2 is served, generated", async () => {
